@@ -17,6 +17,7 @@ import os
 import re
 import time
 import unicodedata
+from difflib import SequenceMatcher
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from contextlib import asynccontextmanager
@@ -33,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 # --- Config ---
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 XAI_BASE = "https://api.x.ai/v1"
-XAI_MODEL = "grok-3"  # Strongest available xAI model
+XAI_MODEL = "grok-3"  # Strongest full xAI reasoning model (not mini / fast variants)
 
 ASCII_PUNCT_TRANSLATION = str.maketrans({
     "“": '"',
@@ -515,7 +516,7 @@ DCJS_URL = (
 # CRIME KEYWORDS
 # =============================================================================
 CRIME_KEYWORDS = [
-    "arrest", "charged", "murder", "homicide", "shooting", "stabbing",
+    "arrest", "arrested", "booked", "booking", "arraigned", "charged", "murder", "homicide", "shooting", "stabbing",
     "robbery", "burglary", "theft", "assault", "weapon", "drug",
     "police", "sheriff", "suspect", "victim", "crime", "felony",
     "misdemeanor", "indicted", "convicted", "sentence", "investigation",
@@ -568,6 +569,7 @@ URGENT_KEYWORDS = [
     "arrested", "charged with", "taken into custody", "in custody",
     "police make arrest", "suspect arrested", "man arrested", "woman arrested",
     "charged in connection", "faces charges", "indicted",
+    "booked", "booked at", "booking", "arraigned",
 ]
 
 # Official police / emergency sources → always live when recent
@@ -629,7 +631,7 @@ def classify_feed_tab(article) -> str:
         "stabbing", "stabbed",
         "homicide", "murder",
         "officer-involved", "officer involved shooting",
-        "pursuit", "high-speed chase", "foot pursuit",
+        "pursuit", "high-speed chase", "foot pursuit", "vehicle pursuit",
         "armed robbery", "armed suspect",
         "carjacking", "kidnapping",
         "hostage", "barricaded", "standoff", "swat",
@@ -639,6 +641,8 @@ def classify_feed_tab(article) -> str:
         "man arrested", "woman arrested", "person arrested",
         "charged with", "taken into custody", "in custody",
         "felony charge", "multiple charges",
+        "booked", "booked at", "booking", "arraigned",
+        "faces charges", "facing charges", "indicted",
     ]
     if any(kw in title_text for kw in PRIORITY_LIVE):
         return "live"
@@ -1215,7 +1219,13 @@ def detect_patterns(crime_data):
 # =============================================================================
 # xAI / GROK HELPERS
 # =============================================================================
-async def call_grok(messages, max_tokens=400, stream=False, temperature=0.35):
+async def call_grok(
+    messages,
+    max_tokens=400,
+    stream=False,
+    temperature=0.35,
+    timeout: Optional[float] = None,
+):
     body = {
         "model": XAI_MODEL,
         "messages": messages,
@@ -1223,7 +1233,8 @@ async def call_grok(messages, max_tokens=400, stream=False, temperature=0.35):
         "temperature": temperature,
         "stream": stream,
     }
-    resp = await post_xai_chat(body, timeout=60.0 if stream else 20.0)
+    t_out = timeout if timeout is not None else (90.0 if stream else 45.0)
+    resp = await post_xai_chat(body, timeout=t_out)
     if stream:
         return resp
     if resp.status_code == 200:
@@ -1263,18 +1274,20 @@ async def post_xai_chat(body: dict, timeout: float = 20.0):
 
 
 SITUATION_SYSTEM = (
-    "You are a senior crime intelligence analyst for Albany County, NY. "
-    "Albany County includes the City of Albany plus towns: Bethlehem, Coeymans, Colonie, "
-    "Guilderland, Knox, New Scotland, Rensselaerville, Westerlo, and Berne; "
-    "cities: Cohoes and Watervliet; and villages: Altamont, Green Island, Menands, "
-    "Ravena, and Voorheesville.\n\n"
-    "CRITICAL RULES:\n"
-    "1. VERIFY every article is genuinely about Albany County, NY — not Albany, Georgia; "
-    "Albany, Oregon; Albany, California; or any other Albany. Discard any ambiguous articles.\n"
-    "2. NEVER fabricate, extrapolate, or invent incidents not present in the provided data.\n"
-    "3. Name specific streets, intersections, and municipalities when available.\n"
-    "4. Assign a confidence score (high/medium/low) based on how well-sourced the data is.\n"
-    "5. Respond ONLY with valid JSON — no markdown fences, no preamble."
+    "You are the lead intelligence analyst for the Albany County, NY Crime Tracker (production system). "
+    "Jurisdiction is strictly Albany County, New York: City of Albany; towns Bethlehem, Coeymans, Colonie, "
+    "Guilderland, Knox, New Scotland, Rensselaerville, Westerlo, Berne; cities Cohoes and Watervliet; "
+    "villages Altamont, Green Island, Menands, Ravena, Voorheesville.\n\n"
+    "Operating rules:\n"
+    "1. GEOGRAPHY: Only use incidents clearly in this Albany County, NY. Reject Albany, GA/OR/CA/Australia "
+    "and any story lacking NY Capital Region corroboration.\n"
+    "2. GROUNDING: Every factual claim must trace to the supplied article lines. Do not infer suspects, "
+    "charges, or outcomes not stated. If counts or severity are unclear, say so.\n"
+    "3. PRECISION: Prefer municipality + neighborhood or street over vague 'area' language.\n"
+    "4. THREAT & CONFIDENCE: threat_level must reflect volume, severity, and recency of verified items only; "
+    "confidence reflects source mix (official > local TV/print > aggregated).\n"
+    "5. OUTPUT: Return one JSON object only — keys situation (string), threat_level (low|moderate|elevated|high), "
+    "confidence (high|medium|low). No markdown, no code fences, no text before or after the JSON."
 )
 
 
@@ -1315,26 +1328,35 @@ async def generate_situation_report(crime_data, patterns):
         f"Other: {type_b.get('other', 0)}"
     )
 
-    prompt = f"""Below are Albany County, NY crime/incident reports collected from local news and official sources.
+    prompt = f"""You are producing the live situation summary for Albany County, NY decision-makers.
 
-STEP 1 — VERIFY: Silently discard any article not genuinely about Albany County, NY (watch for Albany, GA; Albany, OR; etc.).
+INPUT: Verified incident lines (each tagged with confidence tier and source reliability) plus aggregate pattern stats.
 
-STEP 2 — ANALYZE: Write a situation field that is EXACTLY 1–2 short sentences. Be specific and punchy — name a location and a key incident type. No more than 30 words total. Example style: "Moderate activity in Colonie and Center Square. Three violent incidents in 48 hours including a home break-in on Dove Street."
+TASK:
+1) Internally filter out any line that is not plausibly Albany County, NY (wrong state, wrong Albany, or non-local noise).
+2) Write situation: exactly 1-2 sentences, max 35 words, active voice, no hedging filler. Name a specific "
+       "municipality or neighborhood when the data supports it. Summarize dominant themes (violent vs property vs "
+       "traffic, recency) using only what the lines show.
+3) Set threat_level to low|moderate|elevated|high from verified severity + count + recency; do not inflate.
+4) Set confidence to high|medium|low from how official vs second-hand the evidence is.
 
-STEP 3 — SCORE: Assign threat_level (low/moderate/elevated/high) and confidence (high/medium/low).
-
-Verified articles:
+Incident lines:
 {chr(10).join(context_lines)}
 {pattern_ctx}
 
-Respond ONLY with this exact JSON (no markdown):
+Output format — single JSON object only, no other characters:
 {{"situation": "...", "threat_level": "...", "confidence": "..."}}"""
 
     try:
-        result = await call_grok([
-            {"role": "system", "content": SITUATION_SYSTEM},
-            {"role": "user", "content": prompt},
-        ], max_tokens=200, temperature=0.3)
+        result = await call_grok(
+            [
+                {"role": "system", "content": SITUATION_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=500,
+            temperature=0.25,
+            timeout=55.0,
+        )
 
         if result:
             json_match = re.search(r'\{[^{}]*"situation"[^{}]*\}', result, re.DOTALL)
@@ -1469,24 +1491,48 @@ async def fetch_all_feeds():
         "one","two","three","that","this","from","his","her","they","were",
     })
 
-    # Key crime/incident words that, when shared, help identify the same real-world event.
-    # IMPORTANT: Only include words specific enough to uniquely describe an incident.
-    # Do NOT include generic words like "arrested", "charged", "police", "fire" — those
-    # appear in every crime article and cause unrelated incidents to be merged.
-    _INCIDENT_KEYS = frozenset({
-        # Violent crime types — very specific
-        "shooting", "stabbing", "homicide", "murder", "carjacking",
-        "standoff", "barricade", "kidnapping", "abduction",
-        # Traffic fatalities — combine with victim details
-        "fatally", "fatal crash", "fatal accident",
-        # Highly specific events
-        "overdose", "amber alert",
-        # Named individuals or very specific descriptors help downstream
-        # (but we can't extract names here — these are keywords in shared tokens)
-    })
+    _MAX_COMBINED_SOURCES = 8
+
+    # Phrase → canonical bucket for "same incident" merge (2+ shared buckets within 8 h).
+    _CRITICAL_MERGE_TAGS = [
+        ("shooting", "shooting"),
+        ("shot and killed", "shooting"),
+        ("shots fired", "shooting"),
+        ("stabbing", "stabbing"),
+        ("stabbed", "stabbing"),
+        ("arrested", "arrest"),
+        ("arrest made", "arrest"),
+        ("suspect arrested", "arrest"),
+        ("man arrested", "arrest"),
+        ("woman arrested", "arrest"),
+        ("person arrested", "arrest"),
+        ("charged with", "charged"),
+        ("faces charges", "charged"),
+        ("facing charges", "charged"),
+        ("taken into custody", "custody"),
+        ("in custody", "custody"),
+        ("pursuit", "pursuit"),
+        ("high-speed chase", "pursuit"),
+        ("vehicle pursuit", "pursuit"),
+        ("foot pursuit", "pursuit"),
+        ("chase", "chase"),
+        ("standoff", "standoff"),
+        ("barricaded", "standoff"),
+        ("officer-involved", "officer"),
+        ("officer involved", "officer"),
+        ("officer", "officer"),
+    ]
+
+    def _norm_title(t: str) -> str:
+        return re.sub(r"\s+", " ", (t or "").lower()).strip()
+
+    def _title_sequence_ratio(ta: str, tb: str) -> float:
+        a, b = _norm_title(ta), _norm_title(tb)
+        if not a or not b:
+            return 0.0
+        return SequenceMatcher(None, a, b).ratio()
 
     def _title_words(t: str) -> frozenset:
-        # Replace ANY non-alphanumeric with a space (so "7-year-old" → "7 year old")
         norm = re.sub(r"[^a-z0-9]", " ", t.lower())
         return frozenset(norm.split()) - _STOP
 
@@ -1499,74 +1545,101 @@ async def fetch_all_feeds():
         return inter / union if union else 0.0
 
     def _hours_apart(a: dict, b: dict) -> Optional[float]:
-        """Return absolute hours between pubDates, or None if unparseable."""
         try:
             da = parsedate_to_datetime(a.get("pubDate", ""))
             db = parsedate_to_datetime(b.get("pubDate", ""))
-            if da.tzinfo is None: da = da.replace(tzinfo=timezone.utc)
-            if db.tzinfo is None: db = db.replace(tzinfo=timezone.utc)
+            if da.tzinfo is None:
+                da = da.replace(tzinfo=timezone.utc)
+            if db.tzinfo is None:
+                db = db.replace(tzinfo=timezone.utc)
             return abs((da - db).total_seconds()) / 3600
         except Exception:
             return None
 
     def _combined_words(article: dict) -> frozenset:
-        """Token set from title + first 200 chars of description combined."""
         title = article.get("title", "") or ""
-        desc  = (article.get("description", "") or "")[:200]
+        desc = (article.get("description", "") or "")[:400]
         return _title_words(title + " " + desc)
 
+    def _critical_merge_tags(full_text: str) -> frozenset:
+        t = (full_text or "").lower()
+        found: set[str] = set()
+        for needle, tag in _CRITICAL_MERGE_TAGS:
+            if needle in t:
+                found.add(tag)
+        return frozenset(found)
+
     def _same_incident(art: dict, rep: dict) -> bool:
-        """True when two articles clearly describe the same real-world incident."""
-        # Fast path: title similarity ≥45% Jaccard
-        sim_title = _similarity(art["title"], rep["title"])
-        if sim_title >= 0.45:
+        """Same story if titles match strongly OR shared critical incident signals in time window."""
+        t1 = art.get("title", "") or ""
+        t2 = rep.get("title", "") or ""
+        full_a = (t1 + " " + (art.get("description", "") or ""))[:1200]
+        full_b = (t2 + " " + (rep.get("description", "") or ""))[:1200]
+        hrs = _hours_apart(art, rep)
+
+        if _title_sequence_ratio(t1, t2) >= 0.85:
             return True
 
-        # Medium path: combined title+desc similarity (catches wire-copy variants)
+        jac_title = _similarity(t1, t2)
+        if jac_title >= 0.85:
+            return True
+
         wa_full = _combined_words(art)
         wb_full = _combined_words(rep)
         if wa_full and wb_full:
             inter = len(wa_full & wb_full)
             union = len(wa_full | wb_full)
-            if union and (inter / union) >= 0.55:
+            jac_full = inter / union if union else 0.0
+            if jac_full >= 0.85:
                 return True
 
-        # Time-window check: only merge when title sim is 30%+ AND they share
-        # a highly specific incident keyword (type of crime) within 1 hour.
-        # This prevents unrelated same-day crimes from being collapsed.
-        if sim_title >= 0.30:
-            hrs = _hours_apart(art, rep)
-            if hrs is not None and hrs <= 1.0:
-                shared_keys = (wa_full & wb_full) & _INCIDENT_KEYS
-                if len(shared_keys) >= 1:
-                    return True
+        ca = _critical_merge_tags(full_a)
+        cb = _critical_merge_tags(full_b)
+        shared = ca & cb
+        if len(shared) >= 2 and hrs is not None and hrs <= 8.0:
+            return True
+
+        if jac_title >= 0.65 and len(shared) >= 1 and hrs is not None and hrs <= 6.0:
+            return True
+
+        w1, w2 = _title_words(t1), _title_words(t2)
+        if w1 and w2 and hrs is not None and hrs <= 12.0:
+            tw = len(w1 & w2)
+            if _title_sequence_ratio(t1, t2) >= 0.52 and tw >= 4:
+                return True
+
         return False
 
-    # Group articles: each group keeps one representative (the winner) plus
-    # a list of all sources that covered the same incident.
-    groups: list[dict] = []          # each entry: {rep: article, sources: list[str]}
+    def _source_norm_key(src: str) -> str:
+        return re.sub(r"\s+", " ", (src or "").strip().lower())
+
+    groups: list[dict] = []
 
     for art in articles:
         placed = False
         for grp in groups:
             if _same_incident(art, grp["rep"]):
                 src = art.get("source", "")
-                if src and src not in grp["sources"]:
-                    grp["sources"].append(src)
+                if src:
+                    sk = _source_norm_key(src)
+                    if sk and sk not in grp["_source_keys"]:
+                        grp["_source_keys"].add(sk)
+                        grp["sources"].append(src)
                 placed = True
                 break
         if not placed:
             grp_sources = []
             s = art.get("source", "")
+            sk_set: set[str] = set()
             if s:
                 grp_sources.append(s)
-            groups.append({"rep": art, "sources": grp_sources})
+                sk_set.add(_source_norm_key(s))
+            groups.append({"rep": art, "sources": grp_sources, "_source_keys": sk_set})
 
-    # Attach combined sources list to each representative and collect
     deduped = []
     for grp in groups:
         rep = grp["rep"]
-        rep["sources"] = grp["sources"][:3]    # cap at 3 for display
+        rep["sources"] = grp["sources"][:_MAX_COMBINED_SOURCES]
         deduped.append(rep)
 
     # Final sort: newest first, then by source priority (4=official > 3=premium > 2=local > 1=gnews)
@@ -1635,19 +1708,36 @@ async def get_crimes():
         geo["feed_tab"] = classify_feed_tab(a)
         geocoded.append(geo)
 
-    # Sort: live items first (newest-first = lowest age_hours first), then news items newest-first
-    # Use age_hours (already computed) so sorting is numeric, not RFC 2822 string comparison
-    def _age_key(x):
-        a = x.get("age_hours")
-        return a if a is not None else 9999
+    def _pub_ts_sort(x: dict) -> float:
+        try:
+            dt = parsedate_to_datetime(x.get("pubDate", ""))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except Exception:
+            return 0.0
+
+    _ARREST_TITLE_HINTS = frozenset([
+        "arrest", "arrested", "booked", "booking", "charged", "custody",
+        "indicted", "arraigned", "suspect", "warrant", "in custody",
+    ])
+
+    def _live_sort_key(x: dict) -> tuple:
+        """Recent (<=18h) arrest-style headlines first; then strict newest pubDate."""
+        title = (x.get("title") or "").lower()
+        age = x.get("age_hours")
+        arrestish = any(h in title for h in _ARREST_TITLE_HINTS)
+        recent = age is not None and age <= 18
+        top = 0 if (recent and arrestish) else 1
+        return (top, -_pub_ts_sort(x))
 
     live_items = sorted(
         [x for x in geocoded if x.get("feed_tab") == "live"],
-        key=_age_key
+        key=_live_sort_key,
     )
     news_items = sorted(
         [x for x in geocoded if x.get("feed_tab") == "news"],
-        key=_age_key
+        key=lambda x: -_pub_ts_sort(x),
     )
     geocoded = live_items + news_items
 
@@ -2047,25 +2137,25 @@ async def chat(request: Request):
     news_sources = sorted(set(a.get("source", "") for a in news_data))
 
     system_prompt = (
-        "You are a senior crime intelligence analyst embedded in the Albany County, NY Crime Tracker.\n\n"
-        "Albany County, NY comprises: City of Albany + Towns (Bethlehem, Coeymans, Colonie, Guilderland, "
-        "Knox, New Scotland, Rensselaerville, Westerlo, Berne) + Cities (Cohoes, Watervliet) + "
-        "Villages (Altamont, Green Island, Menands, Ravena, Voorheesville).\n\n"
-        "**Strict rules:**\n"
-        "- ONLY report incidents verified to be in Albany County, NY. "
-        "If an article might refer to Albany, GA; Albany, OR; or elsewhere — say so and flag it.\n"
-        "- Never fabricate or extrapolate beyond what is in the data provided.\n"
-        "- When citing an incident, name the source and its reliability tier: "
-        "Official (law enforcement/government), Local News (TV/print), or Aggregated.\n"
-        "- Give the most precise location available (street, intersection, neighborhood, municipality).\n"
-        "- Use markdown: **bold** key facts, bullet lists, `### headers` for multi-part answers.\n"
-        "- Use > blockquotes for urgent safety warnings.\n"
-        "- If the user asks for map locations, output JSON in a code block:\n"
-        "  ```json\n  [{\"label\": \"...\", \"lat\": 42.xxx, \"lng\": -73.xxx}]\n  ```\n"
-        "- If data is unavailable or ambiguous, say so explicitly.\n"
-        "- Confidence labels in the data: HIGH ≥ 90%, MED ≥ 75%, LOW < 75%.\n\n"
-        f"**Live sources ({len(news_sources)}):** {', '.join(news_sources[:12])}\n\n"
-        f"**Current incident feed ({len(crime_data)} verified reports):**\n{crime_context}"
+        "You are the principal analyst for the Albany County, NY Crime Tracker, using the full Grok 3 model. "
+        "Your answers inform residents and stakeholders; accuracy and brevity outweigh speculation.\n\n"
+        "JURISDICTION: Albany County, New York only — City of Albany; towns (Bethlehem, Coeymans, Colonie, "
+        "Guilderland, Knox, New Scotland, Rensselaerville, Westerlo, Berne); cities (Cohoes, Watervliet); "
+        "villages (Altamont, Green Island, Menands, Ravena, Voorheesville). "
+        "If the user or data could mean another Albany (GA, OR, etc.), state that explicitly and do not treat it as local.\n\n"
+        "METHOD:\n"
+        "- Ground every factual claim in the incident feed or patterns below. If something is not in the data, say "
+        "\"not in the current feed\" rather than guessing.\n"
+        "- Cite provenance: name the outlet or official source and interpret CONF/MED/HIGH labels as "
+        "HIGH ≥ 90%, MED ≥ 75%, LOW < 75% article confidence; reliability percentages are shown per line.\n"
+        "- Prefer specific locations (street, intersection, hamlet, town) over generic regional wording.\n"
+        "- Keep answers structured: short direct answer first, then bullets or ### sections if detail is needed.\n"
+        "- Use markdown: **bold** for critical facts, lists for multiple incidents, `###` subheads for long replies.\n"
+        "- Use > blockquotes only for actionable public-safety warnings supported by the feed.\n"
+        "- Map coordinates: if asked, output a single ```json code block with "
+        "[{\"label\": \"...\", \"lat\": 42.xxx, \"lng\": -73.xxx}] only for places you can justify from the data.\n\n"
+        f"**Source universe ({len(news_sources)} feeds):** {', '.join(news_sources[:12])}\n\n"
+        f"**Verified incident lines ({len(crime_data)} items):**\n{crime_context}"
         f"{pattern_text}"
     )
 
@@ -2081,10 +2171,10 @@ async def chat(request: Request):
         resp = await post_xai_chat({
             "model": XAI_MODEL,
             "messages": messages,
-            "max_tokens": 1200,
-            "temperature": 0.4,
+            "max_tokens": 1500,
+            "temperature": 0.35,
             "stream": True,
-        }, timeout=60.0)
+        }, timeout=90.0)
 
         if resp.status_code != 200:
             return {"status": "error", "message": f"AI error: {resp.status_code}"}

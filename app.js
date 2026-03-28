@@ -42,21 +42,28 @@
 
   // ── ALBANY COUNTY SCANNER TALKGROUP MAP ────────────────────────
   var TG_MAP = {
-    // ── Primary 5-digit OpenMHz IDs ─────────────────────────────────────────
+    // ── Primary 5-digit OpenMHz / Albany County P25 IDs ──────────────────────
     "15202": { name: "Albany County Law Dispatch", cat: "police", priority: "high",   location: "County-wide" },
-    "10702": { name: "Albany County Fire Dispatch",cat: "fire",   priority: "high",   location: "County-wide" },
+    "10702": { name: "Albany County Fire Dispatch", cat: "fire",   priority: "high",   location: "County-wide" },
     "11702": { name: "County Fire Tac",            cat: "fire",   priority: "medium", location: "County-wide" },
     "10003": { name: "Albany County Sheriff",      cat: "police", priority: "high",   location: "County-wide" },
     "13102": { name: "Albany PD Dispatch",         cat: "police", priority: "high",   location: "City of Albany" },
+    "13202": { name: "Albany PD Ops",              cat: "police", priority: "high",   location: "City of Albany" },
     "11003": { name: "Albany County EMS",          cat: "ems",    priority: "high",   location: "County-wide" },
     "10921": { name: "Albany County Interop",      cat: "police", priority: "medium", location: "County-wide" },
     "10922": { name: "Multi-Agency Tac",           cat: "police", priority: "medium", location: "County-wide" },
     "10923": { name: "Emergency Ops",              cat: "police", priority: "high",   location: "County-wide" },
     "10925": { name: "Albany County OEM",          cat: "police", priority: "medium", location: "County-wide" },
     "18301": { name: "Albany County Law Ops",      cat: "police", priority: "high",   location: "County-wide" },
-    "13202": { name: "Albany PD Ops",              cat: "police", priority: "high",   location: "City of Albany" },
-    "15202": { name: "Albany County Law Dispatch", cat: "police", priority: "high",   location: "County-wide" },
-    // ── Legacy 4-digit IDs ───────────────────────────────────────────────────
+    "18884": { name: "Capitol / State Police Tac", cat: "police", priority: "high",   location: "Downtown Albany / Plaza" },
+    "10354": { name: "Metro Law Tac",              cat: "police", priority: "medium", location: "Capital Region" },
+    "10401": { name: "Colonie PD Dispatch",        cat: "police", priority: "high",   location: "Colonie / Latham" },
+    "10402": { name: "Colonie PD Tac",             cat: "police", priority: "medium", location: "Colonie" },
+    "10501": { name: "Guilderland PD",             cat: "police", priority: "medium", location: "Guilderland" },
+    "10502": { name: "Bethlehem PD",               cat: "police", priority: "medium", location: "Bethlehem / Delmar" },
+    "10601": { name: "Cohoes PD",                  cat: "police", priority: "medium", location: "Cohoes" },
+    "10602": { name: "Watervliet PD",              cat: "police", priority: "medium", location: "Watervliet" },
+    // ── Legacy 4-digit IDs (still seen in some OpenMHz paths) ───────────────
     "8211":  { name: "Colonie PD Dispatch",        cat: "police", priority: "high",   location: "Colonie / Latham" },
     "8212":  { name: "Colonie PD Tac",             cat: "police", priority: "medium", location: "Colonie" },
     "8215":  { name: "Bethlehem PD",               cat: "police", priority: "medium", location: "Bethlehem / Delmar" },
@@ -67,6 +74,74 @@
     "8259":  { name: "Albany County EMS",          cat: "ems",    priority: "high",   location: "County-wide" },
     "8260":  { name: "Albany EMS Dispatch",        cat: "ems",    priority: "high",   location: "City of Albany" }
   };
+
+  function lookupTgMap(tgRaw) {
+    var s = String(tgRaw == null ? "" : tgRaw).trim();
+    if (!s) return null;
+    if (TG_MAP[s]) return TG_MAP[s];
+    if (/^\d+$/.test(s)) {
+      var stripped = s.replace(/^0+/, "") || "0";
+      if (TG_MAP[stripped]) return TG_MAP[stripped];
+    }
+    return null;
+  }
+
+  function inferScannerCat(name, desc, audioUrl) {
+    var t = ((name || "") + " " + (desc || "") + " " + (audioUrl || "")).toLowerCase();
+    if (/\b(fire|fd|rescue|brush|blaze|smoke|structure fire)\b/.test(t)) return "fire";
+    if (/\b(ems|medic|ambulance|medical)\b/.test(t)) return "ems";
+    return "police";
+  }
+
+  function resolveScannerDept(call) {
+    var tgRaw = call.talkgroup_num != null ? call.talkgroup_num : call.talkgroup;
+    var tgStr = String(tgRaw != null ? tgRaw : "").trim();
+    var info = lookupTgMap(tgStr);
+    var alpha = (call.talkgroup_tag || call.talkgroupAlpha || call.talkgroup_alpha_tag || "").trim();
+    var desc = (call.talkgroup_description || call.talkgroupDescription || "").trim();
+    var audioUrl = call.url || call.audio_url || "";
+
+    var name;
+    var location;
+    var cat;
+    var priority;
+
+    if (info) {
+      name = info.name;
+      location = info.location || "Albany County, NY";
+      cat = info.cat;
+      priority = info.priority || "medium";
+    } else {
+      var blob = (alpha + " " + desc).trim();
+      if (blob) {
+        name = alpha || (desc.length > 80 ? desc.slice(0, 77) + "..." : desc);
+        location = "";
+        if (/colonie/i.test(blob)) location = "Colonie / Latham";
+        else if (/bethlehem|delmar/i.test(blob)) location = "Bethlehem / Delmar";
+        else if (/guilderland/i.test(blob)) location = "Guilderland";
+        else if (/cohoes/i.test(blob)) location = "Cohoes";
+        else if (/watervliet/i.test(blob)) location = "Watervliet";
+        else if (/ravena|coeymans|selkirk/i.test(blob)) location = "Ravena / Coeymans";
+        else if (/menands|green island|voorheesville|altamont/i.test(blob)) location = "Albany County";
+        else if (/sheriff|\bacso\b|county law|law dispatch/i.test(blob)) location = "County-wide";
+        else if (/albany\s*pd|\bapd\b|city of albany/i.test(blob)) location = "City of Albany";
+        else if (/state\s*police|nysp|troop\s*[fg]/i.test(blob)) location = "Capital Region";
+        else if (/fire|rescue|\bfd\b/i.test(blob)) location = "County-wide";
+        else if (/ems|medic/i.test(blob)) location = "County-wide";
+        else location = "Albany County, NY";
+      } else if (tgStr) {
+        name = "Talkgroup " + tgStr;
+        location = "Albany County, NY";
+      } else {
+        name = "Radio traffic";
+        location = "Albany County, NY";
+      }
+      cat = inferScannerCat(name, desc, audioUrl);
+      priority = "medium";
+    }
+    if (!location) location = "Albany County, NY";
+    return { name: name, location: location, cat: cat, priority: priority };
+  }
 
   // ── THEME ─────────────────────────────────────────────────────
   function getTheme() {
@@ -580,7 +655,10 @@
                      : intel.cat === "ems"  ? "emergency"
                      :                        "local_police";
         var borderCls = " scanner-intel-" + (intel.cat || "police");
-        var durText = intel.len > 0 ? intel.len.toFixed(0) + "s transmission" : "active";
+        var detailParts = [];
+        if (intel.freqMHz) detailParts.push(intel.freqMHz + " MHz");
+        if (intel.len > 0) detailParts.push(intel.len.toFixed(0) + "s");
+        var durText = detailParts.length ? detailParts.join(" \u00b7 ") : "active";
         // Clickable card — switches to Scanner tab
         html += '<div class="feed-item scanner-intel' + borderCls + ' scanner-intel-clickable" role="button" tabindex="0" title="View in Scanner tab" onclick="switchView(\'scanner\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \')switchView(\'scanner\')">';
         html += '<span class="feed-dot scanner-dot scanner-dot-' + esc(intel.cat || "police") + '"></span>';
@@ -592,10 +670,7 @@
         if (intel.location) html += '<span class="scanner-call-loc"> \u2014 ' + esc(intel.location) + '</span>';
         html += '<span class="scanner-intel-arrow material-icons" style="font-size:12px;opacity:0.4;margin-left:4px;vertical-align:-1px;">chevron_right</span>';
         html += '</div>';
-        // Sub-line: duration
-        if (intel.len > 0) {
-          html += '<div class="scanner-call-detail">' + esc(durText) + '</div>';
-        }
+        html += '<div class="scanner-call-detail">' + esc(durText) + '</div>';
         html += '<div class="feed-meta">';
         html += '<span class="scanner-feed-badge scanner-badge-' + esc(intel.cat || "police") + '">SCANNER · ' + esc(catLabel) + '</span>';
         html += '<span>' + esc(intel.time) + '</span>';
@@ -609,11 +684,19 @@
         html += '<div class="empty-state">No breaking incidents in the last 72 hours.<br>Check the News tab for recent reports.</div>';
       }
     } else {
-      // Strict newest-first: sort by pubDate descending before rendering
+      function _pubMs(x) { return x.pubDate ? new Date(x.pubDate).getTime() : 0; }
+      function _liveArrestFirst(x) {
+        var title = (x.title || "").toLowerCase();
+        var hints = ["arrest", "arrested", "booked", "booking", "charged", "custody", "indicted", "arraigned", "suspect", "warrant", "in custody"];
+        var ageH = (_pubMs(x) ? (Date.now() - _pubMs(x)) / 3600000 : 999);
+        var hit = hints.some(function (h) { return title.indexOf(h) !== -1; });
+        return ageH <= 18 && hit ? 0 : 1;
+      }
       var sorted = liveItems.slice().sort(function (a, b) {
-        var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
-        var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
-        return tb - ta;
+        var ba = _liveArrestFirst(a);
+        var bb = _liveArrestFirst(b);
+        if (ba !== bb) return ba - bb;
+        return _pubMs(b) - _pubMs(a);
       });
       sorted.forEach(function (item) { html += buildIncidentCard(item); });
     }
@@ -1074,6 +1157,7 @@
     });
   }
 
+  // AI chat uses POST /api/chat; model is xAI Grok 3 full (api_server.py XAI_MODEL).
   function sendChat(message, inputEl) {
     if (!message) return;
     if (inputEl) inputEl.value = "";
@@ -1436,45 +1520,43 @@
 
     calls.forEach(function (call) {
       var tg = String(call.talkgroup_num || call.talkgroupNum || call.talkgroup || "");
-      var tgInfo = TG_MAP[tg];
+      var dept = resolveScannerDept(call);
       var len = call.duration || call.len || 0;
       var callTime = call.time ? new Date(call.time) : null;
+      var freqHz = call.freq || 0;
+      var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
 
       // Drop anything older than 2 hours
       if (callTime && (now - callTime) > 2 * 60 * 60 * 1000) return;
 
-      // Check critical keywords against TG name + alpha tag + description
-      var searchText = [
-        tgInfo ? tgInfo.name : "",
-        call.talkgroup_tag || "",
-        call.talkgroup_description || ""
-      ].join(" ").toLowerCase();
+      var searchText = (
+        dept.name + " " +
+        (call.talkgroup_tag || "") + " " +
+        (call.talkgroup_description || "")
+      ).toLowerCase();
 
       var hasKeyword = CRITICAL_SCANNER_KEYWORDS.some(function (kw) {
         return searchText.indexOf(kw) !== -1;
       });
 
-      // Only show in Live feed if:
-      //   (a) high-priority POLICE TG with a meaningful transmission (>= 10s), OR
-      //   (b) any TG that contains a critical keyword
-      var isHighPolice = tgInfo && tgInfo.priority === "high" && tgInfo.cat === "police" && len >= 10;
-      var isCritical   = hasKeyword && len >= 5;
+      var isHighPolice = dept.priority === "high" && dept.cat === "police" && len >= 10;
+      var isCritical = hasKeyword && len >= 5;
 
-      if (!tgInfo) return;                      // skip unknown TGs in Live feed entirely
-      if (!isHighPolice && !isCritical) return; // skip routine dispatches
+      if (!isHighPolice && !isCritical) return;
 
-      // Deduplicate by TG within this render pass
-      if (seen[tg]) return;
-      seen[tg] = true;
+      var dedupKey = tg || dept.name;
+      if (seen[dedupKey]) return;
+      seen[dedupKey] = true;
 
       significant.push({
-        tgName:   tgInfo.name,
-        location: tgInfo.location || "",
-        cat:      tgInfo.cat,
-        priority: tgInfo.priority,
-        len:      len,
-        time:     callTime ? timeAgo(callTime) : "",
-        rawTime:  callTime ? callTime.getTime() : 0
+        tgName: dept.name,
+        location: dept.location,
+        cat: dept.cat,
+        priority: dept.priority,
+        len: len,
+        freqMHz: freqMHz,
+        time: callTime ? timeAgo(callTime) : "",
+        rawTime: callTime ? callTime.getTime() : 0
       });
     });
 
@@ -1516,67 +1598,37 @@
     }
 
     recentCalls.slice(0, 25).forEach(function (call) {
-      var tgRaw   = call.talkgroup_num || call.talkgroupNum || call.talkgroup;
-      var tgStr   = tgRaw != null ? String(tgRaw) : "";
-      var tgInfo  = tgStr ? TG_MAP[tgStr] : null;
-      var tgAlpha = call.talkgroup_tag || call.talkgroupAlpha || call.talkgroup_alpha_tag || "";
-      var tgDesc  = call.talkgroup_description || call.talkgroupDescription || "";
-      var freqHz  = call.freq || 0;
+      var dept = resolveScannerDept(call);
+      var freqHz = call.freq || 0;
       var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
-      var len     = call.duration != null ? parseFloat(call.duration) : (call.len ? parseFloat(call.len) : 0);
+      var len = call.duration != null ? parseFloat(call.duration) : (call.len ? parseFloat(call.len) : 0);
       var startTime = call.time ? new Date(call.time) : (call.start_time ? new Date(call.start_time) : null);
-      var ta      = startTime ? timeAgo(startTime) : "";
+      var ta = startTime ? timeAgo(startTime) : "";
       var audioUrl = call.url || call.audio_url || "";
 
-      // ── Infer category from audio URL path when no TG_MAP match ──────────
-      var inferredCat = "other";
-      if (!tgInfo && audioUrl) {
-        var urlLow = audioUrl.toLowerCase();
-        if (/fire|fd|ems|medic|rescue/.test(urlLow)) inferredCat = "fire";
-        else if (/ems|med|amb/.test(urlLow))         inferredCat = "ems";
-        else if (/pd|police|law|sheriff/.test(urlLow)) inferredCat = "police";
-      }
-      var cat      = tgInfo ? tgInfo.cat : inferredCat;
+      var cat = dept.cat;
       var catLabel = cat === "police" ? "Police" : cat === "fire" ? "Fire" : cat === "ems" ? "EMS" : "";
       var catClass = cat !== "other" ? " scanner-cat-" + cat : "";
 
-      // ── Name + location ──────────────────────────────────────────────────
-      var deptName, location;
-      if (tgInfo) {
-        deptName = tgInfo.name;
-        location = tgInfo.location || "";
-      } else if (tgAlpha) {
-        deptName = tgAlpha; location = "";
-      } else if (tgDesc) {
-        deptName = tgDesc;  location = "";
-      } else if (tgStr) {
-        deptName = "TG " + tgStr; location = freqMHz ? freqMHz + " MHz" : "";
-      } else {
-        deptName = freqMHz ? freqMHz + " MHz" : "Dispatch"; location = "";
-      }
-
-      var isHigh = tgInfo && tgInfo.priority === "high";
+      var isHigh = dept.priority === "high";
       var priorityDot = isHigh
         ? '<span class="scanner-priority-dot scanner-dot-' + cat + '"></span>'
-        : '';
+        : "";
 
-      // Detail line: freq + duration
       var details = [];
       if (freqMHz) details.push(freqMHz + " MHz");
-      if (len > 0)  details.push(len.toFixed(0) + "s");
+      if (len > 0) details.push(len.toFixed(0) + "s");
       var detailLine = details.join(" \u00b7 ");
 
       html += '<div class="scanner-call-item' + catClass + '">';
 
-      // Top row: priority dot + "Dept Name — Location" + time-ago
       html += '<div class="scanner-call-top">';
-      html += '<span class="scanner-call-tg">' + priorityDot + esc(deptName);
-      if (location) html += '<span class="scanner-call-loc"> \u2014 ' + esc(location) + '</span>';
+      html += '<span class="scanner-call-tg">' + priorityDot + esc(dept.name);
+      html += '<span class="scanner-call-loc"> \u2014 ' + esc(dept.location) + '</span>';
       html += '</span>';
       html += '<span class="scanner-call-time">' + esc(ta) + '</span>';
       html += '</div>';
 
-      // Middle detail row: freq · duration (smaller, muted)
       if (detailLine) {
         html += '<div class="scanner-call-detail">' + esc(detailLine) + '</div>';
       }
@@ -1619,24 +1671,23 @@
     }
     if (!call) return;
 
-    var tgStr   = call.talkgroup_num != null ? String(call.talkgroup_num) : "";
-    var tgInfo  = tgStr ? TG_MAP[tgStr] : null;
-    var deptName = tgInfo ? tgInfo.name
-                          : (call.talkgroup_tag || call.talkgroup_alpha_tag || "Dispatch");
-    var len      = call.duration != null ? parseFloat(call.duration) : 0;
+    var dept = resolveScannerDept(call);
+    var len = call.duration != null ? parseFloat(call.duration) : 0;
     var startTime = call.time ? new Date(call.time) : (call.start_time ? new Date(call.start_time) : null);
-    var ta       = startTime ? timeAgo(startTime) : "";
+    var ta = startTime ? timeAgo(startTime) : "";
     var audioUrl = call.url || call.audio_url || "";
+    var freqHz = call.freq || 0;
+    var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
 
-    var cat = tgInfo ? tgInfo.cat : "other";
     var catLabels = { police: "Police", fire: "Fire", ems: "EMS" };
 
-    if (deptEl) deptEl.textContent = deptName;
+    if (deptEl) deptEl.textContent = dept.name + " \u2014 " + dept.location;
     if (metaEl) {
       var parts = [];
-      if (catLabels[cat]) parts.push(catLabels[cat]);
-      if (ta) parts.push(ta);
+      if (freqMHz) parts.push(freqMHz + " MHz");
       if (len > 0) parts.push(len.toFixed(0) + "s");
+      if (catLabels[dept.cat]) parts.push(catLabels[dept.cat]);
+      if (ta) parts.push(ta);
       metaEl.textContent = parts.join(" \u00b7 ");
     }
     if (badge) badge.style.opacity = "1";
