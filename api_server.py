@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-<<<<<<< HEAD
 from __future__ import annotations
-=======
->>>>>>> 0a5324b2146bdf9b8bf5237b8e5351e0630f7ba6
 """Albany County Crime Tracker v6 — Backend API Server.
 - City of Albany vs Albany County distinction in all filters
 - Strict two-tier location filter (Albany County, NY municipalities only)
@@ -19,11 +16,13 @@ import json
 import os
 import re
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from typing import Any, Optional
 
 import httpx
 from fastapi import FastAPI, Request
@@ -35,6 +34,21 @@ from fastapi.staticfiles import StaticFiles
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 XAI_BASE = "https://api.x.ai/v1"
 XAI_MODEL = "grok-3"  # Strongest available xAI model
+
+ASCII_PUNCT_TRANSLATION = str.maketrans({
+    "“": '"',
+    "”": '"',
+    "‘": "'",
+    "’": "'",
+    "—": "-",
+    "–": "-",
+    "→": "->",
+    "≥": ">=",
+    "≤": "<=",
+    "•": "*",
+    "…": "...",
+    "\xa0": " ",
+})
 
 # --- Cache ---
 cache = {}
@@ -571,7 +585,12 @@ LIVE_CUTOFF_HOURS = 72   # Live tab: only show items published within last 72 h
 MAP_CUTOFF_DAYS = 5      # Map: hard cutoff at 5 days
 
 
-def get_article_age_hours(article) -> float | None:
+def _format_display_date(dt: datetime) -> str:
+    """Weekday, month, day without zero-padding (POSIX %-d is not portable)."""
+    return f"{dt.strftime('%A, %B')} {dt.day}"
+
+
+def get_article_age_hours(article) -> Optional[float]:
     """Returns age of article in hours, or None if unparseable."""
     pub = article.get("pubDate", "")
     if not pub:
@@ -753,7 +772,7 @@ NEIGHBORHOODS = {
     "SUNY Albany": ["suny albany", "university at albany"],
 }
 
-http_client: httpx.AsyncClient | None = None
+http_client: Optional[httpx.AsyncClient] = None
 
 
 @asynccontextmanager
@@ -1197,10 +1216,6 @@ def detect_patterns(crime_data):
 # xAI / GROK HELPERS
 # =============================================================================
 async def call_grok(messages, max_tokens=400, stream=False, temperature=0.35):
-    headers = {
-        "Authorization": f"Bearer {XAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
     body = {
         "model": XAI_MODEL,
         "messages": messages,
@@ -1208,21 +1223,43 @@ async def call_grok(messages, max_tokens=400, stream=False, temperature=0.35):
         "temperature": temperature,
         "stream": stream,
     }
+    resp = await post_xai_chat(body, timeout=60.0 if stream else 20.0)
     if stream:
-        return await http_client.post(
-            f"{XAI_BASE}/chat/completions",
-            headers=headers,
-            json=body,
-            timeout=60.0,
-        )
-    resp = await http_client.post(
-        f"{XAI_BASE}/chat/completions",
-        headers=headers,
-        json=body,
-    )
+        return resp
     if resp.status_code == 200:
         return resp.json()["choices"][0]["message"]["content"]
     return None
+
+
+def _to_ascii_safe_text(value: str) -> str:
+    normalized = value.translate(ASCII_PUNCT_TRANSLATION)
+    normalized = unicodedata.normalize("NFKD", normalized)
+    return normalized.encode("ascii", "ignore").decode("ascii")
+
+
+def _to_ascii_safe_json(value: Any) -> Any:
+    if isinstance(value, str):
+        return _to_ascii_safe_text(value)
+    if isinstance(value, list):
+        return [_to_ascii_safe_json(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _to_ascii_safe_json(item) for key, item in value.items()}
+    return value
+
+
+async def post_xai_chat(body: dict, timeout: float = 20.0):
+    headers = {
+        "Authorization": f"Bearer {XAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    safe_body = _to_ascii_safe_json(body)
+    payload = json.dumps(safe_body, ensure_ascii=True).encode("ascii")
+    return await http_client.post(
+        f"{XAI_BASE}/chat/completions",
+        headers=headers,
+        content=payload,
+        timeout=timeout,
+    )
 
 
 SITUATION_SYSTEM = (
@@ -1461,7 +1498,7 @@ async def fetch_all_feeds():
         union = len(wa | wb)
         return inter / union if union else 0.0
 
-    def _hours_apart(a: dict, b: dict) -> float | None:
+    def _hours_apart(a: dict, b: dict) -> Optional[float]:
         """Return absolute hours between pubDates, or None if unparseable."""
         try:
             da = parsedate_to_datetime(a.get("pubDate", ""))
@@ -1752,11 +1789,7 @@ async def get_monthly_summary():
     }
 
     try:
-        resp = await http_client.post(
-            f"{XAI_BASE}/chat/completions",
-            headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
-            json=payload,
-        )
+        resp = await post_xai_chat(payload)
         if resp.status_code == 200:
             content = resp.json()["choices"][0]["message"]["content"]
             result = json.loads(content)
@@ -1816,7 +1849,7 @@ async def get_daily_summary():
     if not todays:
         result = {
             "status": "ok",
-            "date": now.strftime("%A, %B %-d"),
+            "date": _format_display_date(now),
             "incident_count": 0,
             "briefing": "No crime incidents reported in Albany County in the last 24 hours.",
             "top_incidents": [],
@@ -1865,16 +1898,12 @@ async def get_daily_summary():
     }
 
     try:
-        resp = await http_client.post(
-            f"{XAI_BASE}/chat/completions",
-            headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
-            json=payload,
-        )
+        resp = await post_xai_chat(payload)
         if resp.status_code == 200:
             content = resp.json()["choices"][0]["message"]["content"]
             result = json.loads(content)
             result["status"] = "ok"
-            result["date"] = now.strftime("%A, %B %-d")
+            result["date"] = _format_display_date(now)
             result["incident_count"] = len(todays)
             set_cached("daily_summary", result)
             return result
@@ -1885,7 +1914,7 @@ async def get_daily_summary():
 
     return {
         "status": "error",
-        "date": now.strftime("%A, %B %-d"),
+        "date": _format_display_date(now),
         "incident_count": len(todays),
         "briefing": "Daily briefing unavailable.",
         "top_incidents": [],
@@ -1940,11 +1969,7 @@ async def get_social_intel():
     }
 
     try:
-        resp = await http_client.post(
-            f"{XAI_BASE}/chat/completions",
-            headers={"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"},
-            json=payload,
-        )
+        resp = await post_xai_chat(payload)
         if resp.status_code == 200:
             content = resp.json()["choices"][0]["message"]["content"]
             result = json.loads(content)
@@ -2053,42 +2078,53 @@ async def chat(request: Request):
     messages.append({"role": "user", "content": user_message})
 
     try:
-        resp = await http_client.post(
-            f"{XAI_BASE}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {XAI_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": XAI_MODEL,
-                "messages": messages,
-                "max_tokens": 1200,
-                "temperature": 0.4,
-                "stream": True,
-            },
-            timeout=60.0,
-        )
+        resp = await post_xai_chat({
+            "model": XAI_MODEL,
+            "messages": messages,
+            "max_tokens": 1200,
+            "temperature": 0.4,
+            "stream": True,
+        }, timeout=60.0)
 
         if resp.status_code != 200:
             return {"status": "error", "message": f"AI error: {resp.status_code}"}
 
         async def generate():
             async for line in resp.aiter_lines():
-                if line.startswith("data: "):
-                    data_str = line[6:]
-                    if data_str.strip() == "[DONE]":
-                        yield "data: [DONE]\n\n"
-                        break
-                    try:
-                        chunk = json.loads(data_str)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield f"data: {json.dumps({'content': content})}\n\n"
-                    except json.JSONDecodeError:
-                        pass
+                if not line.startswith("data:"):
+                    continue
+                data_str = line[5:].lstrip()
+                if data_str.strip() == "[DONE]":
+                    yield "data: [DONE]\n\n"
+                    break
+                try:
+                    chunk = json.loads(data_str)
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    raw = delta.get("content")
+                    if raw is None:
+                        content = ""
+                    elif isinstance(raw, list):
+                        content = "".join(
+                            p if isinstance(p, str) else (p.get("text") or "")
+                            for p in raw
+                            if isinstance(p, (str, dict))
+                        )
+                    else:
+                        content = raw if isinstance(raw, str) else str(raw)
+                    if content:
+                        yield f"data: {json.dumps({'content': content})}\n\n"
+                except json.JSONDecodeError:
+                    pass
 
-        return StreamingResponse(generate(), media_type="text/event-stream")
+        return StreamingResponse(
+            generate(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     except Exception as e:
         return {"status": "error", "message": str(e)}

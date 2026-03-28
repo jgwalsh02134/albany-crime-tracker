@@ -1103,6 +1103,7 @@
       body: JSON.stringify({ message: message, history: chatHistory.slice(-10) })
     }).then(function (res) {
       if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.body) throw new Error("Streaming not supported");
 
       var reader = res.body.getReader();
       var decoder = new TextDecoder();
@@ -1110,10 +1111,12 @@
       var fullText = "";
       var buffer = "";
       var renderTimer = null;
+      var streamDone = false;
 
       function doRender() {
         if (bubble && fullText) {
-          bubble.innerHTML = renderMarkdown(fullText);
+          bubble.classList.add("is-streaming");
+          bubble.textContent = fullText;
           container.scrollTop = container.scrollHeight;
         }
         renderTimer = null;
@@ -1123,11 +1126,48 @@
         if (!renderTimer) renderTimer = setTimeout(doRender, 50);
       }
 
+      function handleDataLine(trimmedLine) {
+        if (!trimmedLine || streamDone) return;
+        if (!trimmedLine.startsWith("data:")) return;
+        var data = trimmedLine.substring(5).replace(/^\s/, "").trim();
+        if (!data) return;
+        if (data === "[DONE]") {
+          streamDone = true;
+          return;
+        }
+        try {
+          var parsed = JSON.parse(data);
+          if (typeof parsed.content === "string") {
+            fullText += parsed.content;
+            scheduleRender();
+          }
+        } catch (e) {}
+      }
+
+      function processBuffer(flushAll) {
+        var normalized = buffer.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+        var lines = normalized.split("\n");
+        if (flushAll) {
+          buffer = "";
+          lines.forEach(function (line) {
+            handleDataLine(line.replace(/\s+$/, ""));
+          });
+        } else {
+          buffer = lines.pop() || "";
+          lines.forEach(function (line) {
+            handleDataLine(line.replace(/\s+$/, ""));
+          });
+        }
+      }
+
       function read() {
         reader.read().then(function (result) {
           if (result.done) {
             if (renderTimer) clearTimeout(renderTimer);
+            buffer += decoder.decode();
+            processBuffer(true);
             if (bubble && fullText) {
+              bubble.classList.remove("is-streaming");
               bubble.innerHTML = renderMarkdown(fullText);
               addChatActions(bubble, fullText);
             } else if (bubble) {
@@ -1139,22 +1179,7 @@
           }
 
           buffer += decoder.decode(result.value, { stream: true });
-          var lines = buffer.split("\n");
-          buffer = lines.pop();
-
-          lines.forEach(function (line) {
-            if (line.startsWith("data: ")) {
-              var data = line.substring(6).trim();
-              if (data === "[DONE]") return;
-              try {
-                var parsed = JSON.parse(data);
-                if (parsed.content) {
-                  fullText += parsed.content;
-                  scheduleRender();
-                }
-              } catch (e) {}
-            }
-          });
+          processBuffer(false);
 
           read();
         }).catch(function () {

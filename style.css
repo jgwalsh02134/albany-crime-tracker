@@ -1051,6 +1051,9 @@ a:hover { text-decoration: underline; }
   border-bottom-left-radius: var(--r-sm);
   box-shadow: var(--shadow-card);
 }
+.chat-bubble.is-streaming {
+  white-space: pre-wrap;
+}
 
 /* Markdown in chat */
 .md-rendered p { margin-bottom: 0.5em; }
