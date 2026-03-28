@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Albany County Crime Tracker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='16' fill='%2322d3ee'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='%230a0c12'>⚡</text></svg>">
+<meta name="description" content="Live crime intelligence for Albany County, NY. Real-time incident feed, AI-powered pattern detection, neighborhood safety analysis.">
+<meta name="theme-color" content="#0a0c12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<!-- Fonts -->
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,600,700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+<!-- Libraries -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header class="header">
+    <div class="header-left">
+      <div class="header-logo">
+        <span class="material-icons logo-icon">shield</span>
+        <div class="header-title">
+          <span class="header-name">Albany County</span>
+          <span class="header-sub">Crime Tracker</span>
+        </div>
+      </div>
+    </div>
+    <div class="header-center">
+      <span class="header-date" id="headerDate"></span>
+    </div>
+    <div class="header-right">
+      <div class="live-indicator" id="liveIndicator">
+        <span class="live-dot" id="liveDot"></span>
+        <span class="live-text" id="topbarStatus">Connecting</span>
+      </div>
+      <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle light/dark mode">
+        <span class="material-icons" style="font-size:20px;">dark_mode</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ===== DESKTOP TABS (hidden on mobile) ===== -->
+  <div class="desktop-tabs" id="desktopTabs">
+    <button class="desktop-tab active" data-view="feed">Feed</button>
+    <button class="desktop-tab" data-view="scanner">Scanner</button>
+    <button class="desktop-tab" data-view="chat">AI Chat</button>
+    <button class="desktop-tab" data-view="more">More</button>
+  </div>
+
+  <!-- ===== MAIN CONTENT AREA ===== -->
+  <main class="main">
+
+    <!-- === FEED VIEW (default) === -->
+    <section class="view active" id="viewFeed">
+
+      <!-- Situation card -->
+      <div class="situation-card" id="situationCard">
+        <div class="situation-row">
+          <span class="threat-badge" id="threatBadge">---</span>
+          <span class="situation-time" id="topbarTime"></span>
+        </div>
+        <p class="situation-text" id="situationText">Analyzing Albany County data...</p>
+        <button class="situation-expand-btn" id="situationExpandBtn" aria-label="See full analysis">
+          Full report <span class="material-icons" style="font-size:12px;vertical-align:middle;">expand_more</span>
+        </button>
+        <p class="situation-text-full" id="situationTextFull" hidden></p>
+      </div>
+
+      <!-- Stats row -->
+      <div class="stats-row">
+        <div class="stat-chip">
+          <span class="stat-val" id="statTotal">--</span>
+          <span class="stat-lbl">Incidents</span>
+        </div>
+        <div class="stat-chip stat-violent">
+          <span class="stat-val" id="statViolent">--</span>
+          <span class="stat-lbl">Violent</span>
+        </div>
+        <div class="stat-chip stat-property">
+          <span class="stat-val" id="statProperty">--</span>
+          <span class="stat-lbl">Property</span>
+        </div>
+        <div class="stat-chip">
+          <span class="stat-val" id="statRecent">--</span>
+          <span class="stat-lbl">48h</span>
+        </div>
+      </div>
+
+      <!-- Live / News sub-tabs -->
+      <div class="feed-subtabs" id="feedSubtabs">
+        <button class="feed-subtab active" data-feedtab="live">
+          <span class="live-pulse-sm"></span>
+          Live
+        </button>
+        <button class="feed-subtab" data-feedtab="news">News</button>
+      </div>
+
+      <!-- LIVE tab content -->
+      <div class="feed-tab-content active" id="feedTabLive">
+        <div id="promotedSocialPosts"></div>
+        <div class="feed-list" id="incidentListLive">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        </div>
+      </div>
+
+      <!-- NEWS tab content -->
+      <div class="feed-tab-content" id="feedTabNews">
+        <div class="news-ai-card" id="dailySummaryCard">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        </div>
+        <div class="news-ai-card" id="monthlySummaryCard">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        </div>
+        <div class="news-ai-card" id="monthlyProjectionCard"></div>
+        <div class="news-section-divider">
+          <span class="material-icons" style="font-size:12px;vertical-align:-2px;">campaign</span>
+          Police Social Media Posts
+        </div>
+        <div id="socialIntelList">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        </div>
+        <div class="news-section-divider">Recent Reports</div>
+        <div class="feed-list" id="incidentListNews">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- === MAP VIEW === -->
+    <section class="view" id="viewMap">
+      <div class="map-filters" id="mapFilters">
+        <button class="map-filter-btn active" data-filter="all">All</button>
+        <button class="map-filter-btn" data-filter="violent">Violent</button>
+        <button class="map-filter-btn" data-filter="property">Property</button>
+        <button class="map-filter-btn" data-filter="other">Other</button>
+      </div>
+      <div id="map"></div>
+    </section>
+
+    <!-- === SCANNER VIEW === -->
+    <section class="view" id="viewScanner">
+      <div class="view-scroll">
+        <div class="scanner-header-card">
+          <div class="scanner-header-top">
+            <span class="material-icons" style="font-size:18px;color:var(--accent);">sensors</span>
+            <span class="scanner-title">Radio Traffic</span>
+            <span class="live-badge">LIVE</span>
+            <span class="scanner-ts" id="scannerTimestamp"></span>
+          </div>
+          <p class="scanner-subtitle">Albany County Police, Fire &amp; EMS</p>
+        </div>
+
+        <div class="scanner-player-card scanner-player-card--large" id="mainPlayerCard">
+          <div class="scanner-player-header">
+            <span class="material-icons" style="font-size:18px;">radio</span>
+            <div class="scanner-player-title-group">
+              <span class="scanner-player-title">Latest Transmission</span>
+              <span class="scanner-player-sub" id="mainPlayerSub">Albany County P25 · Police · Fire · EMS</span>
+            </div>
+            <span class="scanner-live-badge" id="mainPlayerBadge" style="opacity:0.4;">
+              <span class="live-pulse"></span>
+              LIVE
+            </span>
+          </div>
+          <div class="scanner-player-body" id="mainPlayerBody">
+            <div class="main-player-track">
+              <div class="main-player-info">
+                <span class="main-player-dept" id="mainPlayerDept">Waiting for transmissions…</span>
+                <span class="main-player-meta" id="mainPlayerMeta"></span>
+              </div>
+              <button class="main-player-btn" id="mainPlayerBtn" disabled aria-label="Play latest call">
+                <span class="material-icons">play_arrow</span>
+              </button>
+            </div>
+            <div class="main-player-progress-wrap">
+              <div class="main-player-bar" id="mainPlayerBar"></div>
+            </div>
+          </div>
+          <div class="scanner-player-footer">
+            <span class="material-icons" style="font-size:11px;opacity:0.5;">cell_tower</span>
+            OpenMHz albanycony · 800 MHz P25 Phase II · No Commercials
+          </div>
+        </div>
+
+        <div class="section-label">
+          <span class="material-icons" style="font-size:12px;">receipt_long</span>
+          <span>Recent Transmissions</span>
+          <span id="scannerLiveIndicator" class="scanner-tg-live" style="display:none;">● Live</span>
+        </div>
+        <div class="scanner-calls" id="scannerCallsList">
+          <div class="empty-state">Loading radio traffic...</div>
+        </div>
+
+        <div class="scanner-links">
+          <a href="https://openmhz.com/system/albanycony" target="_blank" rel="noopener noreferrer" class="link-btn">
+            <span class="material-icons" style="font-size:14px;">open_in_new</span>
+            OpenMHz Full Scanner
+          </a>
+          <a href="https://www.broadcastify.com/listen/feed/3626" target="_blank" rel="noopener noreferrer" class="link-btn">
+            <span class="material-icons" style="font-size:14px;">open_in_new</span>
+            Broadcastify Feed 3626
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- === AI CHAT VIEW === -->
+    <section class="view" id="viewChat">
+      <div class="chat-messages" id="chatMessages">
+        <div class="chat-msg chat-ai">
+          <div class="chat-bubble md-rendered">
+            <p>Ask me anything about crime in Albany County. I have access to real-time data from local news, police reports, and state statistics.</p>
+          </div>
+        </div>
+        <div class="chat-suggestions" id="chatSuggestions">
+          <button class="suggest-chip" data-prompt="What happened in the last 48 hours?">Last 48 hours</button>
+          <button class="suggest-chip" data-prompt="Which neighborhoods should I be cautious in right now?">Risky areas</button>
+          <button class="suggest-chip" data-prompt="Break down the current crime stats for Albany County">Crime stats</button>
+        </div>
+      </div>
+      <form class="chat-input" id="chatForm">
+        <input type="text" id="chatInput" placeholder="Ask about Albany County..." autocomplete="off">
+        <button type="submit" id="chatSend" aria-label="Send">
+          <span class="material-icons" style="font-size:18px;">send</span>
+        </button>
+      </form>
+    </section>
+
+    <!-- === MORE VIEW === -->
+    <section class="view" id="viewMore">
+      <div class="view-scroll">
+
+        <div class="more-section">
+          <h2 class="more-section-title">
+            <span class="material-icons" style="font-size:16px;">show_chart</span>
+            Patterns &amp; Trends
+          </h2>
+          <div class="patterns-cards" id="patternsContent">
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+          </div>
+          <div class="trends-chart-wrap">
+            <h3 class="subsection-label">10-Year Trends <span class="meta-text" id="trendsMeta">via NY DCJS</span></h3>
+            <div class="chart-container">
+              <canvas id="trendsChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="more-section">
+          <h2 class="more-section-title">
+            <span class="material-icons" style="font-size:16px;">security</span>
+            FBI NIBRS Data
+          </h2>
+          <p class="nibrs-desc">Official crime statistics from 12,431 law enforcement agencies nationwide.</p>
+
+          <h3 class="subsection-label">Albany County Agencies</h3>
+          <div id="nibrsAgencies" class="nibrs-agency-list">
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+          </div>
+
+          <h3 class="subsection-label">Offense Breakdown <span class="meta-text" id="nibrsAgencyName">Select agency</span></h3>
+          <div id="nibrsBreakdown" class="nibrs-breakdown">
+            <p class="placeholder-text">Select an agency above to view NIBRS data.</p>
+          </div>
+
+          <h3 class="subsection-label">FBI NIBRS Interactive Map</h3>
+          <div class="iframe-wrap">
+            <iframe
+              src="https://nibrs.fbi.gov/2024/"
+              width="100%" height="300"
+              frameborder="0"
+              title="FBI NIBRS 2024 Interactive Map"
+              loading="lazy"
+            ></iframe>
+          </div>
+          <a href="https://nibrs.fbi.gov/2024/" target="_blank" rel="noopener noreferrer" class="link-btn" style="margin-top:8px;">
+            <span class="material-icons" style="font-size:12px;">open_in_new</span>
+            Open full NIBRS map
+          </a>
+
+          <h3 class="subsection-label" style="margin-top:16px;">FBI Crime Data Resources</h3>
+          <a href="https://cde.ucr.cjis.gov/LATEST/webapp/#/pages/explorer/crime/crime-trend" target="_blank" rel="noopener noreferrer" class="resource-card">
+            <span class="resource-title">Crime Data Explorer</span>
+            <span class="resource-desc">Search crime trends by agency, state, or county</span>
+          </a>
+          <a href="https://bjs.ojp.gov/national-incident-based-reporting-system-nibrs" target="_blank" rel="noopener noreferrer" class="resource-card">
+            <span class="resource-title">BJS NIBRS Resources</span>
+            <span class="resource-desc">LEARCAT tool, estimates API, coverage maps</span>
+          </a>
+          <a href="https://ucr.fbi.gov/nibrs/2024" target="_blank" rel="noopener noreferrer" class="resource-card">
+            <span class="resource-title">UCR Annual Report</span>
+            <span class="resource-desc">Full 2024 Uniform Crime Report tables</span>
+          </a>
+        </div>
+
+        <div class="more-footer">
+          <span class="footer-sources" id="footerSources">Connecting to sources...</span>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== BOTTOM NAV ===== -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-btn active" data-view="feed">
+      <span class="material-icons">article</span>
+      <span>Feed</span>
+    </button>
+    <button class="nav-btn" data-view="map">
+      <span class="material-icons">map</span>
+      <span>Map</span>
+    </button>
+    <button class="nav-btn" data-view="scanner">
+      <span class="material-icons">sensors</span>
+      <span>Scanner</span>
+    </button>
+    <button class="nav-btn" data-view="chat">
+      <span class="material-icons">psychology</span>
+      <span>AI</span>
+    </button>
+    <button class="nav-btn" data-view="more">
+      <span class="material-icons">more_horiz</span>
+      <span>More</span>
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+<script data-pplx-inline-edit>
+(function(){
+  if(window===window.top)return;
+  function inlineAll(orig,clone){
+    if(orig.nodeType!==1)return;
+    try{
+      var cs=getComputedStyle(orig);
+      var t='';
+      for(var i=0;i<cs.length;i++){t+=cs[i]+':'+cs.getPropertyValue(cs[i])+';';}
+      clone.style.cssText=t;
+    }catch(e){}
+    var oc=orig.children,cc=clone.children;
+    for(var j=0;j<oc.length&&j<cc.length;j++){inlineAll(oc[j],cc[j]);}
+  }
+  function stripExternal(clone){
+    var imgs=clone.querySelectorAll('img');
+    for(var i=0;i<imgs.length;i++){
+      var s=imgs[i].getAttribute('src');
+      if(s&&!s.startsWith('data:'))imgs[i].removeAttribute('src');
+    }
+    var all=clone.querySelectorAll('*');
+    for(var i=0;i<all.length;i++){
+      var st=all[i].style.cssText;
+      if(st&&st.indexOf('url(')>=0){
+        all[i].style.cssText=st.replace(/url\(["']?(?!data:)[^)"']*["']?\)/gi,'none');
+      }
+    }
+  }
+  window.addEventListener('message',function(e){
+    if(!e.data||e.data.type!=='INLINE_EDIT_CAPTURE_REQUEST')return;
+    var scrollX=window.scrollX||window.pageXOffset||0;
+    var scrollY=window.scrollY||window.pageYOffset||0;
+    var w=window.innerWidth,h=window.innerHeight;
+    try{
+      var clone=document.documentElement.cloneNode(true);
+      var rm=clone.querySelectorAll('script,link[rel="stylesheet"],style');
+      for(var i=0;i<rm.length;i++){rm[i].remove();}
+      inlineAll(document.documentElement,clone);
+      stripExternal(clone);
+      var html=new XMLSerializer().serializeToString(clone);
+      var svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'">'
+        +'<foreignObject width="100%" height="100%">'
+        +'<div xmlns="http://www.w3.org/1999/xhtml" style="width:'+w+'px;height:'+h+'px;overflow:hidden">'
+        +'<div style="transform:translate(-'+scrollX+'px,-'+scrollY+'px);transform-origin:top left">'
+        +html+'</div></div></foreignObject></svg>';
+      var svgUrl='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+      var img=new Image();
+      img.onload=function(){
+        var c=document.createElement('canvas');c.width=w;c.height=h;
+        c.getContext('2d').drawImage(img,0,0);
+        window.parent.postMessage({type:'INLINE_EDIT_SCREENSHOT_RESULT',dataUrl:c.toDataURL('image/png'),scrollX:scrollX,scrollY:scrollY},'*');
+      };
+      img.onerror=function(){
+        window.parent.postMessage({type:'INLINE_EDIT_SCREENSHOT_RESULT',dataUrl:null,scrollX:scrollX,scrollY:scrollY},'*');
+      };
+      img.src=svgUrl;
+    }catch(err){
+      window.parent.postMessage({type:'INLINE_EDIT_SCREENSHOT_RESULT',dataUrl:null,scrollX:scrollX,scrollY:scrollY},'*');
+    }
+  });
+})();
+</script></body>
+</html>

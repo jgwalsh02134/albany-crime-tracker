@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+httpx
+fastapi
+httpx
+uvicorn[standard]
