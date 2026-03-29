@@ -7,6 +7,21 @@
 
   var API = "";
   if (API.indexOf("__") === 0) API = "http://" + location.hostname + ":8000";
+  if (!API) {
+    if (location.protocol === "file:") {
+      API = "http://127.0.0.1:8000";
+    } else if (
+      location.protocol === "http:" &&
+      /^(localhost|127\.0\.0\.1|\[::1\]|::1)$/i.test(location.hostname)
+    ) {
+      var _p = location.port || "80";
+      if (_p !== "8000") {
+        var _h = location.hostname;
+        var _apiHost = /^::1$/i.test(_h) ? "[::1]" : _h;
+        API = "http://" + _apiHost + ":8000";
+      }
+    }
+  }
   var REFRESH_MS = 180000;
   var SCANNER_REFRESH_MS = 45000;
 
@@ -644,9 +659,29 @@
     });
   })();
 
+  // Top bar shows "Connecting" until /api/situation returns — that route can be very slow on a cold cache.
+  // Once the incident feed has loaded, show Live so the app does not look stuck.
+  function markTopbarLiveIfStillConnecting() {
+    var status = document.getElementById("topbarStatus");
+    if (status && status.textContent === "Connecting") {
+      status.textContent = "Live";
+      var dot = document.getElementById("liveDot");
+      if (dot) dot.classList.add("active");
+    }
+  }
+
   // ── SITUATION BAR ─────────────────────────────────────────────
+  var SITUATION_FETCH_MS = 90000;
+
   function fetchSituation() {
-    fetch(API + "/api/situation")
+    var ctrl = new AbortController();
+    var tid = setTimeout(function () {
+      ctrl.abort();
+    }, SITUATION_FETCH_MS);
+    fetch(API + "/api/situation", { signal: ctrl.signal })
+      .finally(function () {
+        clearTimeout(tid);
+      })
       .then(ok)
       .then(function (r) {
         var situation = r.situation || "Analyzing...";
@@ -699,13 +734,31 @@
       .catch(function (err) {
         console.error("Situation fetch error:", err);
         var status = document.getElementById("topbarStatus");
+        if (err && err.name === "AbortError") {
+          var textEl = document.getElementById("situationText");
+          if (textEl && /^Analyzing/i.test(textEl.textContent || "")) {
+            textEl.textContent =
+              "Briefing is taking longer than usual (first load can take a minute). The feed below updates separately.";
+          }
+          markTopbarLiveIfStillConnecting();
+          return;
+        }
         if (status) status.textContent = "Reconnecting";
       });
   }
 
   // ── INCIDENTS ─────────────────────────────────────────────────
+  var CRIMES_FETCH_MS = 120000;
+
   function fetchIncidents() {
-    fetch(API + "/api/crimes")
+    var ctrl = new AbortController();
+    var tid = setTimeout(function () {
+      ctrl.abort();
+    }, CRIMES_FETCH_MS);
+    fetch(API + "/api/crimes", { signal: ctrl.signal })
+      .finally(function () {
+        clearTimeout(tid);
+      })
       .then(ok)
       .then(function (r) {
         if (r.status !== "ok" || !r.data) return;
@@ -714,9 +767,19 @@
         if (mapReady) plotMarkers(r.data);
         renderLiveFeed(r.data.filter(function (x) { return x.feed_tab === "live"; }));
         renderNewsFeed(r.data.filter(function (x) { return x.feed_tab === "news"; }));
+        markTopbarLiveIfStillConnecting();
       })
       .catch(function (err) {
         console.error("Incidents fetch error:", err);
+        if (err && err.name === "AbortError") {
+          markTopbarLiveIfStillConnecting();
+          var live = document.getElementById("incidentListLive");
+          var news = document.getElementById("incidentListNews");
+          var msg =
+            '<div class="empty-state">Could not load incidents in time. Ensure the API is running on port 8000 and refresh.</div>';
+          if (live && !live.querySelector(".feed-item")) live.innerHTML = msg;
+          if (news && !news.querySelector(".feed-item")) news.innerHTML = msg;
+        }
       });
   }
 
@@ -1759,7 +1822,7 @@
     html += '<div class="scanner-status-ok">';
     html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-5"/></svg>';
     html += '<span class="scanner-status-text">Receiving radio traffic</span>';
-    html += '<span class="scanner-status-meta">' + source.length + " calls · " + filtered.length + " shown</span>';
+    html += '<span class="scanner-status-meta">' + source.length + " calls · " + filtered.length + " shown</span>";
     html += '</div>';
 
     var liveInd = document.getElementById("scannerLiveIndicator");
