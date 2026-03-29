@@ -1351,10 +1351,11 @@
         if (!renderTimer) renderTimer = setTimeout(doRender, 50);
       }
 
-      function handleDataLine(trimmedLine) {
+      function handleDataLine(rawLine) {
+        var trimmedLine = (rawLine || "").trim();
         if (!trimmedLine || streamDone) return;
         if (!trimmedLine.startsWith("data:")) return;
-        var data = trimmedLine.substring(5).replace(/^\s/, "").trim();
+        var data = trimmedLine.slice(5).trim();
         if (!data) return;
         if (data === "[DONE]") {
           streamDone = true;
@@ -1362,8 +1363,13 @@
         }
         try {
           var parsed = JSON.parse(data);
-          if (typeof parsed.content === "string") {
-            fullText += parsed.content;
+          if (!parsed || parsed.content == null) return;
+          var piece =
+            typeof parsed.content === "string"
+              ? parsed.content
+              : String(parsed.content);
+          if (piece) {
+            fullText += piece;
             scheduleRender();
           }
         } catch (e) {}
@@ -1375,12 +1381,12 @@
         if (flushAll) {
           buffer = "";
           lines.forEach(function (line) {
-            handleDataLine(line.replace(/\s+$/, ""));
+            handleDataLine(line);
           });
         } else {
           buffer = lines.pop() || "";
           lines.forEach(function (line) {
-            handleDataLine(line.replace(/\s+$/, ""));
+            handleDataLine(line);
           });
         }
       }
@@ -1638,12 +1644,23 @@
       });
   }
 
+  function getScannerIntelFingerprint() {
+    if (!scannerIntelItems || !scannerIntelItems.length) return "";
+    return scannerIntelItems
+      .map(function (i) {
+        return (i.tgName || "") + ":" + (i.rawTime || 0) + ":" + (i.cat || "");
+      })
+      .join("|");
+  }
+
   function processAndRenderScanner(calls) {
     lastScannerCallsRef = calls.slice();
+    var intelFpBefore = getScannerIntelFingerprint();
     extractScannerIntel(calls);
+    var intelFpAfter = getScannerIntelFingerprint();
     renderScannerCalls(calls);
-    // Refresh live feed so scanner intel cards appear at the top immediately
-    if (allIncidentData.length > 0) {
+    // Live feed: only re-render when scanner intel actually changed (avoids 45s full list flicker)
+    if (allIncidentData.length > 0 && intelFpBefore !== intelFpAfter) {
       renderLiveFeed(allIncidentData.filter(function (x) { return x.feed_tab === "live"; }));
     }
   }

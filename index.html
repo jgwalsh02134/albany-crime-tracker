@@ -454,7 +454,7 @@
   <script>
     (function () {
       var isLocalDev = /^(localhost|127\.0\.0\.1)$/i.test(location.hostname);
-      var src = "app.js" + (isLocalDev ? ("?v=" + Date.now()) : "");
+      var src = "app.js" + (isLocalDev ? "?v=7" : "");
       document.write('<script src="' + src + '"><\/script>');
     })();
   </script>
