@@ -965,42 +965,6 @@ def classify_feed_tab(article) -> str:
     return "news"
 
 
-def _live_row_age_hours(x: dict) -> float:
-    ah = x.get("age_hours")
-    return float(ah) if isinstance(ah, (int, float)) else 9999.0
-
-
-def _is_recent_scanner_public_safety_row(x: dict, max_hours: float = 6.0) -> bool:
-    if _live_row_age_hours(x) > max_hours:
-        return False
-    return bool(
-        x.get("_scanner_call")
-        or x.get("_nixle_item")
-        or is_realtime_public_safety(x)
-    )
-
-
-def apply_saturday_night_live_order(live_items: list[dict]) -> list[dict]:
-    """
-    If the freshest Live row is older than 4h, move scanner/Nixle/realtime-PS rows (≤6h) above all other Live rows.
-    """
-    if not live_items:
-        return live_items
-    min_age = min(_live_row_age_hours(x) for x in live_items)
-    if min_age <= 4.0:
-        return live_items
-    promoted: list[dict] = []
-    seen_ids: set[int] = set()
-    for x in live_items:
-        if _is_recent_scanner_public_safety_row(x, 6.0):
-            promoted.append(x)
-            seen_ids.add(id(x))
-    if not promoted:
-        return live_items
-    tail = [x for x in live_items if id(x) not in seen_ids]
-    return promoted + tail
-
-
 def _dedup_should_replace_rep(rep: dict, cand: dict) -> bool:
     """
     Prefer fresher scanner/Nixle over stale official X when the cluster is the same story,
@@ -2348,7 +2312,7 @@ async def generate_situation_report(crime_data, patterns):
             "confidence": "low",
         }
 
-    # Live rows: preserve /api/crimes order (includes Saturday-night PS boost).
+    # Live rows: preserve /api/crimes order (presentation tier + freshness sort).
     live_rows = [a for a in crime_data if a.get("feed_tab") == "live"]
     other_rows = [a for a in crime_data if a.get("feed_tab") != "live"]
     context_pool = live_rows[:18] + other_rows[:8]

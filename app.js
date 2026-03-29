@@ -991,7 +991,7 @@
         html += '<div class="empty-state">No live incidents in the current window (scanner/Nixle/realtime alerts ≤6h, or ≤3h news, or high-severity 6–12h).<br>Older items are on the News tab.</div>';
       }
     } else {
-      /* Preserve backend order — /api/crimes sorts Live (freshness, stale sink, Saturday-night PS boost). */
+      /* Preserve backend order — /api/crimes sorts Live (tier: scanner/alerts/arrests, then freshness). */
       liveItems.forEach(function (item) { html += buildIncidentCard(item); });
     }
 
