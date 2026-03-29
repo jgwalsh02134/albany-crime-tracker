@@ -4340,7 +4340,7 @@ async def directory_community():
 # =============================================================================
 # STATIC FILES — Must be last (catches all unmatched routes)
 # =============================================================================
-app.mount("/", StaticFiles(directory=".", html=True), name="static")
+app.mount("/", StaticFiles(directory=os.path.dirname(os.path.abspath(__file__)), html=True), name="static")
 
 
 if __name__ == "__main__":
