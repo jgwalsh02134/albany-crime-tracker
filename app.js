@@ -921,6 +921,24 @@
     return html;
   }
 
+  function itemAgeHours(item) {
+    if (item && typeof item.age_hours === "number" && !isNaN(item.age_hours)) return item.age_hours;
+    if (item && item.pubDate) {
+      var ms = new Date(item.pubDate).getTime();
+      if (!isNaN(ms)) return (Date.now() - ms) / 3600000;
+    }
+    return null;
+  }
+
+  /** True when no Live row is ≤6h old (empty list counts). */
+  function liveHasNoIncidentLast6Hours(liveItems) {
+    if (!liveItems || liveItems.length === 0) return true;
+    return liveItems.every(function (x) {
+      var h = itemAgeHours(x);
+      return h === null || h > 6;
+    });
+  }
+
   function renderLiveFeed(liveItems) {
     var list = document.getElementById("incidentListLive");
     if (!list) return;
@@ -959,12 +977,21 @@
       });
     }
 
+    if (liveHasNoIncidentLast6Hours(liveItems)) {
+      html +=
+        '<div class="feed-live-stale-note" role="status">' +
+        esc(
+          "No confirmed live incidents in the last 6 hours. Showing latest available public-safety activity."
+        ) +
+        "</div>";
+    }
+
     if (!liveItems || liveItems.length === 0) {
       if (scannerIntelItems.length === 0) {
         html += '<div class="empty-state">No live incidents in the current window (scanner/Nixle/realtime alerts ≤6h, or ≤3h news, or high-severity 6–12h).<br>Older items are on the News tab.</div>';
       }
     } else {
-      /* Preserve backend order — /api/crimes already sorts Live by freshness + realtime public-safety. */
+      /* Preserve backend order — /api/crimes sorts Live (freshness, stale sink, Saturday-night PS boost). */
       liveItems.forEach(function (item) { html += buildIncidentCard(item); });
     }
 
