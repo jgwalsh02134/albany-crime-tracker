@@ -63,6 +63,7 @@ CACHE_TTL = {
     "merged_news": 60,
     "crime_articles": 30,
     "crime_articles_v3": 30,
+    "crime_articles_v4": 30,
     "dcjs_trends": 3600,
     "ai_summaries": 120,
     "patterns": 60,
@@ -596,7 +597,7 @@ def build_operational_rss_feeds() -> dict[str, dict]:
     return out
 
 
-CRIME_ARTICLES_CACHE_KEY = "crime_articles_v3"
+CRIME_ARTICLES_CACHE_KEY = "crime_articles_v4"
 
 DCJS_URL = (
     "https://data.ny.gov/resource/ca8h-8gjq.json"
@@ -2881,6 +2882,80 @@ def _operational_signal_article(a: dict) -> bool:
     return bool(a.get("_511_incident") or a.get("_ny_alert"))
 
 
+def _scored_age_hours(inc: dict) -> float:
+    fm = inc.get("freshness_minutes")
+    if fm is None:
+        return 999.0
+    return float(fm) / 60.0
+
+
+def _scored_has_operational_signal(inc: dict) -> bool:
+    """True for scanner, official alerts, 511/NY-Alert, ongoing/closures/missing, high impact."""
+    blob = f"{inc.get('title', '')} {inc.get('summary', '')}".lower()
+    raws = inc.get("_sources_raw") or []
+    if any(r.get("_scanner_call") for r in raws):
+        return True
+    if any(
+        r.get("_nixle_item")
+        or r.get("_511_incident")
+        or r.get("_ny_alert")
+        or r.get("_municipal_emergency")
+        for r in raws
+    ):
+        return True
+    if inc.get("now_channel"):
+        return True
+    for t in intel._ONGOING_TERMS:
+        if t in blob:
+            return True
+    for t in intel._CLOSURE_TERMS:
+        if t in blob:
+            return True
+    if any(t in blob for t in ("missing person", "amber alert", "silver alert")):
+        return True
+    if float(inc.get("public_safety_score") or 0) >= 52:
+        return True
+    return False
+
+
+def _live_feed_active_now(inc: dict) -> bool:
+    """Section 1: operational / breaking / very fresh — not routine 24h-old gloss alone."""
+    lane = inc.get("feed_lane")
+    if lane == intel.FEED_LANE_NOW:
+        return True
+    if lane != intel.FEED_LANE_CONFIRMED:
+        return False
+    age = _scored_age_hours(inc)
+    if age > 48:
+        return False
+    if age <= 3:
+        return True
+    if age <= 12 and _scored_has_operational_signal(inc):
+        return True
+    if age <= 6 and float(inc.get("public_safety_score") or 0) >= 40:
+        return True
+    return False
+
+
+def _live_feed_recent_local(inc: dict) -> bool:
+    """Section 2: Albany County context in last 48h, useful but not 'active now'."""
+    if inc.get("feed_lane") not in (intel.FEED_LANE_CONFIRMED, intel.FEED_LANE_NOW):
+        return False
+    age = _scored_age_hours(inc)
+    if age > 48 or age < 0:
+        return False
+    if _live_feed_active_now(inc):
+        return False
+    return True
+
+
+def _live_subsection_sort_key(inc: dict) -> tuple:
+    """Scanner/operational sources first, then standard live sort (freshness + relevance)."""
+    raws = inc.get("_sources_raw") or []
+    scan = 1 if any(r.get("_scanner_call") for r in raws) else 0
+    return (scan,) + intel.live_sort_key(inc)
+
+
 @app.get("/api/crimes")
 async def get_crimes():
     cached = get_cached(CRIME_ARTICLES_CACHE_KEY)
@@ -2932,6 +3007,23 @@ async def get_crimes():
     fused = intel.fuse_incident_batch(normalized)
     scored = intel.apply_scores_and_eligibility(fused)
 
+    # ── Live tab (two sections): active now + recent local (48h, Albany-strict) ──
+    live_pool = [
+        x
+        for x in scored
+        if x.get("feed_lane") in (intel.FEED_LANE_NOW, intel.FEED_LANE_CONFIRMED)
+        and _scored_age_hours(x) <= 48.0
+    ]
+    active_scored = [x for x in live_pool if _live_feed_active_now(x)]
+    recent_scored = [x for x in live_pool if _live_feed_recent_local(x)]
+    active_scored.sort(key=_live_subsection_sort_key, reverse=True)
+    recent_scored.sort(key=_live_subsection_sort_key, reverse=True)
+
+    live_active_rows = [intel.incident_to_api_row(x, live_section="active_now") for x in active_scored]
+    live_active_rows = dedupe_redundant_live_scanner_cards(live_active_rows)
+    live_recent_rows = [intel.incident_to_api_row(x, live_section="recent_local") for x in recent_scored]
+    live_recent_rows = dedupe_redundant_live_scanner_cards(live_recent_rows)
+
     now_scored = [x for x in scored if x.get("feed_lane") == intel.FEED_LANE_NOW]
     conf_scored = [x for x in scored if x.get("feed_lane") == intel.FEED_LANE_CONFIRMED]
     nctx_scored = [x for x in scored if x.get("feed_lane") == intel.FEED_LANE_NEWS_CONTEXT]
@@ -2945,9 +3037,18 @@ async def get_crimes():
     conf_rows = [intel.incident_to_api_row(x) for x in conf_scored]
     nctx_rows = [intel.incident_to_api_row(x) for x in nctx_scored]
 
-    geocoded = now_rows + conf_rows + nctx_rows
+    live_union_ids = {r["id"] for r in live_active_rows + live_recent_rows}
+    geocoded = live_active_rows + live_recent_rows + [r for r in conf_rows if r.get("id") not in live_union_ids] + nctx_rows
     for row in geocoded:
         row["is_active_incident"] = compute_is_active_incident(row)
+
+    patterns_for_counts = detect_patterns(geocoded)
+    counts_payload = {
+        "stats_total_incidents": patterns_for_counts.get("total", 0),
+        "recent_48h_count": patterns_for_counts.get("recent_48h", 0),
+        "live_now_count": len(live_active_rows),
+        "visible_feed_count": len(live_active_rows) + len(live_recent_rows),
+    }
 
     global _LAST_INCIDENT_PIPELINE
     diag = intel.build_pipeline_diagnostics(enriched, normalized, fused, scored)
@@ -2965,13 +3066,19 @@ async def get_crimes():
         "source": "live",
         "data": geocoded,
         "total": len(geocoded),
+        "counts": counts_payload,
         "feeds": {
-            "now": now_rows,
+            "live_active_now": live_active_rows,
+            "live_recent_local": live_recent_rows,
+            "now": live_active_rows + live_recent_rows,
             "confirmed": conf_rows,
             "news_context": nctx_rows,
         },
         "feeds_total": {
-            "now": len(now_rows),
+            "live_active_now": len(live_active_rows),
+            "live_recent_local": len(live_recent_rows),
+            "visible_feed": len(live_active_rows) + len(live_recent_rows),
+            "now": len(live_active_rows) + len(live_recent_rows),
             "confirmed": len(conf_rows),
             "news_context": len(nctx_rows),
         },
@@ -3040,12 +3147,15 @@ async def get_situation():
     confidences = [c.get("confidence", 0) for c in crime_data if c.get("confidence")]
     avg_confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0
 
+    cc = crimes_resp.get("counts") or {}
+
     return {
         "status": "ok",
         "situation": situation.get("situation", ""),
         "threat_level": situation.get("threat_level", "unknown"),
         "ai_confidence": situation.get("confidence", "unknown"),
         "data_confidence": avg_confidence,
+        "crime_counts": cc,
         "stats": {
             "total_incidents": patterns.get("total", 0),
             "violent": patterns["type_breakdown"].get("violent", 0),
@@ -3053,7 +3163,10 @@ async def get_situation():
             "other": patterns["type_breakdown"].get("other", 0),
             "total_articles": len(news_data),
             "source_count": len(set(a.get("source", "") for a in news_data)),
-            "recent_48h": patterns.get("recent_48h", 0),
+            "recent_48h": cc.get("recent_48h_count", patterns.get("recent_48h", 0)),
+            "live_now_count": cc.get("live_now_count", 0),
+            "visible_feed_count": cc.get("visible_feed_count", 0),
+            "stats_total_incidents": cc.get("stats_total_incidents", patterns.get("total", 0)),
         },
         "patterns": patterns,
         "last_updated": newest_time.isoformat() if newest_time else None,

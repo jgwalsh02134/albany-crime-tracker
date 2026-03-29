@@ -902,11 +902,24 @@ def public_incident_view(inc: dict) -> dict:
         "score_locality",
         "score_impact",
         "score_source_confidence",
+        "live_section",
     )
     return {k: inc.get(k) for k in keys}
 
 
-def incident_to_api_row(inc: dict) -> dict:
+def verification_level_label(level: Optional[str]) -> str:
+    """Short UI label for verification / source strength."""
+    m = {
+        VERIFICATION_MULTI: "Multi-source",
+        VERIFICATION_OFFICIAL: "Official / DOT",
+        VERIFICATION_MEDIA: "Local media",
+        VERIFICATION_SCANNER: "Scanner (unconfirmed)",
+        VERIFICATION_INFERRED: "Inferred",
+    }
+    return m.get(level or "", level or "Unknown")
+
+
+def incident_to_api_row(inc: dict, *, live_section: str = "") -> dict:
     """
     Flatten unified incident for existing clients: feed cards + map + patterns.
     """
@@ -915,6 +928,9 @@ def incident_to_api_row(inc: dict) -> dict:
     age_h = (inc.get("freshness_minutes") or 0) / 60.0
 
     raw_ct = raw.get("crime_type") or "other"
+    inc_for_view = dict(inc)
+    if live_section:
+        inc_for_view["live_section"] = live_section
     row = {
         **raw,
         "id": inc.get("id"),
@@ -935,7 +951,9 @@ def incident_to_api_row(inc: dict) -> dict:
         "source_priority": inc.get("source_priority"),
         "age_hours": round(age_h, 2),
         "age_minutes": inc.get("freshness_minutes"),
-        "incident": public_incident_view(inc),
+        "incident": public_incident_view(inc_for_view),
+        "verification_label": verification_level_label(inc.get("verification_level")),
+        "live_section": live_section or inc.get("live_section") or "",
         "event_type": inc.get("event_type"),
         "sub_type": inc.get("sub_type"),
         "incident_status": inc.get("status"),

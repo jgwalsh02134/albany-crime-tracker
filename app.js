@@ -30,7 +30,11 @@
   var mapReady = false;
   var chatHistory = [];
   var activeView = "feed";
-  var activeFeedTab = "now";       // "now" | "confirmed" | "context"
+  var activeFeedTab = "live";       // "live" | "confirmed" | "context"
+  var lastLiveActiveItems = [];
+  var lastLiveRecentItems = [];
+  var lastCrimeCounts = {};
+  var lastFeedTotals = { confirmed: 0 };
   var scannerAudio = null;
   var mainAudio    = null;
   var mainProgressTimer = null;
@@ -351,7 +355,38 @@
     setInterval(fetchSocialIntel, 900000);   // social intel every 15 min
   });
 
-  // ── FEED SUB-TABS (Now / Confirmed / Context) ─────────────────
+  function refreshHeaderPrimaryCount() {
+    var chipLbl = document.querySelector(".stat-chip--live .stat-lbl");
+    var sub = document.getElementById("statLiveSub");
+    var v = lastCrimeCounts.visible_feed_count;
+    var a = lastCrimeCounts.live_now_count;
+    var confN = lastFeedTotals.confirmed;
+    var tracked = lastCrimeCounts.stats_total_incidents;
+    if (activeFeedTab === "live") {
+      if (chipLbl) chipLbl.textContent = "Live feed";
+      if (typeof v === "number") setNum("statTotal", v);
+      if (sub) {
+        if (typeof v !== "number" || v === 0) sub.textContent = "";
+        else {
+          var rsec = Math.max(0, v - (typeof a === "number" ? a : 0));
+          sub.textContent =
+            (typeof a === "number" ? a : 0) +
+            " active now" +
+            (rsec ? " · " + rsec + " recent" : "");
+        }
+      }
+    } else if (activeFeedTab === "confirmed") {
+      if (chipLbl) chipLbl.textContent = "Confirmed (48h)";
+      if (typeof confN === "number") setNum("statTotal", confN);
+      if (sub) sub.textContent = "This tab · fused + official + media";
+    } else {
+      if (chipLbl) chipLbl.textContent = "Tracked";
+      if (typeof tracked === "number") setNum("statTotal", tracked);
+      if (sub) sub.textContent = "Stats-eligible (all lanes)";
+    }
+  }
+
+  // ── FEED SUB-TABS (Live / Confirmed / Context) ────────────────
   function initFeedTabs() {
     var tabs = document.querySelectorAll(".feed-subtab");
     tabs.forEach(function (tab) {
@@ -364,6 +399,8 @@
         document.querySelectorAll(".feed-tab-content").forEach(function (panel) {
           panel.classList.toggle("active", panel.id === "feedTab" + capitalize(target));
         });
+
+        refreshHeaderPrimaryCount();
 
         if (target === "context") {
           var card = document.getElementById("monthlySummaryCard");
@@ -725,10 +762,18 @@
         }
 
         var stats = r.stats || {};
-        setNum("statTotal", stats.total_incidents || 0);
+        var cc = r.crime_counts || {};
+        if (cc && Object.keys(cc).length) {
+          Object.assign(lastCrimeCounts, cc);
+        }
         setNum("statViolent", stats.violent || 0);
         setNum("statProperty", stats.property || 0);
-        setNum("statRecent", stats.recent_48h || 0);
+        if (typeof cc.recent_48h_count === "number") {
+          setNum("statRecent", cc.recent_48h_count);
+        } else {
+          setNum("statRecent", stats.recent_48h || 0);
+        }
+        refreshHeaderPrimaryCount();
 
         if (r.patterns) renderPatterns(r.patterns);
 
@@ -761,9 +806,16 @@
   }
 
   // ── INCIDENTS ─────────────────────────────────────────────────
-  var CRIMES_FETCH_MS = 45000;
+  var CRIMES_FETCH_MS = 120000;
+  var _crimesFetchGeneration = 0;
+
+  /** Live feed container (supports older HTML that used incidentListNow). */
+  function getLiveFeedListEl() {
+    return document.getElementById("incidentListLive") || document.getElementById("incidentListNow");
+  }
 
   function fetchIncidents() {
+    var myGen = ++_crimesFetchGeneration;
     var ctrl = new AbortController();
     var tid = setTimeout(function () {
       ctrl.abort();
@@ -774,38 +826,79 @@
       })
       .then(ok)
       .then(function (r) {
-        if (r.status !== "ok" || !r.data) return;
-        allIncidentData = r.data;
-        pendingMarkerData = r.data;
-        if (mapReady) plotMarkers(r.data);
+        if (myGen !== _crimesFetchGeneration) return;
+        if (!r || r.status !== "ok") return;
+        var data = Array.isArray(r.data) ? r.data : [];
+        allIncidentData = data;
+        pendingMarkerData = data;
+        if (mapReady) plotMarkers(data);
+        if (r.counts) {
+          Object.assign(lastCrimeCounts, r.counts);
+        }
+        lastFeedTotals.confirmed =
+          (r.feeds_total && typeof r.feeds_total.confirmed === "number")
+            ? r.feeds_total.confirmed
+            : ((r.feeds && r.feeds.confirmed) || []).length;
+
         var feeds = r.feeds || {};
-        var nowItems =
-          Array.isArray(feeds.now) ? feeds.now : r.data.filter(function (x) {
-            return x.feed_tab === "now" || x.feed_tab === "live";
+        var activeItems = Array.isArray(feeds.live_active_now) ? feeds.live_active_now : [];
+        var recentItems = Array.isArray(feeds.live_recent_local) ? feeds.live_recent_local : [];
+        if (!activeItems.length && !recentItems.length && Array.isArray(feeds.now)) {
+          var merged = feeds.now.slice();
+          activeItems = merged.filter(function (x) {
+            var s = x.live_section || (x.incident && x.incident.live_section);
+            return s === "active_now";
           });
+          recentItems = merged.filter(function (x) {
+            var s = x.live_section || (x.incident && x.incident.live_section);
+            return s === "recent_local";
+          });
+          if (!activeItems.length && !recentItems.length) {
+            activeItems = merged;
+          }
+        }
+        if (!activeItems.length && !recentItems.length && data.length) {
+          activeItems = data.filter(function (x) {
+            var t = x.feed_tab;
+            return t === "live" || t === "now" || x.is_live_eligible === true;
+          });
+          if (!activeItems.length) {
+            activeItems = data.slice();
+          }
+        }
+        lastLiveActiveItems = activeItems;
+        lastLiveRecentItems = recentItems;
+
         var confItems =
-          Array.isArray(feeds.confirmed) ? feeds.confirmed : r.data.filter(function (x) {
+          Array.isArray(feeds.confirmed) ? feeds.confirmed : data.filter(function (x) {
             return x.feed_tab === "confirmed";
           });
         var ctxItems =
-          Array.isArray(feeds.news_context) ? feeds.news_context : r.data.filter(function (x) {
+          Array.isArray(feeds.news_context) ? feeds.news_context : data.filter(function (x) {
             return x.feed_tab === "news_context" || x.feed_tab === "news";
           });
-        renderNowFeed(nowItems);
+        renderLiveFeed(activeItems, recentItems);
         renderConfirmedFeed(confItems);
         renderContextFeed(ctxItems);
+        refreshHeaderPrimaryCount();
         markTopbarLiveIfStillConnecting();
       })
       .catch(function (err) {
         console.error("Incidents fetch error:", err);
-        if (err && err.name === "AbortError") {
-          markTopbarLiveIfStillConnecting();
-          var nowL = document.getElementById("incidentListNow");
+        if (myGen !== _crimesFetchGeneration) return;
+        markTopbarLiveIfStillConnecting();
+        var netDown = typeof navigator !== "undefined" && navigator.onLine === false;
+        var failedFetch =
+          err &&
+          err.name !== "AbortError" &&
+          (err.message === "Failed to fetch" || /network|load failed|fetch/i.test(String(err.message || "")));
+        if (netDown || failedFetch) {
+          var msg =
+            '<div class="empty-state">Could not reach the API (network error). Check your connection and try again.</div>';
+          var liveL = getLiveFeedListEl();
           var confL = document.getElementById("incidentListConfirmed");
           var ctxL = document.getElementById("incidentListContext");
-          var msg =
-            '<div class="empty-state">Could not load incidents in time. Ensure the API is running on port 8000 and refresh.</div>';
-          if (nowL && !nowL.querySelector(".feed-item")) nowL.innerHTML = msg;
+          if (liveL && !liveL.querySelector(".feed-item")) liveL.innerHTML = msg;
           if (confL && !confL.querySelector(".feed-item")) confL.innerHTML = msg;
           if (ctxL && !ctxL.querySelector(".feed-item")) ctxL.innerHTML = msg;
         }
@@ -924,24 +1017,36 @@
       var _ms = new Date(item.pubDate).getTime();
       if (!isNaN(_ms)) ageHForStale = (Date.now() - _ms) / 3600000;
     }
-    if (activeFeedTab === "now" && ageHForStale !== null && ageHForStale > 1.5) {
+    if (activeFeedTab === "live" && ageHForStale !== null && ageHForStale > 1.5) {
       cls += " feed-item--stale";
     }
     var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer">';
     html += '<span class="feed-dot ' + esc(type) + '"></span>';
     html += '<div class="feed-body">';
     html += '<div class="feed-title">' + esc(item.title || "Untitled") + '</div>';
-    if (inc.event_type && inc.sub_type) {
-      html +=
-        '<div class="feed-inc-type"><span class="feed-inc-type-label">' +
-        esc(inc.event_type.replace(/_/g, " ")) +
-        "</span> · <span>" +
-        esc(inc.sub_type.replace(/_/g, " ")) +
-        "</span></div>";
+    var areaDisp = hood || item.matched_location || item.neighborhood || "Albany County, NY";
+    var typeStr =
+      inc.event_type && inc.sub_type
+        ? inc.event_type.replace(/_/g, " ") + " · " + inc.sub_type.replace(/_/g, " ")
+        : String(item.crime_type || "public safety").replace(/_/g, " ");
+    var verStr =
+      item.verification_label || String(inc.verification_level || "").replace(/_/g, " ") || "—";
+    if (typeof item.confidence === "number" && !isNaN(item.confidence)) {
+      var pctL = item.confidence <= 1 ? Math.round(item.confidence * 100) : Math.round(item.confidence);
+      verStr = verStr + " · locality " + pctL + "%";
     }
+    var srcSummary = multiSource ? srcs.slice(0, 4).join(" + ") : primarySrc || "—";
+    html += '<div class="feed-op-line"><span class="feed-op-k">Area</span>' + esc(capitalize(areaDisp)) + "</div>";
+    html += '<div class="feed-op-line"><span class="feed-op-k">Fresh</span>' + esc(ta || "—") + "</div>";
+    html += '<div class="feed-op-line"><span class="feed-op-k">Type</span>' + esc(typeStr) + "</div>";
+    html += '<div class="feed-op-line"><span class="feed-op-k">Verification</span>' + esc(verStr) + "</div>";
+    html += '<div class="feed-op-line"><span class="feed-op-k">Sources</span>' + esc(srcSummary) + "</div>";
     html += renderOperationalBadges(inc);
-    if (inc.why_it_matters && (!item.title || inc.why_it_matters.slice(0, 40) !== (item.title || "").slice(0, 40))) {
-      html += '<div class="feed-why">' + esc(inc.why_it_matters.slice(0, 220)) + "</div>";
+    if (inc.why_it_matters != null && String(inc.why_it_matters).trim() !== "") {
+      html +=
+        '<div class="feed-why"><span class="feed-op-k">Why it matters</span> ' +
+        esc(String(inc.why_it_matters).slice(0, 240)) +
+        "</div>";
     }
     if (inc.feed_lane === "now" && inc.now_channel) {
       var ch = String(inc.now_channel).replace(/_/g, " ");
@@ -958,10 +1063,6 @@
           "</span>";
       }
       html += "</div>";
-    }
-    if (typeof item.confidence === "number" && !isNaN(item.confidence)) {
-      var pct = item.confidence <= 1 ? Math.round(item.confidence * 100) : Math.round(item.confidence);
-      html += '<div class="feed-confidence">Locality confidence ' + pct + "%</div>";
     }
     html += '<div class="feed-meta">';
     if (hood) html += '<span class="feed-hood">' + esc(capitalize(hood)) + '</span>';
@@ -986,7 +1087,7 @@
       var mFresh = item && typeof item.age_minutes === "number" && !isNaN(item.age_minutes) ? item.age_minutes : null;
       var ageCls = "feed-age";
       if (mFresh !== null && mFresh <= 30) ageCls += " feed-age--fresh";
-      if (activeFeedTab === "now" && ageHForStale !== null && ageHForStale > 1.5) ageCls += " feed-age--stale";
+      if (activeFeedTab === "live" && ageHForStale !== null && ageHForStale > 1.5) ageCls += " feed-age--stale";
       html += '<span class="' + ageCls + '">' + esc(ta) + "</span>";
     }
     html += '</div></div></a>';
@@ -1002,22 +1103,21 @@
     return null;
   }
 
-  /** True when no Now-lane row is ≤90m old (empty list counts). */
-  function nowLaneHasNoFreshItems(nowItems) {
-    if (!nowItems || nowItems.length === 0) return true;
-    return nowItems.every(function (x) {
+  function liveActiveSectionHasFreshItems(activeItems, maxHours) {
+    maxHours = maxHours == null ? 1.5 : maxHours;
+    if (!activeItems || !activeItems.length) return false;
+    return activeItems.some(function (x) {
       var h = itemAgeHours(x);
-      return h === null || h > 1.5;
+      return h !== null && h <= maxHours;
     });
   }
 
-  function renderNowFeed(nowItems) {
-    var list = document.getElementById("incidentListNow");
+  function renderLiveFeed(activeItems, recentItems) {
+    var list = getLiveFeedListEl();
     if (!list) return;
 
     var html = "";
 
-    // Scanner intel alerts at very top — only critical events, clickable to Scanner tab
     if (scannerIntelItems.length > 0) {
       scannerIntelItems.forEach(function (intel) {
         var catLabel = intel.cat === "fire" ? "Fire" : intel.cat === "ems" ? "EMS" : "Police";
@@ -1029,11 +1129,9 @@
         if (intel.freqMHz) detailParts.push(intel.freqMHz + " MHz");
         if (intel.len > 0) detailParts.push(intel.len.toFixed(0) + "s");
         var durText = detailParts.length ? detailParts.join(" \u00b7 ") : "active";
-        // Clickable card — switches to Scanner tab
         html += '<div class="feed-item scanner-intel' + borderCls + ' scanner-intel-clickable" role="button" tabindex="0" title="View in Scanner tab" onclick="switchView(\'scanner\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \')switchView(\'scanner\')">';
         html += '<span class="feed-dot scanner-dot scanner-dot-' + esc(intel.cat || "police") + '"></span>';
         html += '<div class="feed-body">';
-        // Title: "icon Dept Name — Location ›"
         html += '<div class="feed-title">';
         html += '<span class="material-icons" style="font-size:13px;vertical-align:-2px;margin-right:3px;">' + catIcon + '</span>';
         html += '<strong>' + esc(intel.tgName) + '</strong>';
@@ -1049,22 +1147,46 @@
       });
     }
 
-    if (nowLaneHasNoFreshItems(nowItems)) {
+    var hasActive = activeItems && activeItems.length;
+    var hasRecent = recentItems && recentItems.length;
+    var anyIncidentCards = hasActive || hasRecent;
+
+    if (!hasActive && hasRecent) {
+      html +=
+        '<div class="feed-section-note" role="status">' +
+        "<strong>Active now</strong> is empty. Showing <strong>Recent local activity</strong> (Albany County, up to 48h) so the feed stays useful." +
+        "</div>";
+    } else if (
+      !liveActiveSectionHasFreshItems(activeItems, 1.5) &&
+      !hasRecent &&
+      !anyIncidentCards &&
+      scannerIntelItems.length === 0
+    ) {
       html +=
         '<div class="feed-live-stale-note" role="status">' +
-        esc(
-          "No items in the last ~90 minutes on the Now lane. Cards below may be older operational backlog until the next refresh."
-        ) +
+        "No active or recent incidents in the Live feed yet. Sources refresh on a short interval." +
         "</div>";
     }
 
-    if (!nowItems || nowItems.length === 0) {
-      if (scannerIntelItems.length === 0) {
+    if (hasActive) {
+      html += '<div class="feed-section-title">Active now</div>';
+      if (!liveActiveSectionHasFreshItems(activeItems, 1.5)) {
         html +=
-          '<div class="empty-state">Nothing on the Now lane right now (scanner, 511NY, NY-Alert, Nixle/municipal alerts within ~90 minutes).<br>Check <strong>Confirmed</strong> for the last 48 hours.</div>';
+          '<div class="feed-section-note">Nothing fresher than ~90m in this block; cards here are older operational mentions kept for context.</div>';
       }
-    } else {
-      nowItems.forEach(function (item) { html += buildIncidentCard(item); });
+      activeItems.forEach(function (item) { html += buildIncidentCard(item); });
+    }
+
+    if (hasRecent) {
+      html += '<div class="feed-section-title">Recent local activity</div>';
+      html +=
+        '<div class="feed-section-note">Up to 48 hours · may not be an ongoing scene · same strict Albany County filter as the rest of the app.</div>';
+      recentItems.forEach(function (item) { html += buildIncidentCard(item); });
+    }
+
+    if (!anyIncidentCards && scannerIntelItems.length === 0) {
+      html +=
+        '<div class="empty-state">No Albany County incidents on the Live feed right now. Try the Scanner tab or wait for the next refresh.</div>';
     }
 
     list.innerHTML = html;
@@ -1104,7 +1226,18 @@
 
   function renderIncidentList(data) {
     if (!data) return;
-    renderNowFeed(data.filter(function (x) { return x.feed_tab === "now" || x.feed_tab === "live"; }));
+    var liveA = data.filter(function (x) {
+      var s = x.live_section || (x.incident && x.incident.live_section);
+      return s === "active_now" || x.feed_tab === "now";
+    });
+    var liveR = data.filter(function (x) {
+      var s = x.live_section || (x.incident && x.incident.live_section);
+      return s === "recent_local";
+    });
+    if (!liveA.length && !liveR.length) {
+      liveA = data.filter(function (x) { return x.feed_tab === "now" || x.feed_tab === "live"; });
+    }
+    renderLiveFeed(liveA, liveR);
     renderConfirmedFeed(data.filter(function (x) { return x.feed_tab === "confirmed"; }));
     renderContextFeed(data.filter(function (x) { return x.feed_tab === "news_context" || x.feed_tab === "news"; }));
   }
@@ -1898,7 +2031,7 @@
     renderScannerCalls(calls);
     // Live feed: only re-render when scanner intel actually changed (avoids 45s full list flicker)
     if (allIncidentData.length > 0 && intelFpBefore !== intelFpAfter) {
-      renderNowFeed(allIncidentData.filter(function (x) { return x.feed_tab === "now" || x.feed_tab === "live"; }));
+      renderLiveFeed(lastLiveActiveItems, lastLiveRecentItems);
     }
   }
 

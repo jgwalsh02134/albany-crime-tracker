@@ -85,9 +85,10 @@
 
       <!-- Stats row -->
       <div class="stats-row">
-        <div class="stat-chip">
+        <div class="stat-chip stat-chip--live">
           <span class="stat-val" id="statTotal">--</span>
-          <span class="stat-lbl">Incidents</span>
+          <span class="stat-lbl">Live feed</span>
+          <span class="stat-sublbl" id="statLiveSub"></span>
         </div>
         <div class="stat-chip stat-violent">
           <span class="stat-val" id="statViolent">--</span>
@@ -97,26 +98,26 @@
           <span class="stat-val" id="statProperty">--</span>
           <span class="stat-lbl">Property</span>
         </div>
-        <div class="stat-chip">
+        <div class="stat-chip" title="Stats-eligible incidents with a timestamp in the last 48 hours (broader than the Live feed list)">
           <span class="stat-val" id="statRecent">--</span>
-          <span class="stat-lbl">48h</span>
+          <span class="stat-lbl">48H</span>
         </div>
       </div>
 
-      <!-- Now / Confirmed / Context (three-lane incident model) -->
+      <!-- Live / Confirmed / Context -->
       <div class="feed-subtabs" id="feedSubtabs">
-        <button class="feed-subtab active" data-feedtab="now">
+        <button class="feed-subtab active" data-feedtab="live">
           <span class="live-pulse-sm"></span>
-          Now
+          Live
         </button>
         <button class="feed-subtab" data-feedtab="confirmed">Confirmed</button>
         <button class="feed-subtab" data-feedtab="context">Context</button>
       </div>
 
-      <!-- NOW (0–90m operational backbone) -->
-      <div class="feed-tab-content active" id="feedTabNow">
+      <!-- LIVE: Active now + Recent local activity -->
+      <div class="feed-tab-content active" id="feedTabLive">
         <div id="promotedSocialPosts"></div>
-        <div class="feed-list" id="incidentListNow">
+        <div class="feed-list" id="incidentListLive">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
@@ -462,7 +463,7 @@
   <script>
     (function () {
       var isLocalDev = /^(localhost|127\.0\.0\.1)$/i.test(location.hostname);
-      var src = "app.js" + (isLocalDev ? "?v=9" : "");
+      var src = "app.js" + (isLocalDev ? "?v=10" : "");
       document.write('<script src="' + src + '"><\/script>');
     })();
   </script>

@@ -2116,3 +2116,43 @@ a:hover { text-decoration: underline; }
   opacity: 0.85;
   font-weight: 400;
 }
+
+.stat-sublbl {
+  display: block;
+  font-size: 10px;
+  color: var(--text-3);
+  font-weight: 400;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+.feed-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin: 14px 0 8px;
+  padding: 0 2px;
+}
+.feed-section-title:first-child {
+  margin-top: 4px;
+}
+.feed-section-note {
+  font-size: 10px;
+  color: var(--text-3);
+  margin: -4px 0 10px;
+  padding: 0 2px;
+  line-height: 1.35;
+}
+
+.feed-op-line {
+  font-size: 10px;
+  color: var(--text-2);
+  margin: 4px 0 2px;
+  line-height: 1.35;
+}
+.feed-op-line .feed-op-k {
+  color: var(--text-3);
+  margin-right: 4px;
+}
