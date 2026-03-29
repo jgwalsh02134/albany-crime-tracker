@@ -622,126 +622,152 @@ def score_public_safety(inc: dict) -> float:
     return min(100.0, round(score, 1))
 
 
+def _confirmed_lane_quality(inc: dict, blob: str) -> bool:
+    """Confirmed lane: scanner, official, multi-source, or substantive local media (confirmers)."""
+    vl = inc.get("verification_level")
+    if vl == VERIFICATION_MULTI:
+        return True
+    if vl == VERIFICATION_OFFICIAL:
+        return True
+    if vl == VERIFICATION_SCANNER:
+        return True
+    if vl == VERIFICATION_MEDIA:
+        return any(
+            k in blob
+            for k in (
+                "arrest", "crash", "fire", "shooting", "stabbing",
+                "investigation", "charged", "robbery", "burglary",
+                "homicide", "assault", "missing", "closure", "road closed",
+            )
+        )
+    return False
+
+
+def _news_context_lane_quality(inc: dict, blob: str) -> bool:
+    soft = (
+        "sentenced", "plead", "pleads", "blotter", "wrap", "looking back",
+        "years ago", "cold case", "anniversary", "follow-up", "update:",
+        "court", "verdict", "convicted",
+    )
+    if any(s in blob for s in soft):
+        return True
+    return inc.get("verification_level") == VERIFICATION_MEDIA
+
+
 def compute_live_eligibility(inc: dict) -> dict:
     """
-    Single gate for Live vs history. Sets live_frame, is_live_eligible, exclusion_reason, status.
-    Target window 24h preferred; hard cap 48h for Live.
+    Three-lane routing:
+      • **now** — ≤90 min, operational backbone (scanner / 511 / NY-Alert / municipal / urgent official social),
+        never generic federal/national; requires strict Albany quality gate.
+      • **confirmed** — 0–48h, fused or high-trust sources + substantive media.
+      • **news_context** — 48h–7d follow-ups and context (not the live backbone).
     """
     fm = inc.get("freshness_minutes")
     age_h = fm / 60.0 if fm is not None else None
     raws = inc.get("_sources_raw") or []
-    primary = inc.get("_primary_raw") or {}
     if not raws:
-        raws = [primary]
+        raws = [inc.get("_primary_raw") or {}]
+
     blob = f"{inc.get('title', '')} {inc.get('summary', '')}".lower()
     ongoing = any(t in blob for t in _ONGOING_TERMS)
     closure_missing = any(t in blob for t in _CLOSURE_TERMS + ("missing person", "amber alert", "silver alert"))
 
-    scanner_any = any(r.get("_scanner_call") for r in raws)
-    official_any = any(r.get("_nixle_item") or r.get("_official_x_post") for r in raws)
-    crit_any = any(r.get("_scanner_critical_live") for r in raws)
+    federal_any = bool(inc.get("_federal_national_hit_any")) or any(
+        bool(r.get("_federal_national_hit")) for r in raws
+    )
+    strict_ok = bool(inc.get("_strict_live_ok_any", inc.get("_strict_live_ok")))
+    now_ch = inc.get("now_channel")
 
     inc["exclusion_reason"] = ""
+    inc["feed_lane"] = ""
     inc["is_live_eligible"] = False
     inc["live_frame"] = LIVE_FRAME_REJECT
 
     if fm is None:
         inc["exclusion_reason"] = "no_timestamp"
         inc["status"] = STATUS_UNKNOWN
-        return _apply_strict_live_gate(inc)
+        return inc
 
-    if age_h is not None and age_h > 48.0:
-        inc["exclusion_reason"] = "older_than_48h"
+    if age_h is not None and age_h > NEWS_CONTEXT_MAX_HOURS / 24.0:
+        inc["exclusion_reason"] = "older_than_7d"
         inc["status"] = STATUS_HISTORICAL
-        inc["live_frame"] = LIVE_FRAME_REJECT
-        return _apply_strict_live_gate(inc)
+        return inc
 
     if len((inc.get("title") or "").strip()) < 8 and len((inc.get("summary") or "").strip()) < 20:
         inc["exclusion_reason"] = "weak_text"
-        inc["live_frame"] = LIVE_FRAME_REJECT
         inc["status"] = STATUS_UNKNOWN
-        return _apply_strict_live_gate(inc)
+        return inc
 
-    # --- Scanner-heavy (any dispatch audio row in cluster) ---
-    if scanner_any and inc.get("verification_level") != VERIFICATION_MULTI:
-        if age_h <= 1.5:
-            inc["is_live_eligible"] = True
-            inc["live_frame"] = LIVE_FRAME_LIVE_NOW if fm <= 45 else LIVE_FRAME_DEVELOPING
-        elif crit_any or ongoing:
-            if age_h <= 12.0:
-                inc["is_live_eligible"] = True
-                inc["live_frame"] = LIVE_FRAME_DEVELOPING
-            else:
-                inc["exclusion_reason"] = "scanner_stale"
-        else:
-            inc["exclusion_reason"] = "scanner_age_window"
-        if inc["is_live_eligible"]:
-            inc["status"] = STATUS_ACTIVE if fm <= 120 or ongoing else STATUS_RECENT
-            return _apply_strict_live_gate(_finalize_live_badges(inc, ongoing, closure_missing, age_h))
-        inc["status"] = STATUS_RECENT if age_h and age_h <= 48 else STATUS_HISTORICAL
-        if not inc["exclusion_reason"]:
-            inc["exclusion_reason"] = "scanner_not_eligible"
-        return _apply_strict_live_gate(_finalize_live_badges(inc, ongoing, closure_missing, age_h))
-
-    # --- Fused scanner + confirmation ---
-    if scanner_any and inc.get("verification_level") == VERIFICATION_MULTI and age_h is not None and age_h <= 24.0:
+    # --- NOW: 0–90 min, first-class operational sources, strict locality, no federal backbone ---
+    if (
+        fm <= NOW_MAX_MINUTES
+        and now_ch
+        and not federal_any
+        and strict_ok
+    ):
+        inc["feed_lane"] = FEED_LANE_NOW
         inc["is_live_eligible"] = True
-        inc["live_frame"] = LIVE_FRAME_RECENT
-        inc["status"] = STATUS_RECENT
-        return _apply_strict_live_gate(_finalize_live_badges(inc, ongoing, closure_missing, age_h))
+        inc["live_frame"] = LIVE_FRAME_LIVE_NOW if fm <= 45 else LIVE_FRAME_DEVELOPING
+        inc["status"] = STATUS_ACTIVE if fm <= 120 or ongoing else STATUS_RECENT
+        return _finalize_live_badges(inc, ongoing, closure_missing, age_h)
 
-    # --- Official / Nixle / verified social ---
-    if official_any:
-        if age_h <= 12.0 or (closure_missing and (ongoing or age_h <= 24.0)):
-            inc["is_live_eligible"] = True
-            if fm <= 60:
-                inc["live_frame"] = LIVE_FRAME_LIVE_NOW
-            elif age_h <= 6:
-                inc["live_frame"] = LIVE_FRAME_DEVELOPING
-            else:
-                inc["live_frame"] = LIVE_FRAME_RECENT
-            inc["status"] = STATUS_ACTIVE if ongoing or fm <= 180 else STATUS_RECENT
-            return _apply_strict_live_gate(_finalize_live_badges(inc, ongoing, closure_missing, age_h))
-        if age_h <= 24.0 and ongoing:
-            inc["is_live_eligible"] = True
+    # --- CONFIRMED: 0–48h (exclusive of Now timing for same card: >90m or non-now-channel still ok here) ---
+    if age_h is not None and age_h <= CONFIRMED_MAX_HOURS and strict_ok and _confirmed_lane_quality(inc, blob):
+        inc["feed_lane"] = FEED_LANE_CONFIRMED
+        inc["is_live_eligible"] = True
+        if fm <= 180:
+            inc["live_frame"] = LIVE_FRAME_DEVELOPING
+        elif ongoing or closure_missing:
             inc["live_frame"] = LIVE_FRAME_RECENT
-            inc["status"] = STATUS_RECENT
-            return _apply_strict_live_gate(_finalize_live_badges(inc, ongoing, closure_missing, age_h))
-        inc["exclusion_reason"] = "official_stale_for_live"
+        else:
+            inc["live_frame"] = LIVE_FRAME_STALE
+        inc["status"] = STATUS_ACTIVE if ongoing else STATUS_RECENT
+        return _finalize_live_badges(inc, ongoing, closure_missing, age_h)
 
-    # --- Local media / general crime coverage ---
-    if age_h is not None and age_h <= 24.0:
-        if any(
-            k in blob
-            for k in (
-                "arrest", "crash", "fire", "shooting", "stabbing",
-                "investigation", "charged", "robbery", "burglary",
-            )
-        ):
-            inc["is_live_eligible"] = True
-            inc["live_frame"] = LIVE_FRAME_DEVELOPING if fm <= 180 else LIVE_FRAME_RECENT
-            inc["status"] = STATUS_RECENT
-            return _apply_strict_live_gate(_finalize_live_badges(inc, ongoing, closure_missing, age_h))
-
-    if age_h is not None and age_h <= 48.0 and (ongoing or closure_missing):
-        inc["is_live_eligible"] = True
-        inc["live_frame"] = LIVE_FRAME_STALE
-        inc["status"] = STATUS_RECENT
-        return _apply_strict_live_gate(_finalize_live_badges(inc, ongoing, closure_missing, age_h))
-
-    inc["live_frame"] = LIVE_FRAME_STALE if age_h and age_h <= 72 else LIVE_FRAME_REJECT
-    inc["status"] = STATUS_HISTORICAL if age_h and age_h > 48 else STATUS_RECENT
-    if not inc["is_live_eligible"] and not inc["exclusion_reason"]:
-        inc["exclusion_reason"] = "news_followup_or_low_urgency"
-    return _apply_strict_live_gate(_finalize_live_badges(inc, ongoing, closure_missing, age_h))
-
-
-def _apply_strict_live_gate(inc: dict) -> dict:
-    """Require at least one source that passed api_server strict Live quality gate."""
-    if inc.get("is_live_eligible") and not inc.get("_strict_live_ok_any", inc.get("_strict_live_ok")):
+    # --- NEWS / CONTEXT: 48h–7d ---
+    if (
+        age_h is not None
+        and NEWS_CONTEXT_MIN_HOURS < age_h <= NEWS_CONTEXT_MAX_HOURS
+        and strict_ok
+        and _news_context_lane_quality(inc, blob)
+    ):
+        inc["feed_lane"] = FEED_LANE_NEWS_CONTEXT
         inc["is_live_eligible"] = False
-        inc["exclusion_reason"] = "strict_quality_gate"
-        inc["live_frame"] = LIVE_FRAME_REJECT
+        inc["live_frame"] = LIVE_FRAME_STALE
+        inc["status"] = STATUS_HISTORICAL
+        return _finalize_live_badges(inc, ongoing, closure_missing, age_h)
+
+    inc["exclusion_reason"] = "lane_routing_drop"
+    inc["status"] = STATUS_HISTORICAL if age_h and age_h > CONFIRMED_MAX_HOURS else STATUS_RECENT
+    return _finalize_live_badges(inc, ongoing, closure_missing, age_h)
+
+
+def compute_live_score(inc: dict) -> dict:
+    """
+    Lexicographic priority for sorting (higher is better on each axis):
+      1. freshness  2. locality confidence  3. public-safety impact  4. source confidence
+    """
+    fm = float(inc.get("freshness_minutes") or 99999)
+    freshness = max(0.0, min(100.0, 100.0 * math.exp(-fm / 40.0)))
+    locality = max(0.0, min(100.0, float(inc.get("local_relevance_score") or 0) * 100.0))
+    impact = max(0.0, min(100.0, float(inc.get("public_safety_score") or 0)))
+    src_map = {
+        VERIFICATION_MULTI: 100.0,
+        VERIFICATION_OFFICIAL: 88.0,
+        VERIFICATION_MEDIA: 62.0,
+        VERIFICATION_SCANNER: 48.0,
+        VERIFICATION_INFERRED: 35.0,
+    }
+    source_conf = float(src_map.get(inc.get("verification_level"), 40.0))
+    inc["score_freshness"] = round(freshness, 2)
+    inc["score_locality"] = round(locality, 2)
+    inc["score_impact"] = round(impact, 2)
+    inc["score_source_confidence"] = round(source_conf, 2)
+    inc["live_score_sort"] = (freshness, locality, impact, source_conf)
+    inc["live_score"] = round(
+        freshness * 10_000 + locality * 100 + impact + source_conf / 1000,
+        4,
+    )
     return inc
 
 
