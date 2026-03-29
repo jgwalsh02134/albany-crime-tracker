@@ -665,6 +665,23 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow-card), inset 3px 0 0 0 color-mix(in srgb, var(--violent) 25%, transparent);
 }
 
+.feed-x-cta {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cyan);
+  margin-left: 4px;
+}
+.feed-x-cta::after {
+  content: " \2197";
+  font-size: 9px;
+  opacity: 0.85;
+  margin-left: 2px;
+}
+
 /* ===== MAP ===== */
 #viewMap { display: none; flex-direction: column; }
 #viewMap.active { display: flex; }

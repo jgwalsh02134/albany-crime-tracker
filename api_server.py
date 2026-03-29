@@ -56,15 +56,15 @@ ASCII_PUNCT_TRANSLATION = str.maketrans({
 # --- Cache ---
 cache = {}
 CACHE_TTL = {
-    "merged_news": 180,
-    "crime_articles": 180,
+    "merged_news": 60,
+    "crime_articles": 60,
     "dcjs_trends": 3600,
     "ai_summaries": 600,
     "patterns": 300,
     "monthly_summary": 1800,   # 30 min
     "daily_summary": 600,      # 10 min — today's briefing
     "social_intel": 900,       # 15 min — X/Twitter monitoring
-    "grok_official_x_posts": 900,  # 15 min — Grok-sourced official X highlights
+    "grok_official_x_posts": 180,  # 3 min — official X posts refresh often for Live
     "scanner_talkgroups": 3600,   # 1 h — TG metadata from directory
 }
 
@@ -262,14 +262,14 @@ RSS_FEEDS_LOCAL = {
     # (kept in LOCAL block because these are premium/prioritized sources)
     # Query includes (albany OR county name) to pre-filter for Albany County content
     "timesunion_gnews_crime": {
-        "url": "https://news.google.com/rss/search?q=site:timesunion.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+watervliet)+(crime+OR+arrest+OR+shooting+OR+police+OR+stabbing)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:timesunion.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+watervliet)+(crime+OR+arrest+OR+shooting+OR+police+OR+stabbing)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Times Union",
         "filter": "albany",
         "reliability": 0.92,
         "priority": 3,
     },
     "timesunion_gnews_local": {
-        "url": "https://news.google.com/rss/search?q=site:timesunion.com+(\"albany+county\"+OR+\"city+of+albany\"+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes+OR+watervliet+OR+latham+OR+loudonville+OR+delmar)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:timesunion.com+(\"albany+county\"+OR+\"city+of+albany\"+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes+OR+watervliet+OR+latham+OR+loudonville+OR+delmar)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Times Union",
         "filter": "albany",
         "reliability": 0.92,
@@ -284,14 +284,14 @@ RSS_FEEDS_LOCAL = {
         "priority": 3,
     },
     "dailygazette_gnews": {
-        "url": "https://news.google.com/rss/search?q=site:dailygazette.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+watervliet+OR+bethlehem+OR+latham)+(crime+OR+arrest+OR+police+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:dailygazette.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+watervliet+OR+bethlehem+OR+latham)+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Daily Gazette",
         "filter": "albany",
         "reliability": 0.90,
         "priority": 3,
     },
     "spotlight_gnews": {
-        "url": "https://news.google.com/rss/search?q=site:spotlightnews.com+(albany+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes)+(crime+OR+arrest+OR+police+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:spotlightnews.com+(albany+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes)+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "The Spotlight",
         "filter": "albany",
         "reliability": 0.90,
@@ -318,14 +318,14 @@ RSS_FEEDS_LOCAL = {
 RSS_FEEDS_GNEWS = {
     # ── Broad county-level searches ───────────────────────────────────────────
     "gnews_albany_county_crime": {
-        "url": "https://news.google.com/rss/search?q=%22albany+county%22+%22new+york%22+crime+OR+arrest+OR+police+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22albany+county%22+%22new+york%22+crime+OR+arrest+OR+police+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": None,
         "filter": "strict",
         "reliability": 0.75,
         "priority": 1,
     },
     "gnews_albany_ny_police": {
-        "url": "https://news.google.com/rss/search?q=%22albany+ny%22+police+OR+arrest+OR+shooting+OR+crime+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22albany+ny%22+police+OR+arrest+OR+shooting+OR+crime+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": None,
         "filter": "strict",
         "reliability": 0.72,
@@ -340,7 +340,7 @@ RSS_FEEDS_GNEWS = {
     },
     # ── Official state police ─────────────────────────────────────────────────
     "gnews_nys_police": {
-        "url": "https://news.google.com/rss/search?q=site:troopers.ny.gov+albany+when:14d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:troopers.ny.gov+albany+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "NY State Police",
         "filter": None,   # troopers.ny.gov is always legitimate
         "reliability": 1.0,
@@ -348,56 +348,56 @@ RSS_FEEDS_GNEWS = {
     },
     # ── Hyper-local per-town searches ─────────────────────────────────────────
     "gnews_colonie": {
-        "url": "https://news.google.com/rss/search?q=Colonie+NY+(crime+OR+arrest+OR+police+OR+shooting+OR+burglary)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Colonie+NY+(crime+OR+arrest+OR+police+OR+shooting+OR+burglary)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Colonie",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_bethlehem": {
-        "url": "https://news.google.com/rss/search?q=Bethlehem+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Bethlehem+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Bethlehem / Delmar",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_guilderland": {
-        "url": "https://news.google.com/rss/search?q=Guilderland+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Guilderland+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Guilderland / Altamont",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_cohoes": {
-        "url": "https://news.google.com/rss/search?q=Cohoes+NY+(crime+OR+arrest+OR+police)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Cohoes+NY+(crime+OR+arrest+OR+police)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Cohoes",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_watervliet": {
-        "url": "https://news.google.com/rss/search?q=Watervliet+NY+(crime+OR+arrest+OR+police)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Watervliet+NY+(crime+OR+arrest+OR+police)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Watervliet",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_latham_loudonville": {
-        "url": "https://news.google.com/rss/search?q=(Latham+OR+Loudonville)+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=(Latham+OR+Loudonville)+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Latham / Loudonville",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_newscotland": {
-        "url": "https://news.google.com/rss/search?q=%22New+Scotland%22+NY+(crime+OR+arrest+OR+police)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22New+Scotland%22+NY+(crime+OR+arrest+OR+police)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "New Scotland / Slingerlands",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_coeymans_ravena": {
-        "url": "https://news.google.com/rss/search?q=(Coeymans+OR+Ravena)+NY+(crime+OR+arrest+OR+police)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=(Coeymans+OR+Ravena)+NY+(crime+OR+arrest+OR+police)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Coeymans / Ravena",
         "filter": "strict",
         "reliability": 0.78,
@@ -405,7 +405,7 @@ RSS_FEEDS_GNEWS = {
     },
     # ── Legacy broad-suburb search kept for overlap coverage ──────────────────
     "gnews_albany_suburbs": {
-        "url": "https://news.google.com/rss/search?q=(colonie+OR+bethlehem+OR+guilderland+OR+cohoes+OR+watervliet)+%22new+york%22+(crime+OR+police+OR+arrest)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=(colonie+OR+bethlehem+OR+guilderland+OR+cohoes+OR+watervliet)+%22new+york%22+(crime+OR+police+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": None,
         "filter": "strict",
         "reliability": 0.75,
@@ -426,7 +426,7 @@ RSS_FEEDS_OFFICIAL = {
     # ── Albany PD (@albanypolice) ─────────────────────────────────────────────
     # Google News is reliable backbone; force_label=True tags all results "Official"
     "official_albany_pd": {
-        "url": "https://news.google.com/rss/search?q=%22Albany+Police+Department%22+OR+%22Albany+Police%22+arrest+OR+crime+OR+incident+OR+shooting+OR+stabbing+when:14d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22Albany+Police+Department%22+OR+%22Albany+Police%22+arrest+OR+crime+OR+incident+OR+shooting+OR+stabbing+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @albanypolice",
         "filter": "albany",
         "force_label": True,
@@ -435,7 +435,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # ── Albany County Sheriff (@ACSOTWEET) ────────────────────────────────────
     "official_acso": {
-        "url": "https://news.google.com/rss/search?q=%22Albany+County+Sheriff%22+arrest+OR+crime+OR+incident+OR+investigation+when:14d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22Albany+County+Sheriff%22+arrest+OR+crime+OR+incident+OR+investigation+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @ACSOTWEET",
         "filter": "albany",
         "force_label": True,
@@ -444,7 +444,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # ── Colonie Police (@colonie_police) ─────────────────────────────────────
     "official_colonie_pd": {
-        "url": "https://news.google.com/rss/search?q=%22Colonie+Police%22+arrest+OR+crime+OR+incident+OR+shooting+OR+burglary+when:14d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22Colonie+Police%22+arrest+OR+crime+OR+incident+OR+shooting+OR+burglary+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @colonie_police",
         "filter": "albany",
         "force_label": True,
@@ -453,7 +453,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # ── Bethlehem PD (@PdBethlehem) ──────────────────────────────────────────
     "official_bethlehem_pd": {
-        "url": "https://news.google.com/rss/search?q=%22Bethlehem+Police%22+%22New+York%22+arrest+OR+crime+OR+incident+when:14d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22Bethlehem+Police%22+%22New+York%22+arrest+OR+crime+OR+incident+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @PdBethlehem",
         "filter": "albany",
         "force_label": True,
@@ -462,7 +462,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # ── NY State Police Troop G (@nyspolice) ──────────────────────────────────
     "official_nysp_troop_g": {
-        "url": "https://news.google.com/rss/search?q=%22State+Police%22+%22Troop+G%22+OR+(%22State+Police%22+%22Albany%22)+arrest+OR+shooting+OR+crime+OR+investigation+when:14d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22State+Police%22+%22Troop+G%22+OR+(%22State+Police%22+%22Albany%22)+arrest+OR+shooting+OR+crime+OR+investigation+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @nyspolice",
         "filter": "albany",
         "force_label": True,
@@ -471,7 +471,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # NYSP press releases via Google News site: search
     "official_nysp_site": {
-        "url": "https://news.google.com/rss/search?q=site:troopers.ny.gov+when:14d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:troopers.ny.gov+when:3d&hl=en-US&gl=US&ceid=US:en",
         "label": "NYSP Blotter",
         "filter": None,              # troopers.ny.gov is always NYSP — no filter needed
         "force_label": True,
@@ -588,7 +588,9 @@ LIVE_SOURCES = frozenset([
     "nixle", "blotter ·", "scanner ·", "official x",
 ])
 
-LIVE_CUTOFF_HOURS = 72   # Live tab: only show items published within last 72 h
+# Live tab window (News holds older). 12h-only emptied Live when RSS pubDates lag; 24h stays fresh vs old 72h.
+LIVE_CUTOFF_HOURS = 24
+LIVE_PRIORITY_FRESH_HOURS = 12  # Items this new sort above older items in the same source tier
 MAP_CUTOFF_DAYS = 5      # Map: hard cutoff at 5 days
 
 # Live feed source_priority tiers (higher = wins dedup merge; official >> scanner)
@@ -1864,18 +1866,23 @@ async def get_crimes():
         src = (x.get("source") or "").lower()
         title = (x.get("title") or "").lower()
         if x.get("_official_x_post"):
-            return 500
-        if x.get("_nixle_item") or "nixle" in src:
-            return 490
-        if "blotter" in src or "gazette blotter" in src:
-            return 480
-        if src.startswith("official @") or src == "official x":
-            return 460
-        if x.get("_scanner_critical_live"):
-            return 120
-        if any(h in title for h in _ARREST_TITLE_HINTS):
-            return 380
-        return 300
+            tier = 500
+        elif x.get("_nixle_item") or "nixle" in src:
+            tier = 490
+        elif "blotter" in src or "gazette blotter" in src:
+            tier = 480
+        elif src.startswith("official @") or src == "official x":
+            tier = 460
+        elif x.get("_scanner_critical_live"):
+            tier = 120
+        elif any(h in title for h in _ARREST_TITLE_HINTS):
+            tier = 380
+        else:
+            tier = 300
+        age = x.get("age_hours")
+        if age is not None and age <= LIVE_PRIORITY_FRESH_HOURS:
+            tier += 40
+        return tier
 
     def _live_sort_key(x: dict) -> tuple:
         """Tier by source class, then strict newest-first within tier."""
@@ -2645,7 +2652,7 @@ def build_directory_rss_feeds() -> dict[str, dict[str, Any]]:
     gnews_body = (
         "(albany+OR+\"albany+county\"+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes+OR+"
         "watervliet+OR+latham+OR+menands+OR+altamont+OR+ravena+OR+coeymans+OR+capital+region)+"
-        "(crime+OR+arrest+OR+police+OR+courts+OR+blotter+OR+shooting+OR+robbery+OR+crash+OR+investigation)+when:7d"
+        "(crime+OR+arrest+OR+police+OR+courts+OR+blotter+OR+shooting+OR+robbery+OR+crash+OR+investigation)+when:2d"
     )
 
     for ms in data.get("mediaSources") or []:
@@ -2700,7 +2707,7 @@ def build_directory_rss_feeds() -> dict[str, dict[str, Any]]:
                         "force_label": True,
                     },
                 )
-        qn = f"{aname} {abb + ' ' if abb else ''}police albany county arrest OR crime OR investigation when:14d"
+        qn = f"{aname} {abb + ' ' if abb else ''}police albany county arrest OR crime OR investigation when:2d"
         g2 = f"https://news.google.com/rss/search?q={quote_plus(qn)}&hl=en-US&gl=US&ceid=US:en"
         _add(
             f"dir_agency_gnews_{aid}",
@@ -2781,37 +2788,45 @@ _OFFICIAL_X_HANDLES_CORE = [
     "VlietPolice",
     "nyspolice",
     "albanypd",
+    "FBIAlbany",
 ]
 
-# Grok sometimes returns plausible-looking /status/ IDs that are not real tweets — use profile link instead.
+# Status URLs must use real snowflake IDs (typically 18–19 digits). Short IDs are rejected → profile fallback.
 _OFFICIAL_X_STATUS_RE = re.compile(
-    r"^https?://(?:www\.)?(?:twitter\.com|x\.com)/([^/]+)/status/(\d+)/?$",
+    r"^https?://(?:www\.)?(?:twitter\.com|x\.com)/([^/]+)/status/(\d+)",
     re.IGNORECASE,
 )
 
 
-def _canonical_official_x_link(handle: str, url: str) -> str:
-    """Prefer https://x.com/{handle}; keep permalink only for long snowflake-like status IDs."""
+def _resolve_official_x_post_url(handle: str, url: str | None) -> str:
+    """Prefer exact post URL https://x.com/{user}/status/{snowflake}; else profile."""
     h = (handle or "").strip().lstrip("@")
     profile = f"https://x.com/{h}" if h else "https://x.com/"
     if not h:
-        return (url or "").strip() or profile
-    u = (url or "").strip()
-    if not u:
+        return ((url or "") or "").strip() or profile
+    raw = ((url or "") or "").strip()
+    if not raw or raw.lower() in ("null", "none", "undefined", ""):
         return profile
-    base = u.split("?")[0].rstrip("/")
+    base = raw.split("?")[0].split("#")[0]
     m = _OFFICIAL_X_STATUS_RE.match(base)
     if m:
-        tid = m.group(2)
+        uname, tid = m.group(1), m.group(2)
         if tid.isdigit() and len(tid) >= 17:
-            return base.replace("twitter.com", "x.com")
+            return f"https://x.com/{uname}/status/{tid}"
     return profile
+
 
 _SOCIAL_GROK_SYSTEM = (
     "You reply with a single JSON array only. No markdown, no commentary. "
     "Each element: {\"handle\":\"twitterhandle\",\"title\":\"short headline\","
-    "\"summary\":\"1-2 sentences\",\"url\":\"https://...\",\"published_iso\":\"2026-03-28T12:00:00Z\"}. "
-    "Only Albany County NY or immediate Capital Region law-enforcement / public-safety posts."
+    "\"summary\":\"1-2 sentences\","
+    "\"url\":\"https://x.com/handle/status/ID or null\","
+    "\"tweet_id\":\"numeric snowflake only if verified\","
+    "\"published_iso\":\"2026-03-28T12:00:00Z\"}. "
+    "CRITICAL: Prefer real post links. tweet_id must be the true status id (18–19 digits) when known; "
+    "otherwise omit tweet_id. url must be the exact https://x.com/{handle}/status/{tweet_id} permalink "
+    "or null. Never invent short or fake IDs. "
+    "Only Albany County NY or immediate Capital District law-enforcement / public-safety posts."
 )
 
 
@@ -2820,18 +2835,26 @@ def _official_x_handles_from_directory() -> list[str]:
     try:
         data = _le_dir_cache()
         for ag in data.get("agencies") or []:
+            if ag.get("active") is False:
+                continue
+            tier = (ag.get("tier") or "").lower()
+            name_low = (ag.get("name") or "").lower()
+            in_tier = tier in ("municipal", "county", "state", "village", "town")
+            fed_local = tier == "federal" and (
+                "albany" in name_low or "capital region" in name_low or "northern district" in name_low
+            )
+            if not (in_tier or fed_local):
+                continue
             for acct in ag.get("socialAccounts") or []:
                 plat = (acct.get("platform") or "").lower()
                 if plat not in ("twitter", "x"):
-                    continue
-                if not acct.get("verified"):
                     continue
                 h = (acct.get("handle") or "").strip().lstrip("@")
                 if h:
                     found.add(h)
     except Exception:
         pass
-    return list(found)[:28]
+    return sorted(found, key=str.lower)[:64]
 
 
 async def fetch_official_social_posts() -> list[dict[str, Any]]:
@@ -2844,14 +2867,15 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
 
     handles = _official_x_handles_from_directory()
     prompt = (
-        "Using your freshest knowledge of X (Twitter), list up to 2 substantive public posts per account "
-        "(max 22 posts) from ONLY these handles (do not add any other accounts or agencies): "
+        "Using live X (Twitter) knowledge, list up to 1 substantive public post per account "
+        f"(max {min(48, len(handles) or 1)} items total) from ONLY these handles — do not add any other account: "
         + ", ".join("@" + h for h in handles)
-        + ". Only posts from roughly the last 48 hours about arrests, investigations, safety alerts, "
-        "wanted/missing, crashes, fires, or significant police activity in Albany County NY or the "
-        "immediate Capital District. Omit opinion, hiring, generic community PR, or anything you cannot "
-        "attribute to a real post. Every object's handle field must exactly match one of the listed "
-        "handles (case-insensitive). Return JSON array only."
+        + ". Time window: last 24 hours only. Topics: arrests, investigations, safety alerts, "
+        "wanted/missing, crashes, fires, major police activity in Albany County NY or the immediate Capital District. "
+        "Each item's url MUST be the real https://x.com/{handle}/status/{snowflake_id} for that exact post "
+        "(snowflake ~18–19 digits), and/or include tweet_id with that same snowflake. "
+        "If you cannot confirm the real id, set url and tweet_id to null (omit fake short IDs). "
+        "handle must match one of the listed handles (case-insensitive). JSON array only."
     )
     try:
         text = await call_grok(
@@ -2859,9 +2883,9 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
                 {"role": "system", "content": _SOCIAL_GROK_SYSTEM},
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=3800,
-            temperature=0.15,
-            timeout=90.0,
+            max_tokens=4500,
+            temperature=0.08,
+            timeout=120.0,
         )
         if not text:
             return out
@@ -2880,7 +2904,22 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
             title = (it.get("title") or it.get("summary") or "").strip()
             if not title:
                 continue
-            link = _canonical_official_x_link(h, (it.get("url") or "").strip() or f"https://x.com/{h}")
+            raw_u = it.get("url")
+            if raw_u is not None and isinstance(raw_u, str):
+                raw_u = raw_u.strip()
+            else:
+                raw_u = None
+            tid_raw = it.get("tweet_id")
+            if tid_raw is not None and isinstance(tid_raw, (int, float)):
+                tid_s = str(int(tid_raw))
+            elif isinstance(tid_raw, str):
+                tid_s = tid_raw.strip()
+            else:
+                tid_s = ""
+            if tid_s.isdigit() and len(tid_s) >= 17 and h:
+                raw_u = raw_u or f"https://x.com/{h}/status/{tid_s}"
+            link = _resolve_official_x_post_url(h, raw_u)
+            x_post = link if "/status/" in link else ""
             desc = (it.get("summary") or "")[:400]
             pub_raw = (it.get("published_iso") or "").strip()
             try:
@@ -2894,6 +2933,7 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
                 {
                     "title": title,
                     "link": link,
+                    "x_post_url": x_post,
                     "pubDate": pstr,
                     "description": desc,
                     "source": f"Official @{h}" if h else "Official X",

@@ -22,8 +22,8 @@
       }
     }
   }
-  var REFRESH_MS = 180000;
-  var SCANNER_REFRESH_MS = 45000;
+  var REFRESH_MS = 120000;
+  var SCANNER_REFRESH_MS = 30000;
 
   // State
   var map, markerGroup, trendsChart, tileLayer;
@@ -816,14 +816,17 @@
     return id.length >= 17 && /^\d+$/.test(id);
   }
 
-  /** Official X cards: never send users to Grok-hallucinated /status/ IDs — use real profile unless snowflake ID looks valid. */
+  /** Prefer real X status URL (x_post_url or link with snowflake); profile only if no valid post URL. */
   function resolveIncidentCardHref(item) {
+    var xu = (item && (item.x_post_url || item._x_post_url)) || "";
+    if (xu && isLikelyValidXStatusUrl(xu)) return xu;
     var link = (item && item.link) || "#";
     var src = (item && item.source) || "";
     if (!isOfficialSource(src)) return link;
     var h = officialHandleFromSource(src);
     if (!h) return link;
     var profile = "https://x.com/" + encodeURIComponent(h);
+    if (isLikelyValidXStatusUrl(link)) return link;
     if (item && item._official_x_post) {
       if (!link || link === "#") return profile;
       if (/\/status\/\d+/i.test(link) && !isLikelyValidXStatusUrl(link)) return profile;
@@ -859,6 +862,9 @@
     if (hood) html += '<span class="feed-hood">' + esc(capitalize(hood)) + '</span>';
     if (official) {
       html += '<span class="official-badge official-badge--lg">OFFICIAL</span>';
+      if (isLikelyValidXStatusUrl(link)) {
+        html += '<span class="feed-x-cta">View post on X</span>';
+      }
     } else if (scannerCritical) {
       html += '<span class="scanner-feed-badge scanner-feed-badge--critical scanner-feed-badge--lg scanner-badge-police">SCANNER · CRITICAL</span>';
     } else if (scannerCrime) {
