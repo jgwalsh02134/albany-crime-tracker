@@ -296,7 +296,7 @@ def normalize_from_enriched(raw: dict) -> dict:
     src_name = raw.get("source") or "Unknown"
     src_url = raw.get("link") or raw.get("x_post_url") or ""
 
-    if raw.get("_official_x_post") or raw.get("_nixle_item"):
+    if raw.get("_official_x_post") or raw.get("_nixle_item") or raw.get("_511_incident") or raw.get("_ny_alert"):
         vlevel = VERIFICATION_OFFICIAL
     elif raw.get("_scanner_call"):
         vlevel = VERIFICATION_SCANNER
@@ -688,7 +688,7 @@ def compute_live_eligibility(inc: dict) -> dict:
         inc["status"] = STATUS_UNKNOWN
         return inc
 
-    if age_h is not None and age_h > NEWS_CONTEXT_MAX_HOURS / 24.0:
+    if age_h is not None and age_h > NEWS_CONTEXT_MAX_HOURS:
         inc["exclusion_reason"] = "older_than_7d"
         inc["status"] = STATUS_HISTORICAL
         return inc
@@ -821,18 +821,24 @@ def apply_scores_and_eligibility(fused: list[dict]) -> list[dict]:
         inc["freshness_minutes"] = round(_freshness_minutes(inc.get("last_updated_at") or inc.get("occurred_at")) or 0, 1)
         inc["public_safety_score"] = score_public_safety(inc)
         inc["urgency_score"] = inc["public_safety_score"]
+        compute_live_score(inc)
         compute_live_eligibility(inc)
         out.append(inc)
     return out
 
 
 def live_sort_key(inc: dict) -> tuple:
-    """Sort Live: public safety impact, recency, confidence, source strength."""
-    ps = float(inc.get("public_safety_score") or 0)
+    """
+    Sort Now / Confirmed lanes: lexicographic score (freshness, locality, impact, source),
+    then live_frame tier, then raw freshness minutes.
+    """
+    ts = inc.get("live_score_sort")
+    if isinstance(ts, (list, tuple)) and len(ts) >= 4:
+        t0, t1, t2, t3 = (float(ts[0]), float(ts[1]), float(ts[2]), float(ts[3]))
+    else:
+        t0 = t1 = t2 = t3 = 0.0
     fm = inc.get("freshness_minutes")
     fm = float(fm) if fm is not None else 99999.0
-    conf = float(inc.get("confidence_score") or 0)
-    sp = float(inc.get("source_priority") or 0)
     frame_rank = {
         LIVE_FRAME_LIVE_NOW: 4,
         LIVE_FRAME_DEVELOPING: 3,
@@ -840,7 +846,7 @@ def live_sort_key(inc: dict) -> tuple:
         LIVE_FRAME_STALE: 1,
         LIVE_FRAME_REJECT: 0,
     }.get(inc.get("live_frame"), 0)
-    return (frame_rank, ps, -fm, conf, sp)
+    return (t0, t1, t2, t3, frame_rank, -fm)
 
 
 def news_sort_ts(inc: dict) -> float:
@@ -887,8 +893,15 @@ def public_incident_view(inc: dict) -> dict:
         "source_names",
         "source_type",
         "is_live_eligible",
+        "feed_lane",
+        "now_channel",
         "exclusion_reason",
         "local_relevance_score",
+        "live_score",
+        "score_freshness",
+        "score_locality",
+        "score_impact",
+        "score_source_confidence",
     )
     return {k: inc.get(k) for k in keys}
 
@@ -922,7 +935,6 @@ def incident_to_api_row(inc: dict) -> dict:
         "source_priority": inc.get("source_priority"),
         "age_hours": round(age_h, 2),
         "age_minutes": inc.get("freshness_minutes"),
-        "feed_tab": "live" if inc.get("is_live_eligible") else "news",
         "incident": public_incident_view(inc),
         "event_type": inc.get("event_type"),
         "sub_type": inc.get("sub_type"),
@@ -937,6 +949,10 @@ def incident_to_api_row(inc: dict) -> dict:
         "exclusion_reason": inc.get("exclusion_reason", ""),
         "is_live_eligible": inc.get("is_live_eligible", False),
         "local_relevance_score": inc.get("local_relevance_score"),
+        "feed_lane": inc.get("feed_lane") or "",
+        "now_channel": inc.get("now_channel") or "",
+        "feed_tab": inc.get("feed_lane")
+        or ("live" if inc.get("is_live_eligible") else "news"),
         "_stats_eligible": any(
             bool(r.get("_stats_eligible"))
             for r in (inc.get("_sources_raw") or [raw])
@@ -952,12 +968,12 @@ def incident_to_api_row(inc: dict) -> dict:
     row["is_active_incident"] = bool(
         inc.get("status") == STATUS_ACTIVE or inc.get("live_frame") in (LIVE_FRAME_LIVE_NOW, LIVE_FRAME_DEVELOPING)
     )
-    row["live_score"] = float(inc.get("public_safety_score") or 0)
+    row["live_score"] = float(inc.get("live_score") or inc.get("public_safety_score") or 0)
     return row
 
 
 def build_operational_summary(fused_scored: list[dict]) -> dict:
-    live_now = [x for x in fused_scored if x.get("is_live_eligible")]
+    live_now = [x for x in fused_scored if x.get("feed_lane") == FEED_LANE_NOW]
     active = [x for x in live_now if x.get("live_frame") in (LIVE_FRAME_LIVE_NOW, LIVE_FRAME_DEVELOPING)]
     closures = [
         x for x in live_now
@@ -999,12 +1015,12 @@ def build_pipeline_diagnostics(
         by_lane[x.get("source_type", "")] = by_lane.get(x.get("source_type", ""), 0) + 1
 
     rejected_reasons: dict[str, int] = {}
-    non_live = [x for x in scored if not x.get("is_live_eligible")]
-    for x in non_live:
+    non_lane = [x for x in scored if not x.get("feed_lane")]
+    for x in non_lane:
         r = x.get("exclusion_reason") or "unspecified"
         rejected_reasons[r] = rejected_reasons.get(r, 0) + 1
 
-    live_eligible = [x for x in scored if x.get("is_live_eligible")]
+    live_eligible = [x for x in scored if x.get("feed_lane") in (FEED_LANE_NOW, FEED_LANE_CONFIRMED)]
     stale_frame = [x for x in scored if x.get("live_frame") == LIVE_FRAME_STALE]
 
     def _is_local(x: dict) -> bool:
@@ -1022,7 +1038,7 @@ def build_pipeline_diagnostics(
         "normalized_count": len(normalized),
         "fused_incident_count": len(fused),
         "live_eligible_count": len(live_eligible),
-        "rejected_count": len(non_live),
+        "rejected_count": len(non_lane),
         "rejected_by_reason": rejected_reasons,
         "stale_frame_count": len(stale_frame),
         "non_local_low_relevance_count": sum(1 for x in scored if not _is_local(x)),
@@ -1034,15 +1050,17 @@ def build_pipeline_diagnostics(
 
 
 def debug_top_lists(scored: list[dict], limit: int = 50) -> dict:
-    rejected = [x for x in scored if not x.get("is_live_eligible")]
+    rejected = [x for x in scored if not x.get("feed_lane")]
     rejected.sort(key=lambda x: news_sort_ts(x), reverse=True)
-    live = [x for x in scored if x.get("is_live_eligible")]
+    live = [x for x in scored if x.get("feed_lane") in (FEED_LANE_NOW, FEED_LANE_CONFIRMED)]
     live.sort(key=live_sort_key, reverse=True)
 
     def pack(x: dict) -> dict:
         return {
             "id": x.get("id"),
             "title": x.get("title"),
+            "feed_lane": x.get("feed_lane"),
+            "now_channel": x.get("now_channel"),
             "exclusion_reason": x.get("exclusion_reason"),
             "live_frame": x.get("live_frame"),
             "public_safety_score": x.get("public_safety_score"),
@@ -1058,3 +1076,7 @@ def debug_top_lists(scored: list[dict], limit: int = 50) -> dict:
         "rejected_top": [pack(x) for x in rejected[:limit]],
         "live_top": [pack(x) for x in live[:limit]],
     }
+
+
+normalize_incident = normalize_from_enriched
+fuse_incidents = fuse_incident_batch

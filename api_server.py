@@ -62,6 +62,7 @@ cache = {}
 CACHE_TTL = {
     "merged_news": 60,
     "crime_articles": 30,
+    "crime_articles_v3": 30,
     "dcjs_trends": 3600,
     "ai_summaries": 120,
     "patterns": 60,
@@ -564,6 +565,38 @@ RSS_FEEDS_OFFICIAL = {
     },
 }
 
+
+def build_operational_rss_feeds() -> dict[str, dict]:
+    """
+    Optional 511NY / NY-Alert RSS layers. Set env to enable:
+      NY511_CAPITAL_DISTRICT_RSS — regional traffic/incident RSS URL
+      NY_ALERT_RSS_URL — state or campus alert RSS URL
+    """
+    out: dict[str, dict] = {}
+    u511 = os.getenv("NY511_CAPITAL_DISTRICT_RSS", "").strip()
+    if u511:
+        out["ny511_capital_district"] = {
+            "url": u511,
+            "label": "511NY",
+            "filter": None,
+            "reliability": 0.99,
+            "priority": 5,
+            "tag_511": True,
+        }
+    ny_alert = os.getenv("NY_ALERT_RSS_URL", "").strip()
+    if ny_alert:
+        out["ny_alert_rss"] = {
+            "url": ny_alert,
+            "label": "NY-Alert",
+            "filter": None,
+            "reliability": 0.98,
+            "priority": 5,
+            "tag_ny_alert": True,
+        }
+    return out
+
+
+CRIME_ARTICLES_CACHE_KEY = "crime_articles_v3"
 
 DCJS_URL = (
     "https://data.ny.gov/resource/ca8h-8gjq.json"
@@ -1440,6 +1473,15 @@ def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
         if fp in blob:
             return False, f"false_positive:{fp[:40]}"
 
+    if article.get("_511_incident") or article.get("_ny_alert"):
+        anch = _strong_albany_county_anchor(blob)
+        if anch:
+            return True, f"operational_{anch}"
+        for phrase in sorted(ALBANY_TIER1, key=len, reverse=True):
+            if _strict_phrase_in_blob(phrase, blob):
+                return True, "operational_tier1_locality"
+        return False, "operational_no_albany_county_anchor"
+
     src_low = (article.get("source", "") or "").lower()
     for nls in NON_LOCAL_SOURCES:
         if nls in src_low:
@@ -1550,6 +1592,9 @@ def live_has_useful_summary(article: dict) -> bool:
     if len(combined) < 12:
         return False
 
+    if article.get("_511_incident") or article.get("_ny_alert"):
+        return len(combined) >= 16
+
     if re.search(r"\d{2,5}\s+[a-z]", low):
         return True
     if _scanner_blob_matches_critical_live(low):
@@ -1635,6 +1680,9 @@ def is_real_local_incident(article: dict) -> bool:
 
     if article.get("_nixle_item"):
         return len(combined.strip()) > 10
+
+    if article.get("_511_incident") or article.get("_ny_alert"):
+        return len(combined.strip()) > 12
 
     if article.get("_scanner_call"):
         return _scanner_call_has_actionable_incident(article)
@@ -1784,6 +1832,40 @@ def should_include_in_live_feed(article: dict, *, log_rejects: bool = True) -> t
     age_ok, _stale = live_feed_max_age_ok(article)
     if not age_ok:
         return _rej("rejected_stale")
+
+    if not live_has_useful_summary(article):
+        return _rej("rejected_weak_summary")
+
+    article.pop("live_reject_reason", None)
+    return True, ""
+
+
+def strict_incident_pipeline_ok(article: dict, *, log_rejects: bool = False) -> tuple[bool, str]:
+    """
+    Albany + substance gates for the unified incident pipeline (three-lane model).
+    Unlike should_include_in_live_feed, does not cap RSS age — incident_intelligence routes by window.
+    """
+    def _rej(code: str) -> tuple[bool, str]:
+        article["live_reject_reason"] = code
+        if log_rejects:
+            _log_live_feed_gate(code, article)
+        return False, code
+
+    ok_loc, loc_reason = evaluate_strict_albany_county(article)
+    if not ok_loc:
+        return _rej(_map_strict_fail_to_live_code(loc_reason))
+
+    if _nysp_missing_local_evidence(article):
+        return _rej("rejected_non_local")
+
+    if is_scanner_noise(article):
+        return _rej("rejected_scanner_noise")
+
+    if _national_federal_source_hit(article) and not is_real_local_incident(article):
+        return _rej("rejected_federal_generic")
+
+    if not is_real_local_incident(article):
+        return _rej("rejected_not_incident")
 
     if not live_has_useful_summary(article):
         return _rej("rejected_weak_summary")
@@ -2450,6 +2532,12 @@ async def fetch_all_feeds():
                     # Official sources: force our label so badge shows in the UI
                     if cfg.get("force_label") and cfg.get("label"):
                         a["source"] = cfg["label"]
+                if cfg.get("tag_511"):
+                    for a in parsed:
+                        a["_511_incident"] = True
+                if cfg.get("tag_ny_alert"):
+                    for a in parsed:
+                        a["_ny_alert"] = True
 
                 # Apply location filter
                 filter_mode = cfg.get("filter")
@@ -2475,6 +2563,7 @@ async def fetch_all_feeds():
         **RSS_FEEDS_GNEWS,
         **RSS_FEEDS_OFFICIAL,
         **build_directory_rss_feeds(),
+        **build_operational_rss_feeds(),
     }
     tasks = [fetch_one(key, cfg) for key, cfg in all_feeds.items()]
     results = await asyncio.gather(*tasks)
@@ -2788,18 +2877,26 @@ async def get_news():
     return {"status": "ok", "source": "live", "count": len(deduped), "source_count": len(sources), "articles": deduped}
 
 
+def _operational_signal_article(a: dict) -> bool:
+    return bool(a.get("_511_incident") or a.get("_ny_alert"))
+
+
 @app.get("/api/crimes")
 async def get_crimes():
-    cached = get_cached("crime_articles")
+    cached = get_cached(CRIME_ARTICLES_CACHE_KEY)
     if cached:
-        return {"status": "ok", "source": "cache", "data": cached, "total": len(cached)}
+        return cached
 
     all_articles = await fetch_all_feeds()
-    crime_articles = [
-        a
-        for a in all_articles
-        if is_crime_related(a) and is_albany_related(a) and _include_scanner_item_in_crime_feed(a)
-    ]
+
+    def _in_crime_pipeline(a: dict) -> bool:
+        if not is_albany_related(a):
+            return False
+        if not _include_scanner_item_in_crime_feed(a):
+            return False
+        return is_crime_related(a) or _operational_signal_article(a)
+
+    crime_articles = [a for a in all_articles if _in_crime_pipeline(a)]
 
     enriched: list[dict] = []
     for a in crime_articles:
@@ -2813,8 +2910,21 @@ async def get_crimes():
         geo["age_hours"] = round(age_h, 1) if age_h is not None else None
         geo["age_minutes"] = round(age_m, 1) if age_m is not None else None
         geo["_stats_eligible"] = not is_scanner_noise(geo) and is_real_local_incident(geo)
+        geo["_federal_national_hit"] = _national_federal_source_hit(geo)
+        src_l = (a.get("source") or "").lower()
+        lk = (a.get("link") or "").lower()
+        blob_m = f"{a.get('title', '')} {a.get('description', '')}".lower()
+        if "city of albany" in src_l or "albanyny.gov" in lk:
+            if any(
+                k in blob_m
+                for k in (
+                    "closure", "road closed", "detour", "emergency", "alert",
+                    "missing", "evacuat", "shelter",
+                )
+            ):
+                geo["_municipal_emergency"] = True
         gcopy = {**geo}
-        ok_strict, _ = should_include_in_live_feed(gcopy, log_rejects=False)
+        ok_strict, _ = strict_incident_pipeline_ok(gcopy, log_rejects=False)
         geo["_strict_live_ok"] = ok_strict
         enriched.append(geo)
 
@@ -2822,31 +2932,22 @@ async def get_crimes():
     fused = intel.fuse_incident_batch(normalized)
     scored = intel.apply_scores_and_eligibility(fused)
 
-    live_scored = [x for x in scored if x.get("is_live_eligible")]
-    news_scored = [x for x in scored if not x.get("is_live_eligible")]
-    live_scored.sort(key=intel.live_sort_key, reverse=True)
-    news_scored.sort(key=lambda x: -intel.news_sort_ts(x))
+    now_scored = [x for x in scored if x.get("feed_lane") == intel.FEED_LANE_NOW]
+    conf_scored = [x for x in scored if x.get("feed_lane") == intel.FEED_LANE_CONFIRMED]
+    nctx_scored = [x for x in scored if x.get("feed_lane") == intel.FEED_LANE_NEWS_CONTEXT]
 
-    live_rows = [intel.incident_to_api_row(x) for x in live_scored]
-    live_rows = dedupe_redundant_live_scanner_cards(live_rows)
-    _FRAME_RANK = {"live_now": 4, "developing": 3, "recent": 2, "stale": 1, "reject": 0}
-    live_rows.sort(
-        key=lambda r: (
-            _FRAME_RANK.get((r.get("incident") or {}).get("live_frame"), 0),
-            float(r.get("public_safety_score") or 0),
-            -float(r.get("age_minutes") or 99999),
-            float(r.get("confidence") or 0),
-            float(r.get("source_priority") or 0),
-        ),
-        reverse=True,
-    )
+    now_scored.sort(key=intel.live_sort_key, reverse=True)
+    conf_scored.sort(key=intel.live_sort_key, reverse=True)
+    nctx_scored.sort(key=lambda x: -intel.news_sort_ts(x))
 
-    news_rows = [intel.incident_to_api_row(x) for x in news_scored]
-    for row in live_rows + news_rows:
+    now_rows = [intel.incident_to_api_row(x) for x in now_scored]
+    now_rows = dedupe_redundant_live_scanner_cards(now_rows)
+    conf_rows = [intel.incident_to_api_row(x) for x in conf_scored]
+    nctx_rows = [intel.incident_to_api_row(x) for x in nctx_scored]
+
+    geocoded = now_rows + conf_rows + nctx_rows
+    for row in geocoded:
         row["is_active_incident"] = compute_is_active_incident(row)
-        row["live_score"] = round(float(row.get("public_safety_score") or row.get("live_score") or 0), 2)
-
-    geocoded = live_rows + news_rows
 
     global _LAST_INCIDENT_PIPELINE
     diag = intel.build_pipeline_diagnostics(enriched, normalized, fused, scored)
@@ -2859,8 +2960,24 @@ async def get_crimes():
         "debug_lists": intel.debug_top_lists(scored, 50),
     }
 
-    set_cached("crime_articles", geocoded)
-    return {"status": "ok", "source": "live", "data": geocoded, "total": len(geocoded)}
+    payload = {
+        "status": "ok",
+        "source": "live",
+        "data": geocoded,
+        "total": len(geocoded),
+        "feeds": {
+            "now": now_rows,
+            "confirmed": conf_rows,
+            "news_context": nctx_rows,
+        },
+        "feeds_total": {
+            "now": len(now_rows),
+            "confirmed": len(conf_rows),
+            "news_context": len(nctx_rows),
+        },
+    }
+    set_cached(CRIME_ARTICLES_CACHE_KEY, payload)
+    return payload
 
 
 @app.get("/api/incidents/operational-summary")

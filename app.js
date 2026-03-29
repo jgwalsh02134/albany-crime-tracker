@@ -1,6 +1,6 @@
-/* Albany County Crime Tracker v7 — app.js
+/* Albany County Crime Tracker v8 — app.js
    Mobile-first, feed-first, card-based, touch-optimized.
-   Views: Feed (Live/News tabs), Map, Scanner, AI Chat, More */
+   Views: Feed (Now / Confirmed / Context lanes), Map, Scanner, AI Chat, More */
 
 (function () {
   "use strict";
@@ -30,7 +30,7 @@
   var mapReady = false;
   var chatHistory = [];
   var activeView = "feed";
-  var activeFeedTab = "live";       // "live" or "news"
+  var activeFeedTab = "now";       // "now" | "confirmed" | "context"
   var scannerAudio = null;
   var mainAudio    = null;
   var mainProgressTimer = null;
@@ -351,7 +351,7 @@
     setInterval(fetchSocialIntel, 900000);   // social intel every 15 min
   });
 
-  // ── FEED SUB-TABS (Live / News) ────────────────────────────────
+  // ── FEED SUB-TABS (Now / Confirmed / Context) ─────────────────
   function initFeedTabs() {
     var tabs = document.querySelectorAll(".feed-subtab");
     tabs.forEach(function (tab) {
@@ -365,8 +365,7 @@
           panel.classList.toggle("active", panel.id === "feedTab" + capitalize(target));
         });
 
-        // Lazy-load monthly summary when News tab first opened
-        if (target === "news") {
+        if (target === "context") {
           var card = document.getElementById("monthlySummaryCard");
           if (card && card.querySelector(".skeleton-card")) {
             fetchMonthlySummary();
@@ -779,20 +778,36 @@
         allIncidentData = r.data;
         pendingMarkerData = r.data;
         if (mapReady) plotMarkers(r.data);
-        renderLiveFeed(r.data.filter(function (x) { return x.feed_tab === "live"; }));
-        renderNewsFeed(r.data.filter(function (x) { return x.feed_tab === "news"; }));
+        var feeds = r.feeds || {};
+        var nowItems =
+          Array.isArray(feeds.now) ? feeds.now : r.data.filter(function (x) {
+            return x.feed_tab === "now" || x.feed_tab === "live";
+          });
+        var confItems =
+          Array.isArray(feeds.confirmed) ? feeds.confirmed : r.data.filter(function (x) {
+            return x.feed_tab === "confirmed";
+          });
+        var ctxItems =
+          Array.isArray(feeds.news_context) ? feeds.news_context : r.data.filter(function (x) {
+            return x.feed_tab === "news_context" || x.feed_tab === "news";
+          });
+        renderNowFeed(nowItems);
+        renderConfirmedFeed(confItems);
+        renderContextFeed(ctxItems);
         markTopbarLiveIfStillConnecting();
       })
       .catch(function (err) {
         console.error("Incidents fetch error:", err);
         if (err && err.name === "AbortError") {
           markTopbarLiveIfStillConnecting();
-          var live = document.getElementById("incidentListLive");
-          var news = document.getElementById("incidentListNews");
+          var nowL = document.getElementById("incidentListNow");
+          var confL = document.getElementById("incidentListConfirmed");
+          var ctxL = document.getElementById("incidentListContext");
           var msg =
             '<div class="empty-state">Could not load incidents in time. Ensure the API is running on port 8000 and refresh.</div>';
-          if (live && !live.querySelector(".feed-item")) live.innerHTML = msg;
-          if (news && !news.querySelector(".feed-item")) news.innerHTML = msg;
+          if (nowL && !nowL.querySelector(".feed-item")) nowL.innerHTML = msg;
+          if (confL && !confL.querySelector(".feed-item")) confL.innerHTML = msg;
+          if (ctxL && !ctxL.querySelector(".feed-item")) ctxL.innerHTML = msg;
         }
       });
   }
@@ -909,7 +924,7 @@
       var _ms = new Date(item.pubDate).getTime();
       if (!isNaN(_ms)) ageHForStale = (Date.now() - _ms) / 3600000;
     }
-    if (activeFeedTab === "live" && ageHForStale !== null && ageHForStale > 6) {
+    if (activeFeedTab === "now" && ageHForStale !== null && ageHForStale > 1.5) {
       cls += " feed-item--stale";
     }
     var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer">';
@@ -928,9 +943,25 @@
     if (inc.why_it_matters && (!item.title || inc.why_it_matters.slice(0, 40) !== (item.title || "").slice(0, 40))) {
       html += '<div class="feed-why">' + esc(inc.why_it_matters.slice(0, 220)) + "</div>";
     }
+    if (inc.feed_lane === "now" && inc.now_channel) {
+      var ch = String(inc.now_channel).replace(/_/g, " ");
+      html +=
+        '<div class="feed-now-channel"><span class="now-channel-pill">' +
+        esc(ch) +
+        "</span>";
+      if (typeof inc.score_source_confidence === "number") {
+        html +=
+          ' <span class="now-score-hint">rank · locality ' +
+          (inc.score_locality != null ? Math.round(inc.score_locality) : "—") +
+          " · impact " +
+          (inc.score_impact != null ? Math.round(inc.score_impact) : "—") +
+          "</span>";
+      }
+      html += "</div>";
+    }
     if (typeof item.confidence === "number" && !isNaN(item.confidence)) {
       var pct = item.confidence <= 1 ? Math.round(item.confidence * 100) : Math.round(item.confidence);
-      html += '<div class="feed-confidence">Confidence ' + pct + "%</div>";
+      html += '<div class="feed-confidence">Locality confidence ' + pct + "%</div>";
     }
     html += '<div class="feed-meta">';
     if (hood) html += '<span class="feed-hood">' + esc(capitalize(hood)) + '</span>';
@@ -955,7 +986,7 @@
       var mFresh = item && typeof item.age_minutes === "number" && !isNaN(item.age_minutes) ? item.age_minutes : null;
       var ageCls = "feed-age";
       if (mFresh !== null && mFresh <= 30) ageCls += " feed-age--fresh";
-      if (activeFeedTab === "live" && ageHForStale !== null && ageHForStale > 6) ageCls += " feed-age--stale";
+      if (activeFeedTab === "now" && ageHForStale !== null && ageHForStale > 1.5) ageCls += " feed-age--stale";
       html += '<span class="' + ageCls + '">' + esc(ta) + "</span>";
     }
     html += '</div></div></a>';
@@ -971,17 +1002,17 @@
     return null;
   }
 
-  /** True when no Live row is ≤6h old (empty list counts). */
-  function liveHasNoIncidentLast6Hours(liveItems) {
-    if (!liveItems || liveItems.length === 0) return true;
-    return liveItems.every(function (x) {
+  /** True when no Now-lane row is ≤90m old (empty list counts). */
+  function nowLaneHasNoFreshItems(nowItems) {
+    if (!nowItems || nowItems.length === 0) return true;
+    return nowItems.every(function (x) {
       var h = itemAgeHours(x);
-      return h === null || h > 6;
+      return h === null || h > 1.5;
     });
   }
 
-  function renderLiveFeed(liveItems) {
-    var list = document.getElementById("incidentListLive");
+  function renderNowFeed(nowItems) {
+    var list = document.getElementById("incidentListNow");
     if (!list) return;
 
     var html = "";
@@ -1018,38 +1049,50 @@
       });
     }
 
-    if (liveHasNoIncidentLast6Hours(liveItems)) {
+    if (nowLaneHasNoFreshItems(nowItems)) {
       html +=
         '<div class="feed-live-stale-note" role="status">' +
         esc(
-          "No confirmed live incidents in the last 6 hours. Showing latest available public-safety activity."
+          "No items in the last ~90 minutes on the Now lane. Cards below may be older operational backlog until the next refresh."
         ) +
         "</div>";
     }
 
-    if (!liveItems || liveItems.length === 0) {
+    if (!nowItems || nowItems.length === 0) {
       if (scannerIntelItems.length === 0) {
-        html += '<div class="empty-state">No live incidents in the current window (scanner/Nixle/realtime alerts ≤6h, or ≤3h news, or high-severity 6–12h).<br>Older items are on the News tab.</div>';
+        html +=
+          '<div class="empty-state">Nothing on the Now lane right now (scanner, 511NY, NY-Alert, Nixle/municipal alerts within ~90 minutes).<br>Check <strong>Confirmed</strong> for the last 48 hours.</div>';
       }
     } else {
-      /* Preserve backend order — /api/crimes sorts Live (tier: scanner/alerts/arrests, then freshness). */
-      liveItems.forEach(function (item) { html += buildIncidentCard(item); });
+      nowItems.forEach(function (item) { html += buildIncidentCard(item); });
     }
 
     list.innerHTML = html;
   }
 
-  function renderNewsFeed(newsItems) {
-    var list = document.getElementById("incidentListNews");
+  function renderConfirmedFeed(confirmedItems) {
+    var list = document.getElementById("incidentListConfirmed");
+    if (!list) return;
+    if (!confirmedItems || confirmedItems.length === 0) {
+      list.innerHTML =
+        '<div class="empty-state">No confirmed incidents in the last 48 hours (fused scanner + official + substantive local media).</div>';
+      return;
+    }
+    var html = "";
+    confirmedItems.forEach(function (item) { html += buildIncidentCard(item); });
+    list.innerHTML = html;
+  }
+
+  function renderContextFeed(contextItems) {
+    var list = document.getElementById("incidentListContext");
     if (!list) return;
 
-    if (!newsItems || newsItems.length === 0) {
-      list.innerHTML = '<div class="empty-state">No news reports in the last 5 days.</div>';
+    if (!contextItems || contextItems.length === 0) {
+      list.innerHTML = '<div class="empty-state">No follow-ups or older reports in the 48h–7d window.</div>';
       return;
     }
 
-    // Newest-first within the News tab too
-    var sorted = newsItems.slice().sort(function (a, b) {
+    var sorted = contextItems.slice().sort(function (a, b) {
       var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
       var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
       return tb - ta;
@@ -1059,11 +1102,11 @@
     list.innerHTML = html;
   }
 
-  // Legacy fallback — kept for compatibility with any other callers
   function renderIncidentList(data) {
     if (!data) return;
-    renderLiveFeed(data.filter(function (x) { return x.feed_tab === "live"; }));
-    renderNewsFeed(data.filter(function (x) { return x.feed_tab === "news"; }));
+    renderNowFeed(data.filter(function (x) { return x.feed_tab === "now" || x.feed_tab === "live"; }));
+    renderConfirmedFeed(data.filter(function (x) { return x.feed_tab === "confirmed"; }));
+    renderContextFeed(data.filter(function (x) { return x.feed_tab === "news_context" || x.feed_tab === "news"; }));
   }
 
   // ── DAILY BRIEFING ────────────────────────────────────────────
@@ -1855,7 +1898,7 @@
     renderScannerCalls(calls);
     // Live feed: only re-render when scanner intel actually changed (avoids 45s full list flicker)
     if (allIncidentData.length > 0 && intelFpBefore !== intelFpAfter) {
-      renderLiveFeed(allIncidentData.filter(function (x) { return x.feed_tab === "live"; }));
+      renderNowFeed(allIncidentData.filter(function (x) { return x.feed_tab === "now" || x.feed_tab === "live"; }));
     }
   }
 

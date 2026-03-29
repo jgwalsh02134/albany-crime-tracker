@@ -103,27 +103,35 @@
         </div>
       </div>
 
-      <!-- Live / News sub-tabs -->
+      <!-- Now / Confirmed / Context (three-lane incident model) -->
       <div class="feed-subtabs" id="feedSubtabs">
-        <button class="feed-subtab active" data-feedtab="live">
+        <button class="feed-subtab active" data-feedtab="now">
           <span class="live-pulse-sm"></span>
-          Live
+          Now
         </button>
-        <button class="feed-subtab" data-feedtab="news">News</button>
+        <button class="feed-subtab" data-feedtab="confirmed">Confirmed</button>
+        <button class="feed-subtab" data-feedtab="context">Context</button>
       </div>
 
-      <!-- LIVE tab content -->
-      <div class="feed-tab-content active" id="feedTabLive">
+      <!-- NOW (0–90m operational backbone) -->
+      <div class="feed-tab-content active" id="feedTabNow">
         <div id="promotedSocialPosts"></div>
-        <div class="feed-list" id="incidentListLive">
+        <div class="feed-list" id="incidentListNow">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
       </div>
 
-      <!-- NEWS tab content -->
-      <div class="feed-tab-content" id="feedTabNews">
+      <!-- CONFIRMED (0–48h fused / official / substantive media) -->
+      <div class="feed-tab-content" id="feedTabConfirmed">
+        <div class="feed-list" id="incidentListConfirmed">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        </div>
+      </div>
+
+      <!-- CONTEXT (briefings, social, 48h–7d follow-ups) -->
+      <div class="feed-tab-content" id="feedTabContext">
         <div class="news-ai-card" id="dailySummaryCard">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
@@ -138,8 +146,8 @@
         <div id="socialIntelList">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
-        <div class="news-section-divider">Recent Reports</div>
-        <div class="feed-list" id="incidentListNews">
+        <div class="news-section-divider">Follow-ups &amp; older reports (48h–7d)</div>
+        <div class="feed-list" id="incidentListContext">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
