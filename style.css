@@ -587,6 +587,19 @@ a:hover { text-decoration: underline; }
   margin-top: 3px; font-size: 11px; color: var(--text-3);
 }
 .feed-hood { font-weight: 600; color: var(--text-2); }
+.feed-age { font-weight: 600; color: var(--text-2); }
+.feed-age--fresh {
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+.feed-item.feed-item--stale {
+  opacity: 0.88;
+}
+.feed-age--stale {
+  color: var(--text-3);
+  font-weight: 500;
+  font-style: italic;
+}
 
 /* Multiple sources for same story */
 .multi-source { color: var(--text-3); }

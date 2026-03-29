@@ -57,15 +57,17 @@ ASCII_PUNCT_TRANSLATION = str.maketrans({
 cache = {}
 CACHE_TTL = {
     "merged_news": 60,
-    "crime_articles": 60,
+    "crime_articles": 30,
     "dcjs_trends": 3600,
-    "ai_summaries": 600,
-    "patterns": 300,
+    "ai_summaries": 120,
+    "patterns": 60,
     "monthly_summary": 1800,   # 30 min
     "daily_summary": 600,      # 10 min — today's briefing
     "social_intel": 900,       # 15 min — X/Twitter monitoring
-    "grok_official_x_posts": 180,  # 3 min — official X posts refresh often for Live
+    "grok_official_x_posts": 90,   # 1.5 min — Grok official X layer
+    "nitter_official_x": 180,      # 3 min — Nitter RSS mirrors for real /status/ permalinks
     "scanner_talkgroups": 3600,   # 1 h — TG metadata from directory
+    "scanner_calls": 12,          # OpenMHz poll — keep tight for Scanner tab + intel strip
 }
 
 # =============================================================================
@@ -193,6 +195,22 @@ LOCAL_DOMAINS = frozenset([
     "dailyvoice.com", "wrgb.com", "wnyt13.com",
 ])
 
+# If the article URL is from a Capital District outlet but the headline omits "Albany",
+# still accept when the story clearly looks like crime/public-safety (reduces false drops on Sat. night wire copy).
+_LOCAL_OUTLET_CRIME_PASS_TERMS = frozenset([
+    "shooting", "shots fired", "shot ", "stabbing", "stabbed",
+    "homicide", "murder", "manslaughter",
+    "fatal", "deadly", "dies after", "killed",
+    "crash", "collision", "rollover", "mva", "wrong-way",
+    "arrest", "arrested", "charged", "charged with", "in custody",
+    "robbery", "burglary", "assault", "kidnapping",
+    "pursuit", "standoff", "barricade", "hostage", "swat",
+    "missing", "amber alert", "silver alert",
+    "fire", "blaze", "structure fire", "working fire",
+    "overdose", "investigating a", "police investigate", "police investigating",
+    "sheriff", "state police", "trooper", "nysp",
+])
+
 # =============================================================================
 # SOURCE RELIABILITY TIERS
 # 1.0 = Official government/law enforcement
@@ -262,14 +280,14 @@ RSS_FEEDS_LOCAL = {
     # (kept in LOCAL block because these are premium/prioritized sources)
     # Query includes (albany OR county name) to pre-filter for Albany County content
     "timesunion_gnews_crime": {
-        "url": "https://news.google.com/rss/search?q=site:timesunion.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+watervliet)+(crime+OR+arrest+OR+shooting+OR+police+OR+stabbing)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:timesunion.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+watervliet)+(crime+OR+arrest+OR+shooting+OR+police+OR+stabbing)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Times Union",
         "filter": "albany",
         "reliability": 0.92,
         "priority": 3,
     },
     "timesunion_gnews_local": {
-        "url": "https://news.google.com/rss/search?q=site:timesunion.com+(\"albany+county\"+OR+\"city+of+albany\"+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes+OR+watervliet+OR+latham+OR+loudonville+OR+delmar)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:timesunion.com+(\"albany+county\"+OR+\"city+of+albany\"+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes+OR+watervliet+OR+latham+OR+loudonville+OR+delmar)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Times Union",
         "filter": "albany",
         "reliability": 0.92,
@@ -284,14 +302,14 @@ RSS_FEEDS_LOCAL = {
         "priority": 3,
     },
     "dailygazette_gnews": {
-        "url": "https://news.google.com/rss/search?q=site:dailygazette.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+watervliet+OR+bethlehem+OR+latham)+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:dailygazette.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+watervliet+OR+bethlehem+OR+latham)+(crime+OR+arrest+OR+police+OR+shooting)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Daily Gazette",
         "filter": "albany",
         "reliability": 0.90,
         "priority": 3,
     },
     "spotlight_gnews": {
-        "url": "https://news.google.com/rss/search?q=site:spotlightnews.com+(albany+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes)+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:spotlightnews.com+(albany+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes)+(crime+OR+arrest+OR+police+OR+shooting)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "The Spotlight",
         "filter": "albany",
         "reliability": 0.90,
@@ -318,21 +336,21 @@ RSS_FEEDS_LOCAL = {
 RSS_FEEDS_GNEWS = {
     # ── Broad county-level searches ───────────────────────────────────────────
     "gnews_albany_county_crime": {
-        "url": "https://news.google.com/rss/search?q=%22albany+county%22+%22new+york%22+crime+OR+arrest+OR+police+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22albany+county%22+%22new+york%22+crime+OR+arrest+OR+police+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": None,
         "filter": "strict",
         "reliability": 0.75,
         "priority": 1,
     },
     "gnews_albany_ny_police": {
-        "url": "https://news.google.com/rss/search?q=%22albany+ny%22+police+OR+arrest+OR+shooting+OR+crime+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22albany+ny%22+police+OR+arrest+OR+shooting+OR+crime+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": None,
         "filter": "strict",
         "reliability": 0.72,
         "priority": 1,
     },
     "gnews_albany_recent": {
-        "url": "https://news.google.com/rss/search?q=%22albany%2C+ny%22+arrest+OR+shooting+OR+crime+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22albany%2C+ny%22+arrest+OR+shooting+OR+crime+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": None,
         "filter": "strict",
         "reliability": 0.72,
@@ -340,7 +358,7 @@ RSS_FEEDS_GNEWS = {
     },
     # ── Official state police ─────────────────────────────────────────────────
     "gnews_nys_police": {
-        "url": "https://news.google.com/rss/search?q=site:troopers.ny.gov+albany+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:troopers.ny.gov+albany+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "NY State Police",
         "filter": None,   # troopers.ny.gov is always legitimate
         "reliability": 1.0,
@@ -348,56 +366,56 @@ RSS_FEEDS_GNEWS = {
     },
     # ── Hyper-local per-town searches ─────────────────────────────────────────
     "gnews_colonie": {
-        "url": "https://news.google.com/rss/search?q=Colonie+NY+(crime+OR+arrest+OR+police+OR+shooting+OR+burglary)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Colonie+NY+(crime+OR+arrest+OR+police+OR+shooting+OR+burglary)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Colonie",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_bethlehem": {
-        "url": "https://news.google.com/rss/search?q=Bethlehem+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Bethlehem+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Bethlehem / Delmar",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_guilderland": {
-        "url": "https://news.google.com/rss/search?q=Guilderland+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Guilderland+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Guilderland / Altamont",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_cohoes": {
-        "url": "https://news.google.com/rss/search?q=Cohoes+NY+(crime+OR+arrest+OR+police)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Cohoes+NY+(crime+OR+arrest+OR+police)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Cohoes",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_watervliet": {
-        "url": "https://news.google.com/rss/search?q=Watervliet+NY+(crime+OR+arrest+OR+police)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=Watervliet+NY+(crime+OR+arrest+OR+police)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Watervliet",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_latham_loudonville": {
-        "url": "https://news.google.com/rss/search?q=(Latham+OR+Loudonville)+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=(Latham+OR+Loudonville)+NY+(crime+OR+arrest+OR+police+OR+shooting)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Latham / Loudonville",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_newscotland": {
-        "url": "https://news.google.com/rss/search?q=%22New+Scotland%22+NY+(crime+OR+arrest+OR+police)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22New+Scotland%22+NY+(crime+OR+arrest+OR+police)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "New Scotland / Slingerlands",
         "filter": "strict",
         "reliability": 0.78,
         "priority": 2,
     },
     "gnews_coeymans_ravena": {
-        "url": "https://news.google.com/rss/search?q=(Coeymans+OR+Ravena)+NY+(crime+OR+arrest+OR+police)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=(Coeymans+OR+Ravena)+NY+(crime+OR+arrest+OR+police)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Coeymans / Ravena",
         "filter": "strict",
         "reliability": 0.78,
@@ -405,11 +423,24 @@ RSS_FEEDS_GNEWS = {
     },
     # ── Legacy broad-suburb search kept for overlap coverage ──────────────────
     "gnews_albany_suburbs": {
-        "url": "https://news.google.com/rss/search?q=(colonie+OR+bethlehem+OR+guilderland+OR+cohoes+OR+watervliet)+%22new+york%22+(crime+OR+police+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=(colonie+OR+bethlehem+OR+guilderland+OR+cohoes+OR+watervliet)+%22new+york%22+(crime+OR+police+OR+arrest)+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": None,
         "filter": "strict",
         "reliability": 0.75,
         "priority": 1,
+    },
+    # Dispatch-style wire queries (faster than 3d aggregation; still Albany-filtered)
+    "gnews_capital_region_breaking": {
+        "url": (
+            "https://news.google.com/rss/search?q="
+            "(%22Albany+County%22+OR+%22City+of+Albany%22+OR+Colonie+OR+Latham)"
+            "+(crash+OR+fire+OR+shooting+OR+stabbing+OR+pursuit+OR+closure+OR+missing+OR+alert)"
+            "+when:1d&hl=en-US&gl=US&ceid=US:en"
+        ),
+        "label": "Capital Region breaking",
+        "filter": "strict",
+        "reliability": 0.72,
+        "priority": 2,
     },
 }
 
@@ -426,7 +457,7 @@ RSS_FEEDS_OFFICIAL = {
     # ── Albany PD (@albanypolice) ─────────────────────────────────────────────
     # Google News is reliable backbone; force_label=True tags all results "Official"
     "official_albany_pd": {
-        "url": "https://news.google.com/rss/search?q=%22Albany+Police+Department%22+OR+%22Albany+Police%22+arrest+OR+crime+OR+incident+OR+shooting+OR+stabbing+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22Albany+Police+Department%22+OR+%22Albany+Police%22+arrest+OR+crime+OR+incident+OR+shooting+OR+stabbing+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @albanypolice",
         "filter": "albany",
         "force_label": True,
@@ -435,7 +466,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # ── Albany County Sheriff (@ACSOTWEET) ────────────────────────────────────
     "official_acso": {
-        "url": "https://news.google.com/rss/search?q=%22Albany+County+Sheriff%22+arrest+OR+crime+OR+incident+OR+investigation+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22Albany+County+Sheriff%22+arrest+OR+crime+OR+incident+OR+investigation+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @ACSOTWEET",
         "filter": "albany",
         "force_label": True,
@@ -444,7 +475,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # ── Colonie Police (@colonie_police) ─────────────────────────────────────
     "official_colonie_pd": {
-        "url": "https://news.google.com/rss/search?q=%22Colonie+Police%22+arrest+OR+crime+OR+incident+OR+shooting+OR+burglary+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22Colonie+Police%22+arrest+OR+crime+OR+incident+OR+shooting+OR+burglary+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @colonie_police",
         "filter": "albany",
         "force_label": True,
@@ -453,7 +484,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # ── Bethlehem PD (@PdBethlehem) ──────────────────────────────────────────
     "official_bethlehem_pd": {
-        "url": "https://news.google.com/rss/search?q=%22Bethlehem+Police%22+%22New+York%22+arrest+OR+crime+OR+incident+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22Bethlehem+Police%22+%22New+York%22+arrest+OR+crime+OR+incident+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @PdBethlehem",
         "filter": "albany",
         "force_label": True,
@@ -462,7 +493,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # ── NY State Police Troop G (@nyspolice) ──────────────────────────────────
     "official_nysp_troop_g": {
-        "url": "https://news.google.com/rss/search?q=%22State+Police%22+%22Troop+G%22+OR+(%22State+Police%22+%22Albany%22)+arrest+OR+shooting+OR+crime+OR+investigation+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=%22State+Police%22+%22Troop+G%22+OR+(%22State+Police%22+%22Albany%22)+arrest+OR+shooting+OR+crime+OR+investigation+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "Official @nyspolice",
         "filter": "albany",
         "force_label": True,
@@ -471,7 +502,7 @@ RSS_FEEDS_OFFICIAL = {
     },
     # NYSP press releases via Google News site: search
     "official_nysp_site": {
-        "url": "https://news.google.com/rss/search?q=site:troopers.ny.gov+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "url": "https://news.google.com/rss/search?q=site:troopers.ny.gov+when:1d&hl=en-US&gl=US&ceid=US:en",
         "label": "NYSP Blotter",
         "filter": None,              # troopers.ny.gov is always NYSP — no filter needed
         "force_label": True,
@@ -507,6 +538,25 @@ RSS_FEEDS_OFFICIAL = {
         "priority": 4,
         "timeout": 8,
     },
+    # Additional county municipalities (Nixle is dispatch-oriented vs. article RSS)
+    "nixle_colonie": {
+        "url": "https://www.nixle.com/rss/?city=Colonie&state=NY",
+        "label": "Nixle Alert",
+        "filter": None,
+        "force_label": True,
+        "reliability": 1.0,
+        "priority": 4,
+        "timeout": 8,
+    },
+    "nixle_guilderland": {
+        "url": "https://www.nixle.com/rss/?city=Guilderland&state=NY",
+        "label": "Nixle Alert",
+        "filter": None,
+        "force_label": True,
+        "reliability": 1.0,
+        "priority": 4,
+        "timeout": 8,
+    },
 }
 
 
@@ -528,6 +578,8 @@ CRIME_KEYWORDS = [
     "vandalism", "trespass", "kidnapping", "fraud", "larceny",
     "crash", "fatal", "manslaughter", "gang", "narcotics",
     "trooper", "state police", "pursuit", "standoff", "fugitive",
+    "mva", "rollover", "closure", "detour", "road closed", "lane closed",
+    "mutual aid", "structure fire", "working fire",
     "warrant", "bail", "parole", "probation",
 ]
 
@@ -576,28 +628,21 @@ URGENT_KEYWORDS = [
     "booked", "booked at", "booking", "arraigned",
 ]
 
-# Official police / emergency sources → always live when recent
-LIVE_SOURCES = frozenset([
-    "ny state police", "new york state police", "city of albany",
-    "albany police department", "albany county sheriff", "albany pd",
-    "colonie police", "cohoes police", "watervliet police",
-    # Official X/Twitter + blotter sources
-    "official @albanypolice", "official @acsotweet", "official @colonie_police",
-    "official @pdbethlehem", "official @nyspolice",
-    "nysp blotter", "nixle alert", "daily gazette blotter",
-    "nixle", "blotter ·", "scanner ·", "official x",
-])
-
-# Live tab window (News holds older). 12h-only emptied Live when RSS pubDates lag; 24h stays fresh vs old 72h.
+# Live tab: max parsed age (hours) for pipeline; classify_feed_tab uses 12h cutoff separately.
+LIVE_MAX_AGE_HOURS = 24.0
+# Legacy name: max age (hours) for including OpenMHz calls in the merge pipeline (critical may span up to this).
 LIVE_CUTOFF_HOURS = 24
-LIVE_PRIORITY_FRESH_HOURS = 12  # Items this new sort above older items in the same source tier
+# OpenMHz: routine calls in this window are eligible for the crime feed / Live (with classify rules).
+SCANNER_OPENMHZ_RECENT_HOURS = 6.0
+OPENMHZ_CALLS_PER_SYSTEM = 40
 MAP_CUTOFF_DAYS = 5      # Map: hard cutoff at 5 days
 
-# Live feed source_priority tiers (higher = wins dedup merge; official >> scanner)
+# Live feed source_priority tiers (higher = wins dedup merge; scanner/Nixle first-class for real-time)
 SOURCE_PRIORITY_OFFICIAL_X_GROK = 26
 SOURCE_PRIORITY_NIXLE = 25
 SOURCE_PRIORITY_DIRECTORY_BLOTTER = 24
-SOURCE_PRIORITY_SCANNER_CRITICAL = 8
+SOURCE_PRIORITY_SCANNER_CRITICAL = 18
+SOURCE_PRIORITY_SCANNER_RECENT = 15
 SOURCE_PRIORITY_SCANNER_FEED_LINK = 3
 
 # OpenMHz / directory scanner lines must match one of these to appear in main Live feed (not just Scanner tab)
@@ -626,11 +671,11 @@ def _scanner_blob_matches_critical_live(blob: str) -> bool:
 
 
 def _include_scanner_item_in_crime_feed(article: dict) -> bool:
-    """Routine scanner / Broadcastify meta-cards stay off Feed + Map; Scanner tab only."""
+    """Broadcastify stream cards stay off crime feed; OpenMHz needs critical and/or recent-live flag."""
     if article.get("_scanner_feed_link"):
         return False
-    if article.get("_scanner_call") and not article.get("_scanner_critical_live"):
-        return False
+    if article.get("_scanner_call"):
+        return bool(article.get("_scanner_critical_live") or article.get("_scanner_recent_live"))
     return True
 
 
@@ -653,81 +698,335 @@ def get_article_age_hours(article) -> Optional[float]:
         return None
 
 
+def get_article_age_minutes(article) -> Optional[float]:
+    """Age in minutes for scoring and UI."""
+    pub = article.get("pubDate", "")
+    if not pub:
+        return None
+    try:
+        dt = parsedate_to_datetime(pub)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds() / 60
+    except Exception:
+        return None
+
+
+# Ongoing / operational wording — allows items 12–24h old to stay on Live when still relevant.
+ONGOING_ACTIVE_KEYWORDS = (
+    "active", "developing", "breaking", "just in", "road closed", "road closure",
+    "lanes closed", "missing", "still missing", "shelter in place", "shelter-in-place",
+    "avoid the area", "avoid area", "scene", "on scene", "at the scene",
+    "responding", "still responding", "searching", "active search",
+    "pursuit", "in pursuit", "pursuing", "shutdown", "closure", "closed until further",
+    "traffic diverted", "detour", "police activity", "heavy police presence",
+)
+
+# Strong public-safety / dispatch signals → Live when fresh (subject to age caps).
+LIVE_SAFETY_SIGNAL_KEYWORDS = (
+    "scanner", "dispatch", "911", "bolo", "be on the lookout", "lookout for",
+    "active alert", "emergency alert", "civil emergency", "shelter in place",
+    "road closure", "road closed", "lane closure", "missing person", "amber alert",
+    "silver alert", "pursuit", "vehicle pursuit", "foot pursuit", "high-speed chase",
+    "crash", "collision", "mva", "rollover", "fatal crash",
+    "shots fired", "shooting", "shot fired", "stabbing", "stabbed",
+    "robbery in progress", "armed robbery", "structure fire", "working fire",
+    "fully engulfed", "manhunt", "barricaded", "standoff", "swat", "hostage",
+    "explosion", "bomb threat", "hazmat",
+)
+
+# Routine / narrative coverage → News if older than LIVE_ROUTINE_NEWS_MAX_H unless explicitly active/safety.
+ROUTINE_CRIME_NEWS_PHRASES = (
+    "press release", "announces arrest", "announced the arrest", "following an investigation",
+    "continuing to investigate", "investigation into", "years in prison", "sentenced to",
+    "plead guilty", "pleads guilty", "arraigned on", "court appearance", "indictment",
+    "weekly blotter", "crime blotter", "blotter wrap", "case update", "cold case",
+    "years ago", "looking back", "monthly report",
+)
+
+LIVE_ROUTINE_NEWS_MAX_H = 6.0
+
+# Stale generic arrest headlines (not ongoing scenes) → News tab.
+_ARREST_GLOSS_TITLE_FRAGMENTS = (
+    "arrest made", "suspect arrested", "man arrested", "woman arrested",
+    "person arrested", "booked at", "booked on", "arraigned on",
+)
+
+
+def _arrest_gloss_title(title_lower: str) -> bool:
+    return any(x in title_lower for x in _ARREST_GLOSS_TITLE_FRAGMENTS)
+
+
+def _article_combined_text(article: dict) -> str:
+    t = (article.get("title", "") or "") + " " + (article.get("description", "") or "")
+    return t.lower()
+
+
+def is_realtime_public_safety(article: dict) -> bool:
+    """True when source/title/description looks like dispatch-level or scanner-adjacent activity."""
+    src = (article.get("source") or "").lower()
+    blob = f"{src} {_article_combined_text(article)}"
+    phrases = (
+        "fire dispatch",
+        "police dispatch",
+        "sheriff dispatch",
+        "call for service",
+        "structure fire",
+        "pedestrian struck",
+        "suspicious person",
+        "shots fired",
+        "unconscious person",
+    )
+    if any(p in blob for p in phrases):
+        return True
+    singles = (
+        "scanner",
+        "dispatch",
+        "ems",
+        "trooper",
+        "openmhz",
+        "mvc",
+        "rollover",
+        "pursuit",
+        "domestic",
+        "overdose",
+    )
+    return any(s in blob for s in singles)
+
+
+# Live tab: major incidents that may stay visible between 6–12h despite age.
+LIVE_TAB_HIGH_SEVERITY_KEYWORDS = (
+    "shooting",
+    "homicide",
+    "stabbing",
+    "missing person",
+    "active scene",
+    "shelter in place",
+    "shelter-in-place",
+    "swat",
+    "barricaded",
+    "manhunt",
+)
+
+
+def _text_has_any(hay: str, needles: tuple) -> bool:
+    return any(n in hay for n in needles)
+
+
+def ongoing_public_safety_relevance(article: dict) -> bool:
+    """True if copy suggests an ongoing scene, alert, or developing incident."""
+    return _text_has_any(_article_combined_text(article), ONGOING_ACTIVE_KEYWORDS)
+
+
+def live_safety_signal_match(article: dict) -> bool:
+    """Dispatch-style / in-progress public safety signals in title + description."""
+    return _text_has_any(_article_combined_text(article), LIVE_SAFETY_SIGNAL_KEYWORDS)
+
+
+def routine_summary_or_press_story(article: dict) -> bool:
+    """Soft news / wrap-ups / DA narrative — deprioritize for Live when stale."""
+    return _text_has_any(_article_combined_text(article), ROUTINE_CRIME_NEWS_PHRASES)
+
+
+PRIORITY_LIVE_TITLE_KEYWORDS = [
+    "shooting", "shot and killed", "shots fired",
+    "stabbing", "stabbed",
+    "homicide", "murder",
+    "officer-involved", "officer involved shooting",
+    "pursuit", "high-speed chase", "foot pursuit", "vehicle pursuit",
+    "armed robbery", "armed suspect",
+    "carjacking", "kidnapping",
+    "hostage", "barricaded", "standoff", "swat",
+    "amber alert", "missing child", "missing person",
+    "explosion", "bomb threat",
+    "traffic alert", "road closed", "closure", "crash on", "fatal crash",
+    "structure fire", "working fire",
+    "suspect at large", "manhunt", "wanted",
+]
+
+
+def compute_is_active_incident(article: dict) -> bool:
+    """
+    Display / API flag: ongoing operational relevance (scene, alert, scanner, nixle, or very fresh hazard).
+    """
+    if article.get("_scanner_call") or article.get("_nixle_item"):
+        return True
+    if is_realtime_public_safety(article):
+        return True
+    if ongoing_public_safety_relevance(article):
+        return True
+    if live_safety_signal_match(article):
+        return True
+    tt = (article.get("title", "") or "").lower()
+    if any(kw in tt for kw in PRIORITY_LIVE_TITLE_KEYWORDS):
+        return True
+    am = article.get("age_minutes")
+    if isinstance(am, (int, float)) and am <= 120 and any(
+        k in tt for k in ("alert", "crash", "fire", "missing", "closure", "pursuit", "shooting")
+    ):
+        return True
+    return False
+
+
+def live_score(article: dict) -> float:
+    """
+    Higher = closer to top of Live. Combines recency tiers, source class, ongoing bonus.
+    Formula (additive):
+      recency:   0–30m → 4200; 30m–2h → 3600→3000 linear; 2–6h → 3000→2200; 6–12h → 2200→900;
+                 12–24h → 900→400 linear (items here only if tab=live via ongoing relevance)
+      source:    scanner +2800 (+1350 if ≤30m); nixle +2600; official w/ safety signal +2000; official generic +950;
+                 blotter +750; local TV/print names +1100; other +850
+      ongoing:   +700 if ongoing_public_safety_relevance
+    """
+    age_m = article.get("age_minutes")
+    if age_m is None:
+        try:
+            age_m = get_article_age_minutes(article)
+        except Exception:
+            age_m = None
+    if age_m is None:
+        rec = 350.0
+    elif age_m <= 30:
+        rec = 4200.0
+    elif age_m <= 120:
+        rec = 3600.0 - (age_m - 30) * (600.0 / 90.0)
+    elif age_m <= 360:
+        rec = 3000.0 - (age_m - 120) * (800.0 / 240.0)
+    elif age_m <= 720:
+        rec = 2200.0 - (age_m - 360) * (1300.0 / 360.0)
+    elif age_m <= 1440:
+        rec = 900.0 - (age_m - 720) * (500.0 / 720.0)
+    else:
+        rec = 0.0
+
+    src_l = (article.get("source") or "").lower()
+    if article.get("_scanner_call"):
+        w = 2800.0
+        if age_m is not None and age_m <= 30:
+            w += 1350.0
+    elif article.get("_nixle_item"):
+        w = 2600.0
+    elif article.get("_official_x_post"):
+        w = 2000.0 if live_safety_signal_match(article) else 950.0
+    elif "blotter" in src_l:
+        w = 750.0
+    elif any(x in src_l for x in ("gazette", "times union", "news10", "cbs6", "wteng")):
+        w = 1100.0
+    else:
+        w = 850.0
+
+    ong = 700.0 if ongoing_public_safety_relevance(article) else 0.0
+    return float(rec) + float(w) + float(ong)
+
+
 def classify_feed_tab(article) -> str:
     """
-    Classify an article as 'live' or 'news'.
+    Live vs News — real-time tracker rules (no automatic Live by official source label).
 
-    Live  = published < 72 h ago AND urgent/breaking content AND no noise indicators
-    News  = older, court proceedings, summaries, background stories, etc.
+    1) Scanner / Nixle / realtime public-safety copy and age ≤ 6h → live.
+    2) age > 12h → news.
+    3) High-severity keywords in title/description → live.
+    4) age ≤ 3h → live.
+    5) Else → news.
     """
-    title_text = (article.get("title", "") or "").lower()
-    text = (title_text + " " + (article.get("description", "") or "")).lower()
-    source = (article.get("source", "") or "").lower()
+    if article.get("_scanner_feed_link"):
+        return "news"
 
     age_hours = get_article_age_hours(article)
+    combined = _article_combined_text(article)
 
-    # --- Scanner: only verified critical traffic goes Live (routine stays Scanner tab only) ---
-    if article.get("_scanner_call") or article.get("_scanner_feed_link"):
-        if not article.get("_scanner_critical_live"):
-            return "news"
-        if age_hours is None or age_hours <= LIVE_CUTOFF_HOURS:
+    if age_hours is not None and age_hours > LIVE_MAX_AGE_HOURS:
+        return "news"
+
+    # 1) Scanner / dispatch / EMS / fire lane — last 6 hours always live when applicable
+    if age_hours is not None and age_hours <= 6.0:
+        if article.get("_scanner_call") and (
+            article.get("_scanner_critical_live") or article.get("_scanner_recent_live")
+        ):
             return "live"
-        return "news"
-    if article.get("_nixle_item"):
-        if age_hours is None or age_hours <= LIVE_CUTOFF_HOURS:
+        if article.get("_nixle_item"):
             return "live"
-        return "news"
-    if article.get("_official_x_post"):
-        if age_hours is None or age_hours <= LIVE_CUTOFF_HOURS:
+        if is_realtime_public_safety(article):
             return "live"
+
+    # 2) Stale window
+    if age_hours is not None and age_hours > 12.0:
         return "news"
 
-    # --- Older than LIVE_CUTOFF_HOURS → always News ---
-    if age_hours is not None and age_hours > LIVE_CUTOFF_HOURS:
-        return "news"
-
-    # --- PRIORITY OVERRIDE: active crime/arrest keywords in the TITLE trump noise.
-    # Checked on title only — prevents grant/awareness articles whose *descriptions*
-    # mention violence prevention from being promoted to Live.
-    PRIORITY_LIVE = [
-        "shooting", "shot and killed", "shots fired",
-        "stabbing", "stabbed",
-        "homicide", "murder",
-        "officer-involved", "officer involved shooting",
-        "pursuit", "high-speed chase", "foot pursuit", "vehicle pursuit",
-        "armed robbery", "armed suspect",
-        "carjacking", "kidnapping",
-        "hostage", "barricaded", "standoff", "swat",
-        "amber alert", "missing child",
-        "explosion", "bomb threat",
-        "arrested", "arrest made", "suspect arrested",
-        "man arrested", "woman arrested", "person arrested",
-        "charged with", "taken into custody", "in custody",
-        "felony charge", "multiple charges",
-        "booked", "booked at", "booking", "arraigned",
-        "faces charges", "facing charges", "indicted",
-    ]
-    if any(kw in title_text for kw in PRIORITY_LIVE):
+    # 3) Major incidents (official/news 6–12h can still qualify)
+    if any(k in combined for k in LIVE_TAB_HIGH_SEVERITY_KEYWORDS):
         return "live"
 
-    # --- Contains noise → News tab (background/legal proceedings) ---
-    if any(kw in text for kw in NOISE_KEYWORDS):
-        return "news"
-
-    # --- Official law-enforcement source + recent → Live ---
-    if any(src in source for src in LIVE_SOURCES):
+    # 4) Very fresh general coverage
+    if age_hours is not None and age_hours <= 3.0:
         return "live"
 
-    # --- Contains urgent keyword → Live ---
-    if any(kw in text for kw in URGENT_KEYWORDS):
-        return "live"
-
-    # --- Very recent (< 24 h) non-noise article → Live ---
-    if age_hours is not None and age_hours <= 24:
-        return "live"
-
-    # --- Default: News ---
     return "news"
+
+
+def _live_row_age_hours(x: dict) -> float:
+    ah = x.get("age_hours")
+    return float(ah) if isinstance(ah, (int, float)) else 9999.0
+
+
+def _is_recent_scanner_public_safety_row(x: dict, max_hours: float = 6.0) -> bool:
+    if _live_row_age_hours(x) > max_hours:
+        return False
+    return bool(
+        x.get("_scanner_call")
+        or x.get("_nixle_item")
+        or is_realtime_public_safety(x)
+    )
+
+
+def apply_saturday_night_live_order(live_items: list[dict]) -> list[dict]:
+    """
+    If the freshest Live row is older than 4h, move scanner/Nixle/realtime-PS rows (≤6h) above all other Live rows.
+    """
+    if not live_items:
+        return live_items
+    min_age = min(_live_row_age_hours(x) for x in live_items)
+    if min_age <= 4.0:
+        return live_items
+    promoted: list[dict] = []
+    seen_ids: set[int] = set()
+    for x in live_items:
+        if _is_recent_scanner_public_safety_row(x, 6.0):
+            promoted.append(x)
+            seen_ids.add(id(x))
+    if not promoted:
+        return live_items
+    tail = [x for x in live_items if id(x) not in seen_ids]
+    return promoted + tail
+
+
+def _dedup_should_replace_rep(rep: dict, cand: dict) -> bool:
+    """
+    Prefer fresher scanner/Nixle over stale official X when the cluster is the same story,
+    so routine social posts do not swallow operational audio/alerts.
+    """
+    try:
+        dr = parsedate_to_datetime(rep.get("pubDate", "") or "")
+        dc = parsedate_to_datetime(cand.get("pubDate", "") or "")
+        if dr.tzinfo is None:
+            dr = dr.replace(tzinfo=timezone.utc)
+        if dc.tzinfo is None:
+            dc = dc.replace(tzinfo=timezone.utc)
+    except Exception:
+        return False
+    if dc.timestamp() <= dr.timestamp():
+        return False
+    age_rep_h = (datetime.now(timezone.utc) - dr).total_seconds() / 3600
+
+    cand_op = bool(cand.get("_scanner_call") or cand.get("_nixle_item"))
+    rep_off = bool(rep.get("_official_x_post"))
+    if cand_op and rep_off and age_rep_h >= 2.5:
+        return True
+    if cand.get("_scanner_call") and rep_off and (dc - dr).total_seconds() >= 600:
+        return True
+    if cand.get("_nixle_item") and rep_off and age_rep_h >= 1.5:
+        return True
+    return False
 
 # =============================================================================
 # GEOCODING — Albany County locations with coordinates
@@ -998,6 +1297,8 @@ def is_albany_related(article) -> bool:
     is_local_domain = any(d in link for d in LOCAL_DOMAINS) or any(d in source_url for d in LOCAL_DOMAINS)
     if is_local_domain:
         if "albany" in text or any(g in text for g in GENERIC_REGION_TERMS):
+            return True
+        if any(t in text for t in _LOCAL_OUTLET_CRIME_PASS_TERMS):
             return True
 
     # --- Step 4: Bare "albany" — must have at least one NY confirmation signal ---
@@ -1374,15 +1675,20 @@ async def generate_situation_report(crime_data, patterns):
             "confidence": "low",
         }
 
-    # Build context with source reliability and confidence
+    # Live rows: preserve /api/crimes order (includes Saturday-night PS boost).
+    live_rows = [a for a in crime_data if a.get("feed_tab") == "live"]
+    other_rows = [a for a in crime_data if a.get("feed_tab") != "live"]
+    context_pool = live_rows[:18] + other_rows[:8]
+
     context_lines = []
-    for a in crime_data[:15]:
+    for a in context_pool[:22]:
         conf = a.get("confidence", 0.7)
         conf_label = "HIGH" if conf >= 0.90 else "MEDIUM" if conf >= 0.75 else "LOW"
         reliability = get_source_reliability(a.get("source", ""))
         src = a.get("source", "Unknown")
         loc = a.get("matched_location", "")
-        line = f"- [Confidence:{conf_label}|Reliability:{reliability:.0%}] [{src}] {a['title']}"
+        tab = a.get("feed_tab", "?")
+        line = f"- [Tab:{tab}|Conf:{conf_label}|Rel:{reliability:.0%}] [{src}] {a['title']}"
         if loc:
             line += f" (Location: {loc})"
         context_lines.append(line)
@@ -1398,11 +1704,11 @@ async def generate_situation_report(crime_data, patterns):
         f"Other: {type_b.get('other', 0)}"
     )
 
-    prompt = f"""Live situation brief for Albany County, NY (public dashboard).
+    prompt = f"""Live situation brief for Albany County, NY — dashboard users expect a pulse of *right now*.
 
-Lines below are verified feed items (confidence + source reliability tags) plus pattern counts.
-1) Drop anything not plausibly local (wrong Albany, no NY anchor).
-2) situation: ONE sharp sentence (max 28 words) — what's moving now (themes + geography), active voice.
+Input: Live-tab-heavy incident lines (Tab:live first), then News, each tagged Conf/Rel/source; plus pattern counts.
+1) Drop non-local noise (wrong Albany, no NY anchor).
+2) situation: ONE dense sentence (max 32 words) — blend official + scanner + blotter themes, name geography where data supports it.
 3) threat_level + confidence per system rules.
 
 {chr(10).join(context_lines)}
@@ -1546,10 +1852,11 @@ async def fetch_all_feeds():
     for feed_articles in results:
         articles.extend(feed_articles)
 
-    # Real-time layers from directory + OpenMHz / Nixle / Grok (parallel)
+    # Real-time layers from directory + OpenMHz / Nixle / Grok / Nitter RSS mirrors (parallel)
     _extra_batches = await asyncio.gather(
         fetch_nixle_directory_articles(),
         fetch_official_social_posts(),
+        fetch_nitter_official_x_rss_posts(),
         fetch_scanner_directory_items(),
         return_exceptions=True,
     )
@@ -1585,11 +1892,19 @@ async def fetch_all_feeds():
             return 0.0
 
     # ── Smart deduplication ──────────────────────────────────────────────────
-    # Sort highest-priority + newest first so the best version wins each group.
-    articles.sort(
-        key=lambda a: (a.get("source_priority", 1), _pub_ts_pre(a)),
-        reverse=True,
-    )
+    # Newest first, then operational layers — so dedupe groups see fresh scanner/Nixle before stale social.
+    def _dedup_presort_key(a: dict) -> tuple:
+        pub = _pub_ts_pre(a)
+        op = 0
+        if a.get("_scanner_call"):
+            op = 3
+        elif a.get("_nixle_item"):
+            op = 2
+        elif a.get("_official_x_post"):
+            op = 1
+        return (op, pub)
+
+    articles.sort(key=_dedup_presort_key, reverse=True)
 
     _STOP = frozenset({
         "the","a","an","in","on","at","to","of","and","or","for","is","was",
@@ -1699,7 +2014,12 @@ async def fetch_all_feeds():
                 return True
 
         if _norm_title(t1) == _norm_title(t2) and hrs is not None and hrs <= 6.0:
-            if art.get("_scanner_critical_live") or rep.get("_scanner_critical_live"):
+            if (
+                art.get("_scanner_critical_live")
+                or rep.get("_scanner_critical_live")
+                or art.get("_scanner_recent_live")
+                or rep.get("_scanner_recent_live")
+            ):
                 return True
 
         if _title_sequence_ratio(t1, t2) >= 0.85:
@@ -1747,6 +2067,15 @@ async def fetch_all_feeds():
         placed = False
         for grp in groups:
             if _same_incident(art, grp["rep"]):
+                if _dedup_should_replace_rep(grp["rep"], art):
+                    old_rep = grp["rep"]
+                    grp["rep"] = art
+                    old_s = old_rep.get("source", "")
+                    if old_s:
+                        sko = _source_norm_key(old_s)
+                        if sko and sko not in grp["_source_keys"]:
+                            grp["_source_keys"].add(sko)
+                            grp["sources"].append(old_s)
                 src = art.get("source", "")
                 if src:
                     sk = _source_norm_key(src)
@@ -1779,11 +2108,19 @@ async def fetch_all_feeds():
         except Exception:
             return 0.0
 
-    # Final sort: scanner / Nixle / official X first, then recency within tier
-    deduped.sort(
-        key=lambda a: (a.get("source_priority", 0), _pub_ts_final(a)),
-        reverse=True,
-    )
+    # Pipeline order: newest operational items first (Live scoring happens in /api/crimes).
+    def _post_dedup_key(a: dict) -> tuple:
+        pub = _pub_ts_final(a)
+        op = 0
+        if a.get("_scanner_call"):
+            op = 3
+        elif a.get("_nixle_item"):
+            op = 2
+        elif a.get("_official_x_post"):
+            op = 1
+        return (op, pub)
+
+    deduped.sort(key=_post_dedup_key, reverse=True)
 
     # Keep only articles from the last 5 days (hard cutoff for both Live feed and map)
     cutoff = datetime.now(timezone.utc) - timedelta(days=MAP_CUTOFF_DAYS)
@@ -1842,8 +2179,12 @@ async def get_crimes():
         geo["confidence"] = compute_article_confidence(a)
         geo["source_reliability"] = get_source_reliability(a.get("source", ""))
         age_h = get_article_age_hours(a)
+        age_m = get_article_age_minutes(a)
         geo["age_hours"] = round(age_h, 1) if age_h is not None else None
+        geo["age_minutes"] = round(age_m, 1) if age_m is not None else None
         geo["feed_tab"] = classify_feed_tab(a)
+        geo["is_active_incident"] = compute_is_active_incident(geo)
+        geo["live_score"] = round(live_score(geo), 2)
         geocoded.append(geo)
 
     def _pub_ts_sort(x: dict) -> float:
@@ -1855,43 +2196,25 @@ async def get_crimes():
         except Exception:
             return 0.0
 
-    _ARREST_TITLE_HINTS = frozenset([
-        "arrest", "arrested", "booked", "booking", "charged", "custody",
-        "indicted", "arraigned", "suspect", "warrant", "in custody",
-        "faces charges", "facing charges",
-    ])
-
-    def _live_feed_rank_tier(x: dict) -> int:
-        """Higher = closer to top. Official / Nixle / blotter > arrests > general RSS > critical scanner."""
-        src = (x.get("source") or "").lower()
-        title = (x.get("title") or "").lower()
-        if x.get("_official_x_post"):
-            tier = 500
-        elif x.get("_nixle_item") or "nixle" in src:
-            tier = 490
-        elif "blotter" in src or "gazette blotter" in src:
-            tier = 480
-        elif src.startswith("official @") or src == "official x":
-            tier = 460
-        elif x.get("_scanner_critical_live"):
-            tier = 120
-        elif any(h in title for h in _ARREST_TITLE_HINTS):
-            tier = 380
-        else:
-            tier = 300
-        age = x.get("age_hours")
-        if age is not None and age <= LIVE_PRIORITY_FRESH_HOURS:
-            tier += 40
-        return tier
-
     def _live_sort_key(x: dict) -> tuple:
-        """Tier by source class, then strict newest-first within tier."""
-        return (-_live_feed_rank_tier(x), -_pub_ts_sort(x))
+        """Freshest first; sink non-PS rows >12h; PS tie-break; source_priority last."""
+        ah = x.get("age_hours")
+        age_sort = float(ah) if isinstance(ah, (int, float)) else 9999.0
+        ps = bool(
+            x.get("_scanner_call")
+            or x.get("_nixle_item")
+            or is_realtime_public_safety(x)
+        )
+        rt_rank = 0 if ps else 1
+        old_article = 1 if (age_sort > 12.0 and not ps) else 0
+        sp = float(x.get("source_priority") or 0)
+        return (old_article, age_sort, rt_rank, -sp)
 
     live_items = sorted(
         [x for x in geocoded if x.get("feed_tab") == "live"],
         key=_live_sort_key,
     )
+    live_items = apply_saturday_night_live_order(live_items)
     news_items = sorted(
         [x for x in geocoded if x.get("feed_tab") == "news"],
         key=lambda x: -_pub_ts_sort(x),
@@ -2465,12 +2788,13 @@ async def get_scanner_calls():
     try:
         resp = await http_client.get(
             f"https://api.openmhz.com/{OPENMHZ_SYSTEM}/calls",
-            params={"num": 20},
+            params={"num": 40},
+            timeout=12.0,
         )
         if resp.status_code == 200:
             data = resp.json()
             calls = []
-            for call in data.get("calls", [])[:20]:
+            for call in data.get("calls", [])[:40]:
                 # Extract TG number — OpenMHz embeds it in the audio URL path
                 # e.g. /media/albanycony/10702/albanycony-10702-timestamp.m4a
                 audio_url = call.get("url", "")
@@ -2490,8 +2814,7 @@ async def get_scanner_calls():
                     "duration": call.get("len", 0) or call.get("duration", 0),
                     "freq": call.get("freq", 0),
                 })
-            cache["scanner_calls"] = {"data": calls, "ts": time.time()}
-            CACHE_TTL["scanner_calls"] = 30
+            set_cached(cache_key, calls)
             return {"status": "ok", "source": "live", "calls": calls}
     except Exception as e:
         print(f"Scanner error: {e}")
@@ -2747,7 +3070,8 @@ async def fetch_nixle_directory_articles() -> list[dict[str, Any]]:
                 bases.append(
                     (ch["url"] or "").strip().split("#")[0].split("?")[0].rstrip("/")
                 )
-    bases.append("https://www.nixle.com/rss/?city=Albany&state=NY")
+    for city in ("Albany", "Colonie", "Guilderland", "Bethlehem", "Cohoes", "Watervliet"):
+        bases.append(f"https://www.nixle.com/rss/?city={city}&state=NY")
     seen_bases: set[str] = set()
 
     for base in bases:
@@ -2811,7 +3135,7 @@ def _resolve_official_x_post_url(handle: str, url: str | None) -> str:
     m = _OFFICIAL_X_STATUS_RE.match(base)
     if m:
         uname, tid = m.group(1), m.group(2)
-        if tid.isdigit() and len(tid) >= 17:
+        if tid.isdigit() and len(tid) >= 18:
             return f"https://x.com/{uname}/status/{tid}"
     return profile
 
@@ -2825,7 +3149,7 @@ _SOCIAL_GROK_SYSTEM = (
     "\"published_iso\":\"2026-03-28T12:00:00Z\"}. "
     "CRITICAL: Prefer real post links. tweet_id must be the true status id (18–19 digits) when known; "
     "otherwise omit tweet_id. url must be the exact https://x.com/{handle}/status/{tweet_id} permalink "
-    "or null. Never invent short or fake IDs. "
+    "or null. tweet_id / status id must be a real 18–19 digit snowflake — never invent or shorten. "
     "Only Albany County NY or immediate Capital District law-enforcement / public-safety posts."
 )
 
@@ -2854,7 +3178,7 @@ def _official_x_handles_from_directory() -> list[str]:
                     found.add(h)
     except Exception:
         pass
-    return sorted(found, key=str.lower)[:64]
+    return sorted(found, key=str.lower)[:80]
 
 
 async def fetch_official_social_posts() -> list[dict[str, Any]]:
@@ -2916,7 +3240,7 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
                 tid_s = tid_raw.strip()
             else:
                 tid_s = ""
-            if tid_s.isdigit() and len(tid_s) >= 17 and h:
+            if tid_s.isdigit() and len(tid_s) >= 18 and h:
                 raw_u = raw_u or f"https://x.com/{h}/status/{tid_s}"
             link = _resolve_official_x_post_url(h, raw_u)
             x_post = link if "/status/" in link else ""
@@ -2949,6 +3273,103 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
     if out:
         set_cached("grok_official_x_posts", out)
     return out
+
+
+def _nitter_link_to_x_status(url: str) -> str:
+    """Map Nitter (or x.com) item link to canonical x.com/status URL with 18+ digit snowflake."""
+    m = re.search(r"/([^/]+)/status/(\d{18,})", url or "", re.I)
+    if m:
+        return f"https://x.com/{m.group(1)}/status/{m.group(2)}"
+    return ""
+
+
+async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
+    """
+    Best-effort real X permalinks via public Nitter mirrors (no API key).
+    Cached; failures return [] without breaking the feed.
+    """
+    cached = get_cached("nitter_official_x")
+    if cached is not None:
+        return cached
+    out: list[dict[str, Any]] = []
+    hosts = ("nitter.poast.org", "nitter.net", "nitter.it", "nitter.privacydev.net")
+    handles_ordered: list[str] = []
+    seen_h: set[str] = set()
+    for h in list(_OFFICIAL_X_HANDLES_CORE) + sorted(
+        _official_x_handles_from_directory(), key=str.lower
+    ):
+        key = h.lower()
+        if key in seen_h:
+            continue
+        seen_h.add(key)
+        handles_ordered.append(h)
+        if len(handles_ordered) >= 14:
+            break
+
+    async def _pull_one(handle: str) -> list[dict[str, Any]]:
+        got: list[dict[str, Any]] = []
+        for host in hosts:
+            try:
+                rss_url = f"https://{host}/{handle}/rss"
+                resp = await http_client.get(rss_url, timeout=9.0, follow_redirects=True)
+                if resp.status_code != 200:
+                    continue
+                parsed = parse_rss(resp.text, default_source=f"Official @{handle}")
+                for a in parsed[:4]:
+                    xu = _nitter_link_to_x_status(a.get("link", "") or "")
+                    if not xu:
+                        continue
+                    got.append(
+                        {
+                            "title": (a.get("title") or "").strip() or "Post",
+                            "link": xu,
+                            "x_post_url": xu,
+                            "pubDate": a.get("pubDate")
+                            or format_datetime(datetime.now(timezone.utc), usegmt=True),
+                            "description": ((a.get("description") or "")[:400]),
+                            "source": f"Official @{handle}",
+                            "source_priority": SOURCE_PRIORITY_OFFICIAL_X_GROK,
+                            "_official_x_post": True,
+                            "_official_x_nitter_rss": True,
+                            "_feed_reliability": 0.95,
+                            "source_url": "",
+                        }
+                    )
+                if got:
+                    break
+            except Exception:
+                continue
+        return got
+
+    try:
+        batches = await asyncio.gather(*[_pull_one(h) for h in handles_ordered])
+        for b in batches:
+            out.extend(b)
+    except Exception as e:
+        print(f"fetch_nitter_official_x_rss_posts: {e}")
+    set_cached("nitter_official_x", out)
+    return out
+
+
+def _openmhz_call_age_hours(t_raw: str) -> Optional[float]:
+    try:
+        s = (t_raw or "").strip()
+        if not s:
+            return None
+        if s.isdigit():
+            n = int(s)
+            if n > 10_000_000_000:
+                n = n // 1000
+            dt = datetime.fromtimestamp(n, tz=timezone.utc)
+        elif "T" in s:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            return None
+        return (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
+    except Exception:
+        return None
 
 
 def _openmhz_time_to_rfc(raw: str) -> str:
@@ -3012,13 +3433,13 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
             try:
                 resp = await http_client.get(
                     f"https://api.openmhz.com/{slug}/calls",
-                    params={"num": 22},
+                    params={"num": OPENMHZ_CALLS_PER_SYSTEM},
                     timeout=14.0,
                 )
                 if resp.status_code != 200:
                     continue
                 payload = resp.json()
-                for call in (payload.get("calls") or [])[:22]:
+                for call in (payload.get("calls") or [])[:OPENMHZ_CALLS_PER_SYSTEM]:
                     audio_url = call.get("url", "") or ""
                     tg_tag = (
                         call.get("talkgroup_tag", "")
@@ -3031,13 +3452,19 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
                         str(call.get("talkgroup_description", "") or call.get("talkgroupDescription", "") or "")
                     )
                     crit_blob = f"{tg_tag} {tg_desc}".strip()
-                    if not _scanner_blob_matches_critical_live(crit_blob):
+                    t_raw = str(call.get("time", "") or "")
+                    age_h = _openmhz_call_age_hours(t_raw)
+                    if age_h is None:
+                        age_h = 0.0
+                    is_critical = _scanner_blob_matches_critical_live(crit_blob)
+                    if age_h > LIVE_CUTOFF_HOURS:
+                        continue
+                    if not is_critical and age_h > SCANNER_OPENMHZ_RECENT_HOURS:
                         continue
                     row, tid_s = _lookup_tg_row(call)
                     dept = (row or {}).get("department") or tg_tag
                     loc = (row or {}).get("location") or ""
                     dept_loc = f"{dept} — {loc}" if loc else dept
-                    t_raw = str(call.get("time", "") or "")
                     desc_bits = [cov] if cov else []
                     if call.get("freq"):
                         hz = call.get("freq")
@@ -3053,16 +3480,25 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
                         except (TypeError, ValueError):
                             pass
                     desc = " · ".join(x for x in desc_bits if x)[:400]
+                    if is_critical:
+                        card_title = f"Critical radio · {dept_loc}: {tg_tag}"
+                        prio = SOURCE_PRIORITY_SCANNER_CRITICAL
+                        crit_f, recent_f = True, False
+                    else:
+                        card_title = f"Radio · {dept_loc}: {tg_tag}"
+                        prio = SOURCE_PRIORITY_SCANNER_RECENT
+                        crit_f, recent_f = False, True
                     out.append(
                         {
-                            "title": f"Critical radio · {dept_loc}: {tg_tag}",
+                            "title": card_title,
                             "link": audio_url or f"https://openmhz.com/system/{slug}",
                             "pubDate": _openmhz_time_to_rfc(t_raw),
                             "description": (desc + " · " if desc else "") + crit_blob[:280],
                             "source": f"Scanner · {label}",
-                            "source_priority": SOURCE_PRIORITY_SCANNER_CRITICAL,
+                            "source_priority": prio,
                             "_scanner_call": True,
-                            "_scanner_critical_live": True,
+                            "_scanner_critical_live": crit_f,
+                            "_scanner_recent_live": recent_f,
                             "_scanner_tg": tid_s or None,
                             "_feed_reliability": 0.88,
                             "source_url": "",

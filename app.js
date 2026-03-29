@@ -22,8 +22,8 @@
       }
     }
   }
-  var REFRESH_MS = 120000;
-  var SCANNER_REFRESH_MS = 30000;
+  var REFRESH_MS = 45000;
+  var SCANNER_REFRESH_MS = 20000;
 
   // State
   var map, markerGroup, trendsChart, tileLayer;
@@ -334,8 +334,8 @@
     initFeedTabs();
     initChat();
     startClock();
-    fetchSituation();
     fetchIncidents();
+    fetchSituation();
     fetchTrends();
     fetchScannerCalls();
     fetchDailySummary();
@@ -343,8 +343,8 @@
     fetchSocialIntel();
 
     setInterval(function () {
-      fetchSituation();
       fetchIncidents();
+      fetchSituation();
     }, REFRESH_MS);
 
     setInterval(fetchScannerCalls, SCANNER_REFRESH_MS);
@@ -671,7 +671,7 @@
   }
 
   // ── SITUATION BAR ─────────────────────────────────────────────
-  var SITUATION_FETCH_MS = 90000;
+  var SITUATION_FETCH_MS = 60000;
 
   function fetchSituation() {
     var ctrl = new AbortController();
@@ -748,7 +748,7 @@
   }
 
   // ── INCIDENTS ─────────────────────────────────────────────────
-  var CRIMES_FETCH_MS = 120000;
+  var CRIMES_FETCH_MS = 45000;
 
   function fetchIncidents() {
     var ctrl = new AbortController();
@@ -808,12 +808,34 @@
     return m ? m[1].trim() : "";
   }
 
+  /** Visible freshness: Xm ago / Xh ago (uses API age_minutes when present). */
+  function feedAgeCompact(item) {
+    var m = item && typeof item.age_minutes === "number" && !isNaN(item.age_minutes)
+      ? item.age_minutes
+      : null;
+    if (m === null && item && item.pubDate) {
+      var ms = new Date(item.pubDate).getTime();
+      if (!isNaN(ms)) m = (Date.now() - ms) / 60000;
+    }
+    if (m === null || isNaN(m)) return "";
+    if (m < 1) return "just now";
+    if (m < 60) return Math.round(m) + "m ago";
+    var h = m / 60;
+    if (h < 24) {
+      var hf = Math.floor(h);
+      if (hf < 1) hf = 1;
+      return hf + "h ago";
+    }
+    var d = Math.floor(h / 24);
+    return d + "d ago";
+  }
+
   function isLikelyValidXStatusUrl(url) {
     var u = url || "";
     var m = /(?:twitter\.com|x\.com)\/[^/]+\/status\/(\d+)/i.exec(u);
     if (!m) return false;
     var id = m[1];
-    return id.length >= 17 && /^\d+$/.test(id);
+    return id.length >= 18 && /^\d+$/.test(id);
   }
 
   /** Prefer real X status URL (x_post_url or link with snowflake); profile only if no valid post URL. */
@@ -843,7 +865,7 @@
     var primarySrc = item.source || "";
     var srcs = (Array.isArray(item.sources) && item.sources.length)
       ? item.sources : (primarySrc ? [primarySrc] : []);
-    var ta = item.pubDate ? timeAgo(new Date(item.pubDate)) : "";
+    var ta = feedAgeCompact(item);
     var link = resolveIncidentCardHref(item);
     var official = isOfficialSource(primarySrc);
     var scannerCrime = isScannerCrimeSource(primarySrc);
@@ -854,6 +876,17 @@
     if (official) cls += " feed-item-official feed-item-official-prominent";
     if (scannerCrime) cls += " feed-item-scanner-crime";
     if (scannerCritical) cls += " feed-item-scanner-critical";
+    var ageHForStale =
+      item && typeof item.age_hours === "number" && !isNaN(item.age_hours)
+        ? item.age_hours
+        : null;
+    if (ageHForStale === null && item && item.pubDate) {
+      var _ms = new Date(item.pubDate).getTime();
+      if (!isNaN(_ms)) ageHForStale = (Date.now() - _ms) / 3600000;
+    }
+    if (activeFeedTab === "live" && ageHForStale !== null && ageHForStale > 6) {
+      cls += " feed-item--stale";
+    }
     var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer">';
     html += '<span class="feed-dot ' + esc(type) + '"></span>';
     html += '<div class="feed-body">';
@@ -869,13 +902,21 @@
       html += '<span class="scanner-feed-badge scanner-feed-badge--critical scanner-feed-badge--lg scanner-badge-police">SCANNER · CRITICAL</span>';
     } else if (scannerCrime) {
       html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">SCANNER</span>';
+    } else if (item.is_active_incident) {
+      html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">ACTIVE</span>';
     }
     if (multiSource) {
       html += '<span class="multi-source">' + srcs.map(esc).join('<span class="src-sep"> + </span>') + '</span>';
     } else if (srcs.length === 1) {
       html += '<span>' + esc(srcs[0]) + '</span>';
     }
-    if (ta) html += '<span>' + esc(ta) + '</span>';
+    if (ta) {
+      var mFresh = item && typeof item.age_minutes === "number" && !isNaN(item.age_minutes) ? item.age_minutes : null;
+      var ageCls = "feed-age";
+      if (mFresh !== null && mFresh <= 30) ageCls += " feed-age--fresh";
+      if (activeFeedTab === "live" && ageHForStale !== null && ageHForStale > 6) ageCls += " feed-age--stale";
+      html += '<span class="' + ageCls + '">' + esc(ta) + "</span>";
+    }
     html += '</div></div></a>';
     return html;
   }
@@ -920,31 +961,11 @@
 
     if (!liveItems || liveItems.length === 0) {
       if (scannerIntelItems.length === 0) {
-        html += '<div class="empty-state">No breaking incidents in the last 72 hours.<br>Check the News tab for recent reports.</div>';
+        html += '<div class="empty-state">No live incidents in the current window (scanner/Nixle/realtime alerts ≤6h, or ≤3h news, or high-severity 6–12h).<br>Older items are on the News tab.</div>';
       }
     } else {
-      function _pubMs(x) { return x.pubDate ? new Date(x.pubDate).getTime() : 0; }
-      function _prio(x) {
-        var p = x.source_priority;
-        return typeof p === "number" && !isNaN(p) ? p : parseInt(p, 10) || 0;
-      }
-      function _liveArrestFirst(x) {
-        var title = (x.title || "").toLowerCase();
-        var hints = ["arrest", "arrested", "booked", "booking", "charged", "custody", "indicted", "arraigned", "suspect", "warrant", "in custody"];
-        var ageH = (_pubMs(x) ? (Date.now() - _pubMs(x)) / 3600000 : 999);
-        var hit = hints.some(function (h) { return title.indexOf(h) !== -1; });
-        return ageH <= 18 && hit ? 0 : 1;
-      }
-      var sorted = liveItems.slice().sort(function (a, b) {
-        var pa = _prio(a);
-        var pb = _prio(b);
-        if (pa !== pb) return pb - pa;
-        var ba = _liveArrestFirst(a);
-        var bb = _liveArrestFirst(b);
-        if (ba !== bb) return ba - bb;
-        return _pubMs(b) - _pubMs(a);
-      });
-      sorted.forEach(function (item) { html += buildIncidentCard(item); });
+      /* Preserve backend order — /api/crimes already sorts Live by freshness + realtime public-safety. */
+      liveItems.forEach(function (item) { html += buildIncidentCard(item); });
     }
 
     list.innerHTML = html;

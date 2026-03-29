@@ -76,7 +76,7 @@
           <span class="threat-badge" id="threatBadge">---</span>
           <span class="situation-time" id="topbarTime"></span>
         </div>
-        <p class="situation-text" id="situationText">Analyzing Albany County data...</p>
+        <p class="situation-text" id="situationText">Loading briefing… incidents below update on their own.</p>
         <button class="situation-expand-btn" id="situationExpandBtn" aria-label="See full analysis">
           Full report <span class="material-icons" style="font-size:12px;vertical-align:middle;">expand_more</span>
         </button>
@@ -454,7 +454,7 @@
   <script>
     (function () {
       var isLocalDev = /^(localhost|127\.0\.0\.1)$/i.test(location.hostname);
-      var src = "app.js" + (isLocalDev ? "?v=7" : "");
+      var src = "app.js" + (isLocalDev ? "?v=9" : "");
       document.write('<script src="' + src + '"><\/script>');
     })();
   </script>
