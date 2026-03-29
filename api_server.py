@@ -2345,8 +2345,8 @@ async def get_crimes():
         return {"status": "ok", "source": "cache", "data": cached, "total": len(cached)}
 
     all_articles = await fetch_all_feeds()
-    # All articles have already passed is_albany_related in fetch_all_feeds for "strict" feeds.
-    # Apply crime filter + full Albany check to everything.
+    # Every article already passed is_albany_related() once in fetch_all_feeds (pre-dedupe).
+    # Keep the Albany check here as a second line of defense for crime scoring.
     crime_articles = [
         a
         for a in all_articles
