@@ -1515,6 +1515,445 @@ def is_albany_related(article: dict) -> bool:
     return ok
 
 
+# =============================================================================
+# LIVE FEED FINAL GATE — Albany County incidents only (no junk / stale / federal RTs)
+# =============================================================================
+
+LIVE_SCANNER_MAX_AGE_HOURS = 1.5  # 90 minutes
+LIVE_OFFICIAL_SOCIAL_MAX_AGE_HOURS = 12.0
+LIVE_NEWS_RSS_MAX_AGE_HOURS = 24.0
+
+_NYSP_SOURCE_HINTS = (
+    "official @nyspolice",
+    "@nyspolice",
+    "nysp blotter",
+    "troopers.ny.gov",
+)
+
+_NON_INCIDENT_PROMO_SOCIAL = (
+    "now hiring", "we're hiring", "were hiring", "join our team", "join the team",
+    "careers", "career fair", "apply today", "recruitment", "proud to serve",
+    "congratulations to", "award ceremony", "community outreach day",
+    "annual statistics", "nationwide seizure", "seizures nationwide",
+    "year in review", "statistics for fiscal", "bragging rights",
+)
+
+_DISTANT_OR_NATIONAL_HUMAN_INTEREST = (
+    "afghanistan", "iraq", "syria", "ukraine",
+)
+
+_RT_REPOST_MARKERS = (
+    "rt @", "retweet", "reposted from",
+)
+
+# Title/description must show a real event (not source-only placeholders) to appear on Live
+_LIVE_SUBSTANCE_KEYWORDS = frozenset(
+    list(URGENT_KEYWORDS)
+    + list(LIVE_SAFETY_SIGNAL_KEYWORDS)
+    + [
+        "arrest", "arrested", "charged", "crash", "collision", "mvc", "mva",
+        "investigation", "fire", "smoke", "burglary", "robbery", "assault",
+        "closure", "closed", "detour", "missing", "wanted", "suspect", "victim",
+        "shooting", "stabbing", "homicide", "overdose", "pursuit", "standoff",
+    ]
+)
+
+_LIVE_GENERIC_TITLE_ONLY = frozenset(
+    [
+        "openmhz", "scanner", "dispatch", "radio traffic", "live feed",
+        "police activity", "breaking news", "alert",
+    ]
+)
+
+
+def _live_plain_text(article: dict) -> tuple[str, str, str]:
+    title = (article.get("title") or "").strip()
+    desc = re.sub(r"<[^>]+>", "", (article.get("description") or "")).strip()
+    combined = f"{title} {desc}".strip()
+    return title, desc, combined
+
+
+def live_has_useful_summary(article: dict) -> bool:
+    """
+    Live tab only: require human-meaningful event text (not source-only or empty blurbs).
+    """
+    title, desc, combined = _live_plain_text(article)
+    low = combined.lower()
+    if len(combined) < 12:
+        return False
+
+    if re.search(r"\d{2,5}\s+[a-z]", low):
+        return True
+    if _scanner_blob_matches_critical_live(low):
+        return True
+    if any(k in low for k in _LIVE_SUBSTANCE_KEYWORDS):
+        return True
+    if _strong_albany_county_anchor(low):
+        return True
+
+    if article.get("_scanner_call"):
+        return bool(re.search(r"\d", combined)) and len(combined) >= 18
+
+    if article.get("_official_x_post"):
+        if len(title) < 18 and len(desc) < 25:
+            return False
+
+    tl = title.lower().strip()
+    if tl in _LIVE_GENERIC_TITLE_ONLY and len(desc) < 30:
+        return False
+    if len(title) <= 22 and tl in _LIVE_GENERIC_TITLE_ONLY:
+        return len(desc) >= 40
+
+    src = (article.get("source") or "").strip().lower()
+    if src and len(title) <= 36:
+        if tl == src or tl in src or (len(src) < 40 and src in tl):
+            if len(desc) < 28 and not re.search(r"\d", combined):
+                return False
+
+    return len(combined) >= 36
+
+
+def is_scanner_noise(article: dict) -> bool:
+    """True for empty / placeholder / duplicate 'Radio traffic' scanner rows."""
+    if not article.get("_scanner_call"):
+        return False
+    t = (article.get("title") or "").strip().lower()
+    d = (article.get("description") or "").strip().lower()
+    blob = f"{t} {d}".strip()
+    if not blob:
+        return True
+    if "radio traffic" in t:
+        rest = t.replace("radio traffic", " ", 1)
+        rest = re.sub(r"[\s:.\-]+", " ", rest).strip()
+        if not rest or rest == "radio traffic" or t.count("radio traffic") >= 2:
+            return True
+    if len(blob) < 22 and not any(ch.isdigit() for ch in blob):
+        return True
+    if t == d and len(t) < 55 and ("radio traffic" in t or "routine traffic" in t):
+        return True
+    return False
+
+
+def _scanner_call_has_actionable_incident(article: dict) -> bool:
+    blob = _article_combined_text(article)
+    if article.get("_scanner_critical_live") or article.get("_scanner_recent_live"):
+        return True
+    if _scanner_blob_matches_critical_live(blob):
+        return True
+    if re.search(r"\d{2,5}\s+[a-z]", blob) and any(
+        k in blob for k in ("ave", "st ", " rd", "blvd", "street", "road", "lane")
+    ):
+        return True
+    return any(
+        k in blob
+        for k in (
+            "mvc", "mva", "structure fire", "working fire", "overdose", "stabbing",
+            "shooting", "pursuit", "burglary", "robbery", "assault", "alarm",
+            "traffic stop", "domestic", "unconscious", "chest pain", "difficulty breathing",
+        )
+    )
+
+
+def is_real_local_incident(article: dict) -> bool:
+    """
+    True when the item describes a local public-safety / crime / traffic incident,
+    not agency PR, statistics brags, reposts, or distant human-interest stories.
+    """
+    if is_scanner_noise(article):
+        return False
+    blob = _strict_blob(article)
+    combined = _article_combined_text(article)
+    title_lower = (article.get("title") or "").lower()
+
+    if article.get("_nixle_item"):
+        return len(combined.strip()) > 10
+
+    if article.get("_scanner_call"):
+        return _scanner_call_has_actionable_incident(article)
+
+    if any(m in blob for m in _RT_REPOST_MARKERS):
+        return False
+
+    for w in _DISTANT_OR_NATIONAL_HUMAN_INTEREST:
+        if w in blob:
+            return False
+
+    if any(p in blob for p in _NON_INCIDENT_PROMO_SOCIAL):
+        return False
+
+    if "marine veteran" in blob or "lost both legs" in blob:
+        return False
+
+    if "texas officers" in blob or "our texas" in blob:
+        return False
+
+    if "framingham" in blob:
+        return False
+
+    if "international fugitive" in title_lower and "albany county" not in blob:
+        return False
+
+    noise_hits = [fp for fp in NOISE_KEYWORDS if fp in combined]
+    if noise_hits and not any(u in title_lower for u in URGENT_KEYWORDS):
+        return False
+
+    if article.get("_official_x_post"):
+        if live_safety_signal_match(article) or ongoing_public_safety_relevance(article):
+            return True
+        if any(k in combined for k in URGENT_KEYWORDS):
+            return True
+        return any(
+            k in combined
+            for k in (
+                "arrest", "arrested", "charged", "crash", "collision", "fire",
+                "closure", "road closed", "missing person", "investigation",
+                "burglary", "robbery", "shooting", "stabbing", "assault",
+            )
+        )
+
+    if any(k in combined for k in URGENT_KEYWORDS):
+        return True
+    if live_safety_signal_match(article):
+        return True
+    return any(kw in combined for kw in CRIME_KEYWORDS)
+
+
+def _nysp_missing_local_evidence(article: dict) -> bool:
+    """NYSP posts need Troop G or explicit Albany County–area locality in copy."""
+    src = (article.get("source") or "").lower()
+    link = (article.get("link") or "").lower()
+    if not any(h in src or h in link for h in _NYSP_SOURCE_HINTS):
+        return False
+    blob = _strict_blob(article)
+    if "troop g" in blob:
+        return False
+    if _strong_albany_county_anchor(blob):
+        return False
+    return True
+
+
+def live_feed_max_age_ok(article: dict) -> tuple[bool, str]:
+    age_h = get_article_age_hours(article)
+    if age_h is None:
+        return False, "rejected_stale"
+
+    ongoing = ongoing_public_safety_relevance(article)
+    critical = bool(article.get("_scanner_critical_live"))
+
+    if article.get("_scanner_call"):
+        if age_h <= LIVE_SCANNER_MAX_AGE_HOURS:
+            return True, ""
+        if ongoing or critical:
+            return True, ""
+        return False, "rejected_stale"
+
+    if article.get("_official_x_post") or article.get("_nixle_item"):
+        if age_h <= LIVE_OFFICIAL_SOCIAL_MAX_AGE_HOURS:
+            return True, ""
+        if ongoing:
+            return True, ""
+        return False, "rejected_stale"
+
+    if age_h <= LIVE_NEWS_RSS_MAX_AGE_HOURS:
+        return True, ""
+    blob_age = _article_combined_text(article)
+    if ongoing and any(
+        k in blob_age
+        for k in ("closure", "road closed", "missing", "search", "alert", "active", "shelter")
+    ):
+        return True, ""
+    return False, "rejected_stale"
+
+
+def _map_strict_fail_to_live_code(reason: str) -> str:
+    if reason == "federal_national_source_no_local_anchor":
+        return "rejected_federal_generic"
+    if reason == "albany_token_without_ny_confirmation":
+        return "rejected_ambiguous_albany"
+    if reason == "capital_region_without_county_anchor":
+        return "rejected_ambiguous_albany"
+    if reason.startswith("false_positive:") or reason.startswith("out_of_area:"):
+        return "rejected_non_local"
+    if reason.startswith("non_local_source:"):
+        return "rejected_non_local"
+    return "rejected_non_local"
+
+
+def _log_live_feed_gate(code: str, article: dict) -> None:
+    if not code:
+        return
+    t = (article.get("title") or "")[:110]
+    print(f"[live-feed] {code} | {t!r}")
+
+
+def should_include_in_live_feed(article: dict) -> tuple[bool, str]:
+    """
+    Single final gate for the Live tab. Requires strict Albany County locality,
+    real incident/public-safety content, recency rules, and no scanner/federal/social noise.
+    """
+    ok_loc, loc_reason = evaluate_strict_albany_county(article)
+    if not ok_loc:
+        code = _map_strict_fail_to_live_code(loc_reason)
+        article["live_reject_reason"] = code
+        _log_live_feed_gate(code, article)
+        return False, code
+
+    if _nysp_missing_local_evidence(article):
+        article["live_reject_reason"] = "rejected_non_local"
+        _log_live_feed_gate("rejected_non_local", article)
+        return False, "rejected_non_local"
+
+    if is_scanner_noise(article):
+        article["live_reject_reason"] = "rejected_scanner_noise"
+        _log_live_feed_gate("rejected_scanner_noise", article)
+        return False, "rejected_scanner_noise"
+
+    if _national_federal_source_hit(article) and not is_real_local_incident(article):
+        article["live_reject_reason"] = "rejected_federal_generic"
+        _log_live_feed_gate("rejected_federal_generic", article)
+        return False, "rejected_federal_generic"
+
+    if not is_real_local_incident(article):
+        article["live_reject_reason"] = "rejected_not_incident"
+        _log_live_feed_gate("rejected_not_incident", article)
+        return False, "rejected_not_incident"
+
+    age_ok, _stale = live_feed_max_age_ok(article)
+    if not age_ok:
+        article["live_reject_reason"] = "rejected_stale"
+        _log_live_feed_gate("rejected_stale", article)
+        return False, "rejected_stale"
+
+    if not live_has_useful_summary(article):
+        article["live_reject_reason"] = "rejected_weak_summary"
+        _log_live_feed_gate("rejected_weak_summary", article)
+        return False, "rejected_weak_summary"
+
+    article.pop("live_reject_reason", None)
+    return True, ""
+
+
+def _scanner_live_fingerprint(a: dict) -> str:
+    """Normalize scanner copy so near-duplicate cards collapse to one row."""
+    title = (a.get("title") or "").strip().lower()
+    desc = re.sub(r"<[^>]+>", "", (a.get("description") or "")).strip().lower()
+    raw = f"{title} {desc}"
+    raw = re.sub(r"\s+", " ", raw).strip()
+    raw = re.sub(r"\b\d{1,2}:\d{2}(:\d{2})?\s*(am|pm)?\b", " ", raw)
+    raw = re.sub(r"\s+", " ", raw).strip()
+    return raw[:240] if raw else "_"
+
+
+def dedupe_redundant_live_scanner_cards(live_items: list[dict]) -> list[dict]:
+    """Drop redundant scanner rows (same normalized text); keep the freshest per fingerprint."""
+    non_scan = [x for x in live_items if not x.get("_scanner_call")]
+    scan = [x for x in live_items if x.get("_scanner_call")]
+    best_by_fp: dict[str, dict] = {}
+    for x in scan:
+        fp = _scanner_live_fingerprint(x)
+        if fp not in best_by_fp:
+            best_by_fp[fp] = x
+            continue
+        prev = best_by_fp[fp]
+        am_new = x.get("age_minutes")
+        am_old = prev.get("age_minutes")
+        if am_new is None:
+            continue
+        if am_old is None or am_new < am_old:
+            best_by_fp[fp] = x
+    return non_scan + list(best_by_fp.values())
+
+
+def live_presentation_priority_tier(x: dict) -> int:
+    """
+    Higher tier sorts first on Live. Ordering:
+      1) Fresh scanner with actionable event/location
+      2) Road closures / missing persons / ongoing alerts (incl. Nixle)
+      3) Recent local arrests / crashes / investigations
+      4) Other clearly relevant rows
+    """
+    blob = _article_combined_text(x).lower()
+    age_h = x.get("age_hours")
+    age_h = float(age_h) if isinstance(age_h, (int, float)) else 999.0
+
+    ongoing = ongoing_public_safety_relevance(x)
+    crit = bool(x.get("_scanner_critical_live"))
+    sc = bool(x.get("_scanner_call"))
+
+    closure_missing = any(
+        k in blob
+        for k in (
+            "road closed",
+            "road closure",
+            "lane closed",
+            "lanes closed",
+            "missing person",
+            "amber alert",
+            "silver alert",
+            "active search",
+            "shelter in place",
+            "shelter-in-place",
+        )
+    )
+
+    tier3_kw = (
+        "arrest",
+        "arrested",
+        "charged",
+        "crash",
+        "collision",
+        "investigation",
+        "shooting",
+        "stabbing",
+        "fire",
+        "robbery",
+        "burglary",
+        "assault",
+    )
+
+    if sc:
+        if age_h <= LIVE_SCANNER_MAX_AGE_HOURS and _scanner_call_has_actionable_incident(x):
+            if re.search(r"\d", blob) or _scanner_blob_matches_critical_live(blob):
+                return 110
+            return 105
+        if age_h <= 3.0 and crit:
+            return 95
+        if age_h <= 6.0 and _scanner_call_has_actionable_incident(x):
+            return 82
+        if age_h <= 12.0:
+            return 58
+        return 35
+
+    if closure_missing and (ongoing or age_h <= 12.0):
+        return 88 if age_h <= 8.0 else 75
+
+    if x.get("_nixle_item") and age_h <= LIVE_OFFICIAL_SOCIAL_MAX_AGE_HOURS:
+        return 80
+
+    if x.get("_official_x_post") and live_safety_signal_match(x) and age_h <= 6.0:
+        return 72
+
+    if age_h <= 8.0 and any(k in blob for k in tier3_kw):
+        return 65
+    if age_h <= 12.0 and any(k in blob for k in tier3_kw):
+        return 52
+
+    return 42
+
+
+def live_presentation_sort_key(x: dict) -> tuple:
+    """
+    Sort Live descending: tier, ongoing boost, freshness (newer first), then live_score.
+    """
+    tier = live_presentation_priority_tier(x)
+    ongoing = 1 if ongoing_public_safety_relevance(x) else 0
+    crit = 1 if x.get("_scanner_critical_live") else 0
+    am = x.get("age_minutes")
+    am = float(am) if isinstance(am, (int, float)) else 99999.0
+    score = float(x.get("live_score") or 0.0)
+    return (tier, ongoing, crit, -am, score)
+
+
 def compute_article_confidence(article) -> float:
     """
     Returns a confidence score 0.0–1.0 that this article is genuinely
@@ -1556,11 +1995,39 @@ def compute_article_confidence(article) -> float:
 
 
 def is_crime_related(article) -> bool:
-    if article.get("_scanner_call") or article.get("_scanner_feed_link") or article.get("_nixle_item"):
-        return True
+    if article.get("_scanner_feed_link"):
+        return False
+    if is_scanner_noise(article):
+        return False
+    if article.get("_scanner_call"):
+        return _scanner_call_has_actionable_incident(article)
+
+    blob = (
+        (article.get("title", "") + " " + (article.get("description", "") or "") + " "
+         + (article.get("source", "") or ""))
+    ).lower()
+
+    if article.get("_nixle_item"):
+        return len(blob.strip()) > 8
+
     if article.get("_official_x_post"):
-        return True
-    text = (article.get("title", "") + " " + article.get("description", "")).lower()
+        if any(m in blob for m in _RT_REPOST_MARKERS):
+            return False
+        for w in _DISTANT_OR_NATIONAL_HUMAN_INTEREST:
+            if w in blob:
+                return False
+        if any(p in blob for p in _NON_INCIDENT_PROMO_SOCIAL):
+            return False
+        return (
+            any(kw in blob for kw in CRIME_KEYWORDS)
+            or live_safety_signal_match(article)
+            or any(u in blob for u in URGENT_KEYWORDS)
+        )
+
+    text = (article.get("title", "") + " " + (article.get("description", "") or "")).lower()
+    for w in _DISTANT_OR_NATIONAL_HUMAN_INTEREST:
+        if w in text:
+            return False
     return any(kw in text for kw in CRIME_KEYWORDS)
 
 
@@ -1701,6 +2168,15 @@ def get_neighborhood(location_name: str) -> str:
 # PATTERN DETECTION
 # =============================================================================
 def detect_patterns(crime_data):
+    if not crime_data:
+        return {"hotspots": [], "type_breakdown": {}, "insights": [], "neighborhood_counts": {}}
+
+    def _row_counts_for_stats(c: dict) -> bool:
+        if c.get("_stats_eligible") is not None:
+            return bool(c["_stats_eligible"])
+        return not is_scanner_noise(c) and is_real_local_incident(c)
+
+    crime_data = [c for c in crime_data if _row_counts_for_stats(c)]
     if not crime_data:
         return {"hotspots": [], "type_breakdown": {}, "insights": [], "neighborhood_counts": {}}
 
@@ -2379,7 +2855,13 @@ async def get_crimes():
         age_m = get_article_age_minutes(a)
         geo["age_hours"] = round(age_h, 1) if age_h is not None else None
         geo["age_minutes"] = round(age_m, 1) if age_m is not None else None
-        geo["feed_tab"] = classify_feed_tab(a)
+        proposed_tab = classify_feed_tab(a)
+        if proposed_tab == "live":
+            ok_live, _lr = should_include_in_live_feed(geo)
+            geo["feed_tab"] = "live" if ok_live else "news"
+        else:
+            geo["feed_tab"] = "news"
+        geo["_stats_eligible"] = not is_scanner_noise(geo) and is_real_local_incident(geo)
         geo["is_active_incident"] = compute_is_active_incident(geo)
         geo["live_score"] = round(live_score(geo), 2)
         geocoded.append(geo)
@@ -2393,25 +2875,9 @@ async def get_crimes():
         except Exception:
             return 0.0
 
-    def _live_sort_key(x: dict) -> tuple:
-        """Freshest first; sink non-PS rows >12h; PS tie-break; source_priority last."""
-        ah = x.get("age_hours")
-        age_sort = float(ah) if isinstance(ah, (int, float)) else 9999.0
-        ps = bool(
-            x.get("_scanner_call")
-            or x.get("_nixle_item")
-            or is_realtime_public_safety(x)
-        )
-        rt_rank = 0 if ps else 1
-        old_article = 1 if (age_sort > 12.0 and not ps) else 0
-        sp = float(x.get("source_priority") or 0)
-        return (old_article, age_sort, rt_rank, -sp)
-
-    live_items = sorted(
-        [x for x in geocoded if x.get("feed_tab") == "live"],
-        key=_live_sort_key,
-    )
-    live_items = apply_saturday_night_live_order(live_items)
+    live_items = [x for x in geocoded if x.get("feed_tab") == "live"]
+    live_items = dedupe_redundant_live_scanner_cards(live_items)
+    live_items = sorted(live_items, key=live_presentation_sort_key, reverse=True)
     news_items = sorted(
         [x for x in geocoded if x.get("feed_tab") == "news"],
         key=lambda x: -_pub_ts_sort(x),
@@ -2470,7 +2936,7 @@ async def get_situation():
         "ai_confidence": situation.get("confidence", "unknown"),
         "data_confidence": avg_confidence,
         "stats": {
-            "total_incidents": len(crime_data),
+            "total_incidents": patterns.get("total", 0),
             "violent": patterns["type_breakdown"].get("violent", 0),
             "property": patterns["type_breakdown"].get("property", 0),
             "other": patterns["type_breakdown"].get("other", 0),
