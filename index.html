@@ -59,6 +59,7 @@
   <div class="desktop-tabs" id="desktopTabs">
     <button class="desktop-tab active" data-view="feed">Feed</button>
     <button class="desktop-tab" data-view="scanner">Scanner</button>
+    <button class="desktop-tab" data-view="directory">Directory</button>
     <button class="desktop-tab" data-view="chat">AI Chat</button>
     <button class="desktop-tab" data-view="more">More</button>
   </div>
@@ -169,6 +170,19 @@
           <p class="scanner-subtitle">Albany County Police, Fire &amp; EMS</p>
         </div>
 
+        <div class="scanner-toolbar">
+          <div class="scanner-search-row">
+            <span class="material-icons scanner-search-icon" aria-hidden="true">search</span>
+            <input type="search" id="scannerSearchInput" class="scanner-search-input" placeholder="Search department, talkgroup, location…" autocomplete="off" aria-label="Search scanner traffic">
+          </div>
+          <div class="scanner-filter-chips" id="scannerFilterChips" role="group" aria-label="Filter by service">
+            <button type="button" class="scanner-chip active" data-scanner-filter="all">All</button>
+            <button type="button" class="scanner-chip scanner-chip-police" data-scanner-filter="police">Police</button>
+            <button type="button" class="scanner-chip scanner-chip-fire" data-scanner-filter="fire">Fire</button>
+            <button type="button" class="scanner-chip scanner-chip-ems" data-scanner-filter="ems">EMS</button>
+          </div>
+        </div>
+
         <div class="scanner-player-card scanner-player-card--large" id="mainPlayerCard">
           <div class="scanner-player-header">
             <span class="material-icons" style="font-size:18px;">radio</span>
@@ -182,6 +196,10 @@
             </span>
           </div>
           <div class="scanner-player-body" id="mainPlayerBody">
+            <div class="main-player-now-row">
+              <span class="main-player-now-label" id="mainPlayerNowLabel">Now playing</span>
+              <span class="main-player-now-agency" id="mainPlayerNowAgency">—</span>
+            </div>
             <div class="main-player-track">
               <div class="main-player-info">
                 <span class="main-player-dept" id="mainPlayerDept">Waiting for transmissions…</span>
@@ -191,8 +209,19 @@
                 <span class="material-icons">play_arrow</span>
               </button>
             </div>
-            <div class="main-player-progress-wrap">
+            <div class="main-player-progress-wrap" id="mainPlayerProgressWrap">
               <div class="main-player-bar" id="mainPlayerBar"></div>
+            </div>
+            <div class="main-player-controls-row">
+              <button type="button" class="main-player-icon-btn" id="mainPlayerMute" aria-label="Mute" title="Mute">
+                <span class="material-icons" id="mainPlayerMuteIcon">volume_up</span>
+              </button>
+              <label class="main-player-vol-label" for="mainPlayerVolume"><span class="material-icons">tune</span></label>
+              <input type="range" id="mainPlayerVolume" class="main-player-volume" min="0" max="100" value="100" aria-label="Volume">
+              <label class="main-player-autoplay-label">
+                <input type="checkbox" id="mainPlayerAutoplay" class="main-player-autoplay-cb">
+                <span>Auto-next</span>
+              </label>
             </div>
           </div>
           <div class="scanner-player-footer">
@@ -243,6 +272,79 @@
           <span class="material-icons" style="font-size:18px;">send</span>
         </button>
       </form>
+    </section>
+
+    <!-- === DIRECTORY VIEW === -->
+    <section class="view" id="viewDirectory">
+      <div class="view-scroll">
+        <div class="dir-header-card">
+          <div class="dir-header-top">
+            <span class="material-icons" style="font-size:18px;color:var(--accent);">badge</span>
+            <span class="dir-title">Law Enforcement Directory</span>
+          </div>
+          <p class="dir-subtitle" id="dirMetaLine">Agencies, coverage, scanner feeds, media &amp; community resources</p>
+        </div>
+
+        <div class="dir-stats-row" id="dirStatsRow">
+          <div class="dir-stat-chip"><span class="dir-stat-val" id="dirStatAgencies">—</span><span class="dir-stat-lbl">Agencies</span></div>
+          <div class="dir-stat-chip"><span class="dir-stat-val" id="dirStatMunis">—</span><span class="dir-stat-lbl">Municipalities</span></div>
+          <div class="dir-stat-chip"><span class="dir-stat-val" id="dirStatMedia">—</span><span class="dir-stat-lbl">Media</span></div>
+          <div class="dir-stat-chip"><span class="dir-stat-val" id="dirStatCommunity">—</span><span class="dir-stat-lbl">Community</span></div>
+        </div>
+
+        <div class="dir-toolbar">
+          <input type="search" id="dirSearchInput" class="dir-search-input" placeholder="Search agencies, jurisdiction, type…" autocomplete="off" aria-label="Search directory agencies">
+          <div class="dir-filter-pills" id="dirFilterPills" role="group" aria-label="Filter by tier">
+            <button type="button" class="dir-filter-btn active" data-tier="all">All</button>
+            <button type="button" class="dir-filter-btn" data-tier="federal">Federal</button>
+            <button type="button" class="dir-filter-btn" data-tier="state">State</button>
+            <button type="button" class="dir-filter-btn" data-tier="county">County</button>
+            <button type="button" class="dir-filter-btn" data-tier="municipal">Municipal</button>
+          </div>
+        </div>
+
+        <div class="dir-section">
+          <h2 class="dir-section-title">
+            <span class="material-icons" style="font-size:14px;">local_police</span>
+            Agencies
+          </h2>
+          <div id="dirAgenciesList" class="dir-agencies-list">
+            <div class="empty-state">Open this tab to load the directory…</div>
+          </div>
+        </div>
+
+        <div class="dir-section">
+          <h2 class="dir-section-title">
+            <span class="material-icons" style="font-size:14px;">location_city</span>
+            Municipalities &amp; primary coverage
+          </h2>
+          <div id="dirMuniList" class="dir-muni-list"></div>
+        </div>
+
+        <div class="dir-section">
+          <h2 class="dir-section-title">
+            <span class="material-icons" style="font-size:14px;">sensors</span>
+            Scanner &amp; radio ecosystem
+          </h2>
+          <div id="dirScannerBlock"></div>
+        </div>
+
+        <div class="dir-section">
+          <h2 class="dir-section-title">
+            <span class="material-icons" style="font-size:14px;">newspaper</span>
+            Media sources
+          </h2>
+          <div id="dirMediaList" class="dir-media-list"></div>
+        </div>
+
+        <div class="dir-section">
+          <h2 class="dir-section-title">
+            <span class="material-icons" style="font-size:14px;">groups</span>
+            Community &amp; alerts
+          </h2>
+          <div id="dirCommunityList" class="dir-community-list"></div>
+        </div>
+      </div>
     </section>
 
     <!-- === MORE VIEW === -->
@@ -334,6 +436,10 @@
     <button class="nav-btn" data-view="scanner">
       <span class="material-icons">sensors</span>
       <span>Scanner</span>
+    </button>
+    <button class="nav-btn" data-view="directory">
+      <span class="material-icons">badge</span>
+      <span>Directory</span>
     </button>
     <button class="nav-btn" data-view="chat">
       <span class="material-icons">psychology</span>

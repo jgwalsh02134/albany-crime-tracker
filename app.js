@@ -25,6 +25,13 @@
   var activeMapFilter = "all";
   var allIncidentData = [];          // holds all crime articles for tab filtering
 
+  // Law enforcement directory (lazy-loaded from /api/directory/*)
+  var leDirectory = null;
+  var directoryLoaded = false;
+  var directoryLoading = false;
+  var dirTierFilter = "all";
+  var dirSearchQuery = "";
+
   // Tile URLs
   var TILES_DARK = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
   var TILES_LIGHT = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
@@ -75,6 +82,108 @@
     "8260":  { name: "Albany EMS Dispatch",        cat: "ems",    priority: "high",   location: "City of Albany" }
   };
 
+  var scannerFilterCat = "all";
+  var scannerSearchQuery = "";
+  var lastScannerCallsRef = [];
+  var currentMainPlayerCallIdx = -1;
+  var scannerMuted = false;
+
+  function mergeScannerTalkgroupsFromApi(payload) {
+    var tgs = payload.talkgroups || {};
+    for (var tid in tgs) {
+      if (!Object.prototype.hasOwnProperty.call(tgs, tid)) continue;
+      var row = tgs[tid];
+      TG_MAP[tid] = {
+        name: row.department || row.name,
+        location: row.location || "Albany County, NY",
+        cat: row.category || "police",
+        priority: row.priority || "medium",
+        agencyId: row.agency_id || null
+      };
+    }
+    if (payload.system && payload.system.name) {
+      var sub = document.getElementById("mainPlayerSub");
+      if (sub) {
+        var line = payload.system.name;
+        if (payload.dispatch_center) line += " · " + payload.dispatch_center;
+        sub.textContent = line;
+      }
+    }
+  }
+
+  function fetchScannerTalkgroups() {
+    fetch(API + "/api/scanner/talkgroups")
+      .then(ok)
+      .then(function (r) {
+        if (r && r.status === "ok" && r.talkgroups) mergeScannerTalkgroupsFromApi(r);
+      })
+      .catch(function () {});
+  }
+
+  function openDirectoryToAgency(agencyId) {
+    if (!agencyId) {
+      switchView("directory");
+      return;
+    }
+    switchView("directory");
+    function tryScroll() {
+      var el = document.getElementById("dir-agency-" + agencyId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("dir-agency-highlight");
+        setTimeout(function () { el.classList.remove("dir-agency-highlight"); }, 2200);
+        return true;
+      }
+      return false;
+    }
+    if (!tryScroll()) {
+      setTimeout(function () {
+        if (!tryScroll()) setTimeout(tryScroll, 500);
+      }, 350);
+    }
+  }
+
+  function initScannerToolbar() {
+    var chips = document.querySelectorAll("[data-scanner-filter]");
+    chips.forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        scannerFilterCat = chip.getAttribute("data-scanner-filter") || "all";
+        chips.forEach(function (c) { c.classList.toggle("active", c === chip); });
+        if (lastScannerCallsRef.length) renderScannerCalls(lastScannerCallsRef);
+      });
+    });
+    var inp = document.getElementById("scannerSearchInput");
+    if (inp) {
+      var tmr;
+      inp.addEventListener("input", function () {
+        clearTimeout(tmr);
+        tmr = setTimeout(function () {
+          scannerSearchQuery = (inp.value || "").trim().toLowerCase();
+          if (lastScannerCallsRef.length) renderScannerCalls(lastScannerCallsRef);
+        }, 100);
+      });
+    }
+    var vol = document.getElementById("mainPlayerVolume");
+    if (vol) {
+      var savedV = storage.get("act-scanner-vol");
+      if (savedV != null) vol.value = savedV;
+      vol.addEventListener("input", function () {
+        storage.set("act-scanner-vol", vol.value);
+        if (mainAudio) mainAudio.volume = (parseInt(vol.value, 10) || 0) / 100;
+      });
+    }
+    var muteBtn = document.getElementById("mainPlayerMute");
+    if (muteBtn) {
+      muteBtn.addEventListener("click", function () {
+        scannerMuted = !scannerMuted;
+        if (mainAudio) mainAudio.muted = scannerMuted;
+        muteBtn.classList.toggle("muted", scannerMuted);
+        var ic = document.getElementById("mainPlayerMuteIcon");
+        if (ic) ic.textContent = scannerMuted ? "volume_off" : "volume_up";
+      });
+    }
+  }
+
   function lookupTgMap(tgRaw) {
     var s = String(tgRaw == null ? "" : tgRaw).trim();
     if (!s) return null;
@@ -105,12 +214,14 @@
     var location;
     var cat;
     var priority;
+    var agencyId = null;
 
     if (info) {
       name = info.name;
       location = info.location || "Albany County, NY";
       cat = info.cat;
       priority = info.priority || "medium";
+      agencyId = info.agencyId != null ? info.agencyId : null;
     } else {
       var blob = (alpha + " " + desc).trim();
       if (blob) {
@@ -140,7 +251,7 @@
       priority = "medium";
     }
     if (!location) location = "Albany County, NY";
-    return { name: name, location: location, cat: cat, priority: priority };
+    return { name: name, location: location, cat: cat, priority: priority, agencyId: agencyId };
   }
 
   // ── THEME ─────────────────────────────────────────────────────
@@ -201,6 +312,10 @@
 
     initTheme();
     initNav();
+    initDirSearch();
+    initDirFilters();
+    initScannerToolbar();
+    fetchScannerTalkgroups();
     initFeedTabs();
     initChat();
     startClock();
@@ -312,6 +427,11 @@
       if (list && list.querySelector(".skeleton")) {
         fetchNibrsAgencies();
       }
+    }
+
+    // Lazy-load law enforcement directory
+    if (viewName === "directory" && !directoryLoaded && !directoryLoading) {
+      fetchDirectory();
     }
   }
 
@@ -607,7 +727,16 @@
   ]);
 
   function isOfficialSource(src) {
-    return OFFICIAL_SOURCES.has((src || "").toLowerCase());
+    var s = (src || "").toLowerCase();
+    if (OFFICIAL_SOURCES.has(s)) return true;
+    if (s.indexOf("official @") === 0) return true;
+    if (s === "official x") return true;
+    if (s.indexOf("nixle") !== -1) return true;
+    return false;
+  }
+
+  function isScannerCrimeSource(src) {
+    return (src || "").toLowerCase().indexOf("scanner ·") !== -1;
   }
 
   function buildIncidentCard(item) {
@@ -619,9 +748,12 @@
     var ta = item.pubDate ? timeAgo(new Date(item.pubDate)) : "";
     var link = item.link || "#";
     var official = isOfficialSource(primarySrc);
+    var scannerCrime = isScannerCrimeSource(primarySrc);
     var multiSource = srcs.length > 1;
 
-    var cls = "feed-item" + (official ? " feed-item-official" : "");
+    var cls = "feed-item";
+    if (official) cls += " feed-item-official feed-item-official-prominent";
+    if (scannerCrime) cls += " feed-item-scanner-crime";
     var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener">';
     html += '<span class="feed-dot ' + esc(type) + '"></span>';
     html += '<div class="feed-body">';
@@ -629,7 +761,9 @@
     html += '<div class="feed-meta">';
     if (hood) html += '<span class="feed-hood">' + esc(capitalize(hood)) + '</span>';
     if (official) {
-      html += '<span class="official-badge">Official</span>';
+      html += '<span class="official-badge official-badge--lg">OFFICIAL</span>';
+    } else if (scannerCrime) {
+      html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">SCANNER</span>';
     }
     if (multiSource) {
       html += '<span class="multi-source">' + srcs.map(esc).join('<span class="src-sep"> + </span>') + '</span>';
@@ -672,7 +806,7 @@
         html += '</div>';
         html += '<div class="scanner-call-detail">' + esc(durText) + '</div>';
         html += '<div class="feed-meta">';
-        html += '<span class="scanner-feed-badge scanner-badge-' + esc(intel.cat || "police") + '">SCANNER · ' + esc(catLabel) + '</span>';
+        html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-' + esc(intel.cat || "police") + '">SCANNER · ' + esc(catLabel) + '</span>';
         html += '<span>' + esc(intel.time) + '</span>';
         html += '<span class="scanner-intel-tap-hint">Tap for scanner</span>';
         html += '</div></div></div>';
@@ -685,6 +819,10 @@
       }
     } else {
       function _pubMs(x) { return x.pubDate ? new Date(x.pubDate).getTime() : 0; }
+      function _prio(x) {
+        var p = x.source_priority;
+        return typeof p === "number" && !isNaN(p) ? p : parseInt(p, 10) || 0;
+      }
       function _liveArrestFirst(x) {
         var title = (x.title || "").toLowerCase();
         var hints = ["arrest", "arrested", "booked", "booking", "charged", "custody", "indicted", "arraigned", "suspect", "warrant", "in custody"];
@@ -693,6 +831,9 @@
         return ageH <= 18 && hit ? 0 : 1;
       }
       var sorted = liveItems.slice().sort(function (a, b) {
+        var pa = _prio(a);
+        var pb = _prio(b);
+        if (pa !== pb) return pb - pa;
         var ba = _liveArrestFirst(a);
         var bb = _liveArrestFirst(b);
         if (ba !== bb) return ba - bb;
@@ -1498,6 +1639,7 @@
   }
 
   function processAndRenderScanner(calls) {
+    lastScannerCallsRef = calls.slice();
     extractScannerIntel(calls);
     renderScannerCalls(calls);
     // Refresh live feed so scanner intel cards appear at the top immediately
@@ -1568,28 +1710,51 @@
     var container = document.getElementById("scannerCallsList");
     if (!container) return;
 
-    if (!calls || calls.length === 0) {
+    var source = (calls && calls.length) ? calls : lastScannerCallsRef;
+    if (!source || source.length === 0) {
       renderScannerFallback();
       return;
     }
 
     var now = new Date();
-    var recentCalls = calls.filter(function (c) {
+    var recentCalls = source.filter(function (c) {
       var t = c.time ? new Date(c.time) : (c.start_time ? new Date(c.start_time) : null);
       return !t || (now - t) < 6 * 60 * 60 * 1000;
+    });
+
+    var filtered = recentCalls.filter(function (c) {
+      var d = resolveScannerDept(c);
+      if (scannerFilterCat !== "all" && d.cat !== scannerFilterCat) return false;
+      if (scannerSearchQuery) {
+        var blob = (
+          d.name + " " + d.location + " " +
+          String(c.talkgroup_num || c.talkgroup || "") + " " +
+          String(c.talkgroup_tag || "") + " " +
+          String(c.talkgroup_description || "")
+        ).toLowerCase();
+        if (blob.indexOf(scannerSearchQuery) < 0) return false;
+      }
+      return true;
     });
 
     var html = "";
 
     html += '<div class="scanner-status-ok">';
     html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-5"/></svg>';
-    html += ' Receiving radio traffic &nbsp;·&nbsp; ' + calls.length + ' calls logged';
+    html += '<span class="scanner-status-text">Receiving radio traffic</span>';
+    html += '<span class="scanner-status-meta">' + source.length + " calls · " + filtered.length + " shown</span>';
     html += '</div>';
 
-    if (recentCalls.length === 0) {
+    var liveInd = document.getElementById("scannerLiveIndicator");
+    if (liveInd) {
+      liveInd.style.display = filtered.length ? "inline" : "none";
+      liveInd.textContent = "● Receiving";
+    }
+
+    if (filtered.length === 0) {
       html += '<div class="scanner-no-traffic">';
-      html += '<span class="material-icons" style="font-size:28px;opacity:0.25;display:block;margin-bottom:6px;">radio</span>';
-      html += '<span>No recent traffic in the last 6 hours</span>';
+      html += '<span class="material-icons" style="font-size:28px;opacity:0.25;display:block;margin-bottom:6px;">filter_alt_off</span>';
+      html += '<span>No transmissions match your filters</span>';
       html += '</div>';
       container.innerHTML = html;
       var tsEl2 = document.getElementById("scannerTimestamp");
@@ -1597,7 +1762,7 @@
       return;
     }
 
-    recentCalls.slice(0, 25).forEach(function (call) {
+    filtered.slice(0, 25).forEach(function (call) {
       var dept = resolveScannerDept(call);
       var freqHz = call.freq || 0;
       var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
@@ -1611,49 +1776,77 @@
       var catClass = cat !== "other" ? " scanner-cat-" + cat : "";
 
       var isHigh = dept.priority === "high";
-      var priorityDot = isHigh
-        ? '<span class="scanner-priority-dot scanner-dot-' + cat + '"></span>'
-        : "";
+      var dotCls = "scanner-priority-dot scanner-dot-" + cat;
+      if (isHigh) dotCls += " scanner-priority-dot--high";
+      var priorityDot = '<span class="' + dotCls + '" title="High-priority talkgroup"></span>';
 
-      var details = [];
-      if (freqMHz) details.push(freqMHz + " MHz");
-      if (len > 0) details.push(len.toFixed(0) + "s");
-      var detailLine = details.join(" \u00b7 ");
+      var freqPart = freqMHz ? freqMHz + " MHz" : "";
+      var durPart = len > 0 ? len.toFixed(0) + "s" : "";
+      var detailLine = [freqPart, durPart, ta ? ta + " ago" : ""].filter(Boolean).join(" · ");
 
-      html += '<div class="scanner-call-item' + catClass + '">';
+      var agencyId = dept.agencyId || "";
+      var clickableCls = " scanner-call-item--clickable";
+
+      html += '<div class="scanner-call-item' + catClass + clickableCls + '" tabindex="0" role="button"';
+      if (agencyId) html += ' data-agency-id="' + escAttr(agencyId) + '"';
+      html += ' title="Open agency in Directory">';
 
       html += '<div class="scanner-call-top">';
-      html += '<span class="scanner-call-tg">' + priorityDot + esc(dept.name);
+      html += '<span class="scanner-call-tg">' + priorityDot;
+      html += '<span class="scanner-call-dept">' + esc(dept.name) + '</span>';
       html += '<span class="scanner-call-loc"> \u2014 ' + esc(dept.location) + '</span>';
       html += '</span>';
-      html += '<span class="scanner-call-time">' + esc(ta) + '</span>';
+      html += '<span class="scanner-call-time">' + esc(ta || "\u2014") + '</span>';
       html += '</div>';
 
       if (detailLine) {
-        html += '<div class="scanner-call-detail">' + esc(detailLine) + '</div>';
+        html += '<div class="scanner-call-detail scanner-call-detail--prominent">' + esc(detailLine) + '</div>';
       }
 
-      // Bottom row: category badge | play button
       html += '<div class="scanner-call-bottom">';
       if (catLabel) {
         html += '<span class="scanner-call-cat scanner-cat-tag-' + esc(cat) + '">' + esc(catLabel) + '</span>';
       }
       if (audioUrl) {
-        html += '<button class="scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" title="Play transmission">';
+        html += '<button type="button" class="scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" title="Play transmission">';
         html += '<span class="material-icons" style="font-size:14px;">play_arrow</span>';
         html += '</button>';
       }
       html += '</div>';
+
+      if (agencyId) {
+        html += '<div class="scanner-call-item-hint"><span class="material-icons">open_in_new</span> Directory</div>';
+      }
 
       html += '</div>';
     });
 
     container.innerHTML = html;
     bindScannerAudio(container);
+    bindScannerCallCards(container, recentCalls);
     updateMainPlayer(recentCalls);
 
     var tsEl = document.getElementById("scannerTimestamp");
     if (tsEl) tsEl.textContent = "Updated " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  }
+
+  function bindScannerCallCards(container) {
+    container.querySelectorAll(".scanner-call-item--clickable").forEach(function (row) {
+      function go() {
+        var aid = row.getAttribute("data-agency-id");
+        openDirectoryToAgency(aid || null);
+      }
+      row.addEventListener("click", function (e) {
+        if (e.target.closest(".scanner-play-btn")) return;
+        go();
+      });
+      row.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          go();
+        }
+      });
+    });
   }
 
   // ── Main (top) scanner player — uses clean OpenMHz MP3, no commercials ──
@@ -1664,15 +1857,19 @@
     var badge  = document.getElementById("mainPlayerBadge");
     if (!btn || !calls || calls.length === 0) return;
 
-    // Pick the most recent call that has an audio URL
     var call = null;
+    currentMainPlayerCallIdx = -1;
     for (var i = 0; i < calls.length; i++) {
-      if (calls[i].url || calls[i].audio_url) { call = calls[i]; break; }
+      if (calls[i].url || calls[i].audio_url) {
+        call = calls[i];
+        currentMainPlayerCallIdx = i;
+        break;
+      }
     }
     if (!call) return;
 
     var dept = resolveScannerDept(call);
-    var len = call.duration != null ? parseFloat(call.duration) : 0;
+    var len = call.duration != null ? parseFloat(call.duration) : (call.len != null ? parseFloat(call.len) : 0);
     var startTime = call.time ? new Date(call.time) : (call.start_time ? new Date(call.start_time) : null);
     var ta = startTime ? timeAgo(startTime) : "";
     var audioUrl = call.url || call.audio_url || "";
@@ -1680,25 +1877,45 @@
     var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
 
     var catLabels = { police: "Police", fire: "Fire", ems: "EMS" };
+    var line = dept.name + " \u2014 " + dept.location;
 
-    if (deptEl) deptEl.textContent = dept.name + " \u2014 " + dept.location;
+    if (deptEl) deptEl.textContent = line;
+    var nowAg = document.getElementById("mainPlayerNowAgency");
+    if (nowAg) nowAg.textContent = line;
     if (metaEl) {
       var parts = [];
       if (freqMHz) parts.push(freqMHz + " MHz");
       if (len > 0) parts.push(len.toFixed(0) + "s");
       if (catLabels[dept.cat]) parts.push(catLabels[dept.cat]);
-      if (ta) parts.push(ta);
+      if (ta) parts.push(ta + " ago");
       metaEl.textContent = parts.join(" \u00b7 ");
     }
     if (badge) badge.style.opacity = "1";
 
     btn.disabled = !audioUrl;
     btn.setAttribute("data-audio", audioUrl);
-    btn.onclick = function () { playMainAudio(btn, audioUrl, len); };
+    var idx = currentMainPlayerCallIdx;
+    btn.onclick = function () { playMainAudio(btn, audioUrl, len, idx); };
   }
 
-  function playMainAudio(btn, url, len) {
-    // Stop any existing main playback
+  function playMainAudio(btn, url, len, callIndex) {
+    var bar = document.getElementById("mainPlayerBar");
+
+    if (btn.classList.contains("playing")) {
+      btn.classList.remove("playing");
+      btn.innerHTML = '<span class="material-icons">play_arrow</span>';
+      if (bar) bar.style.width = "0%";
+      if (mainAudio) {
+        mainAudio.pause();
+        mainAudio = null;
+      }
+      if (mainProgressTimer) {
+        clearInterval(mainProgressTimer);
+        mainProgressTimer = null;
+      }
+      return;
+    }
+
     if (mainAudio) {
       mainAudio.pause();
       mainAudio = null;
@@ -1707,48 +1924,74 @@
       clearInterval(mainProgressTimer);
       mainProgressTimer = null;
     }
-    var bar = document.getElementById("mainPlayerBar");
-
-    if (btn.classList.contains("playing")) {
-      // Tapped while playing → stop
-      btn.classList.remove("playing");
-      btn.innerHTML = '<span class="material-icons">play_arrow</span>';
-      if (bar) bar.style.width = "0%";
-      return;
-    }
+    if (bar) bar.style.width = "0%";
 
     var audio = new Audio(url);
     mainAudio = audio;
+    var volSlider = document.getElementById("mainPlayerVolume");
+    audio.volume = volSlider ? (parseInt(volSlider.value, 10) || 100) / 100 : 1;
+    audio.muted = scannerMuted;
 
     btn.classList.add("playing");
     btn.innerHTML = '<span class="material-icons">stop</span>';
 
-    // Progress bar
-    if (bar && len > 0) {
-      bar.style.width = "0%";
-      var elapsed = 0;
-      mainProgressTimer = setInterval(function () {
-        elapsed += 0.5;
-        bar.style.width = Math.min((elapsed / len) * 100, 100) + "%";
-        if (elapsed >= len) {
-          clearInterval(mainProgressTimer);
-          mainProgressTimer = null;
-        }
-      }, 500);
+    function syncBar() {
+      if (!bar) return;
+      var dur = audio.duration;
+      if (dur && !isNaN(dur) && isFinite(dur) && dur > 0) {
+        bar.style.width = (audio.currentTime / dur) * 100 + "%";
+      } else if (len > 0) {
+        bar.style.width = Math.min(100, (audio.currentTime / len) * 100) + "%";
+      }
     }
+    audio.addEventListener("timeupdate", syncBar);
 
     audio.play().catch(function () {
       btn.classList.remove("playing");
       btn.innerHTML = '<span class="material-icons">play_arrow</span>';
       if (bar) bar.style.width = "0%";
+      audio.removeEventListener("timeupdate", syncBar);
     });
 
     audio.addEventListener("ended", function () {
+      audio.removeEventListener("timeupdate", syncBar);
       btn.classList.remove("playing");
       btn.innerHTML = '<span class="material-icons">play_arrow</span>';
       if (bar) bar.style.width = "0%";
       if (mainAudio === audio) mainAudio = null;
-      if (mainProgressTimer) { clearInterval(mainProgressTimer); mainProgressTimer = null; }
+
+      var ap = document.getElementById("mainPlayerAutoplay");
+      if (ap && ap.checked && callIndex != null && callIndex >= 0 && lastScannerCallsRef.length) {
+        var ref = lastScannerCallsRef;
+        for (var j = callIndex + 1; j < ref.length; j++) {
+          var nurl = ref[j].url || ref[j].audio_url;
+          if (!nurl) continue;
+          currentMainPlayerCallIdx = j;
+          var nc = ref[j];
+          var nlen = nc.duration != null ? parseFloat(nc.duration) : (nc.len != null ? parseFloat(nc.len) : 0);
+          var nd = resolveScannerDept(nc);
+          var deptEl = document.getElementById("mainPlayerDept");
+          var nowA = document.getElementById("mainPlayerNowAgency");
+          var meta = document.getElementById("mainPlayerMeta");
+          var line2 = nd.name + " \u2014 " + nd.location;
+          if (deptEl) deptEl.textContent = line2;
+          if (nowA) nowA.textContent = line2;
+          if (meta) {
+            var fh = nc.freq || 0;
+            var fm = fh ? (fh / 1e6).toFixed(4) : "";
+            var st = nc.time ? new Date(nc.time) : null;
+            var parts2 = [];
+            if (fm) parts2.push(fm + " MHz");
+            if (nlen > 0) parts2.push(nlen.toFixed(0) + "s");
+            if (st) parts2.push(timeAgo(st) + " ago");
+            meta.textContent = parts2.join(" \u00b7 ");
+          }
+          setTimeout(function () {
+            playMainAudio(btn, nurl, nlen, j);
+          }, 80);
+          return;
+        }
+      }
     });
   }
 
@@ -1826,6 +2069,316 @@
         });
       });
     });
+  }
+
+  // ── LAW ENFORCEMENT DIRECTORY ─────────────────────────────────
+  function initDirSearch() {
+    var input = document.getElementById("dirSearchInput");
+    if (!input) return;
+    var t;
+    input.addEventListener("input", function () {
+      clearTimeout(t);
+      t = setTimeout(function () {
+        dirSearchQuery = (input.value || "").trim().toLowerCase();
+        if (directoryLoaded) renderDirAgencies();
+      }, 120);
+    });
+  }
+
+  function initDirFilters() {
+    var wrap = document.getElementById("dirFilterPills");
+    if (!wrap) return;
+    wrap.querySelectorAll(".dir-filter-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var tier = btn.getAttribute("data-tier") || "all";
+        dirTierFilter = tier;
+        wrap.querySelectorAll(".dir-filter-btn").forEach(function (b) {
+          b.classList.toggle("active", b.getAttribute("data-tier") === tier);
+        });
+        if (directoryLoaded) renderDirAgencies();
+      });
+    });
+  }
+
+  function fetchDirectory() {
+    if (directoryLoading) return;
+    directoryLoading = true;
+    var list = document.getElementById("dirAgenciesList");
+    if (list) list.innerHTML = '<div class="empty-state">Loading directory…</div>';
+
+    var base = API || "";
+    var paths = [
+      "/api/directory/metadata",
+      "/api/directory/agencies",
+      "/api/directory/municipalities",
+      "/api/directory/scanner",
+      "/api/directory/media",
+      "/api/directory/community"
+    ];
+    Promise.all(paths.map(function (p) {
+      return fetch(base + p).then(ok);
+    })).then(function (results) {
+      directoryLoading = false;
+      if (!results || results.length < 6 || results.some(function (x) { return !x || x.status !== "ok"; })) {
+        if (list) list.innerHTML = '<div class="empty-state">Could not load directory. Try again later.</div>';
+        return;
+      }
+      leDirectory = {
+        metadata: results[0].metadata,
+        agencies: results[1].agencies || [],
+        municipalities: results[2].municipalities || [],
+        scannerEcosystem: results[3].scannerEcosystem,
+        mediaSources: results[4].mediaSources || [],
+        communityPlatforms: results[5].communityPlatforms || []
+      };
+      directoryLoaded = true;
+      var meta = leDirectory.metadata || {};
+      var line = document.getElementById("dirMetaLine");
+      if (line) {
+        var parts = ["Agencies, coverage, scanner feeds, media & community resources"];
+        if (meta.lastUpdated) parts.push("Updated " + meta.lastUpdated);
+        if (meta.version) parts.push("v" + meta.version);
+        line.textContent = parts.join(" · ");
+      }
+      renderDirStats();
+      renderDirAgencies();
+      renderDirMunicipalities();
+      renderDirScanner();
+      renderDirMedia();
+      renderDirCommunity();
+    }).catch(function () {
+      directoryLoading = false;
+      if (list) list.innerHTML = '<div class="empty-state">Could not load directory. Check your connection.</div>';
+    });
+  }
+
+  function renderDirStats() {
+    if (!leDirectory) return;
+    var ag = (leDirectory.agencies || []).filter(function (a) { return a.active !== false; });
+    function setDirNum(id, n) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = String(n);
+    }
+    setDirNum("dirStatAgencies", ag.length);
+    setDirNum("dirStatMunis", (leDirectory.municipalities || []).length);
+    setDirNum("dirStatMedia", (leDirectory.mediaSources || []).length);
+    setDirNum("dirStatCommunity", (leDirectory.communityPlatforms || []).length);
+  }
+
+  function renderDirAgencies() {
+    var list = document.getElementById("dirAgenciesList");
+    if (!list || !leDirectory) return;
+    var agencies = leDirectory.agencies || [];
+    var filtered = agencies.filter(function (a) {
+      if (a.active === false) return false;
+      if (dirTierFilter !== "all" && (a.tier || "") !== dirTierFilter) return false;
+      if (!dirSearchQuery) return true;
+      var blob = [
+        a.name, a.abbreviation, a.id, a.type, a.jurisdiction, a.notes || ""
+      ].join(" ").toLowerCase();
+      return blob.indexOf(dirSearchQuery) >= 0;
+    });
+    if (!filtered.length) {
+      list.innerHTML = '<div class="empty-state">No agencies match your filters.</div>';
+      return;
+    }
+    filtered.sort(function (x, y) { return (x.name || "").localeCompare(y.name || ""); });
+    var html = filtered.map(function (a) {
+      var tier = a.tier || "";
+      var name = esc(a.name || "");
+      var typeLabel = a.type || "";
+      var jur = a.jurisdiction || "";
+      var metaLine = "";
+      if (typeLabel || jur) {
+        metaLine = '<p class="dir-card-meta">' +
+          (typeLabel ? "<strong>" + esc(typeLabel) + "</strong>" : "") +
+          (typeLabel && jur ? " · " : "") +
+          esc(jur) + "</p>";
+      }
+      var notesLine = a.notes ? '<p class="dir-card-meta">' + esc(a.notes) + "</p>" : "";
+      var links = [];
+      if (a.website) {
+        links.push(
+          '<a class="dir-link" href="' + escAttr(a.website) + '" target="_blank" rel="noopener noreferrer">' +
+          '<span class="material-icons">language</span> Website</a>'
+        );
+      }
+      var c = a.contact || {};
+      var phone = c.nonEmergencyPhone || c.tipLine;
+      if (phone) {
+        var tel = String(phone).replace(/[^\d+]/g, "");
+        links.push(
+          '<a class="dir-link" href="tel:' + escAttr(tel) + '"><span class="material-icons">call</span> ' + esc(phone) + "</a>"
+        );
+      }
+      (a.socialAccounts || []).slice(0, 5).forEach(function (s) {
+        if (!s.url) return;
+        links.push(
+          '<a class="dir-link" href="' + escAttr(s.url) + '" target="_blank" rel="noopener noreferrer">' +
+          '<span class="material-icons">link</span> ' + esc(s.platform || "social") + "</a>"
+        );
+      });
+      var aid = a.id || "";
+      return (
+        '<article class="dir-card dir-agency-card"' + (aid ? ' id="dir-agency-' + escAttr(aid) + '"' : "") + ">" +
+          '<div class="dir-card-head">' +
+          '<div class="dir-card-name">' + name + "</div>" +
+          '<span class="dir-tier-pill" data-tier="' + escAttr(tier) + '">' + esc(String(tier).toUpperCase()) + "</span>" +
+          "</div>" +
+          metaLine + notesLine +
+          (links.length ? '<div class="dir-card-links">' + links.join("") + "</div>" : "") +
+        "</article>"
+      );
+    }).join("");
+    list.innerHTML = html;
+  }
+
+  function renderDirMunicipalities() {
+    var el = document.getElementById("dirMuniList");
+    if (!el || !leDirectory) return;
+    var idToName = {};
+    (leDirectory.agencies || []).forEach(function (a) {
+      if (a.id) idToName[a.id] = a.name || a.id;
+    });
+    var munis = (leDirectory.municipalities || []).slice();
+    munis.sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
+    el.innerHTML = munis.map(function (m) {
+      var cov = (m.primaryCoverageIds || []).map(function (id) { return esc(idToName[id] || id); }).join(", ");
+      var pdBadge = m.hasOwnPolice ? "Own PD" : "Shared coverage";
+      return (
+        '<div class="dir-card">' +
+          '<div class="dir-muni-row">' +
+          '<div style="flex:1;min-width:0;">' +
+          '<div class="dir-muni-name">' + esc(m.name || "") + "</div>" +
+          '<div class="dir-muni-coverage">' +
+          (cov ? "Primary: " + cov : "") +
+          (m.notes ? (cov ? " · " : "") + esc(m.notes) : "") +
+          "</div></div>" +
+          '<span class="dir-muni-type">' + esc(m.type || "") + "</span>" +
+          '<span class="dir-muni-type">' + esc(pdBadge) + "</span>" +
+          "</div></div>"
+      );
+    }).join("");
+  }
+
+  function renderDirScanner() {
+    var el = document.getElementById("dirScannerBlock");
+    if (!el || !leDirectory) return;
+    var se = leDirectory.scannerEcosystem;
+    if (!se || !se.system) {
+      el.innerHTML = '<div class="empty-state">No scanner ecosystem data.</div>';
+      return;
+    }
+    var idToAbbr = {};
+    (leDirectory.agencies || []).forEach(function (a) {
+      if (a.id) idToAbbr[a.id] = a.abbreviation || a.name || a.id;
+    });
+    var sys = se.system;
+    var dispatched = (sys.agenciesDispatched || []).map(function (id) { return esc(idToAbbr[id] || id); }).join(", ");
+    var sysHtml =
+      '<div class="dir-scanner-sys"><strong>' + esc(sys.name || "") + "</strong><br>" +
+      esc(sys.type || "") +
+      (sys.radioReferenceUrl
+        ? ' · <a class="dir-link" href="' + escAttr(sys.radioReferenceUrl) + '" target="_blank" rel="noopener noreferrer">RadioReference</a>'
+        : "") +
+      "<br>" + esc(sys.notes || "") +
+      (dispatched ? '<br><span style="color:var(--text-3);">Dispatched:</span> ' + dispatched : "") +
+      "</div>";
+    var feeds = (se.feeds || []).map(function (f) {
+      return (
+        '<div class="dir-feed-item">' +
+          "<div>" +
+          '<div class="dir-feed-label">' + esc(f.label || "") + "</div>" +
+          '<div class="dir-feed-meta">' +
+          esc(f.provider || "") +
+          (f.coverageDescription ? " · " + esc(f.coverageDescription) : "") +
+          (f.isLive ? " · Live" : "") +
+          "</div></div>" +
+          (f.url
+            ? '<a class="dir-link" href="' + escAttr(f.url) + '" target="_blank" rel="noopener noreferrer">' +
+              '<span class="material-icons">open_in_new</span></a>'
+            : "") +
+        "</div>"
+      );
+    }).join("");
+    var freqs = se.conventionalFrequencies || [];
+    var freqRows = freqs.map(function (r) {
+      return (
+        "<tr><td>" + esc(idToAbbr[r.agency] || r.agency) + "</td>" +
+        "<td>" + esc(r.frequency || "") + (r.tone ? " <span style=\"color:var(--text-3);\">" + esc(r.tone) + "</span>" : "") + "</td>" +
+        "<td>" + esc(r.use || "") + "</td>" +
+        "<td>" + esc(r.mode || "") + "</td></tr>"
+      );
+    }).join("");
+    var freqTable = freqs.length
+      ? '<table class="dir-freq-table"><thead><tr><th>Agency</th><th>Frequency</th><th>Use</th><th>Mode</th></tr></thead><tbody>' +
+        freqRows + "</tbody></table>"
+      : "";
+    el.innerHTML = sysHtml + '<div class="dir-feed-list">' + feeds + "</div>" + freqTable;
+  }
+
+  function renderDirMedia() {
+    var el = document.getElementById("dirMediaList");
+    if (!el || !leDirectory) return;
+    var items = leDirectory.mediaSources || [];
+    el.innerHTML = items.map(function (m) {
+      var links = [];
+      if (m.website) {
+        links.push('<a class="dir-link" href="' + escAttr(m.website) + '" target="_blank" rel="noopener noreferrer">Website</a>');
+      }
+      if (m.crimeCourtsSectionUrl) {
+        links.push(
+          '<a class="dir-link" href="' + escAttr(m.crimeCourtsSectionUrl) + '" target="_blank" rel="noopener noreferrer">Crime / courts</a>'
+        );
+      }
+      (m.socialAccounts || []).forEach(function (s) {
+        if (!s.url) return;
+        links.push(
+          '<a class="dir-link" href="' + escAttr(s.url) + '" target="_blank" rel="noopener noreferrer">' + esc(s.platform || "link") + "</a>"
+        );
+      });
+      var extra = "";
+      if (m.publishesBlotters) extra += '<p class="dir-card-meta">Publishes blotters' + (m.blotterCoverage ? ": " + esc(m.blotterCoverage) : "") + "</p>";
+      if (m.reliabilityTier) extra += '<p class="dir-card-meta">Reliability: ' + esc(m.reliabilityTier) + "</p>";
+      return (
+        '<article class="dir-card">' +
+        '<div class="dir-media-type">' + esc(m.mediaType || "media") + "</div>" +
+        '<div class="dir-card-head" style="margin-bottom:4px;"><div class="dir-card-name">' + esc(m.name || "") + "</div></div>" +
+        (m.owner ? '<p class="dir-card-meta">' + esc(m.owner) + "</p>" : "") +
+        (m.coverageFocus ? '<p class="dir-media-desc">' + esc(m.coverageFocus) + "</p>" : "") +
+        extra +
+        (links.length ? '<div class="dir-card-links">' + links.join("") + "</div>" : "") +
+        "</article>"
+      );
+    }).join("");
+  }
+
+  function renderDirCommunity() {
+    var el = document.getElementById("dirCommunityList");
+    if (!el || !leDirectory) return;
+    var items = leDirectory.communityPlatforms || [];
+    el.innerHTML = items.map(function (c) {
+      var links = [];
+      if (c.url) {
+        links.push('<a class="dir-link" href="' + escAttr(c.url) + '" target="_blank" rel="noopener noreferrer">Open</a>');
+      }
+      if (c.phone) {
+        var tel = String(c.phone).replace(/[^\d+]/g, "");
+        links.push('<a class="dir-link" href="tel:' + escAttr(tel) + '">' + esc(c.phone) + "</a>");
+      }
+      return (
+        '<article class="dir-card">' +
+        '<div class="dir-community-type">' + esc(c.type || "resource") + "</div>" +
+        '<div class="dir-card-head" style="margin-bottom:4px;"><div class="dir-card-name">' + esc(c.name || "") + "</div></div>" +
+        (c.appName ? '<p class="dir-card-meta">App: ' + esc(c.appName) + "</p>" : "") +
+        (c.coverageArea ? '<p class="dir-card-meta">' + esc(c.coverageArea) + "</p>" : "") +
+        (c.description ? '<p class="dir-community-desc">' + esc(c.description) + "</p>" : "") +
+        (c.notes ? '<p class="dir-card-meta">' + esc(c.notes) + "</p>" : "") +
+        (c.reward ? '<p class="dir-card-meta">Reward: ' + esc(c.reward) + "</p>" : "") +
+        (links.length ? '<div class="dir-card-links">' + links.join("") + "</div>" : "") +
+        "</article>"
+      );
+    }).join("");
   }
 
   // ── HELPERS ───────────────────────────────────────────────────

@@ -1,0 +1,1872 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "lastUpdated": "2026-03-28",
+    "description": "Comprehensive directory of all law enforcement agencies, communication channels, media sources, and monitoring infrastructure for Albany County, New York.",
+    "sourceNotes": "Compiled from official agency websites, RadioReference, Broadcastify, Nixle, and verified media sources. Social handles and URLs confirmed against official pages where accessible."
+  },
+
+  "agencies": [
+
+    {
+      "id": "fbi-albany",
+      "name": "FBI — Albany Field Office",
+      "abbreviation": "FBI",
+      "tier": "federal",
+      "type": "investigative",
+      "jurisdiction": "32 counties in northern New York plus all of Vermont",
+      "website": "https://www.fbi.gov/contact-us/field-offices/albany",
+      "contact": {
+        "nonEmergencyPhone": "518-465-7551",
+        "tipUrl": "https://tips.fbi.gov/",
+        "address": "200 McCarty Avenue",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12209"
+      },
+      "headOfficial": "Craig L. Tremaroli",
+      "headOfficialTitle": "Special Agent in Charge",
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "FBIAlbany", "url": "https://www.facebook.com/FBIAlbany", "verified": true },
+        { "platform": "twitter", "handle": "@FBIAlbany", "url": "https://twitter.com/FBIAlbany", "verified": true },
+        { "platform": "instagram", "handle": "@fbialbany", "url": "https://www.instagram.com/fbialbany/", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "federal_foia", "url": "https://efoia.fbi.gov/", "notes": "eFOIA portal for all FBI records requests" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "press_releases", "label": "FBI Albany News", "url": "https://www.fbi.gov/contact-us/field-offices/albany/news", "hasRss": false, "hasArchive": true }
+      ],
+      "active": true,
+      "notes": "Largest federal LE footprint in the county by investigative scope."
+    },
+
+    {
+      "id": "dea-albany",
+      "name": "DEA — Albany District Office (New York Division)",
+      "abbreviation": "DEA",
+      "tier": "federal",
+      "type": "investigative",
+      "jurisdiction": "Federal drug enforcement; New York Division with Albany district office",
+      "website": "https://www.dea.gov/divisions/new-york",
+      "contact": {
+        "nonEmergencyPhone": "518-782-2000",
+        "tipLine": "877-792-2873",
+        "address": "Albany District Office",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "DEAHQgov", "url": "https://www.facebook.com/DEAHQgov", "verified": true },
+        { "platform": "twitter", "handle": "@DEAHQ", "url": "https://twitter.com/DEAHQ", "verified": true },
+        { "platform": "instagram", "handle": "@deahq", "url": "https://www.instagram.com/deahq/", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "federal_foia", "url": "https://www.dea.gov/foia" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "press_releases", "label": "DEA News", "url": "https://www.dea.gov/press-releases", "hasRss": true, "hasArchive": true }
+      ],
+      "active": true
+    },
+
+    {
+      "id": "atf-albany",
+      "name": "ATF — Albany Field Office (New York Field Division)",
+      "abbreviation": "ATF",
+      "tier": "federal",
+      "type": "investigative",
+      "jurisdiction": "Federal firearms, explosives, arson, and tobacco enforcement",
+      "website": "https://www.atf.gov/new-york-field-division",
+      "contact": {
+        "nonEmergencyPhone": "518-431-4182",
+        "tipLine": "1-800-283-8477",
+        "mediaEmail": "ny-pio@atf.gov",
+        "address": "11A Clinton Avenue, Room 911",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@ATFNewYork", "url": "https://twitter.com/ATFNewYork", "verified": true },
+        { "platform": "facebook", "handle": "HQATF", "url": "https://www.facebook.com/HQATF", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "federal_foia", "url": "https://www.atf.gov/resource-center/foia" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "press_releases", "label": "ATF News", "url": "https://www.atf.gov/news", "hasRss": true, "hasArchive": true }
+      ],
+      "active": true,
+      "notes": "Also accepts tips via ReportIt app."
+    },
+
+    {
+      "id": "usms-ndny",
+      "name": "U.S. Marshals Service — Northern District of New York",
+      "abbreviation": "USMS",
+      "tier": "federal",
+      "type": "judicial",
+      "jurisdiction": "Federal judicial district; Albany courthouse location. Operates Albany Fugitive Task Force.",
+      "website": "https://www.usmarshals.gov/local-districts/northern-district-of-new-york",
+      "contact": {
+        "nonEmergencyPhone": "518-472-5401",
+        "tipLine": "1-877-926-8332",
+        "address": "445 Broadway, James T. Foley U.S. Courthouse",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@USMarshalsHQ", "url": "https://twitter.com/USMarshalsHQ", "verified": true },
+        { "platform": "facebook", "handle": "USMarshalsHQ", "url": "https://www.facebook.com/USMarshalsHQ", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "doj_foia", "url": "https://www.usmarshals.gov/foia" }
+      ],
+      "newsPressSurfaces": [],
+      "specialUnits": ["Albany Fugitive Task Force"],
+      "active": true,
+      "notes": "Fugitive task force phone: 518-472-5444."
+    },
+
+    {
+      "id": "ice-hsi-albany",
+      "name": "ICE/HSI — Albany Sub-Office (Buffalo Field Office)",
+      "abbreviation": "ICE/HSI",
+      "tier": "federal",
+      "type": "investigative",
+      "jurisdiction": "Immigration enforcement and homeland security investigations; Albany and surrounding counties",
+      "website": "https://www.ice.gov/",
+      "contact": {
+        "tipLine": "1-866-347-2423",
+        "generalEmail": "Buffalo.Outreach@ice.dhs.gov",
+        "address": "Albany Sub-Office",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@ICEgov", "url": "https://twitter.com/ICEgov", "verified": true },
+        { "platform": "twitter", "handle": "@HSI_HQ", "url": "https://twitter.com/HSI_HQ", "verified": true },
+        { "platform": "facebook", "handle": "wwwICEgov", "url": "https://www.facebook.com/wwwICEgov", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "federal_foia", "url": "https://www.ice.gov/foia" }
+      ],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "usss-albany",
+      "name": "U.S. Secret Service — Albany Field Office",
+      "abbreviation": "USSS",
+      "tier": "federal",
+      "type": "protective",
+      "jurisdiction": "Protective and investigative (financial crimes) missions",
+      "website": "https://www.secretservice.gov/",
+      "contact": {
+        "nonEmergencyPhone": "518-436-9600",
+        "address": "445 Broadway",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@SecretService", "url": "https://twitter.com/SecretService", "verified": true },
+        { "platform": "facebook", "handle": "SecretService", "url": "https://www.facebook.com/SecretService", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "federal_foia", "url": "https://www.secretservice.gov/foia" }
+      ],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "Full field office (not a resident office). Also reported at 39 North Pearl Street."
+    },
+
+    {
+      "id": "uspis-albany",
+      "name": "U.S. Postal Inspection Service — Boston Division (Albany domicile)",
+      "abbreviation": "USPIS",
+      "tier": "federal",
+      "type": "investigative",
+      "jurisdiction": "Mail-related federal crimes",
+      "website": "https://www.uspis.gov/",
+      "contact": {
+        "tipLine": "1-877-876-2455",
+        "tipUrl": "https://www.uspis.gov/report"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@USPISgov", "url": "https://twitter.com/USPISgov", "verified": true },
+        { "platform": "facebook", "handle": "USPostalInspectionService", "url": "https://www.facebook.com/USPostalInspectionService", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "irs-ci-albany",
+      "name": "IRS Criminal Investigation — New York Field Office (Albany agents)",
+      "abbreviation": "IRS-CI",
+      "tier": "federal",
+      "type": "investigative",
+      "jurisdiction": "Tax fraud, financial crimes",
+      "website": "https://www.irs.gov/compliance/criminal-investigation",
+      "contact": {
+        "nonEmergencyPhone": "844-545-5640",
+        "address": "1 Clinton Square",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@IRS_CI", "url": "https://twitter.com/IRS_CI", "verified": true },
+        { "platform": "linkedin", "handle": "irsci-ny", "url": "https://www.linkedin.com/showcase/irsci-ny", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "federal_foia", "url": "https://www.irs.gov/privacy-disclosure/irs-freedom-of-information" }
+      ],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "cbp-albany",
+      "name": "U.S. Customs and Border Protection — Albany Port of Entry",
+      "abbreviation": "CBP",
+      "tier": "federal",
+      "type": "regulatory",
+      "jurisdiction": "Customs at Port of Albany (maritime) and Albany International Airport",
+      "website": "https://www.cbp.gov/",
+      "contact": {
+        "nonEmergencyPhone": "518-431-0200",
+        "address": "445 Broadway, Room 216",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@CBP", "url": "https://twitter.com/CBP", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "federal_foia", "url": "https://www.cbp.gov/site-policy-notices/foia" }
+      ],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "usao-ndny",
+      "name": "U.S. Attorney's Office — Northern District of New York",
+      "abbreviation": "USAO-NDNY",
+      "tier": "federal",
+      "type": "judicial",
+      "jurisdiction": "Federal prosecution for the Northern District of New York",
+      "website": "https://www.justice.gov/usao-ndny",
+      "contact": {
+        "nonEmergencyPhone": "518-431-0247",
+        "mediaEmail": "USANYN.MediaInquiry@usdoj.gov",
+        "address": "445 Broadway, Room 218",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@NDNYnews", "url": "https://twitter.com/NDNYnews", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "doj_foia" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "press_releases", "label": "USAO-NDNY Press Releases", "url": "https://www.justice.gov/usao-ndny/pr", "hasRss": true, "hasArchive": true }
+      ],
+      "active": true
+    },
+
+    {
+      "id": "fed-probation-ndny",
+      "name": "U.S. Probation Office — NDNY (Albany Division)",
+      "abbreviation": "USPO",
+      "tier": "federal",
+      "type": "probation",
+      "jurisdiction": "Federal probation and pretrial services",
+      "website": "https://www.nynp.uscourts.gov/",
+      "contact": {
+        "nonEmergencyPhone": "518-257-1800",
+        "address": "445 Broadway, Room 347, Foley Courthouse",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "fps-region2",
+      "name": "Federal Protective Service — DHS Region 2",
+      "abbreviation": "FPS",
+      "tier": "federal",
+      "type": "protective",
+      "jurisdiction": "Federal buildings: Foley Courthouse, Leo W. O'Brien Federal Building, other federal facilities",
+      "website": "https://www.dhs.gov/federal-protective-service",
+      "contact": {},
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "Uniformed officers and contract guards protect federal facilities in Albany."
+    },
+
+    {
+      "id": "ssa-oig",
+      "name": "SSA Office of Inspector General",
+      "abbreviation": "SSA-OIG",
+      "tier": "federal",
+      "type": "investigative",
+      "jurisdiction": "Social Security disability and SSN fraud in the Albany region",
+      "website": "https://oig.ssa.gov/",
+      "contact": {
+        "tipLine": "1-800-269-0271"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@TheSSAOIG", "url": "https://twitter.com/TheSSAOIG", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "va-police-albany",
+      "name": "VA Police — Samuel S. Stratton VA Medical Center",
+      "tier": "federal",
+      "type": "protective",
+      "jurisdiction": "VA Health Care campus, 113 Holland Avenue",
+      "website": "https://www.va.gov/albany-health-care/va-police/",
+      "contact": {
+        "nonEmergencyPhone": "518-626-6750",
+        "emergencyPhone": "518-626-5000",
+        "address": "113 Holland Avenue",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12208"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "VAAlbany", "url": "https://www.facebook.com/VAAlbany", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "va_foia", "notes": "Police report requests via FOIA to local VA privacy/FOIA office" }
+      ],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "watervliet-arsenal",
+      "name": "Watervliet Arsenal — Military Police / Security",
+      "tier": "federal",
+      "type": "military",
+      "jurisdiction": "U.S. Army installation, City of Watervliet",
+      "website": "https://wva.army.mil/",
+      "contact": {
+        "nonEmergencyPhone": "518-266-5214",
+        "address": "1 Buffington Street",
+        "city": "Watervliet",
+        "state": "NY",
+        "zip": "12189"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "WatervlietArsenal", "url": "https://www.facebook.com/WatervlietArsenal/", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "army_foia", "notes": "FOIA via Army/DoD channels" }
+      ],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "DSN 374-5214. One of the oldest continuously operating manufacturing arsenals in the U.S."
+    },
+
+    {
+      "id": "nysp-troop-g",
+      "name": "New York State Police — Troop G",
+      "abbreviation": "NYSP",
+      "tier": "state",
+      "type": "state_police",
+      "jurisdiction": "Albany and nine surrounding counties; Capitol and Empire State Plaza security",
+      "website": "https://troopers.ny.gov/location/troop-g",
+      "contact": {
+        "nonEmergencyPhone": "518-783-3211",
+        "tipLine": "1-800-448-3847",
+        "tipEmail": "crimetip@troopers.ny.gov",
+        "mediaEmail": "pio@troopers.ny.gov",
+        "address": "760 Troy Schenectady Road",
+        "city": "Latham",
+        "state": "NY",
+        "zip": "12110"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "nyspolice", "url": "https://www.facebook.com/nyspolice", "verified": true },
+        { "platform": "twitter", "handle": "@nyspolice", "url": "https://twitter.com/nyspolice", "verified": true },
+        { "platform": "instagram", "handle": "@nyspolice", "url": "https://www.instagram.com/nyspolice/", "verified": true, "followerEstimate": "~135,000" }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "govqa", "url": "https://troopers.ny.gov/foil-requests", "notes": "NYSP FOIL via GovQA portal" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "newsroom", "label": "NYSP Newsroom", "url": "https://troopers.ny.gov/nysp-newsroom", "hasRss": false, "hasArchive": true, "notes": "Filterable by troop/location; Troop G dateline = Latham" },
+        { "type": "media_reports_pdf", "label": "Troop G Media Reports", "url": "https://publicapps.troopers.ny.gov/media/TroopG/", "hasRss": false, "hasArchive": true, "notes": "PDF updates published regularly" }
+      ],
+      "municipalitiesServed": ["berne", "knox", "new-scotland", "rensselaerville", "westerlo", "voorheesville"],
+      "active": true,
+      "notes": "No separate Capitol Police exists in New York; NYSP handles Capitol/ESP security through Troop G."
+    },
+
+    {
+      "id": "nysp-troop-t",
+      "name": "New York State Police — Troop T (Thruway)",
+      "abbreviation": "NYSP Troop T",
+      "tier": "state",
+      "type": "state_police",
+      "jurisdiction": "NYS Thruway through Albany County",
+      "website": "https://troopers.ny.gov/location/troop-t-new-york-state-thruway",
+      "contact": {
+        "nonEmergencyPhone": "518-436-2825",
+        "emergencyPhone": "1-800-842-2233"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@NYSThruway", "url": "https://twitter.com/NYSThruway", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "nys-park-police",
+      "name": "NYS Park Police — Saratoga/Capital Zone",
+      "tier": "state",
+      "type": "state_special",
+      "jurisdiction": "State parks and historic sites; Capital Zone includes Albany County",
+      "website": "https://parks.ny.gov/park-police",
+      "contact": {
+        "nonEmergencyPhone": "518-584-2004",
+        "address": "65 S Broadway, Suite 103",
+        "city": "Saratoga Springs",
+        "state": "NY",
+        "zip": "12866"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "NYStateParkPolice", "url": "https://www.facebook.com/NYStateParkPolice/", "verified": true, "followerEstimate": "~18,300 likes" },
+        { "platform": "twitter", "handle": "@nys_parkpolice", "url": "https://twitter.com/nys_parkpolice", "verified": true },
+        { "platform": "instagram", "handle": "@nystateparkpolice", "url": "https://www.instagram.com/nystateparkpolice/", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "other", "notes": "Incident reports via State Parks FOIL link on Park Police page" }
+      ],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "dec-eco-region4",
+      "name": "NYS DEC Environmental Conservation Officers & Forest Rangers — Region 4",
+      "abbreviation": "DEC ECOs",
+      "tier": "state",
+      "type": "state_special",
+      "jurisdiction": "Environmental law enforcement; Region 4 covers Albany and eight surrounding counties",
+      "website": "https://dec.ny.gov/",
+      "contact": {
+        "dispatchPhone": "1-844-332-3267",
+        "nonEmergencyPhone": "518-402-8044",
+        "address": "625 Broadway",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12233"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "NYSDEC", "url": "https://www.facebook.com/NYSDEC/", "verified": true, "followerEstimate": "~237,800 likes" },
+        { "platform": "twitter", "handle": "@NYSDEC", "url": "https://twitter.com/NYSDEC", "verified": true },
+        { "platform": "instagram", "handle": "@nysdec", "url": "https://www.instagram.com/nysdec/", "verified": true, "followerEstimate": "~126,000" }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "other", "url": "https://dec.ny.gov/about/contact-us", "notes": "DEC FOIL via records access officer; online submission available" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "other", "label": "ECO Roster & Report a Problem", "url": "https://dec.ny.gov/about/contact-us/environmental-conservation-officer-rosters", "hasRss": false, "hasArchive": false }
+      ],
+      "active": true,
+      "notes": "Forest Rangers hotline: 1-833-NYS-RANGERS."
+    },
+
+    {
+      "id": "nys-doccs",
+      "name": "NYS Department of Corrections and Community Supervision",
+      "abbreviation": "DOCCS",
+      "tier": "state",
+      "type": "state_special",
+      "jurisdiction": "State correctional facilities and community supervision/parole statewide; Central Office in Albany",
+      "website": "https://doccs.ny.gov/",
+      "contact": {
+        "nonEmergencyPhone": "518-457-8126",
+        "address": "1220 Washington Avenue, Building 4",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12226"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "NYSDOCCS", "url": "https://www.facebook.com/NYSDOCCS", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "nys-ag-cjd",
+      "name": "NYS Office of the Attorney General — Criminal Justice Division",
+      "abbreviation": "OAG",
+      "tier": "state",
+      "type": "state_special",
+      "jurisdiction": "Statewide: Office of Special Investigation, Organized Crime Task Force, Medicaid Fraud Control Unit, Public Integrity Bureau",
+      "website": "https://ag.ny.gov/",
+      "contact": {
+        "nonEmergencyPhone": "518-776-2000",
+        "address": "The Capitol",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12224"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "newyorkstateag", "url": "https://www.facebook.com/newyorkstateag", "verified": true },
+        { "platform": "twitter", "handle": "@NewYorkStateAG", "url": "https://twitter.com/NewYorkStateAG", "verified": true },
+        { "platform": "instagram", "handle": "@newyorkstateag", "url": "https://www.instagram.com/newyorkstateag/", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [
+        { "type": "press_releases", "label": "OAG Press Releases", "url": "https://ag.ny.gov/press-releases", "hasRss": true, "hasArchive": true }
+      ],
+      "active": true
+    },
+
+    {
+      "id": "nys-ig",
+      "name": "NYS Inspector General",
+      "abbreviation": "IG",
+      "tier": "state",
+      "type": "state_special",
+      "jurisdiction": "Oversight of state agencies, Gaming Commission integrity",
+      "website": "https://ig.ny.gov/",
+      "contact": {
+        "tipLine": "1-800-367-4448",
+        "address": "Empire State Plaza, Agency Building 2",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12223"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@NewYorkStateIG", "url": "https://twitter.com/NewYorkStateIG", "verified": true },
+        { "platform": "instagram", "handle": "@newyorkstateig", "url": "https://www.instagram.com/newyorkstateig/", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [
+        { "type": "press_releases", "label": "IG News", "url": "https://ig.ny.gov/news", "hasRss": false, "hasArchive": true }
+      ],
+      "active": true
+    },
+
+    {
+      "id": "nys-dhses",
+      "name": "NYS Division of Homeland Security and Emergency Services",
+      "abbreviation": "DHSES",
+      "tier": "state",
+      "type": "state_special",
+      "jurisdiction": "Statewide homeland security, emergency management, counterterrorism",
+      "website": "https://www.dhses.ny.gov/",
+      "contact": {
+        "nonEmergencyPhone": "518-242-5000",
+        "address": "1220 Washington Ave., Suite 710",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12226"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "NYSDHSES", "url": "https://www.facebook.com/NYSDHSES/", "verified": true },
+        { "platform": "twitter", "handle": "@NYSDHSES", "url": "https://twitter.com/nysdhses", "verified": true }
+      ],
+      "alertChannels": [
+        { "system": "other", "enrollmentMethod": "Text county name to 333111", "shortCode": "333111" }
+      ],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "nys-dcjs",
+      "name": "NYS Division of Criminal Justice Services",
+      "abbreviation": "DCJS",
+      "tier": "state",
+      "type": "state_special",
+      "jurisdiction": "Sex Offender Registry, DNA Databank, LE accreditation, criminal justice policy",
+      "website": "https://www.criminaljustice.ny.gov/",
+      "contact": {
+        "nonEmergencyPhone": "518-457-5837",
+        "address": "80 South Swan Street",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12210"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@NYSDCJS", "url": "https://twitter.com/NYSDCJS", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "nys-court-officers",
+      "name": "NYS Unified Court System — Court Officers",
+      "tier": "state",
+      "type": "state_special",
+      "jurisdiction": "State courthouses and judicial facilities",
+      "website": "https://www.nycourts.gov/",
+      "contact": {
+        "nonEmergencyPhone": "1-800-268-7869",
+        "address": "187 Wolf Road, Suite 211",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12205"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "nys-tax-ci",
+      "name": "NYS Dept. of Taxation and Finance — Criminal Investigations Division",
+      "tier": "state",
+      "type": "regulatory",
+      "jurisdiction": "State tax fraud investigations",
+      "website": "https://www.tax.ny.gov/",
+      "contact": {
+        "address": "W.A. Harriman Campus, Building 9",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12227"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@NYSTaxDept", "url": "https://twitter.com/NYSTaxDept", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "nys-sla",
+      "name": "NYS Liquor Authority — Enforcement Bureau",
+      "abbreviation": "SLA",
+      "tier": "state",
+      "type": "regulatory",
+      "jurisdiction": "Liquor law enforcement",
+      "website": "https://sla.ny.gov/",
+      "contact": {
+        "nonEmergencyPhone": "518-474-3114",
+        "address": "84 Holland Avenue",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12208"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "Complaints: https://sla.ny.gov/file-complaint"
+    },
+
+    {
+      "id": "nys-dfs",
+      "name": "NYS Department of Financial Services — Investigations",
+      "abbreviation": "DFS",
+      "tier": "state",
+      "type": "regulatory",
+      "jurisdiction": "Financial fraud, insurance fraud investigations",
+      "website": "https://www.dfs.ny.gov/",
+      "contact": {
+        "tipLine": "1-800-342-3736",
+        "address": "One Commerce Plaza, Suite 1850",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12257"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@NYDFS", "url": "https://twitter.com/NYDFS", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "nys-omig",
+      "name": "NYS Office of the Medicaid Inspector General",
+      "abbreviation": "OMIG",
+      "tier": "state",
+      "type": "regulatory",
+      "jurisdiction": "Medicaid fraud investigations",
+      "website": "https://omig.ny.gov/",
+      "contact": {
+        "tipLine": "1-877-873-7283",
+        "address": "800 North Pearl Street",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12204"
+      },
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@NYSOMIG", "url": "https://twitter.com/NYSOMIG", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "nys-coelig",
+      "name": "NYS Commission on Ethics and Lobbying in Government",
+      "abbreviation": "COELIG",
+      "tier": "state",
+      "type": "oversight",
+      "jurisdiction": "Ethics enforcement for state officials and lobbyists",
+      "website": "https://ethics.ny.gov/",
+      "contact": {
+        "tipLine": "1-800-873-8442",
+        "address": "540 Broadway",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "nys-comptroller-investigations",
+      "name": "NYS Comptroller's Office — Investigations Division",
+      "tier": "state",
+      "type": "oversight",
+      "jurisdiction": "State fraud investigations",
+      "website": "https://www.osc.ny.gov/",
+      "contact": {
+        "tipLine": "1-888-672-4555"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "albany-county-sheriff",
+      "name": "Albany County Sheriff's Office",
+      "abbreviation": "ACSO",
+      "tier": "county",
+      "type": "sheriff",
+      "jurisdiction": "Countywide patrol, criminal investigation, court security, airport LE, E911/Communications Center",
+      "website": "https://www.albanycountyny.gov/government/departments/county-sheriff",
+      "contact": {
+        "nonEmergencyPhone": "518-487-5400",
+        "generalEmail": "contactsheriff@albanycounty.com",
+        "address": "16 Eagle Street (Courthouse) / 994 Madison Avenue",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "headOfficial": "Craig D. Apple Sr.",
+      "headOfficialTitle": "Sheriff",
+      "personnelEstimate": "700+ employees",
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "AlbanyCountySheriff", "url": "https://www.facebook.com/AlbanyCountySheriff", "verified": true },
+        { "platform": "twitter", "handle": "@ACSOTWEET", "url": "https://twitter.com/ACSOTWEET", "verified": true },
+        { "platform": "instagram", "handle": "@albanycountysheriff", "url": "https://www.instagram.com/albanycountysheriff/", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [
+        { "system": "nextrequest", "url": "https://albanycounty.nextrequest.com/", "notes": "Public requests and searchable prior requests; partial public reading room" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "press_releases", "label": "County News (filter by Sheriff)", "url": "https://www.albanycountyny.gov/our-county/county-news", "hasRss": false, "hasArchive": true }
+      ],
+      "dispatch": {
+        "dispatchedBy": "self",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties",
+        "notes": "E911/Communications Center is the PSAP for multiple local agencies"
+      },
+      "specialUnits": ["SWAT/ERT", "K-9", "Marine Patrol", "SCUBA", "Drug Interdiction", "Forensic Unit", "Fire Investigation", "Domestic Violence/Special Victims", "Search & Rescue"],
+      "municipalitiesServed": ["berne", "knox", "new-scotland", "rensselaerville", "westerlo", "voorheesville"],
+      "active": true,
+      "notes": "Established in the 1660s; one of America's oldest sheriff's offices. Also provides 22 sworn deputies at Albany International Airport 24/7."
+    },
+
+    {
+      "id": "albany-county-e911",
+      "name": "Albany County E911 / Communications Center",
+      "tier": "county",
+      "type": "communications",
+      "jurisdiction": "Primary PSAP for Albany PD, Colonie PD, Bethlehem PD, Guilderland PD, Menands PD, NYSP (ESP), Cohoes PD/Fire, Watervliet PD/Fire, Green Island PD/Fire, Coeymans PD/Fire, plus volunteer fire companies and ambulance services",
+      "parentAgency": "albany-county-sheriff",
+      "website": "https://www.albanycountyny.gov/government/county-sheriff/law-enforcement",
+      "contact": {
+        "emergencyPhone": "911"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "dispatch": {
+        "dispatchedBy": "self",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties",
+        "notes": "Key insight: initial incident details for many jurisdictions originate from this shared county dispatch"
+      },
+      "active": true,
+      "notes": "Dispatch logs not published online in real time; obtainable via FOIL. Central nervous system for most local LE radio traffic."
+    },
+
+    {
+      "id": "albany-county-da",
+      "name": "Albany County District Attorney's Office",
+      "abbreviation": "ACDA",
+      "tier": "county",
+      "type": "district_attorney",
+      "jurisdiction": "County criminal prosecution",
+      "website": "https://www.albanycountyny.gov/government/district-attorney",
+      "contact": {
+        "nonEmergencyPhone": "518-487-5460",
+        "address": "6 Lodge Street",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "headOfficial": "Lee C. Kindlon",
+      "headOfficialTitle": "District Attorney",
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "AlbanyCountyDA", "url": "https://www.facebook.com/AlbanyCountyDA", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "specialUnits": ["Street Crimes Unit", "Financial Crimes Unit", "Victims Services"],
+      "active": true,
+      "notes": "Elected November 2024."
+    },
+
+    {
+      "id": "albany-county-probation",
+      "name": "Albany County Probation Department",
+      "tier": "county",
+      "type": "probation",
+      "jurisdiction": "County probation supervision",
+      "website": "https://www.albanycountyny.gov/departments/probation",
+      "contact": {
+        "nonEmergencyPhone": "518-487-5200",
+        "address": "60 South Pearl Street",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12207"
+      },
+      "headOfficial": "William Connors",
+      "headOfficialTitle": "Director",
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "albany-county-stop-dwi",
+      "name": "Albany County STOP DWI Program",
+      "tier": "county",
+      "type": "other",
+      "jurisdiction": "DWI enforcement coordination, education, and victim impact panels",
+      "website": "https://stopdwi.org/county-albany-left/",
+      "contact": {
+        "nonEmergencyPhone": "518-720-8010"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "albany-county-cvsvc",
+      "name": "Albany County Crime Victim and Sexual Violence Center",
+      "tier": "county",
+      "type": "other",
+      "jurisdiction": "Victim services and advocacy",
+      "website": "https://www.albanycountyny.gov/departments/crime-victim-and-sexual-violence-center",
+      "contact": {
+        "emergencyPhone": "518-447-7716",
+        "nonEmergencyPhone": "518-447-7100"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "AlbanyCVSVC", "url": "https://www.facebook.com/AlbanyCVSVC", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "24-hour hotline: 518-447-7716."
+    },
+
+    {
+      "id": "albany-pd",
+      "name": "City of Albany Police Department",
+      "abbreviation": "APD",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "City of Albany; excludes State Capitol grounds and UAlbany campus (special jurisdictions)",
+      "website": "https://www.albanyny.gov/348/Albany-Police",
+      "contact": {
+        "dispatchPhone": "518-438-4000",
+        "address": "165 Henry Johnson Boulevard",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12210"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "AlbanyNYPolice", "url": "https://www.facebook.com/AlbanyNYPolice", "verified": true, "followerEstimate": "~70,000 likes" },
+        { "platform": "twitter", "handle": "@albanypolice", "url": "https://twitter.com/albanypolice", "verified": true },
+        { "platform": "instagram", "handle": "@albanypolice", "url": "https://www.instagram.com/albanypolice/", "verified": true },
+        { "platform": "nextdoor", "handle": "Albany Police Department", "url": "https://nextdoor.com/agency-detail/ny/albany/albany-police-department-4/", "verified": true }
+      ],
+      "alertChannels": [
+        { "system": "nixle", "url": "https://local.nixle.com/albany-police-department", "notes": "2,700+ updates" }
+      ],
+      "recordsAccess": [
+        { "system": "govqa", "url": "https://www.albanyny.gov/230/Records-Access-FOIL", "notes": "City accepts electronic FOIL via GovQA; tracking and faster response" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "news_flash", "label": "City News / APD Category", "url": "https://www.albanyny.gov/CivicAlerts.aspx?CID=10", "hasRss": true, "hasArchive": true },
+        { "type": "online_report_form", "label": "Online Report Filing", "url": "https://albanyny.gov/2178/File-Online-Report", "hasRss": false, "hasArchive": false },
+        { "type": "open_data", "label": "Albany Open Data", "url": "https://data.albanyny.gov", "hasRss": false, "hasArchive": true, "notes": "Geocoded crime data" }
+      ],
+      "dispatch": {
+        "dispatchedBy": "Albany County E911",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties"
+      },
+      "active": true,
+      "notes": "Largest municipal force in the county. Also has SeeClickFix integration: https://seeclickfix.com/albany_2/report"
+    },
+
+    {
+      "id": "colonie-pd",
+      "name": "Town of Colonie Police Department",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "Town of Colonie (also covers Village of Colonie)",
+      "website": "https://www.townofcolonie.gov/departments/police/",
+      "contact": {
+        "nonEmergencyPhone": "518-783-2744",
+        "address": "312 Wolf Road",
+        "city": "Latham",
+        "state": "NY",
+        "zip": "12110"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "ColoniePD", "url": "https://www.facebook.com/ColoniePD", "verified": true, "followerEstimate": "~25,500 likes" },
+        { "platform": "twitter", "handle": "@colonie_police", "url": "https://twitter.com/colonie_police", "verified": true },
+        { "platform": "instagram", "handle": "@coloniepolicedept", "url": "https://www.instagram.com/coloniepolicedept/", "verified": true }
+      ],
+      "alertChannels": [
+        { "system": "nixle", "url": "https://local.nixle.com/town-of-colonie-police-ny/" }
+      ],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "dispatch": {
+        "dispatchedBy": "Albany County E911",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties"
+      },
+      "active": true,
+      "notes": "One of the Capital Region's largest suburban departments."
+    },
+
+    {
+      "id": "guilderland-pd",
+      "name": "Town of Guilderland Police Department",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "Town of Guilderland",
+      "website": "https://www.guilderlandpd.org/",
+      "contact": {
+        "nonEmergencyPhone": "518-356-1501",
+        "address": "5209 Western Turnpike",
+        "city": "Guilderland",
+        "state": "NY",
+        "zip": "12084"
+      },
+      "headOfficial": "Dan McNally",
+      "headOfficialTitle": "Chief",
+      "accreditation": "NYS Accredited since 2009",
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "guilderlandpolice", "url": "https://www.facebook.com/guilderlandpolice", "verified": true },
+        { "platform": "twitter", "handle": "@guilderlandpd", "url": "https://twitter.com/guilderlandpd", "verified": true },
+        { "platform": "nextdoor", "handle": "Guilderland PD", "url": "", "verified": true }
+      ],
+      "alertChannels": [
+        { "system": "nixle", "keyword": "ALERTMEGPD", "shortCode": "888777", "enrollmentMethod": "Text ALERTMEGPD to 888777" }
+      ],
+      "recordsAccess": [
+        { "system": "other", "notes": "Incident reports for non-complainants must be obtained via FOIL through town clerk" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "other", "label": "Records & Reports Page", "hasRss": false, "hasArchive": false, "notes": "Explains incident-report access and FOIL gating" }
+      ],
+      "dispatch": {
+        "dispatchedBy": "Albany County E911",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties"
+      },
+      "active": true
+    },
+
+    {
+      "id": "bethlehem-pd",
+      "name": "Town of Bethlehem Police Department",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "Town of Bethlehem",
+      "website": "https://www.townofbethlehem.org/142/Police",
+      "contact": {
+        "nonEmergencyPhone": "518-439-9973",
+        "address": "447 Delaware Avenue",
+        "city": "Delmar",
+        "state": "NY",
+        "zip": "12054"
+      },
+      "headOfficial": "Gina F. Cocchiara",
+      "headOfficialTitle": "Chief",
+      "accreditation": "NYS Accredited since 1990 (4th department statewide)",
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "PDBethlehem", "url": "https://www.facebook.com/PDBethlehem", "verified": true, "followerEstimate": "~8,300 likes" },
+        { "platform": "twitter", "handle": "@PdBethlehem", "url": "https://twitter.com/PdBethlehem", "verified": true },
+        { "platform": "instagram", "handle": "@pdbethlehem", "url": "https://www.instagram.com/pdbethlehem/", "verified": true },
+        { "platform": "nextdoor", "handle": "Bethlehem PD", "url": "", "verified": true }
+      ],
+      "alertChannels": [
+        { "system": "civic_engage_notify", "notes": "CivicEngage Notify Me lists for police press releases" }
+      ],
+      "recordsAccess": [
+        { "system": "civic_engage_form", "notes": "Town FOIL page and form; police records requests routed to police records office email" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "press_releases", "label": "Police Press Releases", "hasRss": true, "hasArchive": true, "notes": "CivicAlerts category with RSS endpoint and Notify Me tool; low-volume/episodic" }
+      ],
+      "dispatch": {
+        "dispatchedBy": "Albany County E911",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties"
+      },
+      "active": true
+    },
+
+    {
+      "id": "cohoes-pd",
+      "name": "City of Cohoes Police Department",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "City of Cohoes",
+      "website": "https://www.cohoes-ny.gov/534/Police-Department",
+      "contact": {
+        "nonEmergencyPhone": "518-237-5333",
+        "address": "97 Mohawk Street",
+        "city": "Cohoes",
+        "state": "NY",
+        "zip": "12047"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "CohoesPD", "url": "https://www.facebook.com/CohoesPD", "verified": true }
+      ],
+      "alertChannels": [
+        { "system": "civic_engage_notify", "notes": "CivicEngage Notify Me subscriptions" },
+        { "system": "alertsense", "url": "https://public.alertsense.com/", "notes": "Emergency Notifications link routes to AlertSense domain" }
+      ],
+      "recordsAccess": [
+        { "system": "pdf_form", "notes": "Police Forms Center contains a FOIL request PDF" }
+      ],
+      "newsPressSurfaces": [
+        { "type": "news_flash", "label": "Police Latest News & Events", "hasRss": true, "hasArchive": true, "notes": "CivicAlerts/News Flash with archive and RSS; moderate volume, structured publishing" }
+      ],
+      "dispatch": {
+        "dispatchedBy": "Albany County E911",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties"
+      },
+      "active": true
+    },
+
+    {
+      "id": "watervliet-pd",
+      "name": "City of Watervliet Police Department",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "City of Watervliet",
+      "website": "https://watervlietpolice.com/",
+      "contact": {
+        "nonEmergencyPhone": "518-270-3833",
+        "address": "2 15th Street",
+        "city": "Watervliet",
+        "state": "NY",
+        "zip": "12189"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "WatervlietPolice", "url": "https://www.facebook.com/WatervlietPolice/", "verified": true, "followerEstimate": "~8,400 likes" },
+        { "platform": "twitter", "handle": "@VlietPolice", "url": "https://twitter.com/VlietPolice", "verified": true },
+        { "platform": "instagram", "handle": "@vlietpolice", "url": "https://www.instagram.com/vlietpolice/", "verified": true }
+      ],
+      "alertChannels": [
+        { "system": "nixle", "keyword": "VLIET", "shortCode": "888777", "enrollmentMethod": "Text VLIET or 12189 to 888777" }
+      ],
+      "recordsAccess": [
+        { "system": "other", "notes": "Reports require FOIL request via City Clerk per department FAQ" }
+      ],
+      "newsPressSurfaces": [],
+      "dispatch": {
+        "dispatchedBy": "Albany County E911",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties"
+      },
+      "active": true
+    },
+
+    {
+      "id": "menands-pd",
+      "name": "Village of Menands Police Department",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "Village of Menands",
+      "website": "https://menandsny.gov/departments/police/",
+      "contact": {
+        "nonEmergencyPhone": "518-463-1681",
+        "address": "250 Broadway",
+        "city": "Menands",
+        "state": "NY",
+        "zip": "12204"
+      },
+      "headOfficial": "Ryan St. Gelais",
+      "headOfficialTitle": "Chief",
+      "personnelEstimate": "10 full-time + 5 part-time",
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "mpd.gov", "url": "https://www.facebook.com/mpd.gov", "verified": true, "followerEstimate": "~2,575 likes" }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "dispatch": {
+        "dispatchedBy": "Albany County E911",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties"
+      },
+      "active": true,
+      "notes": "Village website is JavaScript-gated; some automated data retrieval may fail."
+    },
+
+    {
+      "id": "green-island-pd",
+      "name": "Village of Green Island Police Department",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "Village of Green Island",
+      "website": "https://villageofgreenisland.com/village/police-department/",
+      "contact": {
+        "nonEmergencyPhone": "518-655-7854",
+        "address": "73 George Street",
+        "city": "Green Island",
+        "state": "NY",
+        "zip": "12183"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "greenislandpolicedepartment", "url": "https://www.facebook.com/greenislandpolicedepartment", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "dispatch": {
+        "dispatchedBy": "Albany County E911",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties"
+      },
+      "active": true,
+      "notes": "Minimal digital footprint; primary online presence is a single Facebook page and village website listing."
+    },
+
+    {
+      "id": "altamont-pd",
+      "name": "Village of Altamont Police Department",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "Village of Altamont",
+      "website": "https://www.altamontvillageny.gov/police-department",
+      "contact": {
+        "nonEmergencyPhone": "518-861-5480",
+        "address": "115 Main Street / PO Box 643",
+        "city": "Altamont",
+        "state": "NY",
+        "zip": "12009"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "1398462230432317", "url": "https://www.facebook.com/1398462230432317", "verified": true }
+      ],
+      "alertChannels": [
+        { "system": "nixle", "keyword": "ALTAMONT", "shortCode": "888777", "enrollmentMethod": "Text ALTAMONT to 888777" }
+      ],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "coeymans-pd",
+      "name": "Town of Coeymans Police Department",
+      "tier": "municipal",
+      "type": "municipal_pd",
+      "jurisdiction": "Town of Coeymans; also covers Village of Ravena (police abolished by voter referendum 2006)",
+      "website": "https://www.coeymans.org/department/police/",
+      "contact": {
+        "nonEmergencyPhone": "518-756-2059",
+        "generalEmail": "police@coeymans.org",
+        "address": "18 Russell Avenue",
+        "city": "Ravena",
+        "state": "NY",
+        "zip": "12143"
+      },
+      "headOfficial": "Marc Tryon",
+      "headOfficialTitle": "Chief",
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "CoeymansPolicePBA", "url": "https://www.facebook.com/CoeymansPolicePBA/", "verified": true, "followerEstimate": "~2,000 likes", "notes": "Posts arrest information" }
+      ],
+      "alertChannels": [
+        { "system": "email_subscribe", "notes": "Town site Subscribe for News & Updates email sign-up" }
+      ],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "dispatch": {
+        "dispatchedBy": "Albany County E911",
+        "systemType": "P25 Phase II trunked",
+        "systemName": "Albany/Schenectady Counties"
+      },
+      "active": true
+    },
+
+    {
+      "id": "ualbany-upd",
+      "name": "University at Albany (SUNY) — University Police Department",
+      "abbreviation": "UAlbany UPD",
+      "tier": "campus",
+      "type": "campus_sworn",
+      "jurisdiction": "Campus properties and certain nearby leased/rented facilities; 24/7 sworn policing",
+      "website": "https://www.albany.edu/police",
+      "contact": {
+        "emergencyPhone": "518-442-3131",
+        "nonEmergencyPhone": "518-442-3130",
+        "address": "Alumni Drive, 1400 Washington Avenue",
+        "city": "Albany",
+        "state": "NY",
+        "zip": "12222"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "UAlbanyUPD", "url": "https://www.facebook.com/UAlbanyUPD/", "verified": true },
+        { "platform": "twitter", "handle": "@UAlbanyUPD", "url": "https://twitter.com/UAlbanyUPD", "verified": true },
+        { "platform": "instagram", "handle": "@ualbanyupd", "url": "https://www.instagram.com/ualbanyupd/", "verified": true }
+      ],
+      "alertChannels": [
+        { "system": "ny_alert", "notes": "SUNY NY-Alert system" },
+        { "system": "send_word_now", "notes": "Send Word Now system for campus alerts" }
+      ],
+      "recordsAccess": [],
+      "newsPressSurfaces": [
+        { "type": "incident_log", "label": "Crimes & Incidents Log", "url": "https://police.albany.edu/IETS/UPD_All_Incidents.aspx", "hasRss": false, "hasArchive": true }
+      ],
+      "active": true,
+      "notes": "Only fully sworn campus police force in the county; DCJS-certified officers with arrest powers."
+    },
+
+    {
+      "id": "siena-public-safety",
+      "name": "Siena College — Department of Public Safety",
+      "tier": "campus",
+      "type": "campus_security",
+      "jurisdiction": "515 Loudon Road, Loudonville (Town of Colonie)",
+      "website": "https://www.siena.edu/offices/public-safety/",
+      "contact": {
+        "emergencyPhone": "518-783-2376",
+        "tipLine": "518-783-2999",
+        "address": "515 Loudon Road",
+        "city": "Loudonville",
+        "state": "NY",
+        "zip": "12211"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "Non-sworn, NYS Security Guard licensed officers. Anonymous tip line: 518-783-2999."
+    },
+
+    {
+      "id": "uha-public-safety",
+      "name": "University Heights Association — Department of Public Safety",
+      "abbreviation": "UHA DPS",
+      "tier": "campus",
+      "type": "campus_security",
+      "jurisdiction": "Albany Law School, Albany College of Pharmacy and Health Sciences (ACPHS), Russell Sage College (Albany campus)",
+      "website": "https://www.universityheights.org/",
+      "contact": {
+        "emergencyPhone": "518-244-3177"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "Non-sworn officers serving contiguous campuses. MOU with Albany PD for criminal investigations."
+    },
+
+    {
+      "id": "albany-med-security",
+      "name": "Albany Medical College / Albany Medical Center — Security",
+      "tier": "campus",
+      "type": "campus_security",
+      "jurisdiction": "Albany Medical Center campus",
+      "website": "https://www.amc.edu/community/campus-safety/",
+      "contact": {
+        "emergencyPhone": "518-262-3777"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "Criminal matters referred to Albany PD."
+    },
+
+    {
+      "id": "cdta-transit",
+      "name": "CDTA Transit Enforcement / Ambassador Program",
+      "tier": "specialized",
+      "type": "transit",
+      "jurisdiction": "Capital District Transportation Authority bus and BRT network",
+      "website": "https://www.cdta.org/",
+      "contact": {
+        "nonEmergencyPhone": "518-482-8822"
+      },
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "RideCDTA", "url": "https://www.facebook.com/RideCDTA", "verified": true }
+      ],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "Fare compliance enforcement and uniformed Ambassador Program in partnership with Tech Valley Security. Report concerns via CATS-Pass app."
+    },
+
+    {
+      "id": "csx-railroad-police",
+      "name": "CSX Railroad Police",
+      "tier": "specialized",
+      "type": "railroad",
+      "jurisdiction": "CSX property including Selkirk Yard (one of Northeast's largest rail facilities)",
+      "website": "https://www.csx.com/",
+      "contact": {
+        "emergencyPhone": "1-800-232-0144"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "Full law enforcement authority on CSX property under federal statute."
+    },
+
+    {
+      "id": "amtrak-police",
+      "name": "Amtrak Police Department",
+      "abbreviation": "APD-Amtrak",
+      "tier": "specialized",
+      "type": "transit",
+      "jurisdiction": "Albany-Rensselaer station (technically Rensselaer County but serves Albany metro) and Amtrak rail corridor",
+      "website": "https://www.amtrak.com/police/home",
+      "contact": {
+        "emergencyPhone": "1-800-331-0008",
+        "tipLine": "Text APD11 to 27311"
+      },
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true
+    },
+
+    {
+      "id": "albany-housing-authority",
+      "name": "Albany Housing Authority — Security",
+      "tier": "specialized",
+      "type": "housing",
+      "jurisdiction": "AHA housing developments in City of Albany",
+      "website": "http://www.albanyhousing.org/departments/security",
+      "contact": {},
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [],
+      "active": true,
+      "notes": "Uses off-duty Albany Police officers under a tri-party agreement. Security Director: Nate Pendelton."
+    },
+
+    {
+      "id": "cprb-albany",
+      "name": "Albany Community Police Review Board",
+      "abbreviation": "CPRB",
+      "tier": "municipal",
+      "type": "oversight",
+      "jurisdiction": "Oversight and misconduct-complaint intake for Albany PD",
+      "website": "https://www.albanyny.gov/Government/Boards-Commissions/Community-Police-Review-Board",
+      "contact": {},
+      "socialAccounts": [],
+      "alertChannels": [],
+      "recordsAccess": [],
+      "newsPressSurfaces": [
+        { "type": "press_releases", "label": "CPRB Statements", "hasRss": false, "hasArchive": true, "notes": "Publishes statements/press releases via city site; complaint e-form available" }
+      ],
+      "active": true,
+      "notes": "Primary source for APD oversight activity and complaint process."
+    }
+  ],
+
+  "municipalities": [
+    { "id": "albany-city", "name": "City of Albany", "type": "city", "hasOwnPolice": true, "policeDepartmentId": "albany-pd", "primaryCoverageIds": ["albany-pd"] },
+    { "id": "cohoes-city", "name": "City of Cohoes", "type": "city", "hasOwnPolice": true, "policeDepartmentId": "cohoes-pd", "primaryCoverageIds": ["cohoes-pd"] },
+    { "id": "watervliet-city", "name": "City of Watervliet", "type": "city", "hasOwnPolice": true, "policeDepartmentId": "watervliet-pd", "primaryCoverageIds": ["watervliet-pd"] },
+    { "id": "colonie-town", "name": "Town of Colonie", "type": "town", "hasOwnPolice": true, "policeDepartmentId": "colonie-pd", "primaryCoverageIds": ["colonie-pd"] },
+    { "id": "guilderland-town", "name": "Town of Guilderland", "type": "town", "hasOwnPolice": true, "policeDepartmentId": "guilderland-pd", "primaryCoverageIds": ["guilderland-pd"] },
+    { "id": "bethlehem-town", "name": "Town of Bethlehem", "type": "town", "hasOwnPolice": true, "policeDepartmentId": "bethlehem-pd", "primaryCoverageIds": ["bethlehem-pd"] },
+    { "id": "coeymans-town", "name": "Town of Coeymans", "type": "town", "hasOwnPolice": true, "policeDepartmentId": "coeymans-pd", "primaryCoverageIds": ["coeymans-pd"] },
+    { "id": "berne-town", "name": "Town of Berne", "type": "town", "hasOwnPolice": false, "primaryCoverageIds": ["nysp-troop-g", "albany-county-sheriff"], "notes": "Hilltowns; NYSP New Scotland station serves as hub" },
+    { "id": "knox-town", "name": "Town of Knox", "type": "town", "hasOwnPolice": false, "primaryCoverageIds": ["nysp-troop-g", "albany-county-sheriff"] },
+    { "id": "new-scotland-town", "name": "Town of New Scotland", "type": "town", "hasOwnPolice": false, "primaryCoverageIds": ["nysp-troop-g", "albany-county-sheriff"] },
+    { "id": "rensselaerville-town", "name": "Town of Rensselaerville", "type": "town", "hasOwnPolice": false, "primaryCoverageIds": ["nysp-troop-g", "albany-county-sheriff"] },
+    { "id": "westerlo-town", "name": "Town of Westerlo", "type": "town", "hasOwnPolice": false, "primaryCoverageIds": ["nysp-troop-g", "albany-county-sheriff"] },
+    { "id": "menands-village", "name": "Village of Menands", "type": "village", "hasOwnPolice": true, "policeDepartmentId": "menands-pd", "primaryCoverageIds": ["menands-pd"] },
+    { "id": "green-island-village", "name": "Village of Green Island", "type": "village", "hasOwnPolice": true, "policeDepartmentId": "green-island-pd", "primaryCoverageIds": ["green-island-pd"] },
+    { "id": "altamont-village", "name": "Village of Altamont", "type": "village", "hasOwnPolice": true, "policeDepartmentId": "altamont-pd", "primaryCoverageIds": ["altamont-pd"] },
+    { "id": "ravena-village", "name": "Village of Ravena", "type": "village", "parentMunicipality": "coeymans-town", "hasOwnPolice": false, "primaryCoverageIds": ["coeymans-pd"], "notes": "Village police abolished by voter referendum in 2006; served by Town of Coeymans PD" },
+    { "id": "voorheesville-village", "name": "Village of Voorheesville", "type": "village", "parentMunicipality": "new-scotland-town", "hasOwnPolice": false, "primaryCoverageIds": ["nysp-troop-g", "albany-county-sheriff"] },
+    { "id": "colonie-village", "name": "Village of Colonie", "type": "village", "parentMunicipality": "colonie-town", "hasOwnPolice": false, "primaryCoverageIds": ["colonie-pd"], "notes": "Covered by Town of Colonie PD" }
+  ],
+
+  "scannerEcosystem": {
+    "system": {
+      "name": "Albany/Schenectady Counties P25 Phase II Trunked System",
+      "type": "P25 Phase II trunked",
+      "radioReferenceUrl": "https://www.radioreference.com/db/sid/8553",
+      "radioReferenceSid": "8553",
+      "counties": ["Albany", "Schenectady"],
+      "dispatchCenter": "Albany County Sheriff's E911/Communications Center",
+      "agenciesDispatched": [
+        "albany-county-sheriff", "albany-pd", "colonie-pd", "bethlehem-pd",
+        "guilderland-pd", "menands-pd", "cohoes-pd", "watervliet-pd",
+        "green-island-pd", "coeymans-pd", "nysp-troop-g"
+      ],
+      "notes": "Albany PD, Colonie PD, and most major agencies operate on this digital system. Legacy analog frequencies serve as tactical supplements. Encryption choices constrain public listening on some talkgroups."
+    },
+    "feeds": [
+      {
+        "id": "broadcastify-albany-county",
+        "provider": "broadcastify",
+        "label": "Albany County Scanner Feeds (County Page)",
+        "url": "https://www.broadcastify.com/listen/ctid/1825",
+        "coverageDescription": "All publicly streamed Albany County feeds",
+        "isLive": true,
+        "hasArchive": true,
+        "isPremiumArchive": true,
+        "notes": "Premium required for feed archives and ad-free listening"
+      },
+      {
+        "id": "broadcastify-40990",
+        "provider": "broadcastify",
+        "label": "Albany Police/Fire",
+        "url": "https://www.broadcastify.com/listen/feed/40990",
+        "feedId": "40990",
+        "coverageDescription": "Albany Police and Fire dispatch",
+        "isLive": true,
+        "hasArchive": true,
+        "isPremiumArchive": true
+      },
+      {
+        "id": "broadcastify-3626",
+        "provider": "broadcastify",
+        "label": "Albany City & Colonie PD/Fire/EMS",
+        "url": "https://www.broadcastify.com/listen/feed/3626",
+        "feedId": "3626",
+        "coverageDescription": "Albany City and Colonie police, fire, and EMS",
+        "isLive": true,
+        "hasArchive": true,
+        "isPremiumArchive": true
+      },
+      {
+        "id": "broadcastify-37206",
+        "provider": "broadcastify",
+        "label": "Albany County Volunteer Fire",
+        "url": "https://www.broadcastify.com/listen/feed/37206",
+        "feedId": "37206",
+        "coverageDescription": "County volunteer fire companies",
+        "isLive": true,
+        "hasArchive": true,
+        "isPremiumArchive": true
+      },
+      {
+        "id": "openmhz-albany",
+        "provider": "openmhz",
+        "label": "Albany County P25 Talkgroup Playback",
+        "url": "https://openmhz.com/system/albanycony",
+        "coverageDescription": "Unencrypted talkgroups on the Albany/Schenectady P25 system; playback and search",
+        "isLive": false,
+        "hasArchive": true,
+        "isPremiumArchive": false,
+        "notes": "Semi-public archival surface; availability depends on encryption and recorder configuration"
+      },
+      {
+        "id": "radioreference-albany",
+        "provider": "radioreference",
+        "label": "RadioReference — Albany County Frequencies & Systems",
+        "url": "https://www.radioreference.com/db/browse/ctid/1825",
+        "coverageDescription": "Comprehensive database of all frequencies, trunked talkgroups, and system details",
+        "isLive": false,
+        "hasArchive": false,
+        "isPremiumArchive": false,
+        "notes": "Discovery and categorization resource; some deeper datasets require RadioReference membership"
+      }
+    ],
+    "conventionalFrequencies": [
+      { "agency": "albany-county-sheriff", "frequency": "155.625 MHz", "tone": "118.8 PL", "use": "Tactical (TAC 1)", "mode": "analog" },
+      { "agency": "albany-county-sheriff", "frequency": "155.625 MHz", "tone": "110.9 PL", "use": "Tactical (TAC 2)", "mode": "analog" },
+      { "agency": "albany-county-sheriff", "frequency": "460.325 MHz", "tone": "110.9 PL", "use": "County Jail / Corrections", "mode": "analog" },
+      { "agency": "albany-county-e911", "frequency": "154.415 MHz", "tone": "110.9 PL", "use": "County Fire Dispatch (patched to P25 TG 10702)", "mode": "analog" },
+      { "agency": "nysp-troop-g", "frequency": "155.445 MHz", "tone": "110.9 PL", "use": "Troop G base frequency", "mode": "analog" }
+    ]
+  },
+
+  "mediaSources": [
+    {
+      "id": "times-union",
+      "name": "Times Union",
+      "mediaType": "newspaper",
+      "owner": "Hearst",
+      "website": "https://www.timesunion.com/",
+      "crimeCourtsSectionUrl": "https://www.timesunion.com/news/crime/",
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@timesunion", "url": "https://twitter.com/timesunion", "verified": true }
+      ],
+      "coverageFocus": "Crime/public safety, policing policy, accountability, courts; extensive APD and oversight coverage",
+      "updateFrequency": "daily",
+      "hasPaywall": true,
+      "paywallType": "metered",
+      "reliabilityTier": "high",
+      "reliabilityNotes": "Original reporting plus document-based coverage; mediated through editorial framing",
+      "publishesBlotters": false,
+      "notes": "Primary newspaper of record for the Capital Region"
+    },
+    {
+      "id": "wnyt",
+      "name": "WNYT NewsChannel 13",
+      "mediaType": "tv_broadcast",
+      "owner": "Hubbard Broadcasting",
+      "website": "https://wnyt.com/",
+      "crimeCourtsSectionUrl": "https://wnyt.com/category/capital-region-news/",
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@WNYT", "url": "https://twitter.com/WNYT", "verified": true }
+      ],
+      "coverageFocus": "Daily crime and policing stories; maintains Albany Police Department tag archives",
+      "updateFrequency": "daily",
+      "hasPaywall": false,
+      "reliabilityTier": "high",
+      "reliabilityNotes": "Generally reliable for breaking news; often based on police statements plus on-scene reporting",
+      "publishesBlotters": false
+    },
+    {
+      "id": "cbs6-wrgb",
+      "name": "CBS6 Albany / WRGB",
+      "mediaType": "tv_broadcast",
+      "owner": "Sinclair Broadcast Group",
+      "website": "https://cbs6albany.com/",
+      "crimeCourtsSectionUrl": "https://cbs6albany.com/news/local",
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@CBS6Albany", "url": "https://twitter.com/CBS6Albany", "verified": true }
+      ],
+      "coverageFocus": "Public safety reporting and social-media policy developments",
+      "updateFrequency": "daily",
+      "hasPaywall": false,
+      "reliabilityTier": "high",
+      "reliabilityNotes": "Generally reliable; reported APD disabling social media comments",
+      "publishesBlotters": false
+    },
+    {
+      "id": "news10-wten",
+      "name": "NEWS10 ABC / WTEN",
+      "mediaType": "tv_broadcast",
+      "owner": "Nexstar Media Group",
+      "website": "https://www.news10.com/",
+      "crimeCourtsSectionUrl": "https://www.news10.com/news/crime/",
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@NEWS10ABC", "url": "https://twitter.com/NEWS10ABC", "verified": true }
+      ],
+      "coverageFocus": "Regional crime and courts reporting",
+      "updateFrequency": "daily",
+      "hasPaywall": false,
+      "reliabilityTier": "high",
+      "reliabilityNotes": "Standard broadcast news reliability",
+      "publishesBlotters": false
+    },
+    {
+      "id": "spectrum-news-1",
+      "name": "Spectrum News 1 Capital Region",
+      "mediaType": "cable_news",
+      "owner": "Charter Communications",
+      "website": "https://spectrumlocalnews.com/nys/capital-region",
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@SpectrumNews1CR", "url": "https://twitter.com/SpectrumNews1CR", "verified": true }
+      ],
+      "coverageFocus": "Dedicated Public Safety vertical for the Capital Region; frequent pieces involving Albany-area policing and policy",
+      "updateFrequency": "daily",
+      "hasPaywall": false,
+      "paywallType": "some markets may geofence",
+      "reliabilityTier": "high",
+      "reliabilityNotes": "Generally reliable regional reporting; stories may rely on official statements with added context",
+      "publishesBlotters": false
+    },
+    {
+      "id": "fox23-wxxa",
+      "name": "FOX23 / WXXA",
+      "mediaType": "tv_broadcast",
+      "owner": "Mission Broadcasting / Nexstar",
+      "website": "https://www.news10.com/",
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@FOX23News", "url": "https://twitter.com/FOX23News", "verified": true }
+      ],
+      "coverageFocus": "Shared news operation with NEWS10 ABC",
+      "updateFrequency": "daily",
+      "hasPaywall": false,
+      "reliabilityTier": "high",
+      "reliabilityNotes": "Standard broadcast news reliability",
+      "publishesBlotters": false
+    },
+    {
+      "id": "daily-gazette",
+      "name": "Daily Gazette",
+      "mediaType": "newspaper",
+      "owner": "Independent (local)",
+      "website": "https://www.dailygazette.com/",
+      "crimeCourtsSectionUrl": "https://www.dailygazette.com/news/crime/",
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@DailyGazette", "url": "https://twitter.com/DailyGazette", "verified": true }
+      ],
+      "coverageFocus": "Regional crime/courts; publishes Bethlehem police blotter entries",
+      "updateFrequency": "daily",
+      "hasPaywall": true,
+      "paywallType": "metered",
+      "reliabilityTier": "high",
+      "reliabilityNotes": "Local newspaper with strong regional reporting",
+      "publishesBlotters": true,
+      "blotterCoverage": "Bethlehem, broader Capital Region"
+    },
+    {
+      "id": "wamc",
+      "name": "WAMC 90.3 FM Northeast Public Radio",
+      "mediaType": "public_radio",
+      "website": "https://www.wamc.org/",
+      "crimeCourtsSectionUrl": "https://www.wamc.org/tags/albany-crime",
+      "socialAccounts": [
+        { "platform": "twitter", "handle": "@WAMCRadio", "url": "https://twitter.com/WAMCRadio", "verified": true }
+      ],
+      "coverageFocus": "Policy/civic accountability framing and interviews; coverage of oversight bodies and advocacy",
+      "updateFrequency": "regular",
+      "hasPaywall": false,
+      "reliabilityTier": "high",
+      "reliabilityNotes": "High reliability for civic context; often includes direct quotes and meeting/record context",
+      "publishesBlotters": false
+    },
+    {
+      "id": "spotlight-news",
+      "name": "Spotlight News",
+      "mediaType": "weekly_newspaper",
+      "website": "https://spotlightnews.com/",
+      "crimeCourtsSectionUrl": "https://spotlightnews.com/news/crime/",
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "spotlight.newspapers", "url": "https://www.facebook.com/spotlight.newspapers", "verified": true }
+      ],
+      "coverageFocus": "Most detailed weekly police blotters in the county; covers Colonie, Bethlehem, and Guilderland",
+      "updateFrequency": "weekly",
+      "hasPaywall": false,
+      "reliabilityTier": "moderate",
+      "reliabilityNotes": "Useful blotter aggregation; cross-check with official records when needed",
+      "publishesBlotters": true,
+      "blotterCoverage": "Colonie, Bethlehem, Guilderland"
+    },
+    {
+      "id": "altamont-enterprise",
+      "name": "The Altamont Enterprise & Albany County Post",
+      "mediaType": "weekly_newspaper",
+      "website": "https://altamontenterprise.com/",
+      "socialAccounts": [
+        { "platform": "facebook", "handle": "altamontenterprise", "url": "https://www.facebook.com/altamontenterprise", "verified": true }
+      ],
+      "coverageFocus": "Strong town/village crime beat (notably Guilderland); direct citations to police releases and investigator contacts. Covers Guilderland, New Scotland, Berne, Knox, Westerlo, Rensselaerville.",
+      "updateFrequency": "weekly",
+      "hasPaywall": false,
+      "reliabilityTier": "moderate",
+      "reliabilityNotes": "Useful for granular local reporting; cross-check release-based items with underlying police records",
+      "publishesBlotters": true,
+      "blotterCoverage": "Guilderland, New Scotland, Berne, Knox, Westerlo, Rensselaerville"
+    },
+    {
+      "id": "ravena-news-herald",
+      "name": "Ravena News-Herald",
+      "mediaType": "weekly_newspaper",
+      "website": "",
+      "socialAccounts": [],
+      "coverageFocus": "Southern Albany County (Coeymans/Ravena area) police and court reports",
+      "updateFrequency": "weekly",
+      "hasPaywall": false,
+      "reliabilityTier": "moderate",
+      "reliabilityNotes": "Local weekly; limited digital presence",
+      "publishesBlotters": true,
+      "blotterCoverage": "Coeymans, Ravena",
+      "notes": "Phone: 518-859-6353"
+    },
+    {
+      "id": "patch-albany",
+      "name": "Patch.com — Albany / Colonie / Bethlehem editions",
+      "mediaType": "online_only",
+      "website": "https://patch.com/new-york/albany-ny",
+      "socialAccounts": [],
+      "coverageFocus": "Police/crime briefs for Albany, Colonie, and Bethlehem",
+      "updateFrequency": "daily",
+      "hasPaywall": false,
+      "reliabilityTier": "moderate",
+      "reliabilityNotes": "Aggregates police press releases and local crime news; limited original reporting",
+      "publishesBlotters": true,
+      "blotterCoverage": "Albany, Colonie, Bethlehem"
+    }
+  ],
+
+  "communityPlatforms": [
+    {
+      "id": "nixle-countywide",
+      "name": "Nixle — Albany County Agencies",
+      "type": "app",
+      "url": "https://local.nixle.com/county/ny/albany/municipal/",
+      "appName": "Nixle",
+      "coverageArea": "Multiple Albany County agencies",
+      "description": "Dominant SMS/email alert system. Agencies include Albany PD, Colonie PD, Guilderland PD, Watervliet PD, Altamont PD. Enroll by texting ZIP code to 888777.",
+      "notes": "County-wide directory at the URL above. Each agency has agency-specific keywords."
+    },
+    {
+      "id": "crime-stoppers",
+      "name": "Capital Region Crime Stoppers",
+      "type": "tip_line",
+      "phone": "1-833-252-8477",
+      "appName": "P3 Tips",
+      "coverageArea": "All Albany County agencies",
+      "description": "Anonymous tip line covering all Albany County law enforcement. Rewards up to $5,000.",
+      "reward": "Up to $5,000",
+      "notes": "Facebook: facebook.com/CRCrimeStoppers"
+    },
+    {
+      "id": "spotcrime",
+      "name": "SpotCrime",
+      "type": "website",
+      "url": "https://spotcrime.com/NY/Albany",
+      "coverageArea": "City of Albany and surrounding areas",
+      "description": "Aggregates crime data with email alerts and map visualization."
+    },
+    {
+      "id": "citizen-app",
+      "name": "Citizen App",
+      "type": "app",
+      "appName": "Citizen",
+      "coverageArea": "Albany metro area",
+      "description": "Real-time scanner-based alerts and incident notifications."
+    },
+    {
+      "id": "ring-neighbors",
+      "name": "Ring Neighbors",
+      "type": "app",
+      "appName": "Ring Neighbors",
+      "coverageArea": "Varies by doorbell adoption density in Albany County",
+      "description": "Community safety alerts from Ring doorbell owners."
+    },
+    {
+      "id": "seeclickfix-albany",
+      "name": "SeeClickFix — Albany",
+      "type": "website",
+      "url": "https://seeclickfix.com/albany_2/report",
+      "coverageArea": "City of Albany",
+      "description": "Quality of life and non-emergency issue reporting integrated with city services."
+    },
+    {
+      "id": "albany-open-data",
+      "name": "Albany Open Data Portal",
+      "type": "website",
+      "url": "https://data.albanyny.gov",
+      "coverageArea": "City of Albany",
+      "description": "Geocoded crime data and other city datasets available for download and API access."
+    }
+  ]
+}

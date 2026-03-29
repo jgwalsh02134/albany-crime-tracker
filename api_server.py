@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import json as _json
 import os
 import re
 import time
@@ -22,7 +23,8 @@ import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
+from email.utils import format_datetime, parsedate_to_datetime
+from urllib.parse import quote, quote_plus, urlparse
 from typing import Any, Optional
 
 import httpx
@@ -62,6 +64,8 @@ CACHE_TTL = {
     "monthly_summary": 1800,   # 30 min
     "daily_summary": 600,      # 10 min — today's briefing
     "social_intel": 900,       # 15 min — X/Twitter monitoring
+    "grok_official_x_posts": 900,  # 15 min — Grok-sourced official X highlights
+    "scanner_talkgroups": 3600,   # 1 h — TG metadata from directory
 }
 
 # =============================================================================
@@ -581,10 +585,18 @@ LIVE_SOURCES = frozenset([
     "official @albanypolice", "official @acsotweet", "official @colonie_police",
     "official @pdbethlehem", "official @nyspolice",
     "nysp blotter", "nixle alert", "daily gazette blotter",
+    "nixle", "blotter ·", "scanner ·", "official x",
 ])
 
 LIVE_CUTOFF_HOURS = 72   # Live tab: only show items published within last 72 h
 MAP_CUTOFF_DAYS = 5      # Map: hard cutoff at 5 days
+
+# Live feed source_priority tiers (higher = closer to top after merge + sort)
+SOURCE_PRIORITY_SCANNER_CALL = 12
+SOURCE_PRIORITY_NIXLE = 11
+SOURCE_PRIORITY_OFFICIAL_X_GROK = 10
+SOURCE_PRIORITY_SCANNER_FEED_LINK = 9
+SOURCE_PRIORITY_DIRECTORY_BLOTTER = 7
 
 
 def _format_display_date(dt: datetime) -> str:
@@ -618,6 +630,16 @@ def classify_feed_tab(article) -> str:
     source = (article.get("source", "") or "").lower()
 
     age_hours = get_article_age_hours(article)
+
+    # --- Scanner / Nixle / Grok official posts → Live when recent ---
+    if article.get("_scanner_call") or article.get("_scanner_feed_link") or article.get("_nixle_item"):
+        if age_hours is None or age_hours <= LIVE_CUTOFF_HOURS:
+            return "live"
+        return "news"
+    if article.get("_official_x_post"):
+        if age_hours is None or age_hours <= LIVE_CUTOFF_HOURS:
+            return "live"
+        return "news"
 
     # --- Older than LIVE_CUTOFF_HOURS → always News ---
     if age_hours is not None and age_hours > LIVE_CUTOFF_HOURS:
@@ -854,6 +876,12 @@ def parse_rss(xml_text, default_source=None):
                 desc = desc[:400] + "..."
 
             if title:
+                guid_el = item.find("guid")
+                guid_txt = (
+                    guid_el.text.strip()
+                    if guid_el is not None and guid_el.text
+                    else (link or title)
+                )
                 articles.append({
                     "title": title,
                     "link": link,
@@ -861,6 +889,7 @@ def parse_rss(xml_text, default_source=None):
                     "description": desc,
                     "source": source or "Local News",
                     "source_url": source_url,
+                    "guid": guid_txt,
                 })
     except ET.ParseError:
         pass
@@ -891,6 +920,10 @@ def is_albany_related(article) -> bool:
     Aggressively rejects:
       albany ga / albany or / albany ca / albany australia, iceland, manila, etc.
     """
+    if article.get("_scanner_call") or article.get("_scanner_feed_link"):
+        return True
+    if article.get("_nixle_item") or article.get("_official_x_post"):
+        return True
     title = article.get("title", "") or ""
     desc = article.get("description", "") or ""
     text = (title + " " + desc).lower()
@@ -984,6 +1017,10 @@ def compute_article_confidence(article) -> float:
 
 
 def is_crime_related(article) -> bool:
+    if article.get("_scanner_call") or article.get("_scanner_feed_link") or article.get("_nixle_item"):
+        return True
+    if article.get("_official_x_post"):
+        return True
     text = (article.get("title", "") + " " + article.get("description", "")).lower()
     return any(kw in text for kw in CRIME_KEYWORDS)
 
@@ -1471,17 +1508,60 @@ async def fetch_all_feeds():
             print(f"Feed error [{key}]: {e}")
         return []
 
-    all_feeds = {**RSS_FEEDS_LOCAL, **RSS_FEEDS_GNEWS, **RSS_FEEDS_OFFICIAL}
+    all_feeds = {
+        **RSS_FEEDS_LOCAL,
+        **RSS_FEEDS_GNEWS,
+        **RSS_FEEDS_OFFICIAL,
+        **build_directory_rss_feeds(),
+    }
     tasks = [fetch_one(key, cfg) for key, cfg in all_feeds.items()]
     results = await asyncio.gather(*tasks)
 
     for feed_articles in results:
         articles.extend(feed_articles)
 
+    # Real-time layers from directory + OpenMHz / Nixle / Grok (parallel)
+    _extra_batches = await asyncio.gather(
+        fetch_nixle_directory_articles(),
+        fetch_official_social_posts(),
+        fetch_scanner_directory_items(),
+        return_exceptions=True,
+    )
+    for batch in _extra_batches:
+        if isinstance(batch, Exception):
+            print(f"Live feed extra batch error: {batch}")
+            continue
+        articles.extend(batch)
+
+    def _norm_link(u: str) -> str:
+        return (u or "").strip().lower().split("?")[0].rstrip("/")
+
+    # Collapse exact same URL (Google News / syndication) — keep highest source_priority
+    _by_link: dict[str, dict] = {}
+    _no_link: list[dict] = []
+    for a in articles:
+        lk = _norm_link(a.get("link", "") or "")
+        if not lk:
+            _no_link.append(a)
+            continue
+        prev = _by_link.get(lk)
+        if prev is None or a.get("source_priority", 0) > prev.get("source_priority", 0):
+            _by_link[lk] = a
+    articles = list(_by_link.values()) + _no_link
+
+    def _pub_ts_pre(a: dict) -> float:
+        try:
+            dt = parsedate_to_datetime(a.get("pubDate", "") or "")
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except Exception:
+            return 0.0
+
     # ── Smart deduplication ──────────────────────────────────────────────────
     # Sort highest-priority + newest first so the best version wins each group.
     articles.sort(
-        key=lambda a: (a.get("source_priority", 1), a.get("pubDate", "")),
+        key=lambda a: (a.get("source_priority", 1), _pub_ts_pre(a)),
         reverse=True,
     )
 
@@ -1577,6 +1657,15 @@ async def fetch_all_feeds():
         full_b = (t2 + " " + (rep.get("description", "") or ""))[:1200]
         hrs = _hours_apart(art, rep)
 
+        la = _norm_link(art.get("link", "") or "")
+        lb = _norm_link(rep.get("link", "") or "")
+        if la and lb and la == lb:
+            return True
+        ga = _norm_link(str(art.get("guid", "") or ""))
+        gb = _norm_link(str(rep.get("guid", "") or ""))
+        if ga and gb and ga == gb:
+            return True
+
         if _title_sequence_ratio(t1, t2) >= 0.85:
             return True
 
@@ -1600,6 +1689,9 @@ async def fetch_all_feeds():
             return True
 
         if jac_title >= 0.65 and len(shared) >= 1 and hrs is not None and hrs <= 6.0:
+            return True
+
+        if jac_title >= 0.55 and hrs is not None and hrs <= 4.0:
             return True
 
         w1, w2 = _title_words(t1), _title_words(t2)
@@ -1642,9 +1734,18 @@ async def fetch_all_feeds():
         rep["sources"] = grp["sources"][:_MAX_COMBINED_SOURCES]
         deduped.append(rep)
 
-    # Final sort: newest first, then by source priority (4=official > 3=premium > 2=local > 1=gnews)
+    def _pub_ts_final(a: dict) -> float:
+        try:
+            dt = parsedate_to_datetime(a.get("pubDate", "") or "")
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except Exception:
+            return 0.0
+
+    # Final sort: scanner / Nixle / official X first, then recency within tier
     deduped.sort(
-        key=lambda a: (a.get("pubDate", ""), a.get("source_priority", 1)),
+        key=lambda a: (a.get("source_priority", 0), _pub_ts_final(a)),
         reverse=True,
     )
 
@@ -1723,13 +1824,14 @@ async def get_crimes():
     ])
 
     def _live_sort_key(x: dict) -> tuple:
-        """Recent (<=18h) arrest-style headlines first; then strict newest pubDate."""
+        """Tiered: scanner / Nixle / official X / blotter priority, then arrest recency, then time."""
+        sp = int(x.get("source_priority") or 0)
         title = (x.get("title") or "").lower()
         age = x.get("age_hours")
         arrestish = any(h in title for h in _ARREST_TITLE_HINTS)
         recent = age is not None and age <= 18
-        top = 0 if (recent and arrestish) else 1
-        return (top, -_pub_ts_sort(x))
+        arrest_boost = 1 if (recent and arrestish) else 0
+        return (-sp, -arrest_boost, -_pub_ts_sort(x))
 
     live_items = sorted(
         [x for x in geocoded if x.get("feed_tab") == "live"],
@@ -2341,6 +2443,537 @@ async def get_scanner_calls():
 
     # Fallback — no mock data
     return {"status": "ok", "source": "unavailable", "calls": []}
+
+
+@app.get("/api/scanner/talkgroups")
+async def get_scanner_talkgroups():
+    """Enriched P25 talkgroup metadata merged with le_directory.json agencies."""
+    ck = "scanner_talkgroups"
+    cached = get_cached(ck)
+    if cached:
+        return {
+            "status": "ok",
+            "source": "cache",
+            "talkgroups": cached.get("talkgroups", {}),
+            "system": cached.get("system"),
+            "dispatch_center": cached.get("dispatch_center"),
+        }
+    payload = _build_scanner_talkgroups_payload()
+    set_cached(ck, payload)
+    return {
+        "status": "ok",
+        "source": "live",
+        "talkgroups": payload["talkgroups"],
+        "system": payload.get("system"),
+        "dispatch_center": payload.get("dispatch_center"),
+    }
+
+
+# =============================================================================
+# LAW ENFORCEMENT DIRECTORY (le_directory.json)
+# =============================================================================
+_LE_DIRECTORY_CACHE: Optional[dict[str, Any]] = None
+
+
+def _le_dir_cache() -> dict[str, Any]:
+    global _LE_DIRECTORY_CACHE
+    if _LE_DIRECTORY_CACHE is None:
+        _path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "le_directory.json")
+        with open(_path, "r", encoding="utf-8") as _fh:
+            _LE_DIRECTORY_CACHE = _json.load(_fh)
+    return _LE_DIRECTORY_CACHE
+
+
+def _scanner_tg_dept_loc(
+    agencies_by_id: dict[str, Any],
+    agency_id: Optional[str],
+    channel: str,
+    fallback_dept: str,
+    fallback_loc: str,
+) -> tuple[str, str, Optional[str]]:
+    if agency_id and agency_id in agencies_by_id:
+        ag = agencies_by_id[agency_id]
+        abb = (ag.get("abbreviation") or "").strip()
+        contact = ag.get("contact") or {}
+        city = (contact.get("city") or "").strip()
+        loc = city or fallback_loc
+        if abb:
+            dept = f"{abb} {channel}".strip() if channel else abb
+        else:
+            name = (ag.get("name") or "").strip()
+            dept = f"{name} — {channel}".strip() if channel else (name or fallback_dept)
+        return dept, loc, agency_id
+    return fallback_dept, fallback_loc, agency_id
+
+
+def _build_scanner_talkgroups_payload() -> dict[str, Any]:
+    data = _le_dir_cache()
+    agencies_by_id = {a["id"]: a for a in (data.get("agencies") or []) if a.get("id")}
+    se = data.get("scannerEcosystem") or {}
+    sys_info = se.get("system") or {}
+
+    _rows: list[tuple[str, Optional[str], str, str, str, str, str]] = [
+        ("15202", "albany-county-sheriff", "Law Dispatch", "Albany County Law Dispatch", "County-wide", "police", "high"),
+        ("10702", None, "", "Albany County Fire Dispatch", "County-wide", "fire", "high"),
+        ("11702", None, "", "County Fire Tac", "County-wide", "fire", "medium"),
+        ("10003", "albany-county-sheriff", "Dispatch", "Albany County Sheriff", "County-wide", "police", "high"),
+        ("13102", "albany-pd", "Dispatch", "Albany PD Dispatch", "City of Albany", "police", "high"),
+        ("13202", "albany-pd", "Ops", "Albany PD Ops", "City of Albany", "police", "high"),
+        ("11003", None, "", "Albany County EMS", "County-wide", "ems", "high"),
+        ("10921", None, "", "Albany County Interop", "County-wide", "police", "medium"),
+        ("10922", None, "", "Multi-Agency Tac", "County-wide", "police", "medium"),
+        ("10923", None, "", "Emergency Ops", "County-wide", "police", "high"),
+        ("10925", None, "", "Albany County OEM", "County-wide", "police", "medium"),
+        ("18301", "albany-county-sheriff", "Law Ops", "Albany County Law Ops", "County-wide", "police", "high"),
+        ("18884", "nysp-troop-g", "Tac", "NYSP Troop G / Capitol", "Capital Region", "police", "high"),
+        ("10354", None, "", "Metro Law Tac", "Capital Region", "police", "medium"),
+        ("10401", "colonie-pd", "Dispatch", "Colonie PD Dispatch", "Latham · Colonie", "police", "high"),
+        ("10402", "colonie-pd", "Tac", "Colonie PD Tac", "Colonie", "police", "medium"),
+        ("10501", "guilderland-pd", "Dispatch", "Guilderland PD", "Guilderland", "police", "medium"),
+        ("10502", "bethlehem-pd", "Dispatch", "Bethlehem PD", "Bethlehem · Delmar", "police", "medium"),
+        ("10601", "cohoes-pd", "Dispatch", "Cohoes PD", "Cohoes", "police", "medium"),
+        ("10602", "watervliet-pd", "Dispatch", "Watervliet PD", "Watervliet", "police", "medium"),
+        ("8211", "colonie-pd", "Dispatch", "Colonie PD Dispatch", "Latham · Colonie", "police", "high"),
+        ("8212", "colonie-pd", "Tac", "Colonie PD Tac", "Colonie", "police", "medium"),
+        ("8215", "bethlehem-pd", "Dispatch", "Bethlehem PD", "Bethlehem · Delmar", "police", "medium"),
+        ("8216", "guilderland-pd", "Dispatch", "Guilderland PD", "Guilderland", "police", "medium"),
+        ("8206", "albany-county-sheriff", "Dispatch", "Albany County Sheriff", "County-wide", "police", "high"),
+        ("8239", "albany-pd", "Fire Dispatch", "Albany Fire Dispatch", "City of Albany", "fire", "high"),
+        ("8243", None, "", "Colonie Fire Dispatch", "Colonie", "fire", "high"),
+        ("8259", None, "", "Albany County EMS", "County-wide", "ems", "high"),
+        ("8260", None, "", "Albany EMS Dispatch", "City of Albany", "ems", "high"),
+    ]
+
+    talkgroups: dict[str, dict[str, Any]] = {}
+    for tg, aid, ch, fb, floc, cat, pri in _rows:
+        dept, loc, rid = _scanner_tg_dept_loc(agencies_by_id, aid, ch, fb, floc)
+        talkgroups[str(tg)] = {
+            "department": dept,
+            "location": loc,
+            "category": cat,
+            "priority": pri,
+            "agency_id": rid,
+            "talkgroup_id": str(tg),
+        }
+
+    return {
+        "talkgroups": talkgroups,
+        "system": {
+            "name": sys_info.get("name"),
+            "type": sys_info.get("type"),
+            "radio_reference_url": sys_info.get("radioReferenceUrl"),
+            "counties": sys_info.get("counties"),
+        },
+        "dispatch_center": sys_info.get("dispatchCenter"),
+    }
+
+
+def _directory_domain(url: str) -> str:
+    try:
+        net = urlparse(url or "").netloc.lower()
+        return net[4:] if net.startswith("www.") else net
+    except Exception:
+        return ""
+
+
+def build_directory_rss_feeds() -> dict[str, dict[str, Any]]:
+    """Merge-safe RSS configs built from le_directory.json (media + agency press surfaces)."""
+    out: dict[str, dict[str, Any]] = {}
+    seen_urls: set[str] = set()
+
+    def _add(key: str, cfg: dict[str, Any]) -> None:
+        u = cfg.get("url") or ""
+        if not u or u in seen_urls:
+            return
+        seen_urls.add(u)
+        out[key] = cfg
+
+    try:
+        data = _le_dir_cache()
+    except Exception as e:
+        print(f"build_directory_rss_feeds: {e}")
+        return out
+
+    gnews_body = (
+        "(albany+OR+\"albany+county\"+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes+OR+"
+        "watervliet+OR+latham+OR+menands+OR+altamont+OR+ravena+OR+coeymans+OR+capital+region)+"
+        "(crime+OR+arrest+OR+police+OR+courts+OR+blotter+OR+shooting+OR+robbery+OR+crash+OR+investigation)+when:7d"
+    )
+
+    for ms in data.get("mediaSources") or []:
+        mid = ms.get("id") or "media"
+        name = ms.get("name") or mid
+        page = (ms.get("crimeCourtsSectionUrl") or ms.get("website") or "").strip()
+        if not page:
+            continue
+        dom = _directory_domain(page)
+        if not dom:
+            continue
+        blot = bool(ms.get("publishesBlotters"))
+        priority = SOURCE_PRIORITY_DIRECTORY_BLOTTER if blot else 3
+        lbl = f"Blotter · {name}" if blot else name
+        q = f"site:{dom}+{gnews_body}"
+        gurl = f"https://news.google.com/rss/search?q={quote(q, safe='')}&hl=en-US&gl=US&ceid=US:en"
+        _add(
+            f"dir_media_gnews_{mid}",
+            {
+                "url": gurl,
+                "label": lbl,
+                "filter": "albany",
+                "reliability": 0.91 if blot else 0.84,
+                "priority": priority,
+                "force_label": blot,
+            },
+        )
+
+    for ag in data.get("agencies") or []:
+        if ag.get("active") is False:
+            continue
+        tier = ag.get("tier") or ""
+        if tier not in ("municipal", "county", "state"):
+            continue
+        aid = ag.get("id") or "agency"
+        aname = ag.get("name") or aid
+        abb = (ag.get("abbreviation") or "").strip()
+        for idx, surf in enumerate(ag.get("newsPressSurfaces") or []):
+            su = (surf.get("url") or "").strip()
+            if not su or not surf.get("hasRss"):
+                continue
+            low = su.lower()
+            if any(x in low for x in (".rss", "/rss", "rssfeed", "/feed", "format=rss")):
+                _add(
+                    f"dir_agency_rss_{aid}_{idx}",
+                    {
+                        "url": su,
+                        "label": f"Official · {aname}",
+                        "filter": "albany",
+                        "reliability": 0.96,
+                        "priority": 4,
+                        "force_label": True,
+                    },
+                )
+        qn = f"{aname} {abb + ' ' if abb else ''}police albany county arrest OR crime OR investigation when:14d"
+        g2 = f"https://news.google.com/rss/search?q={quote_plus(qn)}&hl=en-US&gl=US&ceid=US:en"
+        _add(
+            f"dir_agency_gnews_{aid}",
+            {
+                "url": g2,
+                "label": f"Official · {aname}",
+                "filter": "albany",
+                "reliability": 0.93,
+                "priority": 4,
+                "force_label": True,
+            },
+        )
+
+    return out
+
+
+_NIXLE_TRY_SUFFIXES = ("", "/rss/", "/rss", "/feed/", "/feed")
+
+_OPENMHZ_SYS_RE = re.compile(r"openmhz\.com/system/([^/?#]+)", re.I)
+
+
+async def fetch_nixle_directory_articles() -> list[dict[str, Any]]:
+    collected: list[dict[str, Any]] = []
+    try:
+        data = _le_dir_cache()
+    except Exception:
+        return collected
+
+    bases: list[str] = []
+    for c in data.get("communityPlatforms") or []:
+        u = (c.get("url") or "").strip()
+        if "nixle" in u.lower():
+            bases.append(u.split("#")[0].split("?")[0].rstrip("/"))
+    for ag in data.get("agencies") or []:
+        for ch in ag.get("alertChannels") or []:
+            if (ch.get("system") or "").lower() == "nixle" and ch.get("url"):
+                bases.append(
+                    (ch["url"] or "").strip().split("#")[0].split("?")[0].rstrip("/")
+                )
+    bases.append("https://www.nixle.com/rss/?city=Albany&state=NY")
+    seen_bases: set[str] = set()
+
+    for base in bases:
+        if not base or base in seen_bases:
+            continue
+        seen_bases.add(base)
+        for suf in _NIXLE_TRY_SUFFIXES:
+            try_url = (base + suf) if suf else base
+            try:
+                resp = await http_client.get(try_url, timeout=10.0)
+                if resp.status_code != 200:
+                    continue
+                head = resp.text[:1200].lower()
+                if "<item" not in head and "<entry" not in head:
+                    continue
+                parsed = parse_rss(resp.text, default_source="Nixle alert")
+                for a in parsed:
+                    a["source_priority"] = max(
+                        int(a.get("source_priority") or 0), SOURCE_PRIORITY_NIXLE
+                    )
+                    a["source"] = "Nixle alert"
+                    a["_nixle_item"] = True
+                    if not a.get("_feed_reliability"):
+                        a["_feed_reliability"] = 1.0
+                collected.extend(parsed)
+                break
+            except Exception as e:
+                print(f"Nixle try [{try_url}]: {e}")
+    return collected
+
+
+_OFFICIAL_X_HANDLES_CORE = [
+    "albanypolice",
+    "ACSOTWEET",
+    "colonie_police",
+    "PdBethlehem",
+    "guilderlandpd",
+    "VlietPolice",
+    "nyspolice",
+    "albanypd",
+]
+
+_SOCIAL_GROK_SYSTEM = (
+    "You reply with a single JSON array only. No markdown, no commentary. "
+    "Each element: {\"handle\":\"twitterhandle\",\"title\":\"short headline\","
+    "\"summary\":\"1-2 sentences\",\"url\":\"https://...\",\"published_iso\":\"2026-03-28T12:00:00Z\"}. "
+    "Only Albany County NY or immediate Capital Region law-enforcement / public-safety posts."
+)
+
+
+def _official_x_handles_from_directory() -> list[str]:
+    found: set[str] = set(_OFFICIAL_X_HANDLES_CORE)
+    try:
+        data = _le_dir_cache()
+        for ag in data.get("agencies") or []:
+            for acct in ag.get("socialAccounts") or []:
+                plat = (acct.get("platform") or "").lower()
+                if plat not in ("twitter", "x"):
+                    continue
+                if not acct.get("verified"):
+                    continue
+                h = (acct.get("handle") or "").strip().lstrip("@")
+                if h:
+                    found.add(h)
+    except Exception:
+        pass
+    return list(found)[:28]
+
+
+async def fetch_official_social_posts() -> list[dict[str, Any]]:
+    cached = get_cached("grok_official_x_posts")
+    if cached:
+        return cached
+    out: list[dict[str, Any]] = []
+    if not XAI_API_KEY:
+        return out
+
+    handles = _official_x_handles_from_directory()
+    prompt = (
+        "Using your freshest knowledge of X (Twitter), list up to 2 substantive public posts per account "
+        "(max 22 posts) from ONLY these handles (do not add any other accounts or agencies): "
+        + ", ".join("@" + h for h in handles)
+        + ". Only posts from roughly the last 48 hours about arrests, investigations, safety alerts, "
+        "wanted/missing, crashes, fires, or significant police activity in Albany County NY or the "
+        "immediate Capital District. Omit opinion, hiring, generic community PR, or anything you cannot "
+        "attribute to a real post. Every object's handle field must exactly match one of the listed "
+        "handles (case-insensitive). Return JSON array only."
+    )
+    try:
+        text = await call_grok(
+            [
+                {"role": "system", "content": _SOCIAL_GROK_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=3800,
+            temperature=0.15,
+            timeout=90.0,
+        )
+        if not text:
+            return out
+        m = re.search(r"\[[\s\S]*\]", text)
+        raw = m.group(0) if m else text
+        items = json.loads(raw)
+        if not isinstance(items, list):
+            items = []
+        allow_h = {x.lower() for x in handles}
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            h = (it.get("handle") or "").strip().lstrip("@")
+            if h.lower() not in allow_h:
+                continue
+            title = (it.get("title") or it.get("summary") or "").strip()
+            if not title:
+                continue
+            link = (it.get("url") or "").strip() or f"https://twitter.com/{h}"
+            desc = (it.get("summary") or "")[:400]
+            pub_raw = (it.get("published_iso") or "").strip()
+            try:
+                dt = datetime.fromisoformat(pub_raw.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                pstr = format_datetime(dt, usegmt=True)
+            except Exception:
+                pstr = format_datetime(datetime.now(timezone.utc), usegmt=True)
+            out.append(
+                {
+                    "title": title,
+                    "link": link,
+                    "pubDate": pstr,
+                    "description": desc,
+                    "source": f"Official @{h}" if h else "Official X",
+                    "source_priority": SOURCE_PRIORITY_OFFICIAL_X_GROK,
+                    "_official_x_post": True,
+                    "_feed_reliability": 0.96,
+                    "source_url": "",
+                }
+            )
+    except Exception as e:
+        print(f"fetch_official_social_posts: {e}")
+
+    if out:
+        set_cached("grok_official_x_posts", out)
+    return out
+
+
+def _openmhz_time_to_rfc(raw: str) -> str:
+    try:
+        s = (raw or "").strip()
+        if not s:
+            return format_datetime(datetime.now(timezone.utc), usegmt=True)
+        if s.isdigit():
+            n = int(s)
+            if n > 10_000_000_000:
+                n = n // 1000
+            dt = datetime.fromtimestamp(n, tz=timezone.utc)
+            return format_datetime(dt, usegmt=True)
+        if "T" in s:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return format_datetime(dt, usegmt=True)
+    except Exception:
+        pass
+    return format_datetime(datetime.now(timezone.utc), usegmt=True)
+
+
+async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    try:
+        data = _le_dir_cache()
+    except Exception:
+        return out
+
+    feeds = (data.get("scannerEcosystem") or {}).get("feeds") or []
+    for i, fd in enumerate(feeds):
+        prov = (fd.get("provider") or "").lower()
+        label = fd.get("label") or "Scanner"
+        url = (fd.get("url") or "").strip()
+        cov = (fd.get("coverageDescription") or "").strip()
+        if prov == "openmhz":
+            m = _OPENMHZ_SYS_RE.search(url)
+            if not m:
+                continue
+            slug = m.group(1)
+            try:
+                resp = await http_client.get(
+                    f"https://api.openmhz.com/{slug}/calls",
+                    params={"num": 22},
+                    timeout=14.0,
+                )
+                if resp.status_code != 200:
+                    continue
+                payload = resp.json()
+                for call in (payload.get("calls") or [])[:22]:
+                    audio_url = call.get("url", "") or ""
+                    tg_tag = (
+                        call.get("talkgroup_tag", "")
+                        or call.get("talkgroupTag", "")
+                        or call.get("talkgroup_description", "")
+                        or call.get("talkgroupDescription", "")
+                        or "Radio traffic"
+                    )
+                    t_raw = str(call.get("time", "") or "")
+                    desc_bits = [cov] if cov else []
+                    if call.get("freq"):
+                        desc_bits.append(f"Freq {call.get('freq')} MHz")
+                    if call.get("len") or call.get("duration"):
+                        ln = call.get("len", 0) or call.get("duration", 0)
+                        desc_bits.append(f"{ln:.0f}s audio" if ln else "")
+                    desc = " · ".join(x for x in desc_bits if x)[:400]
+                    out.append(
+                        {
+                            "title": f"Radio · {tg_tag}",
+                            "link": audio_url or f"https://openmhz.com/system/{slug}",
+                            "pubDate": _openmhz_time_to_rfc(t_raw),
+                            "description": desc or f"P25 traffic · {label}",
+                            "source": f"Scanner · {label}",
+                            "source_priority": SOURCE_PRIORITY_SCANNER_CALL,
+                            "_scanner_call": True,
+                            "_feed_reliability": 0.88,
+                            "source_url": "",
+                        }
+                    )
+            except Exception as e:
+                print(f"OpenMHz directory [{label}]: {e}")
+        elif prov == "broadcastify":
+            ts = datetime.now(timezone.utc) - timedelta(seconds=i * 3)
+            out.append(
+                {
+                    "title": f"Live scanner audio · {label}",
+                    "link": url,
+                    "pubDate": format_datetime(ts, usegmt=True),
+                    "description": (
+                        (cov + " · ") if cov else ""
+                    )
+                    + "Broadcastify stream — police / fire / EMS traffic (third-party relay).",
+                    "source": f"Scanner · {label}",
+                    "source_priority": SOURCE_PRIORITY_SCANNER_FEED_LINK,
+                    "_scanner_feed_link": True,
+                    "_feed_reliability": 0.75,
+                    "source_url": "",
+                }
+            )
+    return out
+
+
+@app.get("/api/directory/metadata")
+async def directory_metadata():
+    d = _le_dir_cache()
+    return {"status": "ok", "metadata": d.get("metadata")}
+
+
+@app.get("/api/directory/agencies")
+async def directory_agencies():
+    d = _le_dir_cache()
+    return {"status": "ok", "agencies": d.get("agencies", [])}
+
+
+@app.get("/api/directory/municipalities")
+async def directory_municipalities():
+    d = _le_dir_cache()
+    return {"status": "ok", "municipalities": d.get("municipalities", [])}
+
+
+@app.get("/api/directory/scanner")
+async def directory_scanner():
+    d = _le_dir_cache()
+    return {"status": "ok", "scannerEcosystem": d.get("scannerEcosystem")}
+
+
+@app.get("/api/directory/media")
+async def directory_media():
+    d = _le_dir_cache()
+    return {"status": "ok", "mediaSources": d.get("mediaSources", [])}
+
+
+@app.get("/api/directory/community")
+async def directory_community():
+    d = _le_dir_cache()
+    return {"status": "ok", "communityPlatforms": d.get("communityPlatforms", [])}
 
 
 # =============================================================================
