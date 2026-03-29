@@ -2004,8 +2004,7 @@ async def fetch_all_feeds():
                 # Apply location filter
                 filter_mode = cfg.get("filter")
                 if filter_mode in ("strict", "albany"):
-                    # "albany" mode: same as strict — use full is_albany_related scoring
-                    parsed = [a for a in parsed if is_albany_related(a)]
+                    pass  # strict Albany County NY gate runs once after merge (below)
                 elif filter_mode == "crime":
                     # "crime" mode: location guaranteed (official PD X accounts);
                     # keep only posts that mention at least one crime keyword
