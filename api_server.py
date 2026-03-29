@@ -1422,16 +1422,6 @@ def _strong_albany_county_anchor(blob: str) -> Optional[str]:
             continue
         if _strict_phrase_in_blob(phrase, blob):
             return f"locality:{phrase[:48]}"
-    for loc in ALBANY_TIER1:
-        if loc in (
-            "new york",
-        ):
-            continue
-        if " " in loc or len(loc) > 5:
-            if loc in blob:
-                return f"tier1:{loc[:48]}"
-        elif _strict_phrase_in_blob(loc, blob):
-            return f"tier1:{loc}"
     return None
 
 
@@ -1490,12 +1480,8 @@ def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
     if "albany county, ga" in blob or "albany county georgia" in blob:
         return False, "albany_county_wrong_state"
 
-    for m in OUT_OF_AREA_GEO_MARKERS:
-        if m in blob:
-            return False, f"out_of_area:{m[:40]}"
-
     if _national_federal_source_hit(article):
-        return True, f"{anchor}+federal_ok_locally_anchored"
+        return True, f"{anchor}+federal_locally_anchored"
 
     return True, anchor
 
@@ -1974,7 +1960,7 @@ async def fetch_official_sources() -> list:
                         a["source"] = cfg["label"]
                 filter_mode = cfg.get("filter")
                 if filter_mode in ("strict", "albany"):
-                    parsed = [a for a in parsed if is_albany_related(a)]
+                    pass  # strict Albany County NY gate runs once after merge (fetch_all_feeds)
                 elif filter_mode == "crime":
                     parsed = [a for a in parsed if any(
                         kw in (a.get("title","") + " " + a.get("description","")).lower()
