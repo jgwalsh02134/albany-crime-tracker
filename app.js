@@ -600,13 +600,21 @@
       var color = type === "violent" ? "#e05252" :
                   type === "property" ? "#d9953a" : "#4d8fdb";
 
+      var inc = item.incident || {};
+      var ps = typeof item.public_safety_score === "number" ? item.public_safety_score : 0;
+      var vf = inc.verification_level || "";
+      var lf = inc.live_frame || "";
+      var radius = lf === "live_now" ? 12 : lf === "developing" ? 10 : ps >= 55 ? 9 : 7;
+      var fillOp = vf === "multi_source" || vf === "official" ? 0.92 : vf === "scanner" ? 0.72 : 0.85;
+      if (item._scanner_call && vf !== "multi_source" && vf !== "official") fillOp = 0.68;
+
       var circle = L.circleMarker([lat, lng], {
-        radius: 7,
+        radius: radius,
         fillColor: color,
         color: "#fff",
-        weight: 1.5,
+        weight: lf === "live_now" ? 2.2 : 1.5,
         opacity: 1,
-        fillOpacity: 0.85
+        fillOpacity: fillOp
       });
 
       var ta = item.pubDate ? timeAgo(new Date(item.pubDate)) : "";
@@ -614,8 +622,14 @@
         ? esc(item.matched_location.replace(/\b\w/g, function(c){ return c.toUpperCase(); }))
         : "";
 
-      var popup = '<div style="font-family:Satoshi,system-ui,sans-serif;max-width:240px;">';
+      var popup = '<div style="font-family:Satoshi,system-ui,sans-serif;max-width:260px;">';
       popup += '<div style="font-size:12px;font-weight:600;line-height:1.4;margin-bottom:6px;">' + esc(item.title || "Incident") + '</div>';
+      if (inc.why_it_matters && inc.why_it_matters !== item.title) {
+        popup += '<div style="font-size:11px;color:#aaa;line-height:1.35;margin-bottom:6px;">' + esc(inc.why_it_matters.slice(0, 200)) + '</div>';
+      }
+      if (inc.source_count > 1) {
+        popup += '<div style="font-size:10px;color:#7cb87c;margin-bottom:4px;">' + esc(String(inc.source_count)) + ' sources</div>';
+      }
       if (loc) {
         popup += '<div style="font-size:11px;color:#4d8fdb;margin-bottom:3px;font-weight:500;">📍 ' + loc + '</div>';
       }
@@ -859,9 +873,20 @@
     return link;
   }
 
+  function renderOperationalBadges(inc) {
+    if (!inc || !inc.operational_badges || !inc.operational_badges.length) return "";
+    var html = '<div class="feed-op-badges">';
+    inc.operational_badges.slice(0, 8).forEach(function (b) {
+      html += '<span class="op-badge">' + esc(b) + "</span>";
+    });
+    html += "</div>";
+    return html;
+  }
+
   function buildIncidentCard(item) {
+    var inc = item.incident || {};
     var type = item.crime_type || "other";
-    var hood = item.neighborhood || item.matched_location || "";
+    var hood = item.municipality || item.neighborhood || item.matched_location || "";
     var primarySrc = item.source || "";
     var srcs = (Array.isArray(item.sources) && item.sources.length)
       ? item.sources : (primarySrc ? [primarySrc] : []);
@@ -891,6 +916,22 @@
     html += '<span class="feed-dot ' + esc(type) + '"></span>';
     html += '<div class="feed-body">';
     html += '<div class="feed-title">' + esc(item.title || "Untitled") + '</div>';
+    if (inc.event_type && inc.sub_type) {
+      html +=
+        '<div class="feed-inc-type"><span class="feed-inc-type-label">' +
+        esc(inc.event_type.replace(/_/g, " ")) +
+        "</span> · <span>" +
+        esc(inc.sub_type.replace(/_/g, " ")) +
+        "</span></div>";
+    }
+    html += renderOperationalBadges(inc);
+    if (inc.why_it_matters && (!item.title || inc.why_it_matters.slice(0, 40) !== (item.title || "").slice(0, 40))) {
+      html += '<div class="feed-why">' + esc(inc.why_it_matters.slice(0, 220)) + "</div>";
+    }
+    if (typeof item.confidence === "number" && !isNaN(item.confidence)) {
+      var pct = item.confidence <= 1 ? Math.round(item.confidence * 100) : Math.round(item.confidence);
+      html += '<div class="feed-confidence">Confidence ' + pct + "%</div>";
+    }
     html += '<div class="feed-meta">';
     if (hood) html += '<span class="feed-hood">' + esc(capitalize(hood)) + '</span>';
     if (official) {

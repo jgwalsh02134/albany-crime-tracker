@@ -28,12 +28,16 @@ from urllib.parse import quote, quote_plus, urlparse
 from typing import Any, Optional
 
 import httpx
+import incident_intelligence as intel
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 # --- Config ---
+# Last incident pipeline snapshot for /api/incidents/debug (tuning / diagnostics).
+_LAST_INCIDENT_PIPELINE: dict[str, Any] = {}
+
 XAI_API_KEY = os.getenv("XAI_API_KEY")
 XAI_BASE = "https://api.x.ai/v1"
 XAI_MODEL = "grok-3"  # Strongest full xAI reasoning model (not mini / fast variants)
@@ -1750,48 +1754,39 @@ def _log_live_feed_gate(code: str, article: dict) -> None:
     print(f"[live-feed] {code} | {t!r}")
 
 
-def should_include_in_live_feed(article: dict) -> tuple[bool, str]:
+def should_include_in_live_feed(article: dict, *, log_rejects: bool = True) -> tuple[bool, str]:
     """
     Single final gate for the Live tab. Requires strict Albany County locality,
     real incident/public-safety content, recency rules, and no scanner/federal/social noise.
     """
-    ok_loc, loc_reason = evaluate_strict_albany_county(article)
-    if not ok_loc:
-        code = _map_strict_fail_to_live_code(loc_reason)
+    def _rej(code: str) -> tuple[bool, str]:
         article["live_reject_reason"] = code
-        _log_live_feed_gate(code, article)
+        if log_rejects:
+            _log_live_feed_gate(code, article)
         return False, code
 
+    ok_loc, loc_reason = evaluate_strict_albany_county(article)
+    if not ok_loc:
+        return _rej(_map_strict_fail_to_live_code(loc_reason))
+
     if _nysp_missing_local_evidence(article):
-        article["live_reject_reason"] = "rejected_non_local"
-        _log_live_feed_gate("rejected_non_local", article)
-        return False, "rejected_non_local"
+        return _rej("rejected_non_local")
 
     if is_scanner_noise(article):
-        article["live_reject_reason"] = "rejected_scanner_noise"
-        _log_live_feed_gate("rejected_scanner_noise", article)
-        return False, "rejected_scanner_noise"
+        return _rej("rejected_scanner_noise")
 
     if _national_federal_source_hit(article) and not is_real_local_incident(article):
-        article["live_reject_reason"] = "rejected_federal_generic"
-        _log_live_feed_gate("rejected_federal_generic", article)
-        return False, "rejected_federal_generic"
+        return _rej("rejected_federal_generic")
 
     if not is_real_local_incident(article):
-        article["live_reject_reason"] = "rejected_not_incident"
-        _log_live_feed_gate("rejected_not_incident", article)
-        return False, "rejected_not_incident"
+        return _rej("rejected_not_incident")
 
     age_ok, _stale = live_feed_max_age_ok(article)
     if not age_ok:
-        article["live_reject_reason"] = "rejected_stale"
-        _log_live_feed_gate("rejected_stale", article)
-        return False, "rejected_stale"
+        return _rej("rejected_stale")
 
     if not live_has_useful_summary(article):
-        article["live_reject_reason"] = "rejected_weak_summary"
-        _log_live_feed_gate("rejected_weak_summary", article)
-        return False, "rejected_weak_summary"
+        return _rej("rejected_weak_summary")
 
     article.pop("live_reject_reason", None)
     return True, ""
@@ -2800,15 +2795,13 @@ async def get_crimes():
         return {"status": "ok", "source": "cache", "data": cached, "total": len(cached)}
 
     all_articles = await fetch_all_feeds()
-    # Every article already passed is_albany_related() once in fetch_all_feeds (pre-dedupe).
-    # Keep the Albany check here as a second line of defense for crime scoring.
     crime_articles = [
         a
         for a in all_articles
         if is_crime_related(a) and is_albany_related(a) and _include_scanner_item_in_crime_feed(a)
     ]
 
-    geocoded = []
+    enriched: list[dict] = []
     for a in crime_articles:
         geo = geocode_article(a)
         geo["crime_type"] = classify_crime_type(a)
@@ -2819,37 +2812,74 @@ async def get_crimes():
         age_m = get_article_age_minutes(a)
         geo["age_hours"] = round(age_h, 1) if age_h is not None else None
         geo["age_minutes"] = round(age_m, 1) if age_m is not None else None
-        proposed_tab = classify_feed_tab(a)
-        if proposed_tab == "live":
-            ok_live, _lr = should_include_in_live_feed(geo)
-            geo["feed_tab"] = "live" if ok_live else "news"
-        else:
-            geo["feed_tab"] = "news"
         geo["_stats_eligible"] = not is_scanner_noise(geo) and is_real_local_incident(geo)
-        geo["is_active_incident"] = compute_is_active_incident(geo)
-        geo["live_score"] = round(live_score(geo), 2)
-        geocoded.append(geo)
+        gcopy = {**geo}
+        ok_strict, _ = should_include_in_live_feed(gcopy, log_rejects=False)
+        geo["_strict_live_ok"] = ok_strict
+        enriched.append(geo)
 
-    def _pub_ts_sort(x: dict) -> float:
-        try:
-            dt = parsedate_to_datetime(x.get("pubDate", ""))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt.timestamp()
-        except Exception:
-            return 0.0
+    normalized = [intel.normalize_from_enriched(x) for x in enriched]
+    fused = intel.fuse_incident_batch(normalized)
+    scored = intel.apply_scores_and_eligibility(fused)
 
-    live_items = [x for x in geocoded if x.get("feed_tab") == "live"]
-    live_items = dedupe_redundant_live_scanner_cards(live_items)
-    live_items = sorted(live_items, key=live_presentation_sort_key, reverse=True)
-    news_items = sorted(
-        [x for x in geocoded if x.get("feed_tab") == "news"],
-        key=lambda x: -_pub_ts_sort(x),
+    live_scored = [x for x in scored if x.get("is_live_eligible")]
+    news_scored = [x for x in scored if not x.get("is_live_eligible")]
+    live_scored.sort(key=intel.live_sort_key, reverse=True)
+    news_scored.sort(key=lambda x: -intel.news_sort_ts(x))
+
+    live_rows = [intel.incident_to_api_row(x) for x in live_scored]
+    live_rows = dedupe_redundant_live_scanner_cards(live_rows)
+    _FRAME_RANK = {"live_now": 4, "developing": 3, "recent": 2, "stale": 1, "reject": 0}
+    live_rows.sort(
+        key=lambda r: (
+            _FRAME_RANK.get((r.get("incident") or {}).get("live_frame"), 0),
+            float(r.get("public_safety_score") or 0),
+            -float(r.get("age_minutes") or 99999),
+            float(r.get("confidence") or 0),
+            float(r.get("source_priority") or 0),
+        ),
+        reverse=True,
     )
-    geocoded = live_items + news_items
+
+    news_rows = [intel.incident_to_api_row(x) for x in news_scored]
+    for row in live_rows + news_rows:
+        row["is_active_incident"] = compute_is_active_incident(row)
+        row["live_score"] = round(float(row.get("public_safety_score") or row.get("live_score") or 0), 2)
+
+    geocoded = live_rows + news_rows
+
+    global _LAST_INCIDENT_PIPELINE
+    diag = intel.build_pipeline_diagnostics(enriched, normalized, fused, scored)
+    diag["filler_reject_count"] = sum(
+        1 for x in enriched if is_scanner_noise(x) or not live_has_useful_summary(x)
+    )
+    _LAST_INCIDENT_PIPELINE = {
+        "diagnostics": diag,
+        "operational": intel.build_operational_summary(scored),
+        "debug_lists": intel.debug_top_lists(scored, 50),
+    }
 
     set_cached("crime_articles", geocoded)
     return {"status": "ok", "source": "live", "data": geocoded, "total": len(geocoded)}
+
+
+@app.get("/api/incidents/operational-summary")
+async def incidents_operational_summary():
+    """Normalized-incident situational snapshot (prime pipeline via /api/crimes first, or we refresh here)."""
+    await get_crimes()
+    op = _LAST_INCIDENT_PIPELINE.get("operational") or {}
+    return {"status": "ok", **op}
+
+
+@app.get("/api/incidents/debug")
+async def incidents_debug():
+    """Tuning: counts, rejection reasons, top live/rejected incidents (last /api/crimes build)."""
+    await get_crimes()
+    return {
+        "status": "ok",
+        "diagnostics": _LAST_INCIDENT_PIPELINE.get("diagnostics", {}),
+        "debug": _LAST_INCIDENT_PIPELINE.get("debug_lists", {}),
+    }
 
 
 @app.get("/api/trends")
