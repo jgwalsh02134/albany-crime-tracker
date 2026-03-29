@@ -655,6 +655,15 @@ a:hover { text-decoration: underline; }
   font-weight: 800;
   letter-spacing: 0.09em;
 }
+.scanner-feed-badge--critical {
+  background: linear-gradient(135deg, #b45309 0%, #dc2626 100%);
+  color: #fff;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--violent) 35%, transparent);
+}
+.feed-item.feed-item-scanner-critical {
+  border-left: 3px solid var(--violent);
+  box-shadow: var(--shadow-card), inset 3px 0 0 0 color-mix(in srgb, var(--violent) 25%, transparent);
+}
 
 /* ===== MAP ===== */
 #viewMap { display: none; flex-direction: column; }

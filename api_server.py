@@ -591,12 +591,45 @@ LIVE_SOURCES = frozenset([
 LIVE_CUTOFF_HOURS = 72   # Live tab: only show items published within last 72 h
 MAP_CUTOFF_DAYS = 5      # Map: hard cutoff at 5 days
 
-# Live feed source_priority tiers (higher = closer to top after merge + sort)
-SOURCE_PRIORITY_SCANNER_CALL = 12
-SOURCE_PRIORITY_NIXLE = 11
-SOURCE_PRIORITY_OFFICIAL_X_GROK = 10
-SOURCE_PRIORITY_SCANNER_FEED_LINK = 9
-SOURCE_PRIORITY_DIRECTORY_BLOTTER = 7
+# Live feed source_priority tiers (higher = wins dedup merge; official >> scanner)
+SOURCE_PRIORITY_OFFICIAL_X_GROK = 26
+SOURCE_PRIORITY_NIXLE = 25
+SOURCE_PRIORITY_DIRECTORY_BLOTTER = 24
+SOURCE_PRIORITY_SCANNER_CRITICAL = 8
+SOURCE_PRIORITY_SCANNER_FEED_LINK = 3
+
+# OpenMHz / directory scanner lines must match one of these to appear in main Live feed (not just Scanner tab)
+SCANNER_CRITICAL_LIVE_KEYWORDS = (
+    "shooting", "shots fired", "shot fired", "person shot", "was shot", "gunshot",
+    "stabbing", "stabbed",
+    "pursuit", "pursuing", "in pursuit", "vehicle pursuit", "foot pursuit",
+    "high-speed chase", "police chase",
+    "officer involved", "officer-involved", "ois", "officer down",
+    "standoff", "barricade", "barricaded",
+    "swat",
+    "hostage", "armed robbery", "armed suspect", "armed with",
+    "homicide", "murder", "felony assault", "felony charge",
+    "k9", "k-9", "canine",
+    "active shooter",
+    "structure fire", "working fire", "entrapment", "fully engulfed",
+    "manhunt", "fugitive", "wanted suspect",
+    "explosion", "bomb threat",
+    "kidnapping", "abducted",
+)
+
+
+def _scanner_blob_matches_critical_live(blob: str) -> bool:
+    t = (blob or "").lower()
+    return any(kw in t for kw in SCANNER_CRITICAL_LIVE_KEYWORDS)
+
+
+def _include_scanner_item_in_crime_feed(article: dict) -> bool:
+    """Routine scanner / Broadcastify meta-cards stay off Feed + Map; Scanner tab only."""
+    if article.get("_scanner_feed_link"):
+        return False
+    if article.get("_scanner_call") and not article.get("_scanner_critical_live"):
+        return False
+    return True
 
 
 def _format_display_date(dt: datetime) -> str:
@@ -631,8 +664,14 @@ def classify_feed_tab(article) -> str:
 
     age_hours = get_article_age_hours(article)
 
-    # --- Scanner / Nixle / Grok official posts → Live when recent ---
-    if article.get("_scanner_call") or article.get("_scanner_feed_link") or article.get("_nixle_item"):
+    # --- Scanner: only verified critical traffic goes Live (routine stays Scanner tab only) ---
+    if article.get("_scanner_call") or article.get("_scanner_feed_link"):
+        if not article.get("_scanner_critical_live"):
+            return "news"
+        if age_hours is None or age_hours <= LIVE_CUTOFF_HOURS:
+            return "live"
+        return "news"
+    if article.get("_nixle_item"):
         if age_hours is None or age_hours <= LIVE_CUTOFF_HOURS:
             return "live"
         return "news"
@@ -1311,20 +1350,12 @@ async def post_xai_chat(body: dict, timeout: float = 20.0):
 
 
 SITUATION_SYSTEM = (
-    "You are the lead intelligence analyst for the Albany County, NY Crime Tracker (production system). "
-    "Jurisdiction is strictly Albany County, New York: City of Albany; towns Bethlehem, Coeymans, Colonie, "
-    "Guilderland, Knox, New Scotland, Rensselaerville, Westerlo, Berne; cities Cohoes and Watervliet; "
-    "villages Altamont, Green Island, Menands, Ravena, Voorheesville.\n\n"
-    "Operating rules:\n"
-    "1. GEOGRAPHY: Only use incidents clearly in this Albany County, NY. Reject Albany, GA/OR/CA/Australia "
-    "and any story lacking NY Capital Region corroboration.\n"
-    "2. GROUNDING: Every factual claim must trace to the supplied article lines. Do not infer suspects, "
-    "charges, or outcomes not stated. If counts or severity are unclear, say so.\n"
-    "3. PRECISION: Prefer municipality + neighborhood or street over vague 'area' language.\n"
-    "4. THREAT & CONFIDENCE: threat_level must reflect volume, severity, and recency of verified items only; "
-    "confidence reflects source mix (official > local TV/print > aggregated).\n"
-    "5. OUTPUT: Return one JSON object only — keys situation (string), threat_level (low|moderate|elevated|high), "
-    "confidence (high|medium|low). No markdown, no code fences, no text before or after the JSON."
+    "Albany County, NY Crime Tracker — lead analyst. Geography: City of Albany + Albany County towns/villages "
+    "(Colonie, Guilderland, Bethlehem, Cohoes, Watervliet, etc.) only; reject other 'Albany' cities.\n"
+    "Rules: Ground every claim in the incident lines; no invented suspects/charges. Prefer specific place names. "
+    "threat_level = low|moderate|elevated|high from verified severity + recency only. "
+    "confidence = high|medium|low from source mix (official > local media > scanner).\n"
+    "Output one JSON object only: {\"situation\":\"...\",\"threat_level\":\"...\",\"confidence\":\"...\"} — no markdown or extra text."
 )
 
 
@@ -1365,24 +1396,17 @@ async def generate_situation_report(crime_data, patterns):
         f"Other: {type_b.get('other', 0)}"
     )
 
-    prompt = f"""You are producing the live situation summary for Albany County, NY decision-makers.
+    prompt = f"""Live situation brief for Albany County, NY (public dashboard).
 
-INPUT: Verified incident lines (each tagged with confidence tier and source reliability) plus aggregate pattern stats.
+Lines below are verified feed items (confidence + source reliability tags) plus pattern counts.
+1) Drop anything not plausibly local (wrong Albany, no NY anchor).
+2) situation: ONE sharp sentence (max 28 words) — what's moving now (themes + geography), active voice.
+3) threat_level + confidence per system rules.
 
-TASK:
-1) Internally filter out any line that is not plausibly Albany County, NY (wrong state, wrong Albany, or non-local noise).
-2) Write situation: exactly 1-2 sentences, max 35 words, active voice, no hedging filler. Name a specific "
-       "municipality or neighborhood when the data supports it. Summarize dominant themes (violent vs property vs "
-       "traffic, recency) using only what the lines show.
-3) Set threat_level to low|moderate|elevated|high from verified severity + count + recency; do not inflate.
-4) Set confidence to high|medium|low from how official vs second-hand the evidence is.
-
-Incident lines:
 {chr(10).join(context_lines)}
 {pattern_ctx}
 
-Output format — single JSON object only, no other characters:
-{{"situation": "...", "threat_level": "...", "confidence": "..."}}"""
+JSON only: {{"situation":"...","threat_level":"...","confidence":"..."}}"""
 
     try:
         result = await call_grok(
@@ -1666,6 +1690,16 @@ async def fetch_all_feeds():
         if ga and gb and ga == gb:
             return True
 
+        sta = art.get("_scanner_tg")
+        strp = rep.get("_scanner_tg")
+        if sta and strp and str(sta) == str(strp) and hrs is not None and hrs <= 1.5:
+            if _title_sequence_ratio(t1, t2) >= 0.45 or _similarity(t1, t2) >= 0.45:
+                return True
+
+        if _norm_title(t1) == _norm_title(t2) and hrs is not None and hrs <= 6.0:
+            if art.get("_scanner_critical_live") or rep.get("_scanner_critical_live"):
+                return True
+
         if _title_sequence_ratio(t1, t2) >= 0.85:
             return True
 
@@ -1793,8 +1827,9 @@ async def get_crimes():
     # All articles have already passed is_albany_related in fetch_all_feeds for "strict" feeds.
     # Apply crime filter + full Albany check to everything.
     crime_articles = [
-        a for a in all_articles
-        if is_crime_related(a) and is_albany_related(a)
+        a
+        for a in all_articles
+        if is_crime_related(a) and is_albany_related(a) and _include_scanner_item_in_crime_feed(a)
     ]
 
     geocoded = []
@@ -1821,17 +1856,30 @@ async def get_crimes():
     _ARREST_TITLE_HINTS = frozenset([
         "arrest", "arrested", "booked", "booking", "charged", "custody",
         "indicted", "arraigned", "suspect", "warrant", "in custody",
+        "faces charges", "facing charges",
     ])
 
-    def _live_sort_key(x: dict) -> tuple:
-        """Tiered: scanner / Nixle / official X / blotter priority, then arrest recency, then time."""
-        sp = int(x.get("source_priority") or 0)
+    def _live_feed_rank_tier(x: dict) -> int:
+        """Higher = closer to top. Official / Nixle / blotter > arrests > general RSS > critical scanner."""
+        src = (x.get("source") or "").lower()
         title = (x.get("title") or "").lower()
-        age = x.get("age_hours")
-        arrestish = any(h in title for h in _ARREST_TITLE_HINTS)
-        recent = age is not None and age <= 18
-        arrest_boost = 1 if (recent and arrestish) else 0
-        return (-sp, -arrest_boost, -_pub_ts_sort(x))
+        if x.get("_official_x_post"):
+            return 500
+        if x.get("_nixle_item") or "nixle" in src:
+            return 490
+        if "blotter" in src or "gazette blotter" in src:
+            return 480
+        if src.startswith("official @") or src == "official x":
+            return 460
+        if x.get("_scanner_critical_live"):
+            return 120
+        if any(h in title for h in _ARREST_TITLE_HINTS):
+            return 380
+        return 300
+
+    def _live_sort_key(x: dict) -> tuple:
+        """Tier by source class, then strict newest-first within tier."""
+        return (-_live_feed_rank_tier(x), -_pub_ts_sort(x))
 
     live_items = sorted(
         [x for x in geocoded if x.get("feed_tab") == "live"],
@@ -2735,6 +2783,30 @@ _OFFICIAL_X_HANDLES_CORE = [
     "albanypd",
 ]
 
+# Grok sometimes returns plausible-looking /status/ IDs that are not real tweets — use profile link instead.
+_OFFICIAL_X_STATUS_RE = re.compile(
+    r"^https?://(?:www\.)?(?:twitter\.com|x\.com)/([^/]+)/status/(\d+)/?$",
+    re.IGNORECASE,
+)
+
+
+def _canonical_official_x_link(handle: str, url: str) -> str:
+    """Prefer https://x.com/{handle}; keep permalink only for long snowflake-like status IDs."""
+    h = (handle or "").strip().lstrip("@")
+    profile = f"https://x.com/{h}" if h else "https://x.com/"
+    if not h:
+        return (url or "").strip() or profile
+    u = (url or "").strip()
+    if not u:
+        return profile
+    base = u.split("?")[0].rstrip("/")
+    m = _OFFICIAL_X_STATUS_RE.match(base)
+    if m:
+        tid = m.group(2)
+        if tid.isdigit() and len(tid) >= 17:
+            return base.replace("twitter.com", "x.com")
+    return profile
+
 _SOCIAL_GROK_SYSTEM = (
     "You reply with a single JSON array only. No markdown, no commentary. "
     "Each element: {\"handle\":\"twitterhandle\",\"title\":\"short headline\","
@@ -2808,7 +2880,7 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
             title = (it.get("title") or it.get("summary") or "").strip()
             if not title:
                 continue
-            link = (it.get("url") or "").strip() or f"https://twitter.com/{h}"
+            link = _canonical_official_x_link(h, (it.get("url") or "").strip() or f"https://x.com/{h}")
             desc = (it.get("summary") or "")[:400]
             pub_raw = (it.get("published_iso") or "").strip()
             try:
@@ -2867,6 +2939,25 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
     except Exception:
         return out
 
+    tg_map: dict[str, Any] = {}
+    try:
+        tg_map = _build_scanner_talkgroups_payload().get("talkgroups") or {}
+    except Exception:
+        tg_map = {}
+
+    def _lookup_tg_row(call: dict) -> tuple[Optional[dict], str]:
+        raw = call.get("talkgroup_num") if call.get("talkgroup_num") is not None else call.get("talkgroup")
+        tid = str(raw).strip() if raw is not None else ""
+        if not tid:
+            return None, ""
+        row = tg_map.get(tid)
+        if row is None and tid.isdigit():
+            row = tg_map.get(str(int(tid)))
+        if row is None and tid.isdigit():
+            stripped = tid.lstrip("0") or "0"
+            row = tg_map.get(stripped)
+        return row, tid
+
     feeds = (data.get("scannerEcosystem") or {}).get("feeds") or []
     for i, fd in enumerate(feeds):
         prov = (fd.get("provider") or "").lower()
@@ -2896,23 +2987,43 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
                         or call.get("talkgroupDescription", "")
                         or "Radio traffic"
                     )
+                    tg_desc = (
+                        str(call.get("talkgroup_description", "") or call.get("talkgroupDescription", "") or "")
+                    )
+                    crit_blob = f"{tg_tag} {tg_desc}".strip()
+                    if not _scanner_blob_matches_critical_live(crit_blob):
+                        continue
+                    row, tid_s = _lookup_tg_row(call)
+                    dept = (row or {}).get("department") or tg_tag
+                    loc = (row or {}).get("location") or ""
+                    dept_loc = f"{dept} — {loc}" if loc else dept
                     t_raw = str(call.get("time", "") or "")
                     desc_bits = [cov] if cov else []
                     if call.get("freq"):
-                        desc_bits.append(f"Freq {call.get('freq')} MHz")
+                        hz = call.get("freq")
+                        try:
+                            mhz = float(hz) / 1e6 if float(hz) > 1e6 else float(hz)
+                            desc_bits.append(f"{mhz:.4f} MHz")
+                        except (TypeError, ValueError):
+                            desc_bits.append(f"Freq {hz}")
                     if call.get("len") or call.get("duration"):
                         ln = call.get("len", 0) or call.get("duration", 0)
-                        desc_bits.append(f"{ln:.0f}s audio" if ln else "")
+                        try:
+                            desc_bits.append(f"{float(ln):.0f}s audio" if ln else "")
+                        except (TypeError, ValueError):
+                            pass
                     desc = " · ".join(x for x in desc_bits if x)[:400]
                     out.append(
                         {
-                            "title": f"Radio · {tg_tag}",
+                            "title": f"Critical radio · {dept_loc}: {tg_tag}",
                             "link": audio_url or f"https://openmhz.com/system/{slug}",
                             "pubDate": _openmhz_time_to_rfc(t_raw),
-                            "description": desc or f"P25 traffic · {label}",
+                            "description": (desc + " · " if desc else "") + crit_blob[:280],
                             "source": f"Scanner · {label}",
-                            "source_priority": SOURCE_PRIORITY_SCANNER_CALL,
+                            "source_priority": SOURCE_PRIORITY_SCANNER_CRITICAL,
                             "_scanner_call": True,
+                            "_scanner_critical_live": True,
+                            "_scanner_tg": tid_s or None,
                             "_feed_reliability": 0.88,
                             "source_url": "",
                         }

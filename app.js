@@ -802,6 +802,38 @@
     return (src || "").toLowerCase().indexOf("scanner ·") !== -1;
   }
 
+  function officialHandleFromSource(src) {
+    var s = (src || "").trim();
+    var m = /^official @(.+)$/i.exec(s);
+    return m ? m[1].trim() : "";
+  }
+
+  function isLikelyValidXStatusUrl(url) {
+    var u = url || "";
+    var m = /(?:twitter\.com|x\.com)\/[^/]+\/status\/(\d+)/i.exec(u);
+    if (!m) return false;
+    var id = m[1];
+    return id.length >= 17 && /^\d+$/.test(id);
+  }
+
+  /** Official X cards: never send users to Grok-hallucinated /status/ IDs — use real profile unless snowflake ID looks valid. */
+  function resolveIncidentCardHref(item) {
+    var link = (item && item.link) || "#";
+    var src = (item && item.source) || "";
+    if (!isOfficialSource(src)) return link;
+    var h = officialHandleFromSource(src);
+    if (!h) return link;
+    var profile = "https://x.com/" + encodeURIComponent(h);
+    if (item && item._official_x_post) {
+      if (!link || link === "#") return profile;
+      if (/\/status\/\d+/i.test(link) && !isLikelyValidXStatusUrl(link)) return profile;
+      return link;
+    }
+    if (/\/status\/\d+/i.test(link) && /(?:x\.com|twitter\.com)/i.test(link) && !isLikelyValidXStatusUrl(link))
+      return profile;
+    return link;
+  }
+
   function buildIncidentCard(item) {
     var type = item.crime_type || "other";
     var hood = item.neighborhood || item.matched_location || "";
@@ -809,15 +841,17 @@
     var srcs = (Array.isArray(item.sources) && item.sources.length)
       ? item.sources : (primarySrc ? [primarySrc] : []);
     var ta = item.pubDate ? timeAgo(new Date(item.pubDate)) : "";
-    var link = item.link || "#";
+    var link = resolveIncidentCardHref(item);
     var official = isOfficialSource(primarySrc);
     var scannerCrime = isScannerCrimeSource(primarySrc);
+    var scannerCritical = !!item._scanner_critical_live;
     var multiSource = srcs.length > 1;
 
     var cls = "feed-item";
     if (official) cls += " feed-item-official feed-item-official-prominent";
     if (scannerCrime) cls += " feed-item-scanner-crime";
-    var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener">';
+    if (scannerCritical) cls += " feed-item-scanner-critical";
+    var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer">';
     html += '<span class="feed-dot ' + esc(type) + '"></span>';
     html += '<div class="feed-body">';
     html += '<div class="feed-title">' + esc(item.title || "Untitled") + '</div>';
@@ -825,6 +859,8 @@
     if (hood) html += '<span class="feed-hood">' + esc(capitalize(hood)) + '</span>';
     if (official) {
       html += '<span class="official-badge official-badge--lg">OFFICIAL</span>';
+    } else if (scannerCritical) {
+      html += '<span class="scanner-feed-badge scanner-feed-badge--critical scanner-feed-badge--lg scanner-badge-police">SCANNER · CRITICAL</span>';
     } else if (scannerCrime) {
       html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">SCANNER</span>';
     }
