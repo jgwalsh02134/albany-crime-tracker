@@ -1237,85 +1237,281 @@ def parse_rss(xml_text, default_source=None):
 
 
 # =============================================================================
-# LOCATION FILTER — Strict two-tier Albany County, NY test
+# STRICT ALBANY COUNTY, NY — single gate for all feed types
 # =============================================================================
-def is_albany_related(article) -> bool:
+# National/federal social and wire posts were admitted because is_albany_related()
+# bypassed text checks for _official_x_post / _nixle_item and used loose "capital region" rules.
+
+NATIONAL_FEDERAL_SOURCE_MARKERS = (
+    "official @icegov",
+    "@icegov",
+    "ice.gov",
+    "/icegov/",
+    "official @cbp",
+    "@cbp",
+    "cbp.gov",
+    "/cbp/",
+    "official @deahq",
+    "@deahq",
+    "dea.gov",
+    "official @dhsgov",
+    "@dhsgov",
+    "whitehouse.gov",
+    "justice.gov",
+    "ice boston",
+    "ice texas",
+    "u.s. customs",
+    "customs and border protection",
+    "homeland security investigations",
+    "h.s.i.",
+)
+
+# Geography / narrative that is not Albany County, NY unless copy is locally anchored
+OUT_OF_AREA_GEO_MARKERS = (
+    "boston",
+    "massachusetts",
+    "texas",
+    "illinois",
+    "san juan",
+    "puerto rico",
+    "dominican republic",
+    "florida",
+    "arizona",
+    "california",
+    "georgia",
+    "washington, d.c",
+    "washington dc",
+    "d.c.",
+    "houston",
+    "miami",
+    "chicago",
+    "los angeles",
+    "philadelphia",
+    "atlanta",
+    "detroit",
+    "denver",
+    "seattle",
+    "phoenix",
+    "nashville",
+    "ohio",
+    "michigan",
+    "pennsylvania",
+    "virginia",
+    "maryland",
+    "new jersey",
+    "connecticut",
+    "vermont",
+    "new hampshire",
+    "maine",
+    "rhode island",
+    "national border",
+    "southern border",
+    "northern border",
+    "mexico border",
+)
+
+# Phrases that prove Albany County / City of Albany NY (multi-word first in scan)
+_STRICT_LOCALITY_PHRASES: tuple[str, ...] = tuple(
+    sorted(
+        frozenset(
+            list(ALBANY_KEYWORDS)
+            + list(ALBANY_TIER1)
+            + [
+                "albany county",
+                "albany, ny",
+                "albany ny",
+                "albany new york",
+                "city of albany",
+                "town of colonie",
+                "town of bethlehem",
+                "town of guilderland",
+                "town of new scotland",
+                "town of coeymans",
+                "town of westerlo",
+                "town of berne",
+                "town of knox",
+                "town of rensselaerville",
+                "altamont",
+                "roessleville",
+                "feura bush",
+                "clarksville",
+                "westmere",
+                "selkirk",
+                "karner",
+                "elsmere",
+            ]
+        ),
+        key=len,
+        reverse=True,
+    )
+)
+
+_ALBANY_COMMA_NY_RE = re.compile(r"\balbany\s*,\s*n\.?y\.?\b", re.IGNORECASE)
+_ALBANY_SPACE_NY_RE = re.compile(r"\balbany\s+ny\b", re.IGNORECASE)
+
+# For bare "albany" token — require explicit NY / local LE (not Troy/Schenectady alone)
+_ALBANY_TOKEN_NY_ANCHORS = frozenset(
+    [
+        "albany county",
+        "new york",
+        "n.y.",
+        " nys ",
+        "ny state",
+        "state of new york",
+        "upstate new york",
+        "upstate ny",
+        "albany police",
+        "albany pd",
+        "albany county sheriff",
+        "a-c-s-o",
+        "colonie police",
+        "bethlehem police",
+        "guilderland police",
+        "nysp",
+        "state police",
+        "new york state police",
+        "troop g",
+        "troopers.ny.gov",
+        "capital district ny",
+        "capital district new york",
+        "capital region ny",
+        "capital region new york",
+    ]
+)
+
+
+def _strict_blob(article: dict) -> str:
+    parts = [
+        article.get("title", "") or "",
+        article.get("description", "") or "",
+        article.get("source", "") or "",
+        article.get("link", "") or "",
+        article.get("source_url", "") or "",
+        article.get("x_post_url", "") or "",
+        article.get("guid", "") or "",
+    ]
+    h = article.get("handle")
+    if h:
+        parts.append(str(h))
+    return " ".join(parts).lower()
+
+
+def _strict_phrase_in_blob(phrase: str, blob: str) -> bool:
+    pl = phrase.lower().strip()
+    if not pl:
+        return False
+    if " " in pl or "-" in pl:
+        return pl in blob
+    return bool(re.search(rf"(?<![a-z0-9]){re.escape(pl)}(?![a-z0-9])", blob))
+
+
+def _strong_albany_county_anchor(blob: str) -> Optional[str]:
+    """Return a short reason if text proves Albany County NY locality; else None."""
+    if "albany county, ga" in blob or "albany county georgia" in blob:
+        return None
+    if "albany county" in blob and "georgia" not in blob and ", ga" not in blob:
+        return "explicit_albany_county_ny"
+    if _ALBANY_COMMA_NY_RE.search(blob) or _ALBANY_SPACE_NY_RE.search(blob):
+        return "albany_city_ny"
+    if "albany new york" in blob:
+        return "albany_new_york"
+    if "city of albany" in blob:
+        return "city_of_albany"
+    for phrase in _STRICT_LOCALITY_PHRASES:
+        if phrase in ("albany ny", "albany, ny", "albany county", "albany new york", "city of albany"):
+            continue
+        if _strict_phrase_in_blob(phrase, blob):
+            return f"locality:{phrase[:48]}"
+    for loc in ALBANY_TIER1:
+        if loc in (
+            "new york",
+        ):
+            continue
+        if " " in loc or len(loc) > 5:
+            if loc in blob:
+                return f"tier1:{loc[:48]}"
+        elif _strict_phrase_in_blob(loc, blob):
+            return f"tier1:{loc}"
+    return None
+
+
+def _national_federal_source_hit(article: dict) -> bool:
+    sl = (
+        (article.get("source", "") or "")
+        + " "
+        + (article.get("link", "") or "")
+        + " "
+        + (article.get("x_post_url", "") or "")
+    ).lower()
+    src = (article.get("source", "") or "").lower()
+    if "fbialbany" in sl or "fbi albany" in sl:
+        return False
+    if src.startswith("official @fbi") and "albany" not in src:
+        return True
+    return any(m in sl for m in NATIONAL_FEDERAL_SOURCE_MARKERS)
+
+
+def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
     """
-    Strict location filter — only accepts articles about Albany County, NY.
-
-    CRITICAL DISTINCTION:
-      "City of Albany"  = the actual city (county seat) — needs NY corroboration
-      "Albany County"   = full county phrase — accept immediately
-      Specific towns/villages/hamlets in ALBANY_KEYWORDS — accept immediately
-
-    Acceptance tiers:
-      Tier 1a — ALBANY_KEYWORDS contains a specific town/village/hamlet
-                 (cohoes, guilderland, latham, westmere, etc.): accept.
-      Tier 1b — ALBANY_TIER1 extended set match: accept.
-      Tier 2a — "albany" alone + local source domain: accept.
-      Tier 2b — "albany" alone + ≥1 NY confirmation signal: accept.
-      Tier 3  — "capital region"/"capital district" + ≥2 NY signals: accept.
-      All else: reject.
-
-    Aggressively rejects:
-      albany ga / albany or / albany ca / albany australia, iceland, manila, etc.
+    True only when the item is genuinely anchored to Albany County, New York.
+    Sets debug fields via is_albany_related caller.
     """
     if article.get("_scanner_call") or article.get("_scanner_feed_link"):
-        return True
-    if article.get("_nixle_item") or article.get("_official_x_post"):
-        return True
-    title = article.get("title", "") or ""
-    desc = article.get("description", "") or ""
-    text = (title + " " + desc).lower()
-    source = (article.get("source", "") or "").lower()
-    link = (article.get("link", "") or "").lower()
-    # source_url: original publisher URL extracted from Google News <source url="...">
-    source_url = (article.get("source_url", "") or "").lower()
+        return True, "albany_county_scanner_feed"
 
-    # --- Step 1: Immediate reject — false positives and non-local sources ---
+    blob = _strict_blob(article)
+    if not blob.strip():
+        return False, "empty_text"
+
     for fp in FALSE_POSITIVE_INDICATORS:
-        if fp in text:
-            return False
+        if fp in blob:
+            return False, f"false_positive:{fp[:40]}"
+
+    src_low = (article.get("source", "") or "").lower()
     for nls in NON_LOCAL_SOURCES:
-        if nls in source:
-            return False
+        if nls in src_low:
+            return False, f"non_local_source:{nls[:40]}"
 
-    # --- Step 2: Tier 1 — specific Albany County, NY municipality in ALBANY_KEYWORDS ---
-    # Note: "albany ny" and "albany, ny" ARE in ALBANY_KEYWORDS and count as City of Albany
-    # Specific towns/villages/hamlets (cohoes, guilderland, latham, etc.) pass immediately
-    for kw in ALBANY_KEYWORDS:
-        if kw in text:
-            return True
+    anchor = _strong_albany_county_anchor(blob)
 
-    # Also check extended Tier 1 set (includes "town of X" forms, neighborhoods, venues)
-    for loc in ALBANY_TIER1:
-        if loc in text:
-            return True
+    if not anchor:
+        for m in OUT_OF_AREA_GEO_MARKERS:
+            if m in blob:
+                return False, f"out_of_area:{m[:40]}"
+        if _national_federal_source_hit(article):
+            return False, "federal_national_source_no_local_anchor"
+        if any(g in blob for g in GENERIC_REGION_TERMS):
+            return False, "capital_region_without_county_anchor"
+        if re.search(r"\balbany\b", blob):
+            if not any(a in blob for a in _ALBANY_TOKEN_NY_ANCHORS):
+                return False, "albany_token_without_ny_confirmation"
+        return False, "no_albany_county_locality_evidence"
 
-    # --- Step 3: Local source domain strengthens any Albany mention ---
-    # Check both article link AND the publisher's original URL (source_url from Google News)
-    is_local_domain = any(d in link for d in LOCAL_DOMAINS) or any(d in source_url for d in LOCAL_DOMAINS)
-    if is_local_domain:
-        if "albany" in text or any(g in text for g in GENERIC_REGION_TERMS):
-            return True
-        if any(t in text for t in _LOCAL_OUTLET_CRIME_PASS_TERMS):
-            return True
+    if "albany county, ga" in blob or "albany county georgia" in blob:
+        return False, "albany_county_wrong_state"
 
-    # --- Step 4: Bare "albany" — must have at least one NY confirmation signal ---
-    # (catches Albany, NY without the ", NY" suffix but with clear NY context)
-    if "albany" in text:
-        ny_hits = sum(1 for sig in NY_CONFIRMATION_SIGNALS if sig in text)
-        if ny_hits >= 1:
-            return True
-        # No NY signal found → could be Albany GA, OR, CA, etc. → reject
-        return False
+    for m in OUT_OF_AREA_GEO_MARKERS:
+        if m in blob:
+            return False, f"out_of_area:{m[:40]}"
 
-    # --- Step 5: Generic regional terms need multiple independent NY signals ---
-    if any(g in text for g in GENERIC_REGION_TERMS):
-        ny_hits = sum(1 for sig in NY_CONFIRMATION_SIGNALS if sig in text)
-        return ny_hits >= 2
+    if _national_federal_source_hit(article):
+        return True, f"{anchor}+federal_ok_locally_anchored"
 
-    return False
+    return True, anchor
+
+
+def is_albany_related(article: dict) -> bool:
+    """Strict Albany County, NY gate — used for all feeds before dedupe and in /api/crimes."""
+    ok, reason = evaluate_strict_albany_county(article)
+    if ok:
+        article["locality_match_reason"] = reason
+        article.pop("rejected_reason", None)
+    else:
+        article["rejected_reason"] = reason
+        article.pop("locality_match_reason", None)
+        t = (article.get("title") or "")[:90]
+        print(f"[geo-reject] {reason} | {t!r}")
+    return ok
 
 
 def compute_article_confidence(article) -> float:
