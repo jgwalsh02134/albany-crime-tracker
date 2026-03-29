@@ -40,6 +40,23 @@ LANE_OFFICIAL = "official_alerts"
 LANE_LOCAL_NEWS = "local_news"
 LANE_ENRICHMENT = "enrichment"
 
+# Three-lane product model (API + UI)
+FEED_LANE_NOW = "now"
+FEED_LANE_CONFIRMED = "confirmed"
+FEED_LANE_NEWS_CONTEXT = "news_context"
+
+NOW_MAX_MINUTES = 90.0
+CONFIRMED_MAX_HOURS = 48.0
+NEWS_CONTEXT_MIN_HOURS = 48.0  # strictly after confirmed window
+NEWS_CONTEXT_MAX_HOURS = 168.0  # 7 days
+
+# Sub-channels that may appear in the Now lane (0–90 min operational backbone)
+NOW_CHANNEL_SCANNER = "scanner"
+NOW_CHANNEL_511 = "511"
+NOW_CHANNEL_NY_ALERT = "ny_alert"
+NOW_CHANNEL_MUNICIPAL = "municipal"
+NOW_CHANNEL_OFFICIAL_SOCIAL_URGENT = "official_social_urgent"
+
 VERIFICATION_OFFICIAL = "official"
 VERIFICATION_SCANNER = "scanner"
 VERIFICATION_MEDIA = "media"
@@ -141,7 +158,34 @@ def classify_source_lane(raw: dict) -> str:
         return LANE_LOCAL_NEWS
     if raw.get("_scanner_feed_link"):
         return LANE_ENRICHMENT
+    if raw.get("_511_incident") or raw.get("_ny_alert"):
+        return LANE_ENRICHMENT
     return LANE_LOCAL_NEWS
+
+
+def classify_now_channel(raw: dict) -> Optional[str]:
+    """
+    Sources allowed in the **Now** lane (0–90 min): scanner, 511NY, NY-Alert,
+    municipal/Nixle-style alerts, and urgent official social (closures/missing/fire).
+    """
+    if raw.get("_scanner_call"):
+        return NOW_CHANNEL_SCANNER
+    if raw.get("_511_incident"):
+        return NOW_CHANNEL_511
+    if raw.get("_ny_alert"):
+        return NOW_CHANNEL_NY_ALERT
+    if raw.get("_municipal_emergency") or raw.get("_nixle_item"):
+        return NOW_CHANNEL_MUNICIPAL
+    if raw.get("_official_x_post"):
+        t = ((raw.get("title") or "") + " " + (raw.get("description") or "")).lower()
+        urgent = (
+            "road closed", "closure", "missing", "amber", "shelter", "avoid",
+            "detour", "crash", "fire", "shooting", "stabbing", "pursuit",
+            "investigation", "police activity", "heavy police",
+        )
+        if any(u in t for u in urgent):
+            return NOW_CHANNEL_OFFICIAL_SOCIAL_URGENT
+    return None
 
 
 def infer_event_type_and_subtype(blob: str) -> tuple[str, str]:
@@ -229,6 +273,9 @@ def normalize_from_enriched(raw: dict) -> dict:
 
     lane = classify_source_lane(raw)
     event_type, sub_type = infer_event_type_and_subtype(blob)
+    if raw.get("_511_incident") and event_type == "general":
+        event_type, sub_type = "traffic", "dot_operational"
+    now_ch = classify_now_channel(raw)
     matched = raw.get("matched_location")
     municipality = _municipality_from_text(blob, matched)
     street = _street_or_area(blob, matched)
@@ -294,6 +341,8 @@ def normalize_from_enriched(raw: dict) -> dict:
         "local_relevance_score": round(local_rel, 3),
         "public_safety_score": 0.0,
         "is_live_eligible": False,
+        "feed_lane": "",
+        "now_channel": now_ch,
         "exclusion_reason": "",
         "live_frame": LIVE_FRAME_REJECT,
         "operational_badges": [],
@@ -302,6 +351,7 @@ def normalize_from_enriched(raw: dict) -> dict:
         "_sources_raw": [dict(raw)],
         "_primary_raw": dict(raw),
         "_strict_live_ok": bool(raw.get("_strict_live_ok")),
+        "_federal_national_hit": bool(raw.get("_federal_national_hit")),
     }
     return incident
 
@@ -409,6 +459,27 @@ def _should_fuse(a: dict, b: dict) -> bool:
     return j >= FUSE_KEYWORD_JACCARD_MIN
 
 
+def _merge_now_channel(cluster: list[dict]) -> Optional[str]:
+    rank = {
+        NOW_CHANNEL_SCANNER: 5,
+        NOW_CHANNEL_511: 4,
+        NOW_CHANNEL_NY_ALERT: 4,
+        NOW_CHANNEL_MUNICIPAL: 3,
+        NOW_CHANNEL_OFFICIAL_SOCIAL_URGENT: 2,
+    }
+    best: Optional[str] = None
+    best_r = -1
+    for x in cluster:
+        c = x.get("now_channel")
+        if not c:
+            continue
+        r = rank.get(c, 0)
+        if r > best_r:
+            best_r = r
+            best = c
+    return best
+
+
 def fuse_incident_batch(incidents: list[dict]) -> list[dict]:
     """
     Greedy clustering: each new incident attaches to first compatible cluster (by time order).
@@ -491,6 +562,8 @@ def _merge_cluster(cluster: list[dict]) -> dict:
         "_primary_raw": cluster[0].get("_primary_raw") or {},
         "why_it_matters": _actionable_summary(title, summary, base.get("event_type", "")),
         "_strict_live_ok_any": any(bool(x.get("_strict_live_ok")) for x in cluster),
+        "_federal_national_hit_any": any(bool(x.get("_federal_national_hit")) for x in cluster),
+        "now_channel": _merge_now_channel(cluster),
     }
     # Re-infer event type from merged text
     mblob = f"{title} {summary}".lower()
