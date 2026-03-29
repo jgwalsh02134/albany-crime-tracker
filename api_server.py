@@ -107,7 +107,8 @@ ALBANY_TIER1 = frozenset(ALBANY_KEYWORDS) | frozenset([
     "albany international airport", "albany airport", "colonie center",
     # Streets and highways that uniquely identify Albany NY area
     "wolf road", "manning boulevard", "central avenue albany", "new scotland avenue",
-    "i-787", "route 9w",
+    "state farm road",
+    "i-787", "i-90", "route 9w",
     # Local colleges/institutions exclusive to Albany County
     "siena college", "albany law", "sage college", "college of saint rose",
     "albany college of pharmacy", "hvcc", "hudson valley community",
@@ -1054,6 +1055,7 @@ ALBANY_LOCATIONS = {
     "broadway": (42.6570, -73.7510),
     "clinton avenue": (42.6600, -73.7570),
     "new scotland": (42.6080, -73.8890),
+    "state farm road": (42.6180, -73.9050),
     "colonie": (42.7179, -73.8340),
     "loudonville": (42.7000, -73.7680),
     "latham": (42.7470, -73.7570),
@@ -1264,6 +1266,14 @@ NATIONAL_FEDERAL_SOURCE_MARKERS = (
     "customs and border protection",
     "homeland security investigations",
     "h.s.i.",
+    "official @hsi",
+    "@hsi_hq",
+    "hsi special agent",
+    "official @fbipressoffice",
+    "twitter.com/fbi",
+    "fbi press",
+    "doj.gov",
+    "department of justice",
 )
 
 # Geography / narrative that is not Albany County, NY unless copy is locally anchored
@@ -1308,6 +1318,11 @@ OUT_OF_AREA_GEO_MARKERS = (
     "southern border",
     "northern border",
     "mexico border",
+    "afghanistan",
+    "framingham",
+    "international fugitive",
+    "u.s. border",
+    "border wall",
 )
 
 # Phrases that prove Albany County / City of Albany NY (multi-word first in scan)
