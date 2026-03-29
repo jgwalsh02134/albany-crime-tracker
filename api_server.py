@@ -2014,8 +2014,7 @@ async def fetch_all_feeds():
                         return any(kw in t for kw in CRIME_KEYWORDS)
                     parsed = [a for a in parsed if has_crime_kw(a)]
                 elif filter_mode is None:
-                    # Trusted feed — no filter, but still reject obvious false positives
-                    parsed = [a for a in parsed if not any(fp in (a.get("title", "") + " " + a.get("description", "")).lower() for fp in FALSE_POSITIVE_INDICATORS)]
+                    pass  # strict geo + false positives in post-merge is_albany_related()
 
                 return parsed
         except Exception as e:
@@ -2047,6 +2046,8 @@ async def fetch_all_feeds():
             print(f"Live feed extra batch error: {batch}")
             continue
         articles.extend(batch)
+
+    articles = [a for a in articles if is_albany_related(a)]
 
     def _norm_link(u: str) -> str:
         return (u or "").strip().lower().split("?")[0].rstrip("/")
