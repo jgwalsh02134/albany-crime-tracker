@@ -10,8 +10,20 @@
 
   function createApiClient(baseUrl) {
     var base = baseUrl || "";
+    function toQuery(params) {
+      if (!params) return "";
+      var parts = [];
+      Object.keys(params).forEach(function (k) {
+        var v = params[k];
+        if (v === undefined || v === null || v === "") return;
+        parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(String(v)));
+      });
+      return parts.length ? "?" + parts.join("&") : "";
+    }
     return {
       getIncidents: function () { return requestJSON(base + "/api/crimes"); },
+      getPersistedIncidents: function (params) { return requestJSON(base + "/api/incidents" + toQuery(params)); },
+      getIncidentMarkers: function (params) { return requestJSON(base + "/api/incidents/map" + toQuery(params)); },
       getScannerCalls: function () { return requestJSON(base + "/api/scanner/calls"); },
       getScannerTalkgroups: function () { return requestJSON(base + "/api/scanner/talkgroups"); },
       getSituation: function () { return requestJSON(base + "/api/situation"); },

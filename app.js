@@ -44,6 +44,12 @@
   var pendingMarkerData = null;
   var activeMapFilter = "all";
   var allIncidentData = [];          // holds all crime articles for tab filtering
+  var feedSearchQuery = "";
+  var feedSortMode = "newest";
+  var mapSearchQuery = "";
+  var mapVerification = "";
+  var mapSeverity = "";
+  var mapFetchTimer = null;
 
   // Law enforcement directory (lazy-loaded from /api/directory/*)
   var leDirectory = null;
@@ -335,6 +341,7 @@
     initDirFilters();
     initScannerToolbar();
     initFeedTabs();
+    initFeedControls();
     initChat();
     startClock();
 
@@ -414,6 +421,23 @@
     });
   }
 
+  function initFeedControls() {
+    var search = document.getElementById("feedSearchInput");
+    if (search) {
+      search.addEventListener("input", function () {
+        feedSearchQuery = (search.value || "").trim().toLowerCase();
+        renderIncidentList(allIncidentData || []);
+      });
+    }
+    var sort = document.getElementById("feedSortSelect");
+    if (sort) {
+      sort.addEventListener("change", function () {
+        feedSortMode = sort.value || "newest";
+        renderIncidentList(allIncidentData || []);
+      });
+    }
+  }
+
   // ── NAVIGATION ────────────────────────────────────────────────
   function initNav() {
     // Mobile bottom nav
@@ -466,6 +490,7 @@
       mapInitialized = true;
     } else if (viewName === "map" && map) {
       setTimeout(function () { map.invalidateSize(); }, 100);
+      refreshMapMarkers();
     }
 
     // On tablet+, map is always visible — also init it on first load
@@ -593,6 +618,7 @@
       initMapFilters();
 
       if (pendingMarkerData) plotMarkers(pendingMarkerData);
+      refreshMapMarkers();
 
       setTimeout(function () { map.invalidateSize(); }, 300);
       el.style.touchAction = "none";
@@ -620,9 +646,70 @@
         btns.forEach(function (b) { b.classList.remove("active"); });
         btn.classList.add("active");
         activeMapFilter = btn.getAttribute("data-filter");
-        if (pendingMarkerData) plotMarkers(pendingMarkerData);
+        refreshMapMarkers();
       });
     });
+    initMapControls();
+  }
+
+  function initMapControls() {
+    var search = document.getElementById("mapSearchInput");
+    var verification = document.getElementById("mapVerificationSelect");
+    var severity = document.getElementById("mapSeveritySelect");
+    function trigger() {
+      if (search) mapSearchQuery = (search.value || "").trim();
+      if (verification) mapVerification = verification.value || "";
+      if (severity) mapSeverity = severity.value || "";
+      if (mapFetchTimer) clearTimeout(mapFetchTimer);
+      mapFetchTimer = setTimeout(function () {
+        refreshMapMarkers();
+      }, 180);
+    }
+    if (search) search.addEventListener("input", trigger);
+    if (verification) verification.addEventListener("change", trigger);
+    if (severity) severity.addEventListener("change", trigger);
+  }
+
+  function setMapStatus(text) {
+    var el = document.getElementById("mapStatus");
+    if (el) el.textContent = text || "";
+  }
+
+  function mapCategory(item) {
+    var t = (item && item.incident_type || item && item.event_type || "").toLowerCase();
+    if (t.indexOf("violent") !== -1 || t.indexOf("homicide") !== -1 || t.indexOf("assault") !== -1 || t.indexOf("shooting") !== -1 || t.indexOf("stabbing") !== -1) {
+      return "violent";
+    }
+    if (t.indexOf("property") !== -1 || t.indexOf("burglary") !== -1 || t.indexOf("theft") !== -1 || t.indexOf("robbery") !== -1) {
+      return "property";
+    }
+    return "other";
+  }
+
+  function refreshMapMarkers() {
+    setMapStatus("Loading map incidents...");
+    var params = {
+      has_coordinates: "true",
+      limit: 500,
+      q: mapSearchQuery,
+      verification_level: mapVerification,
+      severity: mapSeverity,
+      sort_by: "newest"
+    };
+    var fetcher = apiClient && apiClient.getIncidentMarkers
+      ? apiClient.getIncidentMarkers(params)
+      : fetch(API + "/api/incidents/map?has_coordinates=true&limit=500").then(ok);
+    fetcher
+      .then(function (r) {
+        var markers = (r && Array.isArray(r.markers)) ? r.markers : [];
+        pendingMarkerData = markers;
+        if (mapReady) plotMarkers(markers);
+      })
+      .catch(function () {
+        setMapStatus("Could not load map incidents right now.");
+        pendingMarkerData = [];
+        if (mapReady) plotMarkers([]);
+      });
   }
 
   function plotMarkers(data) {
@@ -631,20 +718,20 @@
 
     var filtered = activeMapFilter === "all"
       ? data
-      : data.filter(function (d) { return (d.crime_type || "other") === activeMapFilter; });
+      : data.filter(function (d) { return mapCategory(d) === activeMapFilter; });
 
     filtered.forEach(function (item) {
       var lat = parseFloat(item.latitude);
       var lng = parseFloat(item.longitude);
       if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
 
-      var type = item.crime_type || "other";
+      var type = mapCategory(item);
       var color = type === "violent" ? "#e05252" :
                   type === "property" ? "#d9953a" : "#4d8fdb";
 
       var inc = item.incident || {};
       var ps = typeof item.public_safety_score === "number" ? item.public_safety_score : 0;
-      var vf = inc.verification_level || "";
+      var vf = item.verification_level || inc.verification_level || "";
       var lf = inc.live_frame || "";
       var radius = lf === "live_now" ? 12 : lf === "developing" ? 10 : ps >= 55 ? 9 : 7;
       var fillOp = vf === "multi_source" || vf === "official" ? 0.92 : vf === "scanner" ? 0.72 : 0.85;
@@ -659,7 +746,7 @@
         fillOpacity: fillOp
       });
 
-      var ta = item.pubDate ? timeAgo(new Date(item.pubDate)) : "";
+      var ta = item.human_time || (item.pubDate ? timeAgo(new Date(item.pubDate)) : "");
       var loc = item.matched_location
         ? esc(item.matched_location.replace(/\b\w/g, function(c){ return c.toUpperCase(); }))
         : "";
@@ -691,11 +778,15 @@
       if (item.link) {
         popup += '<div style="margin-top:6px;"><a href="' + escAttr(item.link) + '" target="_blank" rel="noopener" style="font-size:11px;color:#4d8fdb;text-decoration:none;font-weight:500;">Read article →</a></div>';
       }
+      if (item.coordinate_quality && item.coordinate_quality !== "exact") {
+        popup += '<div style="margin-top:6px;font-size:10px;color:#c9b37f;">Coordinate: ' + esc(item.coordinate_quality) + '</div>';
+      }
       popup += '</div>';
 
       circle.bindPopup(popup, { closeButton: true, autoPan: true, autoPanPaddingTopLeft: [10, 60], maxWidth: 260 });
       markerGroup.addLayer(circle);
     });
+    setMapStatus(filtered.length ? (filtered.length + " markers") : "No incidents match the current map filters.");
   }
 
   // ── SITUATION EXPAND ──────────────────────────────────────────
@@ -1124,9 +1215,64 @@
     });
   }
 
+  function feedItemMatches(item) {
+    if (!feedSearchQuery) return true;
+    var needle = (feedSearchQuery || "").toLowerCase();
+    var blob = [
+      item && item.title,
+      item && item.summary,
+      item && item.description,
+      item && item.source,
+      item && item.municipality,
+      item && item.matched_location
+    ].join(" ").toLowerCase();
+    return blob.indexOf(needle) !== -1;
+  }
+
+  function feedSortRankSeverity(item) {
+    var sev = (item && (item.severity || (item.incident && item.incident.severity)) || "").toLowerCase();
+    if (sev === "critical") return 4;
+    if (sev === "high") return 3;
+    if (sev === "medium") return 2;
+    if (sev === "low") return 1;
+    return 0;
+  }
+
+  function feedSortRankVerification(item) {
+    var v = (item && (item.verification_level || (item.incident && item.incident.verification_level)) || "").toLowerCase();
+    if (v === "official") return 5;
+    if (v === "multi_source") return 4;
+    if (v === "media") return 3;
+    if (v === "scanner") return 2;
+    if (v === "inferred") return 1;
+    return 0;
+  }
+
+  function applyFeedUiFilters(items) {
+    var filtered = (items || []).filter(feedItemMatches);
+    if (feedSortMode === "severity") {
+      filtered.sort(function (a, b) {
+        return feedSortRankSeverity(b) - feedSortRankSeverity(a);
+      });
+    } else if (feedSortMode === "verification") {
+      filtered.sort(function (a, b) {
+        return feedSortRankVerification(b) - feedSortRankVerification(a);
+      });
+    } else {
+      filtered.sort(function (a, b) {
+        var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+        var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+        return tb - ta;
+      });
+    }
+    return filtered;
+  }
+
   function renderLiveFeed(activeItems, recentItems) {
     var list = getLiveFeedListEl();
     if (!list) return;
+    activeItems = applyFeedUiFilters(activeItems || []);
+    recentItems = applyFeedUiFilters(recentItems || []);
 
     var html = "";
     var hasActive = activeItems && activeItems.length;
@@ -1206,6 +1352,7 @@
   function renderConfirmedFeed(confirmedItems) {
     var list = document.getElementById("incidentListConfirmed");
     if (!list) return;
+    confirmedItems = applyFeedUiFilters(confirmedItems || []);
     if (!confirmedItems || confirmedItems.length === 0) {
       list.innerHTML =
         '<div class="empty-state">No confirmed incidents in the last 48 hours (fused scanner + official + substantive local media).</div>';
@@ -1219,6 +1366,7 @@
   function renderContextFeed(contextItems) {
     var list = document.getElementById("incidentListContext");
     if (!list) return;
+    contextItems = applyFeedUiFilters(contextItems || []);
 
     if (!contextItems || contextItems.length === 0) {
       list.innerHTML = '<div class="empty-state">No follow-ups or older reports in the 48h–7d window.</div>';

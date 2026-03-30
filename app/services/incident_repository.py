@@ -414,9 +414,103 @@ async def query_incidents(
     source_type: Optional[str] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    has_coordinates: Optional[bool] = None,
+    verification_level: Optional[str] = None,
+    severity: Optional[str] = None,
+    tags: Optional[list[str]] = None,
+    q: Optional[str] = None,
+    sort_by: str = "newest",
 ) -> list[dict[str, Any]]:
+    def _severity_rank(value: str) -> int:
+        v = (value or "").lower()
+        return {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(v, 0)
+
+    def _verification_rank(value: str) -> int:
+        v = (value or "").lower()
+        return {"official": 5, "multi_source": 4, "media": 3, "scanner": 2, "inferred": 1}.get(v, 0)
+
+    def _human_time(dt: Optional[datetime]) -> str:
+        if dt is None:
+            return ""
+        delta = datetime.now(dt.tzinfo) - dt
+        sec = int(delta.total_seconds())
+        if sec < 60:
+            return "just now"
+        minutes = sec // 60
+        if minutes < 60:
+            return f"{minutes}m ago"
+        hours = minutes // 60
+        if hours < 24:
+            return f"{hours}h ago"
+        days = hours // 24
+        return f"{days}d ago"
+
+    def _coord_quality(lat: Optional[float], lon: Optional[float], payload: dict[str, Any]) -> str:
+        if lat is None or lon is None:
+            return "missing"
+        acc = str(payload.get("location_accuracy") or "").lower()
+        if acc in ("specific", "exact", "verified"):
+            return "exact"
+        return "approximate"
+
+    def _decorate(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for it in items:
+            it["short_title"] = (it.get("title") or "")[:96]
+            it["subtitle"] = " · ".join([p for p in [it.get("source_name"), it.get("municipality")] if p])
+            dt = None
+            try:
+                raw = it.get("occurred_at") or it.get("published_at")
+                dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00")) if raw else None
+            except Exception:
+                dt = None
+            it["human_time"] = _human_time(dt)
+            it["badges"] = list(it.get("tags") or [])[:5]
+            it["coordinate_quality"] = _coord_quality(it.get("latitude"), it.get("longitude"), it.get("raw_payload") or {})
+        return items
+
+    def _apply_post_filters(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out = items
+        if tags:
+            wanted = {_norm_text(t) for t in tags if t}
+            if wanted:
+                out = [it for it in out if any(_norm_text(tag) in wanted for tag in (it.get("tags") or []))]
+        if q:
+            needle = _norm_text(q)
+            if needle:
+                out = [
+                    it
+                    for it in out
+                    if needle in _norm_text(it.get("title") or "")
+                    or needle in _norm_text(it.get("description") or "")
+                    or needle in _norm_text(it.get("municipality") or "")
+                    or needle in _norm_text(it.get("source_name") or "")
+                    or needle in _norm_text(it.get("incident_type") or "")
+                ]
+        mode = (sort_by or "newest").lower()
+        if mode == "severity":
+            out = sorted(
+                out,
+                key=lambda it: (_severity_rank(str(it.get("severity") or "")), str(it.get("occurred_at") or it.get("published_at") or "")),
+                reverse=True,
+            )
+        elif mode == "verification":
+            out = sorted(
+                out,
+                key=lambda it: (
+                    _verification_rank(str(it.get("verification_level") or "")),
+                    str(it.get("occurred_at") or it.get("published_at") or ""),
+                ),
+                reverse=True,
+            )
+        else:
+            out = sorted(out, key=lambda it: str(it.get("occurred_at") or it.get("published_at") or ""), reverse=True)
+        return out
+
     global _LAST_QUERY_BACKEND
     session_factory = get_session_factory()
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+
     if session_factory is None:
         _LAST_QUERY_BACKEND = "memory"
         rows = list(_MEMORY_INCIDENTS.values())
@@ -429,6 +523,14 @@ async def query_incidents(
             if status and item.get("status") != status:
                 return False
             if source_type and item.get("source_type") != source_type:
+                return False
+            if verification_level and item.get("verification_level") != verification_level:
+                return False
+            if severity and item.get("severity") != severity:
+                return False
+            if has_coordinates is True and (item.get("latitude") is None or item.get("longitude") is None):
+                return False
+            if has_coordinates is False and (item.get("latitude") is not None and item.get("longitude") is not None):
                 return False
             occurred_raw = item.get("occurred_at")
             occurred_dt = None
@@ -444,13 +546,9 @@ async def query_incidents(
             return True
 
         filtered = [x for x in rows if _keep(x)]
-        filtered.sort(key=lambda x: str(x.get("occurred_at") or ""), reverse=True)
-        limit = max(1, min(limit, 1000))
-        offset = max(0, offset)
+        filtered = _apply_post_filters(filtered)
+        filtered = _decorate(filtered)
         return filtered[offset : offset + limit]
-
-    limit = max(1, min(limit, 1000))
-    offset = max(0, offset)
 
     filters = []
     if municipality:
@@ -461,6 +559,16 @@ async def query_incidents(
         filters.append(IncidentORM.status == status)
     if source_type:
         filters.append(IncidentORM.source_type == source_type)
+    if verification_level:
+        filters.append(IncidentORM.verification_level == verification_level)
+    if severity:
+        filters.append(IncidentORM.severity == severity)
+    if has_coordinates is True:
+        filters.append(IncidentORM.latitude.is_not(None))
+        filters.append(IncidentORM.longitude.is_not(None))
+    if has_coordinates is False:
+        filters.append(IncidentORM.latitude.is_(None))
+        filters.append(IncidentORM.longitude.is_(None))
     if start_date:
         filters.append(IncidentORM.occurred_at >= start_date)
     if end_date:
@@ -470,13 +578,14 @@ async def query_incidents(
     if filters:
         stmt = stmt.where(and_(*filters))
     stmt = stmt.order_by(IncidentORM.occurred_at.desc().nullslast(), IncidentORM.created_at.desc())
-    stmt = stmt.limit(limit).offset(offset)
+    fetch_cap = min(max(limit + offset + 200, 300), 2000)
+    stmt = stmt.limit(fetch_cap)
 
     try:
         async with session_factory() as session:
             rows = (await session.execute(stmt)).scalars().all()
             _LAST_QUERY_BACKEND = "postgres"
-            return [
+            items = [
                 {
                     "id": r.id,
                     "external_id": r.external_id,
@@ -503,8 +612,10 @@ async def query_incidents(
                 }
                 for r in rows
             ]
+            items = _apply_post_filters(items)
+            items = _decorate(items)
+            return items[offset : offset + limit]
     except Exception:
-        # DB unavailable at query-time -> graceful fallback to memory store.
         _LAST_QUERY_BACKEND = "memory"
         rows = list(_MEMORY_INCIDENTS.values())
         filtered = rows
@@ -516,7 +627,16 @@ async def query_incidents(
             filtered = [x for x in filtered if x.get("status") == status]
         if source_type:
             filtered = [x for x in filtered if x.get("source_type") == source_type]
-        filtered.sort(key=lambda x: str(x.get("occurred_at") or ""), reverse=True)
+        if verification_level:
+            filtered = [x for x in filtered if x.get("verification_level") == verification_level]
+        if severity:
+            filtered = [x for x in filtered if x.get("severity") == severity]
+        if has_coordinates is True:
+            filtered = [x for x in filtered if x.get("latitude") is not None and x.get("longitude") is not None]
+        if has_coordinates is False:
+            filtered = [x for x in filtered if x.get("latitude") is None or x.get("longitude") is None]
+        filtered = _apply_post_filters(filtered)
+        filtered = _decorate(filtered)
         return filtered[offset : offset + limit]
 
 

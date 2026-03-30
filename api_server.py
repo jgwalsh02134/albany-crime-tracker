@@ -3249,6 +3249,24 @@ def _parse_iso_dt(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _parse_optional_bool(value: Optional[str]) -> Optional[bool]:
+    if value is None:
+        return None
+    v = str(value).strip().lower()
+    if v in ("1", "true", "yes", "y", "on"):
+        return True
+    if v in ("0", "false", "no", "n", "off"):
+        return False
+    return None
+
+
+def _parse_tags(value: Optional[str]) -> Optional[list[str]]:
+    if not value:
+        return None
+    tags = [t.strip() for t in str(value).split(",") if t.strip()]
+    return tags or None
+
+
 @app.get("/api/incidents")
 async def get_incidents(
     limit: int = 100,
@@ -3259,7 +3277,16 @@ async def get_incidents(
     source_type: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    has_coordinates: Optional[str] = None,
+    verification_level: Optional[str] = None,
+    severity: Optional[str] = None,
+    tags: Optional[str] = None,
+    q: Optional[str] = None,
+    sort_by: str = "newest",
 ):
+    sort_mode = (sort_by or "newest").lower()
+    if sort_mode not in ("newest", "severity", "verification"):
+        sort_mode = "newest"
     items = await query_incidents(
         limit=limit,
         offset=offset,
@@ -3269,6 +3296,12 @@ async def get_incidents(
         source_type=source_type,
         start_date=_parse_iso_dt(start_date),
         end_date=_parse_iso_dt(end_date),
+        has_coordinates=_parse_optional_bool(has_coordinates),
+        verification_level=verification_level,
+        severity=severity,
+        tags=_parse_tags(tags),
+        q=q,
+        sort_by=sort_mode,
     )
     payload = {
         "status": "ok",
@@ -3277,6 +3310,68 @@ async def get_incidents(
         "incidents": items,
     }
     return payload
+
+
+@app.get("/api/incidents/map")
+async def get_incidents_map(
+    limit: int = 500,
+    offset: int = 0,
+    municipality: Optional[str] = None,
+    incident_type: Optional[str] = None,
+    status: Optional[str] = None,
+    source_type: Optional[str] = None,
+    verification_level: Optional[str] = None,
+    severity: Optional[str] = None,
+    tags: Optional[str] = None,
+    q: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    has_coordinates: Optional[str] = "true",
+    sort_by: str = "newest",
+):
+    map_limit = max(1, min(limit, 1000))
+    sort_mode = (sort_by or "newest").lower()
+    if sort_mode not in ("newest", "severity", "verification"):
+        sort_mode = "newest"
+    items = await query_incidents(
+        limit=map_limit,
+        offset=max(0, offset),
+        municipality=municipality,
+        incident_type=incident_type,
+        status=status,
+        source_type=source_type,
+        start_date=_parse_iso_dt(start_date),
+        end_date=_parse_iso_dt(end_date),
+        has_coordinates=_parse_optional_bool(has_coordinates),
+        verification_level=verification_level,
+        severity=severity,
+        tags=_parse_tags(tags),
+        q=q,
+        sort_by=sort_mode,
+    )
+    markers = [
+        {
+            "id": it.get("id"),
+            "title": it.get("short_title") or it.get("title"),
+            "incident_type": it.get("incident_type"),
+            "severity": it.get("severity"),
+            "status": it.get("status"),
+            "municipality": it.get("municipality"),
+            "latitude": it.get("latitude"),
+            "longitude": it.get("longitude"),
+            "occurred_at": it.get("occurred_at") or it.get("published_at"),
+            "source_type": it.get("source_type"),
+            "verification_level": it.get("verification_level"),
+            "coordinate_quality": it.get("coordinate_quality", "missing"),
+        }
+        for it in items
+    ]
+    return {
+        "status": "ok",
+        "source": incident_store_backend(),
+        "count": len(markers),
+        "markers": markers,
+    }
 
 
 @app.get("/api/incidents/operational-summary")
