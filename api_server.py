@@ -3646,11 +3646,84 @@ async def get_trends():
 
 @app.get("/api/situation")
 async def get_situation():
+    """AI-powered situation report with patterns, stats, and crime counts."""
+    # Fetch fresh crime data (uses cache internally)
+    crimes_resp = await get_crimes()
+    crime_data = crimes_resp.get("data", [])
+
+    patterns = detect_patterns(crime_data)
+
+    # Build stats from pattern data
+    type_b = patterns.get("type_breakdown", {})
+    stats = {
+        "violent": type_b.get("violent", 0),
+        "property": type_b.get("property", 0),
+        "other": type_b.get("other", 0),
+        "recent_48h": patterns.get("recent_48h", 0),
+        "total_articles": len(crime_data),
+        "source_count": len(set(a.get("source", "") for a in crime_data if a.get("source"))),
+    }
+
+    # Crime counts for header chips
+    feed_tabs = {}
+    for a in crime_data:
+        tab = a.get("feed_tab", "")
+        feed_tabs[tab] = feed_tabs.get(tab, 0) + 1
+    crime_counts = {
+        "visible_feed_count": len(crime_data),
+        "live_now_count": feed_tabs.get("verified", 0) + feed_tabs.get("live", 0) + feed_tabs.get("now", 0),
+        "recent_48h_count": patterns.get("recent_48h", 0),
+        "stats_total_incidents": len(crime_data),
+    }
+
+    # Generate AI situation (cached, with deterministic fallback)
+    try:
+        situation_data = await generate_situation_report(crime_data, patterns)
+    except Exception as exc:
+        logger.warning("situation report error: %s", exc)
+        situation_data = _conservative_situation_report(crime_data, patterns)
+
     return {
         "status": "ok",
-        "situation": "Loading...",
-        "threat_level": "low",
-        "confidence": "low"
+        "situation": situation_data.get("situation", "Analyzing..."),
+        "threat_level": situation_data.get("threat_level", "unknown"),
+        "confidence": situation_data.get("confidence", "low"),
+        "stats": stats,
+        "crime_counts": crime_counts,
+        "patterns": patterns,
+    }
+
+
+@app.get("/api/patterns")
+async def get_patterns():
+    """Real-time pattern detection: hotspots, type breakdown, insights."""
+    cached = get_cached("patterns")
+    if cached:
+        return cached
+    crimes_resp = await get_crimes()
+    crime_data = crimes_resp.get("data", [])
+    patterns = detect_patterns(crime_data)
+    result = {"status": "ok", **patterns}
+    set_cached("patterns", result, 60)
+    return result
+
+
+@app.get("/api/search")
+async def search_incidents(
+    q: str = "",
+    limit: int = 50,
+):
+    """Full-text search across persisted incidents."""
+    query = (q or "").strip()
+    if len(query) < 2:
+        return {"status": "ok", "results": [], "query": query, "total": 0}
+    search_limit = max(1, min(limit, 200))
+    items = await query_incidents(limit=search_limit, q=query, sort_by="newest")
+    return {
+        "status": "ok",
+        "results": items,
+        "query": query,
+        "total": len(items),
     }
 
 
@@ -4001,28 +4074,54 @@ async def chat(request: Request):
     crime_data = crimes_resp.get("data", [])
 
     crime_context = ""
-    for a in crime_data[:15]:
+    for a in crime_data[:20]:
         src = a.get("source", "Local News")
         hood = a.get("neighborhood", "")
         conf = a.get("confidence", 0.7)
         reliability = a.get("source_reliability", 0.7)
         conf_label = "HIGH" if conf >= 0.90 else "MED" if conf >= 0.75 else "LOW"
+        tab = a.get("feed_tab", "?")
+        loc = a.get("matched_location", "")
+        sev = a.get("severity", "")
+        age_m = a.get("age_minutes")
+        age_str = f"{int(age_m)}m ago" if age_m and age_m < 120 else f"{round(age_m / 60, 1)}h ago" if age_m else ""
 
-        crime_context += f"- [Conf:{conf_label}|Reliability:{reliability:.0%}|{src}] {a['title']}"
-        if hood and hood != "Other":
+        crime_context += f"- [{tab}|{conf_label}|{reliability:.0%}|{src}] {a['title']}"
+        if loc:
+            crime_context += f" @ {loc}"
+        elif hood and hood != "Other":
             crime_context += f" — {hood}"
+        if sev and sev != "low":
+            crime_context += f" [{sev.upper()}]"
+        if age_str:
+            crime_context += f" ({age_str})"
         crime_context += "\n"
 
     patterns = detect_patterns(crime_data)
     pattern_text = ""
     if patterns.get("hotspots"):
         pattern_text = "\n**Hotspot areas:** " + ", ".join(
-            f"{h['neighborhood']} ({h['count']})" for h in patterns["hotspots"][:4]
+            f"{h['neighborhood']} ({h['count']}, {h.get('dominant_type', 'mixed')})" for h in patterns["hotspots"][:5]
         )
     if patterns.get("insights"):
         pattern_text += "\n**Key patterns:**\n" + "\n".join(
-            f"- {i['text']}" for i in patterns["insights"]
+            f"- [{i.get('severity', 'low').upper()}] {i['text']}" for i in patterns["insights"]
         )
+    type_b = patterns.get("type_breakdown", {})
+    if type_b:
+        pattern_text += f"\n**Type breakdown:** Violent: {type_b.get('violent', 0)}, Property: {type_b.get('property', 0)}, Other: {type_b.get('other', 0)}"
+    r48 = patterns.get("recent_48h", 0)
+    if r48:
+        pattern_text += f"\n**Last 48h:** {r48} incidents"
+
+    # Current situation context for the AI
+    situation_ctx = ""
+    try:
+        sit_cached = get_cached("ai_summaries")
+        if sit_cached:
+            situation_ctx = f"\n**Current situation:** {sit_cached.get('situation', '')} (Threat: {sit_cached.get('threat_level', 'unknown')})"
+    except Exception:
+        pass
 
     news_resp = await get_news()
     news_data = news_resp.get("articles", [])
@@ -4049,6 +4148,7 @@ async def chat(request: Request):
         f"**Source universe ({len(news_sources)} feeds):** {', '.join(news_sources[:12])}\n\n"
         f"**Verified incident lines ({len(crime_data)} items):**\n{crime_context}"
         f"{pattern_text}"
+        f"{situation_ctx}"
     )
 
     messages = [{"role": "system", "content": system_prompt}]

@@ -94,6 +94,11 @@
             </div>
             <div class="feed-freshness" id="feedFreshness" aria-live="polite"></div>
           </div>
+          <div class="feed-search-bar" id="feedSearchBar">
+            <span class="material-icons feed-search-icon">search</span>
+            <input type="search" id="feedSearchInput" class="feed-search-input" placeholder="Search incidents…" aria-label="Search incidents">
+          </div>
+          <div class="feed-search-results" id="feedSearchResults" hidden></div>
           <div class="feed-subtabs" id="feedSubtabs" role="tablist" aria-label="Feed lanes">
             <button class="feed-subtab active" data-feedtab="verified">Verified</button>
             <button class="feed-subtab" data-feedtab="developing">Developing</button>

@@ -373,10 +373,12 @@
     setTimeout(fetchScannerCalls, 900);
     setTimeout(fetchScannerTalkgroups, 1400);
     setTimeout(fetchSummarySnapshot, 1800);
+    setTimeout(fetchSituation, 2500);
 
     setInterval(function () {
       fetchIncidents();
       fetchSummarySnapshot();
+      fetchSituation();
     }, REFRESH_MS);
 
     setInterval(fetchScannerCalls, SCANNER_REFRESH_MS);
@@ -473,7 +475,15 @@
       search.addEventListener("input", function () {
         feedSearchQuery = (search.value || "").trim().toLowerCase();
         if (feedControlTimer) clearTimeout(feedControlTimer);
-        feedControlTimer = setTimeout(fetchIncidents, 220);
+        feedControlTimer = setTimeout(function () {
+          fetchIncidents();
+          // Backend search for queries 3+ chars
+          if (feedSearchQuery.length >= 3) {
+            fetchSearchResults(feedSearchQuery);
+          } else {
+            hideSearchResults();
+          }
+        }, 320);
       });
     }
     var sort = document.getElementById("feedSortSelect");
@@ -1442,6 +1452,46 @@
 
   function isScannerCrimeSource(src) {
     return (src || "").toLowerCase().indexOf("scanner ·") !== -1;
+  }
+
+  // ── BACKEND SEARCH ──────────────────────────────────────────
+  var _searchAbort = null;
+  function fetchSearchResults(query) {
+    if (_searchAbort) _searchAbort.abort();
+    _searchAbort = new AbortController();
+    var container = document.getElementById("feedSearchResults");
+    if (!container) return;
+    fetch(API + "/api/search?q=" + encodeURIComponent(query) + "&limit=20", { signal: _searchAbort.signal })
+      .then(ok)
+      .then(function (r) {
+        if (!r || r.status !== "ok") return;
+        var results = r.results || [];
+        if (!results.length) {
+          container.innerHTML = '<div class="feed-search-count">No results for "' + esc(query) + '"</div>';
+          container.hidden = false;
+          return;
+        }
+        var html = '<div class="feed-search-count">' + results.length + ' result' + (results.length === 1 ? '' : 's') + ' for "' + esc(query) + '"</div>';
+        results.forEach(function (item) {
+          html += buildIncidentCard(item);
+        });
+        container.innerHTML = html;
+        container.hidden = false;
+        // Hide the regular feed tabs while searching
+        var tabs = document.getElementById("feedSubtabs");
+        var panels = document.querySelectorAll(".feed-tab-content");
+        if (tabs) tabs.style.display = "none";
+        panels.forEach(function (p) { p.style.display = "none"; });
+      })
+      .catch(function () {});
+  }
+  function hideSearchResults() {
+    var container = document.getElementById("feedSearchResults");
+    if (container) { container.innerHTML = ""; container.hidden = true; }
+    var tabs = document.getElementById("feedSubtabs");
+    var panels = document.querySelectorAll(".feed-tab-content");
+    if (tabs) tabs.style.display = "";
+    panels.forEach(function (p) { p.style.display = ""; });
   }
 
   function officialHandleFromSource(src) {

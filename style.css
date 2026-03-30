@@ -3518,6 +3518,51 @@ a.home-story-card:active {
   color: var(--color-caution, #e6a817);
 }
 
+/* ── SEARCH BAR ── */
+.feed-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin: 0 12px 8px;
+  background: var(--card-bg, #161822);
+  border: 1px solid var(--border, #262836);
+  border-radius: 10px;
+  transition: border-color 0.2s;
+}
+.feed-search-bar:focus-within {
+  border-color: var(--accent, #6c5ce7);
+}
+.feed-search-icon {
+  font-size: 18px;
+  color: var(--text-muted, #888);
+  flex-shrink: 0;
+}
+.feed-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text, #eee);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  padding: 4px 0;
+}
+.feed-search-input::placeholder {
+  color: var(--text-muted, #666);
+}
+.feed-search-results {
+  margin: 0 12px 12px;
+}
+.feed-search-results .feed-item {
+  margin-bottom: 6px;
+}
+.feed-search-count {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  padding: 4px 0 8px;
+}
+
 /* ── ERROR STATE ── */
 .feed-error-state {
   text-align: center;
