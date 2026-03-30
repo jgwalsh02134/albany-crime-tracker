@@ -154,8 +154,9 @@ a:hover { text-decoration: underline; }
 .header-left { display: flex; align-items: center; }
 .header-logo { display: flex; align-items: center; gap: 10px; }
 .logo-icon {
-  color: var(--accent);
-  font-size: 26px !important;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
   flex-shrink: 0;
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 40%, transparent));
 }
