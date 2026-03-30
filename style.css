@@ -154,8 +154,11 @@ a:hover { text-decoration: underline; }
 .header-left { display: flex; align-items: center; }
 .header-logo { display: flex; align-items: center; gap: 10px; }
 .logo-icon {
-  width: 26px;
-  height: 26px;
+  width: 22px !important;
+  height: 22px !important;
+  max-width: 22px !important;
+  max-height: 22px !important;
+  display: block;
   object-fit: contain;
   flex-shrink: 0;
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 40%, transparent));
