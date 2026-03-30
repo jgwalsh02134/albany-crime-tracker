@@ -76,40 +76,33 @@
     marked.setOptions({ breaks: true, gfm: true });
   }
 
-  // ── ALBANY COUNTY SCANNER TALKGROUP MAP ────────────────────────
-  var TG_MAP = {
-    // ── Primary 5-digit OpenMHz / Albany County P25 IDs ──────────────────────
-    "15202": { name: "Albany County Law Dispatch", cat: "police", priority: "high",   location: "County-wide" },
-    "10702": { name: "Albany County Fire Dispatch", cat: "fire",   priority: "high",   location: "County-wide" },
-    "11702": { name: "County Fire Tac",            cat: "fire",   priority: "medium", location: "County-wide" },
-    "10003": { name: "Albany County Sheriff",      cat: "police", priority: "high",   location: "County-wide" },
-    "13102": { name: "Albany PD Dispatch",         cat: "police", priority: "high",   location: "City of Albany" },
-    "13202": { name: "Albany PD Ops",              cat: "police", priority: "high",   location: "City of Albany" },
-    "11003": { name: "Albany County EMS",          cat: "ems",    priority: "high",   location: "County-wide" },
-    "10921": { name: "Albany County Interop",      cat: "police", priority: "medium", location: "County-wide" },
-    "10922": { name: "Multi-Agency Tac",           cat: "police", priority: "medium", location: "County-wide" },
-    "10923": { name: "Emergency Ops",              cat: "police", priority: "high",   location: "County-wide" },
-    "10925": { name: "Albany County OEM",          cat: "police", priority: "medium", location: "County-wide" },
-    "18301": { name: "Albany County Law Ops",      cat: "police", priority: "high",   location: "County-wide" },
-    "18884": { name: "Capitol / State Police Tac", cat: "police", priority: "high",   location: "Downtown Albany / Plaza" },
-    "10354": { name: "Metro Law Tac",              cat: "police", priority: "medium", location: "Capital Region" },
-    "10401": { name: "Colonie PD Dispatch",        cat: "police", priority: "high",   location: "Colonie / Latham" },
-    "10402": { name: "Colonie PD Tac",             cat: "police", priority: "medium", location: "Colonie" },
-    "10501": { name: "Guilderland PD",             cat: "police", priority: "medium", location: "Guilderland" },
-    "10502": { name: "Bethlehem PD",               cat: "police", priority: "medium", location: "Bethlehem / Delmar" },
-    "10601": { name: "Cohoes PD",                  cat: "police", priority: "medium", location: "Cohoes" },
-    "10602": { name: "Watervliet PD",              cat: "police", priority: "medium", location: "Watervliet" },
-    // ── Legacy 4-digit IDs (still seen in some OpenMHz paths) ───────────────
-    "8211":  { name: "Colonie PD Dispatch",        cat: "police", priority: "high",   location: "Colonie / Latham" },
-    "8212":  { name: "Colonie PD Tac",             cat: "police", priority: "medium", location: "Colonie" },
-    "8215":  { name: "Bethlehem PD",               cat: "police", priority: "medium", location: "Bethlehem / Delmar" },
-    "8216":  { name: "Guilderland PD",             cat: "police", priority: "medium", location: "Guilderland" },
-    "8206":  { name: "Albany County Sheriff",      cat: "police", priority: "high",   location: "County-wide" },
-    "8239":  { name: "Albany Fire Dispatch",       cat: "fire",   priority: "high",   location: "City of Albany" },
-    "8243":  { name: "Colonie Fire Dispatch",      cat: "fire",   priority: "high",   location: "Colonie" },
-    "8259":  { name: "Albany County EMS",          cat: "ems",    priority: "high",   location: "County-wide" },
-    "8260":  { name: "Albany EMS Dispatch",        cat: "ems",    priority: "high",   location: "City of Albany" }
-  };
+  // ── SCANNER ALIAS REGISTRY (loaded from data/scanner_aliases.json + API merge) ──
+  var _SCANNER_ALIASES = {};
+  var _SCANNER_ALPHA_PATTERNS = {};
+  var _scannerAliasesLoaded = false;
+
+  function loadScannerAliases() {
+    if (_scannerAliasesLoaded) return;
+    _scannerAliasesLoaded = true;
+    fetch(API + "/data/scanner_aliases.json")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        var tgs = d.talkgroups || {};
+        for (var k in tgs) {
+          if (!Object.prototype.hasOwnProperty.call(tgs, k)) continue;
+          _SCANNER_ALIASES[k] = tgs[k];
+        }
+        var pats = d.alpha_tag_patterns || {};
+        for (var p in pats) {
+          if (!Object.prototype.hasOwnProperty.call(pats, p)) continue;
+          _SCANNER_ALPHA_PATTERNS[p] = pats[p];
+        }
+      })
+      .catch(function () {});
+  }
+
+  var TG_MAP = {};
 
   var scannerFilterCat = "all";
   var scannerSearchQuery = "";
@@ -212,74 +205,99 @@
     }
   }
 
-  function lookupTgMap(tgRaw) {
-    var s = String(tgRaw == null ? "" : tgRaw).trim();
-    if (!s) return null;
-    if (TG_MAP[s]) return TG_MAP[s];
-    if (/^\d+$/.test(s)) {
-      var stripped = s.replace(/^0+/, "") || "0";
+  function _lookupAlias(tgStr) {
+    if (!tgStr) return null;
+    if (_SCANNER_ALIASES[tgStr]) return _SCANNER_ALIASES[tgStr];
+    if (TG_MAP[tgStr]) return TG_MAP[tgStr];
+    if (/^\d+$/.test(tgStr)) {
+      var stripped = tgStr.replace(/^0+/, "") || "0";
+      if (_SCANNER_ALIASES[stripped]) return _SCANNER_ALIASES[stripped];
       if (TG_MAP[stripped]) return TG_MAP[stripped];
     }
     return null;
   }
 
-  function inferScannerCat(name, desc, audioUrl) {
-    var t = ((name || "") + " " + (desc || "") + " " + (audioUrl || "")).toLowerCase();
-    if (/\b(fire|fd|rescue|brush|blaze|smoke|structure fire)\b/.test(t)) return "fire";
-    if (/\b(ems|medic|ambulance|medical)\b/.test(t)) return "ems";
+  function _matchAlphaPattern(alpha) {
+    if (!alpha) return null;
+    for (var pat in _SCANNER_ALPHA_PATTERNS) {
+      if (!Object.prototype.hasOwnProperty.call(_SCANNER_ALPHA_PATTERNS, pat)) continue;
+      if (alpha.toUpperCase().indexOf(pat.toUpperCase()) >= 0) return _SCANNER_ALPHA_PATTERNS[pat];
+    }
+    return null;
+  }
+
+  function _inferDiscipline(blob) {
+    var t = (blob || "").toLowerCase();
+    if (/\b(fire|fd|rescue|brush|blaze|smoke|structure fire|alarm)\b/.test(t)) return "fire";
+    if (/\b(ems|medic|ambulance|medical|cardiac)\b/.test(t)) return "ems";
     return "police";
+  }
+
+  function _inferMunicipality(blob) {
+    if (/colonie|latham/i.test(blob)) return "Colonie / Latham";
+    if (/bethlehem|delmar|slingerlands|glenmont/i.test(blob)) return "Bethlehem / Delmar";
+    if (/guilderland|altamont|westmere/i.test(blob)) return "Guilderland";
+    if (/cohoes/i.test(blob)) return "Cohoes";
+    if (/watervliet/i.test(blob)) return "Watervliet";
+    if (/menands/i.test(blob)) return "Menands";
+    if (/green island/i.test(blob)) return "Green Island";
+    if (/ravena|coeymans|selkirk/i.test(blob)) return "Coeymans / Ravena";
+    if (/voorheesville/i.test(blob)) return "Voorheesville";
+    if (/sheriff|\bacso\b|county law|law dispatch|county-wide|countywide/i.test(blob)) return "County-wide";
+    if (/albany\s*pd|\bapd\b|city of albany/i.test(blob)) return "Albany";
+    if (/state\s*police|nysp|troop\s*[gG]/i.test(blob)) return "Latham / County-wide";
+    if (/capitol|plaza|empire state/i.test(blob)) return "Downtown Albany";
+    return "";
   }
 
   function resolveScannerDept(call) {
     var tgRaw = call.talkgroup_num != null ? call.talkgroup_num : call.talkgroup;
     var tgStr = String(tgRaw != null ? tgRaw : "").trim();
-    var info = lookupTgMap(tgStr);
     var alpha = (call.talkgroup_tag || call.talkgroupAlpha || call.talkgroup_alpha_tag || "").trim();
     var desc = (call.talkgroup_description || call.talkgroupDescription || "").trim();
-    var audioUrl = call.url || call.audio_url || "";
+    var blob = [alpha, desc, tgStr].join(" ");
 
-    var name;
-    var location;
-    var cat;
-    var priority;
-    var agencyId = null;
-
-    if (info) {
-      name = info.name;
-      location = info.location || "Albany County, NY";
-      cat = info.cat;
-      priority = info.priority || "medium";
-      agencyId = info.agencyId != null ? info.agencyId : null;
-    } else {
-      var blob = (alpha + " " + desc).trim();
-      if (blob) {
-        name = alpha || (desc.length > 80 ? desc.slice(0, 77) + "..." : desc);
-        location = "";
-        if (/colonie/i.test(blob)) location = "Colonie / Latham";
-        else if (/bethlehem|delmar/i.test(blob)) location = "Bethlehem / Delmar";
-        else if (/guilderland/i.test(blob)) location = "Guilderland";
-        else if (/cohoes/i.test(blob)) location = "Cohoes";
-        else if (/watervliet/i.test(blob)) location = "Watervliet";
-        else if (/ravena|coeymans|selkirk/i.test(blob)) location = "Ravena / Coeymans";
-        else if (/menands|green island|voorheesville|altamont/i.test(blob)) location = "Albany County";
-        else if (/sheriff|\bacso\b|county law|law dispatch/i.test(blob)) location = "County-wide";
-        else if (/albany\s*pd|\bapd\b|city of albany/i.test(blob)) location = "City of Albany";
-        else if (/state\s*police|nysp|troop\s*[fg]/i.test(blob)) location = "Capital Region";
-        else if (/fire|rescue|\bfd\b/i.test(blob)) location = "County-wide";
-        else if (/ems|medic/i.test(blob)) location = "County-wide";
-        else location = "Albany County, NY";
-      } else if (tgStr) {
-        name = "Talkgroup " + tgStr;
-        location = "Albany County, NY";
-      } else {
-        name = "Radio traffic";
-        location = "Albany County, NY";
-      }
-      cat = inferScannerCat(name, desc, audioUrl);
-      priority = "medium";
+    var alias = _lookupAlias(tgStr);
+    if (alias) {
+      return {
+        name: (alias.agency || alias.name || "Scanner") + (alias.dept ? " " + alias.dept : ""),
+        agency: alias.agency || alias.name || "Scanner",
+        dept: alias.dept || alias.channel || "",
+        location: alias.municipality || alias.location || "Albany County",
+        cat: alias.discipline || alias.cat || _inferDiscipline(blob),
+        priority: alias.priority || "medium",
+        channel: alias.channel || "",
+        agencyId: alias.agencyId || null
+      };
     }
-    if (!location) location = "Albany County, NY";
-    return { name: name, location: location, cat: cat, priority: priority, agencyId: agencyId };
+
+    var alphaPat = _matchAlphaPattern(alpha);
+    if (alphaPat) {
+      var deptLabel = alpha || desc || "Dispatch";
+      return {
+        name: (alphaPat.agency || "Scanner") + " " + deptLabel,
+        agency: alphaPat.agency || "Scanner",
+        dept: deptLabel,
+        location: alphaPat.municipality || _inferMunicipality(blob) || "Albany County",
+        cat: alphaPat.discipline || _inferDiscipline(blob),
+        priority: "medium",
+        channel: alpha,
+        agencyId: null
+      };
+    }
+
+    var agencyName = alpha || desc || (tgStr ? "Ch " + tgStr : "Radio traffic");
+    var muni = _inferMunicipality(blob) || "Albany County";
+    return {
+      name: agencyName,
+      agency: agencyName,
+      dept: "",
+      location: muni,
+      cat: _inferDiscipline(blob),
+      priority: "medium",
+      channel: alpha || tgStr,
+      agencyId: null
+    };
   }
 
   // ── THEME ─────────────────────────────────────────────────────
@@ -342,6 +360,7 @@
     initNav();
     initDirSearch();
     initDirFilters();
+    loadScannerAliases();
     initScannerToolbar();
     initFeedTabs();
     initFeedControls();
@@ -350,12 +369,14 @@
     startClock();
 
     fetchIncidents();
+    fetchHomeNews();
     setTimeout(fetchScannerCalls, 900);
     setTimeout(fetchScannerTalkgroups, 1400);
     setTimeout(fetchSummarySnapshot, 1800);
 
     setInterval(function () {
       fetchIncidents();
+      fetchHomeNews();
       fetchSummarySnapshot();
     }, REFRESH_MS);
 
@@ -565,6 +586,87 @@
       });
   }
 
+  // ── HOME NEWS (major stories, developing, recaps) ─────────────
+  function fetchHomeNews() {
+    fetch(API + "/api/home/news")
+      .then(ok)
+      .then(function (data) {
+        if (!data || data.status !== "ok") return;
+        renderMajorStories(data.major_stories || []);
+        renderDevelopingStories(data.developing_stories || []);
+        renderRecaps(data.recap_24h, data.recap_7d, data.recap_30d);
+      })
+      .catch(function () {
+        renderMajorStories([]);
+        renderDevelopingStories([]);
+      });
+  }
+
+  function _storyCard(item, cls) {
+    var sev = (item.severity || "").toLowerCase();
+    var sevCls = sev === "critical" ? " home-story-pill--sev-critical" : sev === "high" ? " home-story-pill--sev-high" : "";
+    var html = '<div class="home-story-card ' + cls + '">';
+    html += '<div class="home-story-body">';
+    html += '<div class="home-story-title">' + esc(item.title || "Untitled") + '</div>';
+    if (item.summary) html += '<div class="home-story-desc">' + esc(item.summary) + '</div>';
+    html += '<div class="home-story-meta">';
+    if (item.municipality) html += '<span class="home-story-pill">' + esc(item.municipality) + '</span>';
+    if (item.human_time) html += '<span class="home-story-pill">' + esc(item.human_time) + '</span>';
+    if (item.source_name) html += '<span class="home-story-pill home-story-pill--source">' + esc(item.source_name) + '</span>';
+    if (sev && sev !== "unknown") html += '<span class="home-story-pill' + sevCls + '">' + esc(sev) + '</span>';
+    var vl = (item.verification_level || "").replace(/_/g, " ");
+    if (vl && vl !== "unknown") html += '<span class="home-story-pill">' + esc(vl) + '</span>';
+    html += '</div></div></div>';
+    return html;
+  }
+
+  function renderMajorStories(stories) {
+    var el = document.getElementById("homeMajorStories");
+    if (!el) return;
+    if (!stories.length) {
+      el.innerHTML = '<div class="feed-summary-empty">No major stories right now.</div>';
+      return;
+    }
+    var html = "";
+    stories.forEach(function (s) { html += _storyCard(s, "home-story-card--major"); });
+    el.innerHTML = html;
+  }
+
+  function renderDevelopingStories(stories) {
+    var el = document.getElementById("homeDevelopingStories");
+    if (!el) return;
+    if (!stories.length) {
+      el.innerHTML = '<div class="feed-summary-empty">Nothing developing right now.</div>';
+      return;
+    }
+    var html = "";
+    stories.forEach(function (s) { html += _storyCard(s, "home-story-card--developing"); });
+    el.innerHTML = html;
+  }
+
+  function renderRecaps(r24, r7, r30) {
+    var el = document.getElementById("homeRecaps");
+    if (!el) return;
+    function _topStr(arr) {
+      if (!Array.isArray(arr) || !arr.length) return "—";
+      return arr.slice(0, 2).map(function (x) { return (x.key || "?") + " (" + (x.count || 0) + ")"; }).join(", ");
+    }
+    function _card(label, recap) {
+      if (!recap) return "";
+      var delta = Number(recap.delta_count || 0);
+      var deltaText = delta === 0 ? "No change" : (delta > 0 ? "+" : "") + delta + " vs prior";
+      var html = '<div class="home-recap-card">';
+      html += '<div class="home-recap-label">' + esc(label) + '</div>';
+      html += '<div class="home-recap-val">' + esc(String(recap.total || 0)) + '</div>';
+      html += '<div class="home-recap-detail">' + esc(deltaText) + '</div>';
+      html += '<div class="home-recap-detail">' + esc(_topStr(recap.top_types)) + '</div>';
+      html += '<div class="home-recap-detail">' + esc(_topStr(recap.top_locations)) + '</div>';
+      html += '</div>';
+      return html;
+    }
+    el.innerHTML = _card("Past 24h", r24) + _card("Past 7 days", r7) + _card("Past 30 days", r30);
+  }
+
   // ── NAVIGATION ────────────────────────────────────────────────
   function initNav() {
     var btns = document.querySelectorAll(".nav-btn");
@@ -611,12 +713,6 @@
       btn.addEventListener("click", function () {
         var target = btn.getAttribute("data-view-target");
         if (target) switchView(target);
-      });
-    });
-
-    document.querySelectorAll(".home-cta-panel [data-overflow-target]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        handleOverflowAction(btn.getAttribute("data-overflow-target"));
       });
     });
 
@@ -1207,6 +1303,7 @@
         renderLiveFeed(verifiedItems, []);
         renderConfirmedFeed(developingItems);
         renderContextFeed(officialItems);
+        autoSelectBestLane(verifiedItems, developingItems, officialItems);
         refreshHeaderPrimaryCount();
         markTopbarLiveIfStillConnecting();
       })
@@ -1455,11 +1552,11 @@
     var list = getLiveFeedListEl();
     if (!list) return;
     activeItems = applyFeedUiFilters(activeItems || []);
-    var html = "";
     if (!activeItems.length) {
-      list.innerHTML = '<div class="empty-state">No verified incidents in this window.</div>';
+      list.innerHTML = '<div class="empty-state">No verified incidents in this window. Check other tabs.</div>';
       return;
     }
+    var html = "";
     activeItems.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
   }
@@ -1487,9 +1584,23 @@
       list.innerHTML = '<div class="empty-state">No official updates in this window.</div>';
       return;
     }
-    var html = '<div class="feed-section-note">Official agency and structured public-record updates.</div>';
+    var html = "";
     contextItems.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
+  }
+
+  function autoSelectBestLane(verifiedItems, developingItems, officialItems) {
+    if (verifiedItems && verifiedItems.length > 0) return;
+    var best = "verified";
+    if (developingItems && developingItems.length > 0) best = "developing";
+    else if (officialItems && officialItems.length > 0) best = "official";
+    if (best === "verified") return;
+    activeFeedTab = best;
+    var tabs = document.querySelectorAll(".feed-subtab");
+    tabs.forEach(function (t) { t.classList.toggle("active", t.getAttribute("data-feedtab") === best); });
+    document.querySelectorAll(".feed-tab-content").forEach(function (panel) {
+      panel.classList.toggle("active", panel.id === "feedTab" + capitalize(best));
+    });
   }
 
   function renderTrendsMapLane(items) {
@@ -2471,15 +2582,14 @@
     scannerIntelItems = significant.slice(0, 3); // cap at 3 so they don't dominate the feed
   }
 
+  var _scannerSelectedIdx = -1;
+
   function renderScannerCalls(calls) {
     var container = document.getElementById("scannerCallsList");
     if (!container) return;
 
     var source = (calls && calls.length) ? calls : lastScannerCallsRef;
-    if (!source || source.length === 0) {
-      renderScannerFallback();
-      return;
-    }
+    if (!source || source.length === 0) { renderScannerFallback(); return; }
 
     var now = new Date();
     var recentCalls = source.filter(function (c) {
@@ -2491,83 +2601,151 @@
       var d = resolveScannerDept(c);
       if (scannerFilterCat !== "all" && d.cat !== scannerFilterCat) return false;
       if (scannerSearchQuery) {
-        var blob = (
-          d.name + " " + d.location + " " +
+        var blob = (d.name + " " + d.agency + " " + d.location + " " + d.channel + " " +
           String(c.talkgroup_num || c.talkgroup || "") + " " +
           String(c.talkgroup_tag || "") + " " +
-          String(c.talkgroup_description || "")
-        ).toLowerCase();
+          String(c.talkgroup_description || "")).toLowerCase();
         if (blob.indexOf(scannerSearchQuery) < 0) return false;
       }
       return true;
     });
 
-    if (filtered.length === 0) {
-      container.innerHTML =
-        '<div class="empty-state" style="padding:24px 16px;">' +
-        '<span class="material-icons" style="font-size:24px;opacity:0.3;display:block;margin-bottom:4px;">filter_alt_off</span>' +
-        'No transmissions match your filters</div>';
+    // dedupe: skip same talkgroup within 30s
+    var deduped = [];
+    var dedupSeen = {};
+    filtered.forEach(function (c) {
+      var tg = String(c.talkgroup_num || c.talkgroup || "");
+      var t = c.time ? new Date(c.time).getTime() : 0;
+      var key = tg + "_" + Math.floor(t / 30000);
+      if (dedupSeen[key]) return;
+      dedupSeen[key] = true;
+      deduped.push(c);
+    });
+
+    if (deduped.length === 0) {
+      container.innerHTML = '<div class="empty-state" style="padding:24px 16px;">No transmissions match your filters.</div>';
       updateMainPlayer([]);
       return;
     }
 
     var html = "";
-    filtered.slice(0, 30).forEach(function (call) {
+    deduped.slice(0, 30).forEach(function (call, idx) {
       var dept = resolveScannerDept(call);
-      var freqHz = call.freq || 0;
-      var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
       var len = call.duration != null ? parseFloat(call.duration) : (call.len ? parseFloat(call.len) : 0);
       var startTime = call.time ? new Date(call.time) : (call.start_time ? new Date(call.start_time) : null);
       var ta = startTime ? timeAgo(startTime) : "";
       var audioUrl = call.url || call.audio_url || "";
-
       var cat = dept.cat;
       var catLabel = cat === "police" ? "Police" : cat === "fire" ? "Fire" : cat === "ems" ? "EMS" : "Scanner";
-      var confLabel = (dept.priority === "high" && len >= 8) ? "Medium" : "Low";
       var aiSum = getAiSummaryForCall(call);
       var summary = aiSum && aiSum.summary ? aiSum.summary : scannerSummaryText(call, dept, catLabel);
-      if (aiSum) confLabel = "AI";
+      var freqHz = call.freq || 0;
+      var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
+      var isSelected = idx === _scannerSelectedIdx;
 
-      html += '<div class="sc-card sc-card--' + esc(cat) + '">';
+      html += '<div class="sc-card sc-card--' + esc(cat) + (isSelected ? ' sc-card--active' : '') + '" data-sc-idx="' + idx + '">';
+
+      // Row 1: agency + play + time
       html += '<div class="sc-card-top">';
-      html += '<span class="sc-card-agency">' + esc(dept.name) + '</span>';
+      html += '<div class="sc-card-agency-col">';
+      html += '<span class="sc-card-agency">' + esc(dept.agency || dept.name) + '</span>';
+      if (dept.dept && dept.dept !== dept.agency) html += '<span class="sc-card-dept">' + esc(dept.dept) + '</span>';
+      html += '</div>';
+      if (audioUrl) {
+        html += '<button type="button" class="sc-row-play scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" data-sc-idx="' + idx + '" title="Play">';
+        html += '<span class="material-icons">play_arrow</span></button>';
+      }
       html += '<span class="sc-card-time">' + esc(ta || "\u2014") + '</span>';
       html += '</div>';
+
+      // Row 2: summary
       html += '<div class="sc-card-summary">' + esc(summary) + '</div>';
+
+      // Row 3: meta pills — discipline + municipality + duration (no confidence)
       html += '<div class="sc-card-pills">';
       html += '<span class="sc-pill sc-pill--' + esc(cat) + '">' + esc(catLabel) + '</span>';
       if (dept.location) html += '<span class="sc-pill">' + esc(dept.location) + '</span>';
-      html += '<span class="sc-pill sc-pill--conf">' + esc(confLabel) + ' confidence</span>';
       if (len > 0) html += '<span class="sc-pill">' + len.toFixed(0) + 's</span>';
+      if (aiSum) html += '<span class="sc-pill sc-pill--ai">AI summary</span>';
       html += '</div>';
 
-      var freqPart = freqMHz ? freqMHz + " MHz" : "";
-      var tgPart = "TG " + esc(String(call.talkgroup_num || call.talkgroup || "\u2014"));
+      // Expandable details
       html += '<details class="sc-card-expand">';
-      html += '<summary>Details &amp; audio</summary>';
-      html += '<div class="sc-card-raw">' + [tgPart, freqPart].filter(Boolean).join(" · ") + '</div>';
+      html += '<summary>Technical details</summary>';
+      html += '<div class="sc-card-raw">TG ' + esc(String(call.talkgroup_num || call.talkgroup || "\u2014"));
+      if (freqMHz) html += ' · ' + esc(freqMHz) + ' MHz';
+      if (dept.channel) html += ' · ' + esc(dept.channel);
+      html += '</div>';
       if (call.talkgroup_tag) html += '<div class="sc-card-raw">' + esc(call.talkgroup_tag) + '</div>';
       if (call.talkgroup_description && call.talkgroup_description !== call.talkgroup_tag) {
         html += '<div class="sc-card-raw">' + esc(call.talkgroup_description) + '</div>';
-      }
-      if (audioUrl) {
-        html += '<div class="sc-card-audio-row">';
-        html += '<button type="button" class="sc-card-play scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" title="Play">';
-        html += '<span class="material-icons">play_arrow</span>';
-        html += '</button>';
-        html += '<span class="sc-card-raw">Play raw audio</span>';
-        html += '</div>';
       }
       html += '</details>';
       html += '</div>';
     });
 
     container.innerHTML = html;
+    bindScannerRowPlay(container, deduped);
     bindScannerAudio(container);
-    updateMainPlayer(filtered);
+    if (_scannerSelectedIdx < 0) updateMainPlayer(deduped);
 
     var tsEl = document.getElementById("scannerTimestamp");
     if (tsEl) tsEl.textContent = "Updated " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  }
+
+  function bindScannerRowPlay(container, filteredCalls) {
+    container.querySelectorAll(".sc-row-play").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var idx = parseInt(btn.getAttribute("data-sc-idx"), 10);
+        _scannerSelectedIdx = idx;
+        selectScannerRow(idx, filteredCalls);
+      });
+    });
+    container.querySelectorAll(".sc-card").forEach(function (card) {
+      card.addEventListener("click", function (e) {
+        if (e.target.closest(".sc-row-play") || e.target.closest("details")) return;
+        var idx = parseInt(card.getAttribute("data-sc-idx"), 10);
+        _scannerSelectedIdx = idx;
+        selectScannerRow(idx, filteredCalls);
+      });
+    });
+  }
+
+  function selectScannerRow(idx, filteredCalls) {
+    document.querySelectorAll(".sc-card").forEach(function (c) {
+      c.classList.toggle("sc-card--active", parseInt(c.getAttribute("data-sc-idx"), 10) === idx);
+    });
+    if (idx >= 0 && idx < filteredCalls.length) {
+      var call = filteredCalls[idx];
+      var dept = resolveScannerDept(call);
+      var cat = dept.cat;
+      var catLabel = cat === "police" ? "Police" : cat === "fire" ? "Fire" : cat === "ems" ? "EMS" : "Scanner";
+      var aiSum = getAiSummaryForCall(call);
+      var summary = aiSum && aiSum.summary ? aiSum.summary : scannerSummaryText(call, dept, catLabel);
+      var audioUrl = call.url || call.audio_url || "";
+      var len = call.duration != null ? parseFloat(call.duration) : (call.len != null ? parseFloat(call.len) : 0);
+      var startTime = call.time ? new Date(call.time) : null;
+      var ta = startTime ? timeAgo(startTime) : "";
+      var agencyEl = document.getElementById("mainPlayerDept");
+      var summaryEl = document.getElementById("mainPlayerNowAgency");
+      var metaEl = document.getElementById("mainPlayerMeta");
+      var btn = document.getElementById("mainPlayerBtn");
+      var badge = document.getElementById("mainPlayerBadge");
+      if (agencyEl) agencyEl.textContent = dept.agency || dept.name;
+      if (summaryEl) summaryEl.textContent = summary;
+      if (metaEl) metaEl.textContent = [catLabel, dept.location, len > 0 ? len.toFixed(0) + "s" : "", ta].filter(Boolean).join(" · ");
+      if (badge) badge.style.opacity = "1";
+      if (btn) {
+        btn.disabled = !audioUrl;
+        btn.setAttribute("data-audio", audioUrl);
+        currentMainPlayerCallIdx = idx;
+        btn.onclick = function () { playMainAudio(btn, audioUrl, len, idx); };
+      }
+      if (audioUrl && btn && !btn.classList.contains("playing")) {
+        playMainAudio(btn, audioUrl, len, idx);
+      }
+    }
   }
 
   function scannerSummaryText(call, dept, catLabel) {
@@ -2575,32 +2753,36 @@
       call && call.talkgroup_tag,
       call && call.talkgroup_description,
       dept && dept.name,
+      dept && dept.channel,
       dept && dept.location
     ].join(" ").toLowerCase();
 
-    var type = "radio activity";
-    if (/\b(shots?\s*fired|shoot|gunshot)\b/.test(raw)) type = "shots-fired report";
-    else if (/\b(pursuit|chase|fleeing)\b/.test(raw)) type = "vehicle pursuit";
-    else if (/\b(assault|fight|domestic)\b/.test(raw)) type = "assault or disturbance";
-    else if (/\b(robbery|burglary|larceny|theft)\b/.test(raw)) type = "property crime report";
-    else if (/\b(missing|amber|silver)\b/.test(raw)) type = "missing person alert";
-    else if (/\b(crash|mva|accident|collision)\b/.test(raw)) type = "motor vehicle crash";
-    else if (/\b(structure\s*fire|working\s*fire|blaze|alarm)\b/.test(raw)) type = "fire response";
-    else if (/\b(brush|wildland)\b/.test(raw)) type = "brush fire response";
-    else if (/\b(medical|cardiac|overdose|ems|ambulance|unresponsive)\b/.test(raw)) type = "medical emergency";
-    else if (/\b(traffic\s*stop|dwi|dui)\b/.test(raw)) type = "traffic enforcement";
-    else if (/\b(bomb|explosive|hazmat)\b/.test(raw)) type = "hazardous materials response";
-    else if (/\b(swat|standoff|barricade|hostage)\b/.test(raw)) type = "tactical situation";
-    else if (/\b(dispatch|law\s*dispatch)\b/.test(raw)) type = "dispatch communication";
-    else if (/\b(tac|tactical|ops)\b/.test(raw)) type = "tactical channel activity";
-    else if (/\b(fire\s*dispatch|fd)\b/.test(raw)) type = "fire dispatch";
-    else if (/\b(ems\s*dispatch)\b/.test(raw)) type = "EMS dispatch";
-    else if (dept.cat === "fire") type = "fire service activity";
-    else if (dept.cat === "ems") type = "EMS activity";
-    else if (dept.cat === "police") type = "law enforcement activity";
+    var type = "";
+    if (/\b(shots?\s*fired|shoot|gunshot|gun)\b/.test(raw)) type = "Shots-fired report";
+    else if (/\b(pursuit|chase|fleeing)\b/.test(raw)) type = "Vehicle pursuit";
+    else if (/\b(assault|fight|domestic)\b/.test(raw)) type = "Assault or disturbance";
+    else if (/\b(robbery|burglary|larceny|theft)\b/.test(raw)) type = "Property crime report";
+    else if (/\b(missing|amber|silver)\b/.test(raw)) type = "Missing person alert";
+    else if (/\b(crash|mva|accident|collision)\b/.test(raw)) type = "Motor vehicle crash";
+    else if (/\b(structure\s*fire|working\s*fire|blaze)\b/.test(raw)) type = "Structure fire response";
+    else if (/\b(brush|wildland)\b/.test(raw)) type = "Brush fire response";
+    else if (/\b(alarm)\b/.test(raw)) type = "Fire alarm response";
+    else if (/\b(medical|cardiac|overdose|unresponsive)\b/.test(raw)) type = "Medical emergency";
+    else if (/\b(ambulance)\b/.test(raw)) type = "EMS response";
+    else if (/\b(traffic\s*stop|dwi|dui)\b/.test(raw)) type = "Traffic enforcement";
+    else if (/\b(bomb|explosive|hazmat)\b/.test(raw)) type = "Hazmat response";
+    else if (/\b(swat|standoff|barricade|hostage)\b/.test(raw)) type = "Tactical situation";
+    else if (/\b(dispatch)\b/.test(raw) && dept.cat === "fire") type = "Fire dispatch traffic";
+    else if (/\b(dispatch)\b/.test(raw) && dept.cat === "ems") type = "EMS dispatch traffic";
+    else if (/\b(dispatch)\b/.test(raw)) type = "Dispatch communication";
+    else if (/\b(tac|tactical|ops)\b/.test(raw)) type = "Tactical channel traffic";
+    else if (/\b(interop)\b/.test(raw)) type = "Multi-agency coordination";
+    else if (dept.cat === "fire") type = "Fire service traffic";
+    else if (dept.cat === "ems") type = "EMS traffic";
+    else type = "Radio traffic";
 
-    var where = dept.location ? " in " + dept.location : "";
-    return type.charAt(0).toUpperCase() + type.slice(1) + where + ".";
+    var where = dept.location && dept.location !== "Albany County" ? " in " + dept.location : "";
+    return type + where + ".";
   }
 
   function bindScannerCallCards(container) {

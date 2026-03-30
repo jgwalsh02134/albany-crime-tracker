@@ -3426,6 +3426,93 @@ async def get_incidents_trends(window: str = "30d"):
     return {"status": "ok", "source": incident_store_backend(), **(await incident_trends(window=window))}
 
 
+@app.get("/api/home/news")
+async def get_home_news():
+    now = datetime.now(timezone.utc)
+    items_48h = await query_incidents(
+        limit=200,
+        sort_by="newest",
+        start_date=now - timedelta(hours=48),
+    )
+
+    def _score(it: dict) -> float:
+        sev = {"critical": 50, "high": 35, "medium": 18, "low": 6}.get(
+            str(it.get("severity") or "").lower(), 4
+        )
+        ver = {"official": 28, "multi_source": 24, "media": 14, "scanner": 8, "inferred": 5}.get(
+            str(it.get("verification_level") or "").lower(), 4
+        )
+        recency = 0
+        raw_dt = it.get("occurred_at") or it.get("published_at")
+        if raw_dt:
+            try:
+                dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
+                hours_old = max(0, (now - dt).total_seconds() / 3600.0)
+                recency = max(0, 20 - hours_old)
+            except Exception:
+                pass
+        return sev + ver + recency
+
+    scored = sorted(items_48h, key=_score, reverse=True)
+
+    major_stories: list[dict[str, Any]] = []
+    developing_stories: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    for it in scored:
+        title = str(it.get("short_title") or it.get("title") or "").strip()
+        title_key = title.lower()[:60]
+        if title_key in seen_titles:
+            continue
+        seen_titles.add(title_key)
+        entry = {
+            "id": it.get("id"),
+            "title": title,
+            "summary": str(it.get("description") or "")[:200],
+            "municipality": it.get("municipality") or "",
+            "occurred_at": it.get("occurred_at") or it.get("published_at"),
+            "human_time": it.get("human_time") or "",
+            "severity": it.get("severity") or "unknown",
+            "source_name": it.get("source_name") or "",
+            "source_type": it.get("source_type") or "",
+            "verification_level": it.get("verification_level") or "unknown",
+            "coordinate_quality": it.get("coordinate_quality") or "missing",
+            "priority_score": round(_score(it), 1),
+        }
+        ver_lev = str(it.get("verification_level") or "").lower()
+        status = str(it.get("status") or "").lower()
+        if ver_lev in ("scanner", "inferred") or status == "active":
+            developing_stories.append(entry)
+        else:
+            major_stories.append(entry)
+        if len(major_stories) >= 3 and len(developing_stories) >= 3:
+            break
+
+    summary_24h = await summarize_incidents(window="24h")
+    summary_7d = await summarize_incidents(window="7d")
+    summary_30d = await summarize_incidents(window="30d")
+
+    def _recap(s: dict) -> dict:
+        groups = s.get("groups") or {}
+        return {
+            "total": s.get("total", 0),
+            "delta_count": s.get("delta_count", 0),
+            "top_types": (groups.get("incident_type") or [])[:3],
+            "top_locations": (groups.get("municipality") or [])[:3],
+        }
+
+    return {
+        "status": "ok",
+        "source": incident_store_backend(),
+        "major_stories": major_stories[:3],
+        "developing_stories": developing_stories[:3],
+        "recap_24h": _recap(summary_24h),
+        "recap_7d": _recap(summary_7d),
+        "recap_30d": _recap(summary_30d),
+        "top_categories": (summary_24h.get("groups") or {}).get("incident_type", [])[:5],
+        "top_locations": (summary_24h.get("groups") or {}).get("municipality", [])[:5],
+    }
+
+
 SOURCE_METHODOLOGY = {
     "lane_model": [
         "Verified Incidents",

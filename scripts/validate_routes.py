@@ -33,6 +33,7 @@ CRITICAL_ROUTES = [
     "/api/incidents/summary",
     "/api/incidents/trends",
     "/api/methodology",
+    "/api/home/news",
     "/api/dev/albany-open-data",
 ]
 
@@ -54,13 +55,16 @@ async def main() -> int:
     if re.search(r'<button class="desktop-tab[^"]*"[^>]*>More</button>', index_html):
         print("primary nav invalid: More still present in desktop tabs")
         failures += 1
-    required_home_ids = ["feedSummaryGrid", "incidentListVerified", "incidentListDeveloping", "incidentListOfficial"]
+    required_home_ids = ["feedSummaryGrid", "homeMajorStories", "homeDevelopingStories", "homeRecaps", "incidentListVerified", "incidentListDeveloping", "incidentListOfficial"]
     for rid in required_home_ids:
         if f'id="{rid}"' not in index_html:
             print(f"home shell invalid: missing {rid}")
             failures += 1
-    if "Latest 48 hours, newest first." not in index_html:
-        print("home feed invalid: 48h newest-first text missing")
+    if 'id="feedSummaryGrid"' not in index_html or 'id="incidentListVerified"' not in index_html:
+        print("home feed invalid: summary grid or feed list missing from Home")
+        failures += 1
+    if "home-cta-panel" in index_html or "home-cta-btn" in index_html:
+        print("home invalid: CTA buttons still present on Home")
         failures += 1
     for scanner_label in ["All", "Police", "Fire", "EMS"]:
         if f'data-scanner-filter="{scanner_label.lower()}"' not in index_html and scanner_label != "All":
@@ -71,6 +75,21 @@ async def main() -> int:
         failures += 1
     if "window.ACTFocusIncident = focusIncidentCard;" not in app_js:
         print("map/feed sync invalid: focusIncidentCard hook missing")
+        failures += 1
+    if "loadScannerAliases" not in app_js:
+        print("scanner invalid: alias registry loader missing")
+        failures += 1
+    if "sc-card-agency" not in app_js:
+        print("scanner invalid: agency-first card structure missing")
+        failures += 1
+    if "sc-pill--conf" in app_js:
+        print("scanner invalid: confidence pills still in card render")
+        failures += 1
+    if "sc-row-play" not in app_js:
+        print("scanner invalid: per-row play button missing")
+        failures += 1
+    if "selectScannerRow" not in app_js:
+        print("scanner invalid: row selection handler missing")
         failures += 1
 
     transport = httpx.ASGITransport(app=app)

@@ -80,63 +80,59 @@
     <!-- === HOME VIEW (default) === -->
     <section class="view active" id="viewFeed">
       <div class="home-scroll">
-      <section class="home-summary-panel" aria-label="Home overview">
-        <div class="home-summary-header">
-          <div>
-            <h1 class="home-title">Home</h1>
-            <p class="home-subtitle">What happened, where it happened, who reported it, and how certain ACT is.</p>
-          </div>
-          <span class="home-updated" id="topbarTime"></span>
-        </div>
+
+      <section class="home-summary-strip" aria-label="Overview">
         <div class="feed-summary-grid home-summary-grid" id="feedSummaryGrid">
-          <div class="feed-summary-empty">Loading overview…</div>
+          <div class="feed-summary-empty">Loading…</div>
         </div>
       </section>
 
-      <section class="home-cta-panel" aria-label="Quick actions">
-        <button type="button" class="home-cta-btn" data-view-target="map">Open map</button>
-        <button type="button" class="home-cta-btn" data-view-target="scanner">Open scanner</button>
-        <button type="button" class="home-cta-btn" data-view-target="chat">Open AI</button>
-        <button type="button" class="home-cta-btn" data-view-target="directory">Open directory</button>
-        <button type="button" class="home-cta-btn" data-overflow-target="trends">View trends</button>
+      <section class="home-major" aria-label="Major stories">
+        <h2 class="home-section-label">Major stories</h2>
+        <div id="homeMajorStories" class="home-stories-list">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        </div>
+      </section>
+
+      <section class="home-developing" aria-label="Developing">
+        <h2 class="home-section-label">Developing</h2>
+        <div id="homeDevelopingStories" class="home-stories-list">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+        </div>
       </section>
 
       <section class="home-feed-panel" aria-label="Live feed">
-      <div class="home-feed-header">
-        <div>
-          <h2 class="home-feed-title">Live feed</h2>
-          <p class="home-feed-subtitle">Latest 48 hours, newest first.</p>
+        <h2 class="home-section-label">Live feed</h2>
+        <div class="feed-subtabs" id="feedSubtabs" role="tablist" aria-label="Feed tabs">
+          <button class="feed-subtab active" data-feedtab="verified" aria-label="Open verified incidents lane">Verified</button>
+          <button class="feed-subtab" data-feedtab="developing" aria-label="Open developing incidents lane">Developing</button>
+          <button class="feed-subtab" data-feedtab="official" aria-label="Open official updates lane">Official</button>
         </div>
-      </div>
-      <div class="feed-subtabs" id="feedSubtabs" role="tablist" aria-label="Feed tabs">
-        <button class="feed-subtab active" data-feedtab="verified" aria-label="Open verified incidents lane">Verified Incidents</button>
-        <button class="feed-subtab" data-feedtab="developing" aria-label="Open developing incidents lane">Developing Incidents</button>
-        <button class="feed-subtab" data-feedtab="official" aria-label="Open official updates lane">Official Updates</button>
-      </div>
-
-      <!-- VERIFIED -->
-      <div class="feed-tab-content active" id="feedTabVerified">
-        <div class="feed-list" id="incidentListVerified">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        <div class="feed-tab-content active" id="feedTabVerified">
+          <div class="feed-list" id="incidentListVerified">
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+          </div>
         </div>
-      </div>
-
-      <!-- DEVELOPING -->
-      <div class="feed-tab-content" id="feedTabDeveloping">
-        <div class="feed-list" id="incidentListDeveloping">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        <div class="feed-tab-content" id="feedTabDeveloping">
+          <div class="feed-list" id="incidentListDeveloping">
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+          </div>
         </div>
-      </div>
-
-      <!-- OFFICIAL -->
-      <div class="feed-tab-content" id="feedTabOfficial">
-        <div class="feed-list" id="incidentListOfficial">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        <div class="feed-tab-content" id="feedTabOfficial">
+          <div class="feed-list" id="incidentListOfficial">
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+          </div>
         </div>
-      </div>
       </section>
+
+      <section class="home-recaps" aria-label="Recaps">
+        <h2 class="home-section-label">Recaps</h2>
+        <div id="homeRecaps" class="home-recaps-grid">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+        </div>
+      </section>
+
       </div>
     </section>
 
