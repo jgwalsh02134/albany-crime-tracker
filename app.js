@@ -334,17 +334,19 @@
     initDirSearch();
     initDirFilters();
     initScannerToolbar();
-    fetchScannerTalkgroups();
     initFeedTabs();
     initChat();
     startClock();
+
+    // First paint: load core incident feed first, defer heavier noncritical calls.
     fetchIncidents();
-    fetchSituation();
-    fetchTrends();
-    fetchScannerCalls();
-    fetchDailySummary();
-    fetchMonthlySummary();
-    fetchSocialIntel();
+    setTimeout(fetchSituation, 700);
+    setTimeout(fetchScannerCalls, 1200);
+    setTimeout(fetchScannerTalkgroups, 1800);
+    setTimeout(fetchTrends, 2400);
+    setTimeout(fetchDailySummary, 3000);
+    setTimeout(fetchMonthlySummary, 3600);
+    setTimeout(fetchSocialIntel, 4200);
 
     setInterval(function () {
       fetchIncidents();
@@ -862,9 +864,6 @@
             var t = x.feed_tab;
             return t === "live" || t === "now" || x.is_live_eligible === true;
           });
-          if (!activeItems.length) {
-            activeItems = data.slice();
-          }
         }
         lastLiveActiveItems = activeItems;
         lastLiveRecentItems = recentItems;
@@ -1117,8 +1116,11 @@
     if (!list) return;
 
     var html = "";
+    var hasActive = activeItems && activeItems.length;
+    var hasRecent = recentItems && recentItems.length;
+    var anyIncidentCards = hasActive || hasRecent;
 
-    if (scannerIntelItems.length > 0) {
+    if (scannerIntelItems.length > 0 && !anyIncidentCards) {
       scannerIntelItems.forEach(function (intel) {
         var catLabel = intel.cat === "fire" ? "Fire" : intel.cat === "ems" ? "EMS" : "Police";
         var catIcon  = intel.cat === "fire" ? "local_fire_department"
@@ -1146,10 +1148,6 @@
         html += '</div></div></div>';
       });
     }
-
-    var hasActive = activeItems && activeItems.length;
-    var hasRecent = recentItems && recentItems.length;
-    var anyIncidentCards = hasActive || hasRecent;
 
     if (!hasActive && hasRecent) {
       html +=

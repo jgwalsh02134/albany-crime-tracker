@@ -62,9 +62,9 @@ cache = {}
 CACHE_TTL = {
     "merged_news": 60,
     "crime_articles": 30,
-    "crime_articles_v3": 30,
+    "crime_articles_v3": 60,
     "dcjs_trends": 3600,
-    "ai_summaries": 120,
+    "ai_summaries": 600,
     "patterns": 60,
     "monthly_summary": 1800,   # 30 min
     "daily_summary": 600,      # 10 min — today's briefing
@@ -1142,6 +1142,7 @@ NEIGHBORHOODS = {
 }
 
 http_client: Optional[httpx.AsyncClient] = None
+_AI_SITUATION_REFRESH_IN_FLIGHT = False
 
 
 @asynccontextmanager
@@ -2459,6 +2460,71 @@ JSON only: {{"situation":"...","threat_level":"...","confidence":"..."}}"""
     }
 
 
+def _conservative_situation_report(crime_data: list[dict], patterns: dict[str, Any]) -> dict[str, str]:
+    """Fast deterministic fallback: avoid stitched narratives across unrelated incidents."""
+    total = int(patterns.get("total", 0) or 0)
+    type_b = patterns.get("type_breakdown", {}) or {}
+    violent = int(type_b.get("violent", 0) or 0)
+    prop = int(type_b.get("property", 0) or 0)
+    other = int(type_b.get("other", 0) or 0)
+    recent_48h = int(patterns.get("recent_48h", 0) or 0)
+
+    if total <= 0:
+        return {
+            "situation": "No recent incidents of note across Albany County in the current feed window.",
+            "threat_level": "low",
+            "confidence": "medium",
+        }
+
+    top_type = "other"
+    top_count = other
+    if violent >= prop and violent >= other:
+        top_type, top_count = "violent", violent
+    elif prop >= violent and prop >= other:
+        top_type, top_count = "property", prop
+
+    mixed = sum(1 for n in (violent, prop, other) if n > 0) >= 2
+    confidences = [
+        float(c.get("confidence"))
+        for c in crime_data
+        if isinstance(c.get("confidence"), (int, float))
+    ]
+    avg_conf = (sum(confidences) / len(confidences)) if confidences else 0.0
+
+    if mixed or avg_conf < 0.78:
+        situation = (
+            f"{total} incidents of note are in the current Albany County feed "
+            f"({recent_48h} reported in the last 48 hours). Sources are mixed; treat cards as separate events."
+        )
+    else:
+        situation = (
+            f"{total} incidents of note are in the current Albany County feed, led by {top_count} "
+            f"{top_type} reports ({recent_48h} in the last 48 hours)."
+        )
+
+    threat = "low"
+    if violent >= 4 or recent_48h >= 12:
+        threat = "elevated"
+    elif violent >= 2 or recent_48h >= 6 or total >= 10:
+        threat = "moderate"
+
+    confidence = "high" if avg_conf >= 0.86 else "medium" if avg_conf >= 0.72 else "low"
+    return {"situation": situation, "threat_level": threat, "confidence": confidence}
+
+
+async def _refresh_situation_ai_cache(crime_data: list[dict], patterns: dict[str, Any]) -> None:
+    global _AI_SITUATION_REFRESH_IN_FLIGHT
+    if _AI_SITUATION_REFRESH_IN_FLIGHT:
+        return
+    _AI_SITUATION_REFRESH_IN_FLIGHT = True
+    try:
+        await generate_situation_report(crime_data, patterns)
+    except Exception as e:
+        print(f"AI situation background refresh error: {e}")
+    finally:
+        _AI_SITUATION_REFRESH_IN_FLIGHT = False
+
+
 # =============================================================================
 # OFFICIAL SOURCES FETCHER
 # =============================================================================
@@ -3021,11 +3087,14 @@ async def get_trends():
 async def get_situation():
     crimes_resp = await get_crimes()
     crime_data = crimes_resp.get("data", [])
-    news_resp = await get_news()
-    news_data = news_resp.get("articles", [])
 
     patterns = detect_patterns(crime_data)
-    situation = await generate_situation_report(crime_data, patterns)
+    situation = get_cached("ai_summaries")
+    if not situation:
+        situation = _conservative_situation_report(crime_data, patterns)
+        # Don't block first paint waiting on xAI; warm cache in background.
+        if XAI_API_KEY and crime_data and not _AI_SITUATION_REFRESH_IN_FLIGHT:
+            asyncio.create_task(_refresh_situation_ai_cache(crime_data, patterns))
 
     newest_time = None
     for c in crime_data:
@@ -3053,8 +3122,8 @@ async def get_situation():
             "violent": patterns["type_breakdown"].get("violent", 0),
             "property": patterns["type_breakdown"].get("property", 0),
             "other": patterns["type_breakdown"].get("other", 0),
-            "total_articles": len(news_data),
-            "source_count": len(set(a.get("source", "") for a in news_data)),
+            "total_articles": len(crime_data),
+            "source_count": len(set(a.get("source", "") for a in crime_data)),
             "recent_48h": patterns.get("recent_48h", 0),
         },
         "patterns": patterns,
