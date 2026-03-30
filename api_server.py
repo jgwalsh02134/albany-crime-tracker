@@ -3055,9 +3055,9 @@ def _operational_signal_article(a: dict) -> bool:
 
 
 @app.get("/api/crimes")
-async def get_crimes():
+async def get_crimes(force_refresh: bool = False):
     cached = get_cached(CRIME_ARTICLES_CACHE_KEY)
-    if cached:
+    if cached and not force_refresh:
         return cached
 
     all_articles = await refresh_guard.run_once("refresh_crimes_feed", fetch_all_feeds)
@@ -3151,7 +3151,7 @@ async def get_crimes():
     # Persist normalized incidents for map/timeline/source querying.
     # Fallback to raw feed rows if the filtered crime list is temporarily empty.
     rows_for_persistence = geocoded if geocoded else all_articles[:250]
-    await persist_articles_as_incidents(rows_for_persistence)
+    persistence_stats = await persist_articles_as_incidents(rows_for_persistence)
 
     global _LAST_INCIDENT_PIPELINE
     diag = intel.build_pipeline_diagnostics(enriched, normalized, fused, scored)
@@ -3214,6 +3214,7 @@ async def get_crimes():
                 reverse=True,
             )[:10]
         ),
+        "persistence": persistence_stats,
         "feeds": {
             "now": now_rows,
             "live_active_now": live_active_now,
