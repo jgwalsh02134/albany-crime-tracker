@@ -45,7 +45,7 @@
   var activeMapFilter = "all";
   var allIncidentData = [];          // holds all crime articles for tab filtering
   var feedSearchQuery = "";
-  var feedSortMode = "newest";
+  var feedSortMode = "priority";
   var mapSearchQuery = "";
   var mapVerification = "";
   var mapSeverity = "";
@@ -437,10 +437,48 @@
     }
     var sort = document.getElementById("feedSortSelect");
     if (sort) {
+      sort.value = feedSortMode;
       sort.addEventListener("change", function () {
-        feedSortMode = sort.value || "newest";
+        feedSortMode = sort.value || "priority";
+        syncFeedSortControls();
         fetchIncidents();
       });
+    }
+    var topBtn = document.getElementById("feedOrderPriority");
+    var latestBtn = document.getElementById("feedOrderNewest");
+    if (topBtn) {
+      topBtn.addEventListener("click", function () {
+        if (feedSortMode === "priority") return;
+        feedSortMode = "priority";
+        syncFeedSortControls();
+        fetchIncidents();
+      });
+    }
+    if (latestBtn) {
+      latestBtn.addEventListener("click", function () {
+        if (feedSortMode === "newest") return;
+        feedSortMode = "newest";
+        syncFeedSortControls();
+        fetchIncidents();
+      });
+    }
+    syncFeedSortControls();
+  }
+
+  function syncFeedSortControls() {
+    var sort = document.getElementById("feedSortSelect");
+    if (sort && sort.value !== feedSortMode) sort.value = feedSortMode;
+    var topBtn = document.getElementById("feedOrderPriority");
+    var latestBtn = document.getElementById("feedOrderNewest");
+    if (topBtn) {
+      var topActive = feedSortMode === "priority";
+      topBtn.classList.toggle("active", topActive);
+      topBtn.setAttribute("aria-pressed", topActive ? "true" : "false");
+    }
+    if (latestBtn) {
+      var latestActive = feedSortMode === "newest";
+      latestBtn.classList.toggle("active", latestActive);
+      latestBtn.setAttribute("aria-pressed", latestActive ? "true" : "false");
     }
   }
 
@@ -1074,10 +1112,14 @@
       severity: r.severity || "unknown",
       source_type: r.source_type || "",
       source_type_label: _sourceTypeLabel(r.source_type || ""),
+      source_type_explanation: r.source_type_explanation || "",
       crime_type: _crimeTypeFromIncidentType(r.incident_type || ""),
       coordinate_quality: r.coordinate_quality || "missing",
       coordinate_explanation: r.coordinate_explanation || "",
       human_time: r.human_time || "",
+      priority_score: typeof r.priority_score === "number" ? r.priority_score : 0,
+      is_high_priority: r.is_high_priority === true,
+      is_trending: r.is_trending === true,
       feed_tab: feedTab,
       is_active_incident: (r.status || "").toLowerCase() === "active" || (r.status || "").toLowerCase() === "recent",
       badges: tags,
@@ -1271,11 +1313,16 @@
     var scannerCrime = isScannerCrimeSource(primarySrc);
     var scannerCritical = !!item._scanner_critical_live;
     var multiSource = srcs.length > 1;
+    var isHighPriority = item.is_high_priority === true || Number(item.priority_score || 0) >= 72;
+    var isTrending = item.is_trending === true;
+    var weakVerification = (item.verification_level || "").toLowerCase() === "inferred" || (item.verification_level || "").toLowerCase() === "scanner";
+    var lowSeverity = (item.severity || "").toLowerCase() === "low";
 
     var cls = "feed-item";
     if (official) cls += " feed-item-official feed-item-official-prominent";
     if (scannerCrime) cls += " feed-item-scanner-crime";
     if (scannerCritical) cls += " feed-item-scanner-critical";
+    if (isHighPriority) cls += " feed-item--high-priority";
     var ageHForStale =
       item && typeof item.age_hours === "number" && !isNaN(item.age_hours)
         ? item.age_hours
@@ -1286,6 +1333,9 @@
     }
     if (activeFeedTab === "live" && ageHForStale !== null && ageHForStale > 1.5) {
       cls += " feed-item--stale";
+    }
+    if (lowSeverity && weakVerification && ageHForStale !== null && ageHForStale > 6) {
+      cls += " feed-item--quiet";
     }
     var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer">';
     html += '<span class="feed-dot ' + esc(type) + '"></span>';
@@ -1311,9 +1361,10 @@
     var srcSummary = multiSource ? srcs.slice(0, 4).join(" + ") : primarySrc || "—";
     html += '<div class="feed-op-line"><span class="feed-op-k">Area</span>' + esc(capitalize(areaDisp)) + "</div>";
     html += '<div class="feed-op-line"><span class="feed-op-k">Fresh</span>' + esc(ta || "—") + "</div>";
+    html += '<div class="feed-op-line"><span class="feed-op-k">Priority</span>' + esc(String(Math.round(Number(item.priority_score || 0)))) + "</div>";
     html += '<div class="feed-op-line"><span class="feed-op-k">Type</span>' + esc(typeStr) + "</div>";
+    html += '<div class="feed-op-line" title="' + escAttr(item.source_type_explanation || "") + '"><span class="feed-op-k">Source class</span>' + esc(sourceTypeLabel) + "</div>";
     html += '<div class="feed-op-line" title="' + escAttr(verificationExplain) + '"><span class="feed-op-k">Verification</span>' + esc(verStr) + "</div>";
-    html += '<div class="feed-op-line"><span class="feed-op-k">Source class</span>' + esc(sourceTypeLabel) + "</div>";
     html += '<div class="feed-op-line"><span class="feed-op-k">Sources</span>' + esc(srcSummary) + "</div>";
     html += renderOperationalBadges(inc);
     if (item.coordinate_quality) {
@@ -1348,12 +1399,19 @@
       if (isLikelyValidXStatusUrl(link)) {
         html += '<span class="feed-x-cta">View post on X</span>';
       }
+    } else if (isHighPriority) {
+      html += '<span class="scanner-feed-badge scanner-feed-badge--priority scanner-feed-badge--lg">TOP PRIORITY</span>';
+      if (isTrending) {
+        html += '<span class="scanner-feed-badge scanner-feed-badge--trend scanner-feed-badge--lg">TRENDING</span>';
+      }
     } else if (scannerCritical) {
       html += '<span class="scanner-feed-badge scanner-feed-badge--critical scanner-feed-badge--lg scanner-badge-police">SCANNER · CRITICAL</span>';
     } else if (scannerCrime) {
       html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">SCANNER</span>';
     } else if (item.is_active_incident) {
       html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">ACTIVE</span>';
+    } else if (isTrending) {
+      html += '<span class="scanner-feed-badge scanner-feed-badge--trend scanner-feed-badge--lg">TRENDING</span>';
     }
     if (item.verification_level) {
       html += '<span class="scanner-feed-badge scanner-feed-badge--lg">' + esc(String(item.verification_level).replace(/_/g, " ").toUpperCase()) + '</span>';
@@ -1430,6 +1488,12 @@
     return 0;
   }
 
+  function feedSortRankPriority(item) {
+    var p = Number(item && item.priority_score);
+    if (!isNaN(p)) return p;
+    return feedSortRankSeverity(item) * 10 + feedSortRankVerification(item) * 6;
+  }
+
   function applyFeedUiFilters(items) {
     var filtered = (items || []).filter(feedItemMatches);
     if (feedSortMode === "severity") {
@@ -1439,6 +1503,14 @@
     } else if (feedSortMode === "verification") {
       filtered.sort(function (a, b) {
         return feedSortRankVerification(b) - feedSortRankVerification(a);
+      });
+    } else if (feedSortMode === "priority") {
+      filtered.sort(function (a, b) {
+        var dp = feedSortRankPriority(b) - feedSortRankPriority(a);
+        if (dp !== 0) return dp;
+        var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+        var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+        return tb - ta;
       });
     } else {
       filtered.sort(function (a, b) {

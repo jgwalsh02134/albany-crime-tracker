@@ -121,7 +121,12 @@
           placeholder="Search feed title, location, source…"
           aria-label="Search feed incidents"
         >
+        <div class="feed-priority-toggle" role="group" aria-label="Feed order toggle">
+          <button type="button" id="feedOrderPriority" class="feed-order-btn active" aria-pressed="true">Top Incidents</button>
+          <button type="button" id="feedOrderNewest" class="feed-order-btn" aria-pressed="false">Latest</button>
+        </div>
         <select id="feedSortSelect" class="feed-sort-select" aria-label="Sort feed incidents">
+          <option value="priority" selected>Sort: Priority</option>
           <option value="newest">Sort: Newest</option>
           <option value="severity">Sort: Severity</option>
           <option value="verification">Sort: Verification</option>

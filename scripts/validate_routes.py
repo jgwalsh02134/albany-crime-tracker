@@ -56,6 +56,33 @@ async def main() -> int:
             print(f"/api/incidents?filters: ERROR {exc}")
             failures += 1
 
+        # Priority ordering checks
+        try:
+            priority_resp = await client.get("/api/incidents", params={"limit": 25, "sort_by": "priority"})
+            newest_resp = await client.get("/api/incidents", params={"limit": 25, "sort_by": "newest"})
+            print(f"/api/incidents?sort_by=priority: {priority_resp.status_code}")
+            print(f"/api/incidents?sort_by=newest: {newest_resp.status_code}")
+            if priority_resp.status_code != 200 or newest_resp.status_code != 200:
+                failures += 1
+            else:
+                p_items = priority_resp.json().get("incidents", [])
+                n_items = newest_resp.json().get("incidents", [])
+                if p_items:
+                    p_scores = [float(x.get("priority_score", 0)) for x in p_items if isinstance(x, dict)]
+                    if any(p_scores[i] < p_scores[i + 1] for i in range(len(p_scores) - 1)):
+                        print("priority sort invalid: priority_score not descending")
+                        failures += 1
+                    top_flags = [bool(x.get("is_high_priority")) for x in p_items[:5] if isinstance(x, dict)]
+                    print(f"priority_top5_high_priority_flags: {top_flags}")
+                if p_items and n_items:
+                    p_first = str((p_items[0] or {}).get("id"))
+                    n_first = str((n_items[0] or {}).get("id"))
+                    print(f"priority_first_id: {p_first}")
+                    print(f"newest_first_id: {n_first}")
+        except Exception as exc:
+            print(f"/api/incidents priority sort check: ERROR {exc}")
+            failures += 1
+
         # Map marker payload shape check
         try:
             map_resp = await client.get("/api/incidents/map", params={"limit": 10, "has_coordinates": "true"})

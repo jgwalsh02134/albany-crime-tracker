@@ -3287,7 +3287,7 @@ async def get_incidents(
     sort_by: str = "newest",
 ):
     sort_mode = (sort_by or "newest").lower()
-    if sort_mode not in ("newest", "severity", "verification"):
+    if sort_mode not in ("newest", "severity", "verification", "priority"):
         sort_mode = "newest"
     items = await query_incidents(
         limit=limit,
@@ -3333,7 +3333,7 @@ async def get_incidents_map(
 ):
     map_limit = max(1, min(limit, 1000))
     sort_mode = (sort_by or "newest").lower()
-    if sort_mode not in ("newest", "severity", "verification"):
+    if sort_mode not in ("newest", "severity", "verification", "priority"):
         sort_mode = "newest"
     items = await query_incidents(
         limit=map_limit,

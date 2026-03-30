@@ -430,6 +430,52 @@ async def query_incidents(
         v = (value or "").lower()
         return {"official": 5, "multi_source": 4, "media": 3, "scanner": 2, "inferred": 1}.get(v, 0)
 
+    def _priority_score(item: dict[str, Any]) -> float:
+        severity_score = {"critical": 45, "high": 30, "medium": 18, "low": 8}.get(str(item.get("severity") or "").lower(), 4)
+        verification_score = {
+            "official": 26,
+            "multi_source": 22,
+            "media": 15,
+            "scanner": 9,
+            "inferred": 6,
+        }.get(str(item.get("verification_level") or "").lower(), 4)
+        source_score = {
+            "official": 20,
+            "media": 12,
+            "scanner": 8,
+            "fused": 10,
+            "inferred": 8,
+        }.get(str(item.get("source_type") or "").lower(), 4)
+
+        tag_bonus = 0
+        tset = {str(t).lower() for t in (item.get("tags") or []) if t}
+        for tag in tset:
+            if "violence" in tag or "violent" in tag:
+                tag_bonus += 8
+            if "weapon" in tag or "gun" in tag or "firearm" in tag:
+                tag_bonus += 8
+            if "multi-source" in tag or "multisource" in tag:
+                tag_bonus += 6
+            if "ongoing" in tag or "active" in tag:
+                tag_bonus += 5
+
+        recency_score = 0.0
+        dt = _parse_incident_dt(item)
+        if dt is not None:
+            age_h = max(0.0, (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0)
+            if age_h <= 1:
+                recency_score = 20.0
+            elif age_h <= 6:
+                recency_score = 14.0
+            elif age_h <= 24:
+                recency_score = 8.0
+            elif age_h <= 72:
+                recency_score = 4.0
+            else:
+                recency_score = 0.0
+
+        return round(float(severity_score + verification_score + source_score + tag_bonus + recency_score), 2)
+
     def _human_time(dt: Optional[datetime]) -> str:
         if dt is None:
             return ""
@@ -520,6 +566,30 @@ async def query_incidents(
             it["coordinate_explanation"] = _coordinate_explanation(str(it.get("coordinate_quality") or ""))
             it["source_type_label"] = _source_type_label(str(it.get("source_type") or ""))
             it["source_type_explanation"] = _source_type_explanation(str(it.get("source_type") or ""))
+            it["priority_score"] = _priority_score(it)
+            it["is_high_priority"] = bool(it["priority_score"] >= 72)
+        return items
+
+    def _mark_trending(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        recent_counts: dict[tuple[str, str], int] = {}
+        for it in items:
+            dt = _parse_incident_dt(it)
+            if dt is None:
+                continue
+            if (now - dt) > timedelta(hours=24):
+                continue
+            key = (
+                _norm_text(str(it.get("incident_type") or "unknown")),
+                _norm_text(str(it.get("municipality") or "unknown")),
+            )
+            recent_counts[key] = recent_counts.get(key, 0) + 1
+        for it in items:
+            key = (
+                _norm_text(str(it.get("incident_type") or "unknown")),
+                _norm_text(str(it.get("municipality") or "unknown")),
+            )
+            it["is_trending"] = bool(recent_counts.get(key, 0) >= 2)
         return items
 
     def _apply_post_filters(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -556,8 +626,19 @@ async def query_incidents(
                 ),
                 reverse=True,
             )
+        elif mode == "priority":
+            out = sorted(
+                out,
+                key=lambda it: (
+                    _priority_score(it),
+                    str(it.get("occurred_at") or it.get("published_at") or ""),
+                ),
+                reverse=True,
+            )
         else:
             out = sorted(out, key=lambda it: str(it.get("occurred_at") or it.get("published_at") or ""), reverse=True)
+        out = _decorate(out)
+        out = _mark_trending(out)
         return out
 
     global _LAST_QUERY_BACKEND
@@ -601,7 +682,6 @@ async def query_incidents(
 
         filtered = [x for x in rows if _keep(x)]
         filtered = _apply_post_filters(filtered)
-        filtered = _decorate(filtered)
         return filtered[offset : offset + limit]
 
     filters = []
@@ -667,7 +747,6 @@ async def query_incidents(
                 for r in rows
             ]
             items = _apply_post_filters(items)
-            items = _decorate(items)
             return items[offset : offset + limit]
     except Exception:
         _LAST_QUERY_BACKEND = "memory"
@@ -690,7 +769,6 @@ async def query_incidents(
         if has_coordinates is False:
             filtered = [x for x in filtered if x.get("latitude") is None or x.get("longitude") is None]
         filtered = _apply_post_filters(filtered)
-        filtered = _decorate(filtered)
         return filtered[offset : offset + limit]
 
 
