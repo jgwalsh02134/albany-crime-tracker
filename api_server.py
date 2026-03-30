@@ -4350,8 +4350,7 @@ async def root():
             return HTMLResponse(f.read())
     except Exception:
         return HTMLResponse(
-            "<!DOCTYPE html><html><head><title>Albany Crime Tracker</title></head>"
-            "<body><h1>Server Running</h1></body></html>"
+            "<!DOCTYPE html><html><head><title>Albany Crime Tracker</title></head><body><h1>Server Running</h1></body></html>"
         )
 
 
