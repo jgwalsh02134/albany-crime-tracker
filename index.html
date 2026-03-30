@@ -163,7 +163,14 @@
         </select>
       </div>
       <div class="map-status" id="mapStatus" role="status" aria-live="polite"></div>
-      <div class="map-sync-note" id="mapSyncNote">Showing the same persisted incident records used by the Home feed.</div>
+      <div class="map-legend">
+        <span class="map-legend-item"><span class="map-legend-dot map-legend-dot--exact"></span> Exact</span>
+        <span class="map-legend-item"><span class="map-legend-dot map-legend-dot--approx"></span> Approximate</span>
+        <span class="map-legend-sep">·</span>
+        <span class="map-legend-item"><span class="map-legend-dot" style="background:#e05252;"></span> Violent</span>
+        <span class="map-legend-item"><span class="map-legend-dot" style="background:#d9953a;"></span> Property</span>
+        <span class="map-legend-item"><span class="map-legend-dot" style="background:#4d8fdb;"></span> Other</span>
+      </div>
       <div id="map" role="region" aria-label="Incident map"></div>
     </section>
 

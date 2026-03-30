@@ -3388,26 +3388,39 @@ async def get_incidents_map(
         q=q,
         sort_by=sort_mode,
     )
-    markers = [
-        {
+    albany_bounds = (42.4, 42.85, -74.1, -73.55)
+    markers = []
+    for it in items:
+        lat = it.get("latitude")
+        lon = it.get("longitude")
+        cq = str(it.get("coordinate_quality") or "missing").lower()
+        if cq == "missing" or lat is None or lon is None:
+            continue
+        try:
+            lat_f = float(lat)
+            lon_f = float(lon)
+        except (TypeError, ValueError):
+            continue
+        if not (albany_bounds[0] <= lat_f <= albany_bounds[1] and albany_bounds[2] <= lon_f <= albany_bounds[3]):
+            continue
+        markers.append({
             "id": it.get("id"),
             "title": it.get("short_title") or it.get("title"),
             "incident_type": it.get("incident_type"),
             "severity": it.get("severity"),
             "status": it.get("status"),
             "municipality": it.get("municipality"),
-            "latitude": it.get("latitude"),
-            "longitude": it.get("longitude"),
+            "latitude": lat_f,
+            "longitude": lon_f,
             "occurred_at": it.get("occurred_at") or it.get("published_at"),
+            "human_time": it.get("human_time") or "",
             "source_type": it.get("source_type"),
             "source_name": it.get("source_name"),
             "verification_level": it.get("verification_level"),
-            "coordinate_quality": it.get("coordinate_quality", "missing"),
+            "coordinate_quality": cq,
             "confidence_score": it.get("confidence_score"),
             "source_url": it.get("source_url"),
-        }
-        for it in items
-    ]
+        })
     return {
         "status": "ok",
         "source": incident_store_backend(),

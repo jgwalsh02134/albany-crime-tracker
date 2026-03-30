@@ -991,52 +991,77 @@
       ? data
       : data.filter(function (d) { return mapCategory(d) === activeMapFilter; });
 
+    var exactCount = 0;
+    var approxCount = 0;
+
     filtered.forEach(function (item) {
       var lat = parseFloat(item.latitude);
       var lng = parseFloat(item.longitude);
-      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+      if (isNaN(lat) || isNaN(lng) || lat === 0 || lng === 0) return;
+      if (lat < 42.3 || lat > 42.9 || lng < -74.2 || lng > -73.4) return;
+
+      var cq = String(item.coordinate_quality || "approximate").toLowerCase();
+      if (cq === "missing") return;
+      var isExact = cq === "exact";
+      if (isExact) exactCount++; else approxCount++;
 
       var type = mapCategory(item);
       var color = type === "violent" ? "#e05252" :
                   type === "property" ? "#d9953a" : "#4d8fdb";
 
-      var inc = item.incident || {};
-      var vf = item.verification_level || inc.verification_level || "";
-      var cq = String(item.coordinate_quality || "missing").toLowerCase();
-      var radius = cq === "exact" ? 9 : 11;
-      var fillOp = cq === "exact" ? 0.9 : 0.45;
-
-      var circle = L.circleMarker([lat, lng], {
-        radius: radius,
-        fillColor: color,
-        color: "#fff",
-        dashArray: cq === "approximate" ? "4 4" : null,
-        weight: cq === "exact" ? 2.2 : 2,
-        opacity: 1,
-        fillOpacity: fillOp
-      });
+      var marker;
+      if (isExact) {
+        marker = L.circleMarker([lat, lng], {
+          radius: 7,
+          fillColor: color,
+          color: "#fff",
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.9
+        });
+      } else {
+        marker = L.circleMarker([lat, lng], {
+          radius: 10,
+          fillColor: color,
+          color: color,
+          weight: 2,
+          opacity: 0.7,
+          fillOpacity: 0.2,
+          dashArray: "4 3"
+        });
+      }
 
       var ta = item.human_time || (item.occurred_at ? timeAgo(new Date(item.occurred_at)) : "");
-      var popup = '<div style="font-family:Satoshi,system-ui,sans-serif;max-width:260px;">';
-      popup += '<div style="font-size:13px;font-weight:700;line-height:1.35;margin-bottom:6px;">' + esc(item.title || "Incident") + '</div>';
-      popup += '<div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">' + esc(item.municipality || "Albany County") + (ta ? " · " + esc(ta) : "") + '</div>';
-      popup += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">';
-      popup += '<span style="background:#1e2535;color:#f1f5f9;font-size:10px;padding:2px 7px;border-radius:999px;">' + esc(_sourceTypeLabel(item.source_type || "unknown") + " · " + (item.source_name || "Unknown source")) + '</span>';
-      popup += '<span style="background:#1e2535;color:#f1f5f9;font-size:10px;padding:2px 7px;border-radius:999px;">' + esc(item.verification_level || "unknown") + '</span>';
-      popup += '<span style="background:#1e2535;color:#f1f5f9;font-size:10px;padding:2px 7px;border-radius:999px;' + (cq === "approximate" ? 'border:1px dashed #94a3b8;' : '') + '">' + esc(cq) + '</span>';
-      popup += '</div>';
-      if (item.source_url) {
-        popup += '<div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;">';
-        popup += '<a href="' + escAttr(item.source_url) + '" target="_blank" rel="noopener" style="font-size:11px;color:#4d8fdb;text-decoration:none;font-weight:600;">Open source</a>';
-        popup += '<a href="#feed-card-' + escAttr(item.id || "") + '" onclick="window.ACTFocusIncident && window.ACTFocusIncident(\'' + escAttr(item.id || "") + '\');return false;" style="font-size:11px;color:#4d8fdb;text-decoration:none;font-weight:600;">Open in Home</a>';
-        popup += '</div>';
-      }
-      popup += '</div>';
+      var verLabel = String(item.verification_level || "unknown").replace(/_/g, " ");
+      var coordLabel = isExact ? "Exact location" : "Approximate area";
 
-      circle.bindPopup(popup, { closeButton: true, autoPan: true, autoPanPaddingTopLeft: [10, 60], maxWidth: 260 });
-      markerGroup.addLayer(circle);
+      var p = '<div class="map-popup">';
+      p += '<div class="map-popup-title">' + esc(item.title || "Incident") + '</div>';
+      p += '<div class="map-popup-meta">' + esc(item.municipality || "Albany County") + (ta ? " · " + esc(ta) : "") + '</div>';
+      p += '<div class="map-popup-pills">';
+      p += '<span class="map-popup-pill">' + esc(_sourceTypeLabel(item.source_type || "unknown")) + '</span>';
+      if (item.source_name) p += '<span class="map-popup-pill map-popup-pill--src">' + esc(item.source_name) + '</span>';
+      p += '<span class="map-popup-pill">' + esc(verLabel) + '</span>';
+      p += '<span class="map-popup-pill' + (isExact ? '' : ' map-popup-pill--approx') + '">' + esc(coordLabel) + '</span>';
+      p += '</div>';
+      p += '<div class="map-popup-actions">';
+      if (item.source_url) p += '<a href="' + escAttr(item.source_url) + '" target="_blank" rel="noopener">Source</a>';
+      p += '<a href="#" onclick="window.ACTFocusIncident && window.ACTFocusIncident(\'' + escAttr(item.id || "") + '\');return false;">View in feed</a>';
+      p += '</div>';
+      p += '</div>';
+
+      marker.bindPopup(p, { closeButton: true, autoPan: true, autoPanPaddingTopLeft: [10, 60], maxWidth: 280 });
+      markerGroup.addLayer(marker);
     });
-    setMapStatus(filtered.length ? (filtered.length + " markers") : "No incidents match the current map filters.");
+
+    var statusParts = [];
+    if (exactCount) statusParts.push(exactCount + " exact");
+    if (approxCount) statusParts.push(approxCount + " approximate");
+    if (!statusParts.length) {
+      setMapStatus("No map-ready incidents in this view.");
+    } else {
+      setMapStatus(statusParts.join(", ") + " — " + (exactCount + approxCount) + " total");
+    }
   }
 
   function focusIncidentCard(id) {
