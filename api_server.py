@@ -4131,6 +4131,69 @@ async def get_scanner_calls():
     return {"status": "ok", "source": "unavailable", "calls": []}
 
 
+@app.post("/api/scanner/summarize")
+async def scanner_summarize(request: Request):
+    openai_key = settings.openai_api_key
+    if not openai_key:
+        return {"status": "error", "message": "OPENAI_API_KEY not configured"}
+    try:
+        body = await request.json()
+    except Exception:
+        return {"status": "error", "message": "invalid request body"}
+    calls = body.get("calls") if isinstance(body, dict) else None
+    if not isinstance(calls, list) or not calls:
+        return {"status": "error", "message": "no calls provided"}
+
+    batch = calls[:5]
+    call_descriptions = []
+    for i, c in enumerate(batch):
+        tag = str(c.get("talkgroup_tag") or c.get("talkgroup_description") or "unknown")
+        dur = c.get("duration") or c.get("len") or 0
+        tg = str(c.get("talkgroup_num") or c.get("talkgroup") or "?")
+        freq = c.get("freq") or 0
+        freq_mhz = f"{freq / 1e6:.4f}" if freq else "?"
+        call_descriptions.append(
+            f"Call {i+1}: talkgroup={tg}, tag={tag}, duration={dur}s, freq={freq_mhz} MHz"
+        )
+
+    prompt_text = (
+        "You are a public safety radio analyst for Albany County, NY. "
+        "For each scanner call below, produce a structured summary.\n\n"
+        "Calls:\n" + "\n".join(call_descriptions) + "\n\n"
+        "For each call return JSON: {\"summaries\": [{\"index\": 0, \"agency\": \"...\", "
+        "\"discipline\": \"police|fire|ems\", \"call_type\": \"...\", "
+        "\"location_hint\": \"...\", \"keywords\": [\"...\"], "
+        "\"summary\": \"one concise sentence\"}]}\n"
+        "Return ONLY valid JSON."
+    )
+
+    try:
+        resp = await http_client.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {openai_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt_text}],
+                "response_format": {"type": "json_object"},
+                "temperature": 0.15,
+                "max_tokens": 600,
+            },
+            timeout=15.0,
+        )
+        if resp.status_code != 200:
+            return {"status": "error", "message": f"openai_http_{resp.status_code}"}
+        result = resp.json()
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+        parsed = _json.loads(content)
+        return {"status": "ok", "summaries": parsed.get("summaries", [])}
+    except Exception as exc:
+        logger.warning("scanner_summarize_error: %s", exc)
+        return {"status": "error", "message": str(exc)}
+
+
 @app.get("/api/scanner/talkgroups")
 async def get_scanner_talkgroups():
     """Enriched P25 talkgroup metadata merged with le_directory.json agencies."""

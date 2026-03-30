@@ -2357,16 +2357,60 @@
       .join("|");
   }
 
+  var _scannerAiCache = {};
+  var _scannerAiPending = false;
+
   function processAndRenderScanner(calls) {
     lastScannerCallsRef = calls.slice();
     var intelFpBefore = getScannerIntelFingerprint();
     extractScannerIntel(calls);
     var intelFpAfter = getScannerIntelFingerprint();
     renderScannerCalls(calls);
-    // Live feed: only re-render when scanner intel actually changed (avoids 45s full list flicker)
     if (allIncidentData.length > 0 && intelFpBefore !== intelFpAfter) {
       renderLiveFeed(lastLiveActiveItems, lastLiveRecentItems);
     }
+    requestScannerAiSummaries(calls);
+  }
+
+  function requestScannerAiSummaries(calls) {
+    if (_scannerAiPending) return;
+    var candidates = [];
+    for (var i = 0; i < Math.min(calls.length, 5); i++) {
+      var c = calls[i];
+      var id = c.id || c._id || String(c.talkgroup_num || "") + "_" + String(c.time || i);
+      if (_scannerAiCache[id]) continue;
+      var dept = resolveScannerDept(c);
+      if (dept.priority !== "high") continue;
+      var dur = c.duration || c.len || 0;
+      if (dur < 6) continue;
+      candidates.push(c);
+    }
+    if (!candidates.length) return;
+    _scannerAiPending = true;
+    fetch(API + "/api/scanner/summarize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ calls: candidates.slice(0, 3) })
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        _scannerAiPending = false;
+        if (!data || data.status !== "ok" || !data.summaries) return;
+        data.summaries.forEach(function (s, idx) {
+          if (idx < candidates.length) {
+            var c = candidates[idx];
+            var id = c.id || c._id || String(c.talkgroup_num || "") + "_" + String(c.time || idx);
+            _scannerAiCache[id] = s;
+          }
+        });
+        if (lastScannerCallsRef.length) renderScannerCalls(lastScannerCallsRef);
+      })
+      .catch(function () { _scannerAiPending = false; });
+  }
+
+  function getAiSummaryForCall(call) {
+    var id = call.id || call._id || String(call.talkgroup_num || "") + "_" + String(call.time || "");
+    return _scannerAiCache[id] || null;
   }
 
   // Keywords that make ANY scanner call worthy of the Live feed regardless of TG priority
@@ -2458,33 +2502,17 @@
       return true;
     });
 
-    var html = "";
-
-    html += '<div class="scanner-status-ok">';
-    html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-5"/></svg>';
-    html += '<span class="scanner-status-text">Receiving radio traffic</span>';
-    html += '<span class="scanner-status-meta">' + source.length + " calls · " + filtered.length + " shown</span>";
-    html += '</div>';
-    html += '<div class="feed-live-stale-note" role="note">Scanner lane shows early signal summaries. These are not confirmed official incident records.</div>';
-
-    var liveInd = document.getElementById("scannerLiveIndicator");
-    if (liveInd) {
-      liveInd.style.display = filtered.length ? "inline" : "none";
-      liveInd.textContent = "● Receiving";
-    }
-
     if (filtered.length === 0) {
-      html += '<div class="scanner-no-traffic">';
-      html += '<span class="material-icons" style="font-size:28px;opacity:0.25;display:block;margin-bottom:6px;">filter_alt_off</span>';
-      html += '<span>No transmissions match your filters</span>';
-      html += '</div>';
-      container.innerHTML = html;
-      var tsEl2 = document.getElementById("scannerTimestamp");
-      if (tsEl2) tsEl2.textContent = "Updated " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+      container.innerHTML =
+        '<div class="empty-state" style="padding:24px 16px;">' +
+        '<span class="material-icons" style="font-size:24px;opacity:0.3;display:block;margin-bottom:4px;">filter_alt_off</span>' +
+        'No transmissions match your filters</div>';
+      updateMainPlayer([]);
       return;
     }
 
-    filtered.slice(0, 25).forEach(function (call) {
+    var html = "";
+    filtered.slice(0, 30).forEach(function (call) {
       var dept = resolveScannerDept(call);
       var freqHz = call.freq || 0;
       var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
@@ -2494,68 +2522,48 @@
       var audioUrl = call.url || call.audio_url || "";
 
       var cat = dept.cat;
-      var catLabel = cat === "police" ? "Police" : cat === "fire" ? "Fire" : cat === "ems" ? "EMS" : "";
-      var catClass = cat !== "other" ? " scanner-cat-" + cat : "";
-      var confidenceLabel = (dept.priority === "high" && len >= 8) ? "medium" : "low";
-      var summaryTitle = dept.name + (dept.location ? " — " + dept.location : "");
-      var summaryText = scannerSummaryText(call, dept, catLabel);
+      var catLabel = cat === "police" ? "Police" : cat === "fire" ? "Fire" : cat === "ems" ? "EMS" : "Scanner";
+      var confLabel = (dept.priority === "high" && len >= 8) ? "Medium" : "Low";
+      var aiSum = getAiSummaryForCall(call);
+      var summary = aiSum && aiSum.summary ? aiSum.summary : scannerSummaryText(call, dept, catLabel);
+      if (aiSum) confLabel = "AI";
 
-      var isHigh = dept.priority === "high";
-      var dotCls = "scanner-priority-dot scanner-dot-" + cat;
-      if (isHigh) dotCls += " scanner-priority-dot--high";
-      var priorityDot = '<span class="' + dotCls + '" title="High-priority talkgroup"></span>';
+      html += '<div class="sc-card sc-card--' + esc(cat) + '">';
+      html += '<div class="sc-card-top">';
+      html += '<span class="sc-card-agency">' + esc(dept.name) + '</span>';
+      html += '<span class="sc-card-time">' + esc(ta || "\u2014") + '</span>';
+      html += '</div>';
+      html += '<div class="sc-card-summary">' + esc(summary) + '</div>';
+      html += '<div class="sc-card-pills">';
+      html += '<span class="sc-pill sc-pill--' + esc(cat) + '">' + esc(catLabel) + '</span>';
+      if (dept.location) html += '<span class="sc-pill">' + esc(dept.location) + '</span>';
+      html += '<span class="sc-pill sc-pill--conf">' + esc(confLabel) + ' confidence</span>';
+      if (len > 0) html += '<span class="sc-pill">' + len.toFixed(0) + 's</span>';
+      html += '</div>';
 
       var freqPart = freqMHz ? freqMHz + " MHz" : "";
-      var durPart = len > 0 ? len.toFixed(0) + "s" : "";
-      var detailLine = [freqPart, durPart, ta ? ta + " ago" : ""].filter(Boolean).join(" · ");
-
-      var agencyId = dept.agencyId || "";
-      var clickableCls = " scanner-call-item--clickable";
-
-      html += '<div class="scanner-call-item' + catClass + clickableCls + '" tabindex="0" role="button"';
-      if (agencyId) html += ' data-agency-id="' + escAttr(agencyId) + '"';
-      html += ' title="Open agency in Directory">';
-
-      html += '<div class="scanner-call-top">';
-      html += '<span class="scanner-call-tg">' + priorityDot;
-      html += '<span class="scanner-call-dept">' + esc(summaryTitle) + '</span>';
-      html += '</span>';
-      html += '<span class="scanner-call-time">' + esc(ta || "\u2014") + '</span>';
-      html += '</div>';
-
-      html += '<div class="scanner-call-summary">' + esc(summaryText) + '</div>';
-      html += '<div class="scanner-call-bottom">';
-      if (catLabel) {
-        html += '<span class="scanner-call-cat scanner-cat-tag-' + esc(cat) + '">' + esc(catLabel) + '</span>';
+      var tgPart = "TG " + esc(String(call.talkgroup_num || call.talkgroup || "\u2014"));
+      html += '<details class="sc-card-expand">';
+      html += '<summary>Details &amp; audio</summary>';
+      html += '<div class="sc-card-raw">' + [tgPart, freqPart].filter(Boolean).join(" · ") + '</div>';
+      if (call.talkgroup_tag) html += '<div class="sc-card-raw">' + esc(call.talkgroup_tag) + '</div>';
+      if (call.talkgroup_description && call.talkgroup_description !== call.talkgroup_tag) {
+        html += '<div class="sc-card-raw">' + esc(call.talkgroup_description) + '</div>';
       }
-      html += '<span class="scanner-call-cat">confidence ' + esc(confidenceLabel) + '</span>';
-      html += '</div>';
-      html += '<details class="scanner-call-details">';
-      html += '<summary>More details</summary>';
-      if (detailLine) {
-        html += '<div class="scanner-call-raw">' + esc(detailLine) + '</div>';
-      }
-      html += '<div class="scanner-call-raw">Talkgroup ' + esc(String(call.talkgroup_num || call.talkgroup || "—")) + '</div>';
       if (audioUrl) {
-        html += '<div class="scanner-call-bottom">';
-        html += '<button type="button" class="scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" title="Play raw transmission">';
-        html += '<span class="material-icons" style="font-size:14px;">play_arrow</span>';
+        html += '<div class="sc-card-audio-row">';
+        html += '<button type="button" class="sc-card-play scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" title="Play">';
+        html += '<span class="material-icons">play_arrow</span>';
         html += '</button>';
-        html += '<span class="scanner-call-raw">Play raw audio</span>';
+        html += '<span class="sc-card-raw">Play raw audio</span>';
         html += '</div>';
       }
       html += '</details>';
-
-      if (agencyId) {
-        html += '<div class="scanner-call-item-hint"><span class="material-icons">open_in_new</span> Directory</div>';
-      }
-
       html += '</div>';
     });
 
     container.innerHTML = html;
     bindScannerAudio(container);
-    bindScannerCallCards(container, recentCalls);
     updateMainPlayer(filtered);
 
     var tsEl = document.getElementById("scannerTimestamp");
@@ -2569,15 +2577,30 @@
       dept && dept.name,
       dept && dept.location
     ].join(" ").toLowerCase();
-    var callType = "radio update";
-    if (raw.indexOf("fire") >= 0 || raw.indexOf("alarm") >= 0) callType = "fire response";
-    else if (raw.indexOf("ems") >= 0 || raw.indexOf("medical") >= 0 || raw.indexOf("ambulance") >= 0) callType = "medical response";
-    else if (raw.indexOf("traffic") >= 0 || raw.indexOf("crash") >= 0) callType = "traffic incident";
-    else if (raw.indexOf("pursuit") >= 0) callType = "police pursuit";
-    else if (raw.indexOf("shots") >= 0 || raw.indexOf("shoot") >= 0) callType = "shots-fired report";
-    else if (raw.indexOf("assault") >= 0) callType = "assault report";
-    else if (raw.indexOf("burglary") >= 0) callType = "burglary report";
-    return (catLabel || "Scanner") + " traffic for " + callType + (dept && dept.location ? " in " + dept.location : "") + ".";
+
+    var type = "radio activity";
+    if (/\b(shots?\s*fired|shoot|gunshot)\b/.test(raw)) type = "shots-fired report";
+    else if (/\b(pursuit|chase|fleeing)\b/.test(raw)) type = "vehicle pursuit";
+    else if (/\b(assault|fight|domestic)\b/.test(raw)) type = "assault or disturbance";
+    else if (/\b(robbery|burglary|larceny|theft)\b/.test(raw)) type = "property crime report";
+    else if (/\b(missing|amber|silver)\b/.test(raw)) type = "missing person alert";
+    else if (/\b(crash|mva|accident|collision)\b/.test(raw)) type = "motor vehicle crash";
+    else if (/\b(structure\s*fire|working\s*fire|blaze|alarm)\b/.test(raw)) type = "fire response";
+    else if (/\b(brush|wildland)\b/.test(raw)) type = "brush fire response";
+    else if (/\b(medical|cardiac|overdose|ems|ambulance|unresponsive)\b/.test(raw)) type = "medical emergency";
+    else if (/\b(traffic\s*stop|dwi|dui)\b/.test(raw)) type = "traffic enforcement";
+    else if (/\b(bomb|explosive|hazmat)\b/.test(raw)) type = "hazardous materials response";
+    else if (/\b(swat|standoff|barricade|hostage)\b/.test(raw)) type = "tactical situation";
+    else if (/\b(dispatch|law\s*dispatch)\b/.test(raw)) type = "dispatch communication";
+    else if (/\b(tac|tactical|ops)\b/.test(raw)) type = "tactical channel activity";
+    else if (/\b(fire\s*dispatch|fd)\b/.test(raw)) type = "fire dispatch";
+    else if (/\b(ems\s*dispatch)\b/.test(raw)) type = "EMS dispatch";
+    else if (dept.cat === "fire") type = "fire service activity";
+    else if (dept.cat === "ems") type = "EMS activity";
+    else if (dept.cat === "police") type = "law enforcement activity";
+
+    var where = dept.location ? " in " + dept.location : "";
+    return type.charAt(0).toUpperCase() + type.slice(1) + where + ".";
   }
 
   function bindScannerCallCards(container) {
@@ -2601,13 +2624,16 @@
 
   // ── Main (top) scanner player — uses clean OpenMHz MP3, no commercials ──
   function updateMainPlayer(calls) {
-    var btn    = document.getElementById("mainPlayerBtn");
-    var deptEl = document.getElementById("mainPlayerDept");
+    var btn = document.getElementById("mainPlayerBtn");
+    var agencyEl = document.getElementById("mainPlayerDept");
+    var summaryEl = document.getElementById("mainPlayerNowAgency");
     var metaEl = document.getElementById("mainPlayerMeta");
-    var badge  = document.getElementById("mainPlayerBadge");
+    var badge = document.getElementById("mainPlayerBadge");
     if (!btn) return;
+
     if (!calls || calls.length === 0) {
-      if (deptEl) deptEl.textContent = "No transmissions in this filter";
+      if (agencyEl) agencyEl.textContent = "No transmissions in this filter";
+      if (summaryEl) summaryEl.textContent = "";
       if (metaEl) metaEl.textContent = "";
       btn.disabled = true;
       btn.removeAttribute("data-audio");
@@ -2631,22 +2657,18 @@
     var startTime = call.time ? new Date(call.time) : (call.start_time ? new Date(call.start_time) : null);
     var ta = startTime ? timeAgo(startTime) : "";
     var audioUrl = call.url || call.audio_url || "";
-    var freqHz = call.freq || 0;
-    var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
+    var catLabel = dept.cat === "police" ? "Police" : dept.cat === "fire" ? "Fire" : dept.cat === "ems" ? "EMS" : "Scanner";
+    var summary = scannerSummaryText(call, dept, catLabel);
 
-    var catLabels = { police: "Police", fire: "Fire", ems: "EMS" };
-    var line = dept.name + " \u2014 " + dept.location;
-
-    if (deptEl) deptEl.textContent = line;
-    var nowAg = document.getElementById("mainPlayerNowAgency");
-    if (nowAg) nowAg.textContent = line;
+    if (agencyEl) agencyEl.textContent = dept.name;
+    if (summaryEl) summaryEl.textContent = summary;
     if (metaEl) {
       var parts = [];
-      if (freqMHz) parts.push(freqMHz + " MHz");
+      if (catLabel) parts.push(catLabel);
+      if (dept.location) parts.push(dept.location);
       if (len > 0) parts.push(len.toFixed(0) + "s");
-      if (catLabels[dept.cat]) parts.push(catLabels[dept.cat]);
-      if (ta) parts.push(ta + " ago");
-      metaEl.textContent = parts.join(" \u00b7 ");
+      if (ta) parts.push(ta);
+      metaEl.textContent = parts.join(" · ");
     }
     if (badge) badge.style.opacity = "1";
 
@@ -2657,7 +2679,7 @@
   }
 
   function playMainAudio(btn, url, len, callIndex) {
-    var bar = document.getElementById("mainPlayerBar");
+    var bar = document.getElementById("mainPlayerBar") || document.querySelector(".sc-player-bar");
 
     if (btn.classList.contains("playing")) {
       btn.classList.remove("playing");
@@ -2728,21 +2750,20 @@
           var nc = ref[j];
           var nlen = nc.duration != null ? parseFloat(nc.duration) : (nc.len != null ? parseFloat(nc.len) : 0);
           var nd = resolveScannerDept(nc);
-          var deptEl = document.getElementById("mainPlayerDept");
-          var nowA = document.getElementById("mainPlayerNowAgency");
-          var meta = document.getElementById("mainPlayerMeta");
-          var line2 = nd.name + " \u2014 " + nd.location;
-          if (deptEl) deptEl.textContent = line2;
-          if (nowA) nowA.textContent = line2;
-          if (meta) {
-            var fh = nc.freq || 0;
-            var fm = fh ? (fh / 1e6).toFixed(4) : "";
+          var nCatLabel = nd.cat === "police" ? "Police" : nd.cat === "fire" ? "Fire" : nd.cat === "ems" ? "EMS" : "Scanner";
+          var nSummary = scannerSummaryText(nc, nd, nCatLabel);
+          var agEl = document.getElementById("mainPlayerDept");
+          var sumEl = document.getElementById("mainPlayerNowAgency");
+          var metaEl2 = document.getElementById("mainPlayerMeta");
+          if (agEl) agEl.textContent = nd.name;
+          if (sumEl) sumEl.textContent = nSummary;
+          if (metaEl2) {
             var st = nc.time ? new Date(nc.time) : null;
-            var parts2 = [];
-            if (fm) parts2.push(fm + " MHz");
-            if (nlen > 0) parts2.push(nlen.toFixed(0) + "s");
-            if (st) parts2.push(timeAgo(st) + " ago");
-            meta.textContent = parts2.join(" \u00b7 ");
+            var p2 = [nCatLabel];
+            if (nd.location) p2.push(nd.location);
+            if (nlen > 0) p2.push(nlen.toFixed(0) + "s");
+            if (st) p2.push(timeAgo(st));
+            metaEl2.textContent = p2.join(" · ");
           }
           setTimeout(function () {
             playMainAudio(btn, nurl, nlen, j);

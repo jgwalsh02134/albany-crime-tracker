@@ -174,97 +174,57 @@
     <!-- === SCANNER VIEW === -->
     <section class="view" id="viewScanner">
       <div class="view-scroll">
-        <div class="scanner-header-card">
-          <div class="scanner-header-top">
-            <span class="material-icons" style="font-size:18px;color:var(--accent);">sensors</span>
-            <span class="scanner-title">Radio Traffic</span>
-            <span class="live-badge">LIVE</span>
-            <span class="scanner-ts" id="scannerTimestamp"></span>
-          </div>
-          <p class="scanner-subtitle">Albany County Police, Fire &amp; EMS</p>
-          <p class="scanner-warning" id="scannerWarning">
-            Scanner items are early signals and are not confirmed official incident records.
-          </p>
+
+        <div class="sc-filters" id="scannerFilterChips" role="group" aria-label="Filter by service">
+          <button type="button" class="sc-filter active" data-scanner-filter="all">All</button>
+          <button type="button" class="sc-filter sc-filter--police" data-scanner-filter="police">Police</button>
+          <button type="button" class="sc-filter sc-filter--fire" data-scanner-filter="fire">Fire</button>
+          <button type="button" class="sc-filter sc-filter--ems" data-scanner-filter="ems">EMS</button>
         </div>
 
-        <div class="scanner-toolbar">
-          <div class="scanner-search-row">
-            <span class="material-icons scanner-search-icon" aria-hidden="true">search</span>
-            <input type="search" id="scannerSearchInput" class="scanner-search-input" placeholder="Search department, talkgroup, location…" autocomplete="off" aria-label="Search scanner traffic">
-          </div>
-          <div class="scanner-filter-chips" id="scannerFilterChips" role="group" aria-label="Filter by service">
-            <button type="button" class="scanner-chip active" data-scanner-filter="all">All</button>
-            <button type="button" class="scanner-chip scanner-chip-police" data-scanner-filter="police">Police</button>
-            <button type="button" class="scanner-chip scanner-chip-fire" data-scanner-filter="fire">Fire</button>
-            <button type="button" class="scanner-chip scanner-chip-ems" data-scanner-filter="ems">EMS</button>
-          </div>
-        </div>
-
-        <div class="scanner-player-card scanner-player-card--large" id="mainPlayerCard">
-          <div class="scanner-player-header">
-            <span class="material-icons" style="font-size:18px;">radio</span>
-            <div class="scanner-player-title-group">
-              <span class="scanner-player-title">Latest Transmission</span>
-              <span class="scanner-player-sub" id="mainPlayerSub">Albany County P25 · Police · Fire · EMS</span>
+        <div class="sc-player" id="mainPlayerCard">
+          <div class="sc-player-top">
+            <div class="sc-player-info">
+              <span class="sc-player-agency" id="mainPlayerDept">Waiting for transmissions…</span>
+              <span class="sc-player-summary" id="mainPlayerNowAgency"></span>
+              <span class="sc-player-meta" id="mainPlayerMeta"></span>
             </div>
-            <span class="scanner-live-badge" id="mainPlayerBadge" style="opacity:0.4;">
-              <span class="live-pulse"></span>
-              LIVE
+            <button class="sc-player-play" id="mainPlayerBtn" disabled aria-label="Play latest call">
+              <span class="material-icons">play_arrow</span>
+            </button>
+          </div>
+          <div class="sc-player-bar-wrap" id="mainPlayerProgressWrap">
+            <div class="sc-player-bar" id="mainPlayerBar"></div>
+          </div>
+          <div class="sc-player-controls">
+            <button type="button" class="sc-player-icon-btn" id="mainPlayerMute" aria-label="Mute" title="Mute">
+              <span class="material-icons" id="mainPlayerMuteIcon">volume_up</span>
+            </button>
+            <input type="range" id="mainPlayerVolume" class="sc-player-vol" min="0" max="100" value="100" aria-label="Volume">
+            <label class="sc-player-auto-label">
+              <input type="checkbox" id="mainPlayerAutoplay" class="sc-player-auto-cb">
+              <span>Auto</span>
+            </label>
+            <span class="sc-player-live" id="mainPlayerBadge" style="opacity:0.4;">
+              <span class="live-pulse"></span> Live
             </span>
           </div>
-          <div class="scanner-player-body" id="mainPlayerBody">
-            <div class="main-player-now-row">
-              <span class="main-player-now-label" id="mainPlayerNowLabel">Now playing</span>
-              <span class="main-player-now-agency" id="mainPlayerNowAgency">—</span>
-            </div>
-            <div class="main-player-track">
-              <div class="main-player-info">
-                <span class="main-player-dept" id="mainPlayerDept">Waiting for transmissions…</span>
-                <span class="main-player-meta" id="mainPlayerMeta"></span>
-              </div>
-              <button class="main-player-btn" id="mainPlayerBtn" disabled aria-label="Play latest call">
-                <span class="material-icons">play_arrow</span>
-              </button>
-            </div>
-            <div class="main-player-progress-wrap" id="mainPlayerProgressWrap">
-              <div class="main-player-bar" id="mainPlayerBar"></div>
-            </div>
-            <div class="main-player-controls-row">
-              <button type="button" class="main-player-icon-btn" id="mainPlayerMute" aria-label="Mute" title="Mute">
-                <span class="material-icons" id="mainPlayerMuteIcon">volume_up</span>
-              </button>
-              <label class="main-player-vol-label" for="mainPlayerVolume"><span class="material-icons">tune</span></label>
-              <input type="range" id="mainPlayerVolume" class="main-player-volume" min="0" max="100" value="100" aria-label="Volume">
-              <label class="main-player-autoplay-label">
-                <input type="checkbox" id="mainPlayerAutoplay" class="main-player-autoplay-cb">
-                <span>Auto-next</span>
-              </label>
-            </div>
-          </div>
-          <div class="scanner-player-footer">
-            <span class="material-icons" style="font-size:11px;opacity:0.5;">cell_tower</span>
-            OpenMHz albanycony · 800 MHz P25 Phase II · No Commercials
-          </div>
         </div>
 
-        <div class="section-label">
-          <span class="material-icons" style="font-size:12px;">receipt_long</span>
-          <span>Recent Transmissions</span>
-          <span id="scannerLiveIndicator" class="scanner-tg-live" style="display:none;">● Live</span>
-        </div>
-        <div class="scanner-calls" id="scannerCallsList">
-          <div class="empty-state">Loading radio traffic...</div>
+        <div class="sc-search-row">
+          <span class="material-icons" style="font-size:16px;color:var(--text-3);" aria-hidden="true">search</span>
+          <input type="search" id="scannerSearchInput" class="sc-search-input" placeholder="Search agency, talkgroup…" autocomplete="off" aria-label="Search scanner traffic">
         </div>
 
-        <div class="scanner-links">
-          <a href="https://openmhz.com/system/albanycony" target="_blank" rel="noopener noreferrer" class="link-btn">
-            <span class="material-icons" style="font-size:14px;">open_in_new</span>
-            OpenMHz Full Scanner
-          </a>
-          <a href="https://www.broadcastify.com/listen/feed/3626" target="_blank" rel="noopener noreferrer" class="link-btn">
-            <span class="material-icons" style="font-size:14px;">open_in_new</span>
-            Broadcastify Feed 3626
-          </a>
+        <div class="sc-note">Scanner traffic is an early signal only, not a confirmed record. <span id="scannerTimestamp"></span></div>
+
+        <div class="sc-list" id="scannerCallsList">
+          <div class="empty-state">Loading radio traffic…</div>
+        </div>
+
+        <div class="sc-links">
+          <a href="https://openmhz.com/system/albanycony" target="_blank" rel="noopener noreferrer" class="link-btn">OpenMHz full scanner</a>
+          <a href="https://www.broadcastify.com/listen/feed/3626" target="_blank" rel="noopener noreferrer" class="link-btn">Broadcastify feed 3626</a>
         </div>
       </div>
     </section>
