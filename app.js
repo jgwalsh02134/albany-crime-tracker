@@ -22,6 +22,7 @@
       }
     }
   }
+  var apiClient = window.ACTApiClient ? window.ACTApiClient.createApiClient(API) : null;
   var REFRESH_MS = 45000;
   var SCANNER_REFRESH_MS = 20000;
 
@@ -131,8 +132,7 @@
   }
 
   function fetchScannerTalkgroups() {
-    fetch(API + "/api/scanner/talkgroups")
-      .then(ok)
+    (apiClient ? apiClient.getScannerTalkgroups() : fetch(API + "/api/scanner/talkgroups").then(ok))
       .then(function (r) {
         if (r && r.status === "ok" && r.talkgroups) mergeScannerTalkgroupsFromApi(r);
       })
@@ -599,7 +599,11 @@
     } catch (err) {
       console.error("Map init error:", err);
       // Degrade gracefully — show a message in the map container
-      if (el) el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:13px;">Map unavailable</div>';
+      if (window.ACTMap && window.ACTMap.mountMapUnavailableMessage) {
+        window.ACTMap.mountMapUnavailableMessage(el, "Map unavailable right now");
+      } else if (el) {
+        el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:13px;">Map unavailable</div>';
+      }
     }
   }
 
@@ -822,11 +826,10 @@
     var tid = setTimeout(function () {
       ctrl.abort();
     }, CRIMES_FETCH_MS);
-    fetch(API + "/api/crimes", { signal: ctrl.signal })
+    (apiClient ? apiClient.getIncidents() : fetch(API + "/api/crimes", { signal: ctrl.signal }).then(ok))
       .finally(function () {
         clearTimeout(tid);
       })
-      .then(ok)
       .then(function (r) {
         if (myGen !== _crimesFetchGeneration) return;
         if (!r || r.status !== "ok") return;
@@ -892,14 +895,20 @@
           err.name !== "AbortError" &&
           (err.message === "Failed to fetch" || /network|load failed|fetch/i.test(String(err.message || "")));
         if (netDown || failedFetch) {
-          var msg =
-            '<div class="empty-state">Could not reach the API (network error). Check your connection and try again.</div>';
+          var msgText = "Could not reach the API (network error). Check your connection and try again.";
           var liveL = getLiveFeedListEl();
           var confL = document.getElementById("incidentListConfirmed");
           var ctxL = document.getElementById("incidentListContext");
-          if (liveL && !liveL.querySelector(".feed-item")) liveL.innerHTML = msg;
-          if (confL && !confL.querySelector(".feed-item")) confL.innerHTML = msg;
-          if (ctxL && !ctxL.querySelector(".feed-item")) ctxL.innerHTML = msg;
+          if (window.ACTFeed && window.ACTFeed.renderErrorState) {
+            if (liveL && !liveL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(liveL, msgText);
+            if (confL && !confL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(confL, msgText);
+            if (ctxL && !ctxL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(ctxL, msgText);
+          } else {
+            var msg = '<div class="empty-state">' + msgText + "</div>";
+            if (liveL && !liveL.querySelector(".feed-item")) liveL.innerHTML = msg;
+            if (confL && !confL.querySelector(".feed-item")) confL.innerHTML = msg;
+            if (ctxL && !ctxL.querySelector(".feed-item")) ctxL.innerHTML = msg;
+          }
         }
       });
   }
@@ -1694,11 +1703,14 @@
 
     chatHistory.push({ role: "user", content: message });
 
-    fetch(API + "/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: message, history: chatHistory.slice(-10) })
-    }).then(function (res) {
+    var chatReq = apiClient
+      ? apiClient.streamChat({ message: message, history: chatHistory.slice(-10) })
+      : fetch(API + "/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: message, history: chatHistory.slice(-10) })
+        });
+    chatReq.then(function (res) {
       if (!res.ok) throw new Error("HTTP " + res.status);
       if (!res.body) throw new Error("Streaming not supported");
 
@@ -1795,7 +1807,11 @@
       read();
     }).catch(function () {
       var bubble = document.getElementById(aiId);
-      if (bubble) bubble.innerHTML = '<p style="color:var(--red);">Failed to connect. Check your connection.</p>';
+      if (window.ACTChat && window.ACTChat.renderUnavailable) {
+        window.ACTChat.renderUnavailable(bubble, "Failed to connect. Check your connection.");
+      } else if (bubble) {
+        bubble.innerHTML = '<p style="color:var(--red);">Failed to connect. Check your connection.</p>';
+      }
     });
   }
 
@@ -1981,8 +1997,7 @@
 
   // ── SCANNER ───────────────────────────────────────────────────
   function fetchScannerCalls() {
-    fetch(API + "/api/scanner/calls")
-      .then(ok)
+    (apiClient ? apiClient.getScannerCalls() : fetch(API + "/api/scanner/calls").then(ok))
       .then(function (data) {
         if (data.calls && data.calls.length > 0) {
           processAndRenderScanner(data.calls);
@@ -1991,6 +2006,9 @@
         }
       })
       .catch(function () {
+        if (window.ACTScanner && window.ACTScanner.renderUnavailable) {
+          window.ACTScanner.renderUnavailable("scannerCallsList", "Scanner API unavailable, trying direct feed.");
+        }
         fetchScannerDirect();
       });
   }
@@ -2505,11 +2523,15 @@
       "/api/directory/community"
     ];
     Promise.all(paths.map(function (p) {
-      return fetch(base + p).then(ok);
+      return apiClient ? apiClient.getDirectoryPart(p) : fetch(base + p).then(ok);
     })).then(function (results) {
       directoryLoading = false;
       if (!results || results.length < 6 || results.some(function (x) { return !x || x.status !== "ok"; })) {
-        if (list) list.innerHTML = '<div class="empty-state">Could not load directory. Try again later.</div>';
+        if (window.ACTDirectory && window.ACTDirectory.renderUnavailable) {
+          window.ACTDirectory.renderUnavailable(list, "Could not load directory. Try again later.");
+        } else if (list) {
+          list.innerHTML = '<div class="empty-state">Could not load directory. Try again later.</div>';
+        }
         return;
       }
       leDirectory = {
@@ -2537,7 +2559,11 @@
       renderDirCommunity();
     }).catch(function () {
       directoryLoading = false;
-      if (list) list.innerHTML = '<div class="empty-state">Could not load directory. Check your connection.</div>';
+      if (window.ACTDirectory && window.ACTDirectory.renderUnavailable) {
+        window.ACTDirectory.renderUnavailable(list, "Could not load directory. Check your connection.");
+      } else if (list) {
+        list.innerHTML = '<div class="empty-state">Could not load directory. Check your connection.</div>';
+      }
     });
   }
 

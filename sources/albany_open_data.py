@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import asyncio
-import os
 import time
 from typing import Any
 
 import httpx
+from app.core.config import get_settings
+from app.services.http_client import fetch_with_retry
 
 SOCRATA_URL = "https://data.albanyny.gov/resource/qq93-cnn2.json"
 CACHE_TTL_SECONDS = 60
-REQUEST_TIMEOUT_SECONDS = 12.0
-MAX_RETRIES = 3
+settings = get_settings()
+REQUEST_TIMEOUT_SECONDS = min(settings.external_timeout_seconds, 12.0)
+MAX_RETRIES = settings.external_retry_attempts
 
 _cache: dict[tuple[int, int], dict[str, Any]] = {}
 
@@ -104,39 +105,30 @@ async def fetch_albany_open_data(limit: int = 100, offset: int = 0) -> list[dict
         return cached
 
     headers: dict[str, str] = {}
-    token = (os.getenv("SOCRATA_APP_TOKEN") or "").strip()
+    token = settings.socrata_app_token
     if token:
         headers["X-App-Token"] = token
 
     params = {"$limit": str(limit), "$offset": str(offset)}
 
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS, follow_redirects=True) as client:
-        for attempt in range(MAX_RETRIES):
-            try:
-                resp = await client.get(SOCRATA_URL, params=params, headers=headers)
-                if resp.status_code == 200:
-                    payload = resp.json()
-                    if not isinstance(payload, list):
-                        return []
-                    normalized = [_normalize_row(r) for r in payload if isinstance(r, dict)]
-                    _cache_set(limit, offset, normalized)
-                    return normalized
-                # Retry transient server/rate failures.
-                if resp.status_code in (429, 500, 502, 503, 504) and attempt < (MAX_RETRIES - 1):
-                    await _sleep_backoff(attempt)
-                    continue
+        try:
+            resp = await fetch_with_retry(
+                client,
+                SOCRATA_URL,
+                params=params,
+                headers=headers,
+                retries=MAX_RETRIES,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            if not resp or resp.status_code != 200:
                 return []
-            except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError):
-                if attempt < (MAX_RETRIES - 1):
-                    await _sleep_backoff(attempt)
-                    continue
+            payload = resp.json()
+            if not isinstance(payload, list):
                 return []
-            except Exception:
-                return []
+            normalized = [_normalize_row(r) for r in payload if isinstance(r, dict)]
+            _cache_set(limit, offset, normalized)
+            return normalized
+        except Exception:
+            return []
     return []
-
-
-async def _sleep_backoff(attempt: int) -> None:
-    # 0.4s, 0.8s, 1.6s
-    delay = 0.4 * (2 ** max(0, attempt))
-    await asyncio.sleep(delay)

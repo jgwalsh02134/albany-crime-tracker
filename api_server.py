@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import json as _json
+import logging
 import os
 import re
 import time
@@ -34,12 +35,23 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from app.api.health import router as health_router
+from app.core.config import get_settings
+from app.core.errors import install_error_handlers
+from app.core.logging import configure_logging, set_request_id
+from app.services.cache import DEFAULT_TTLS, InMemoryTTLCache, RefreshGuard
+from app.services.http_client import fetch_with_retry
+from app.services.incident_transformers import article_to_incident
 
 # --- Config ---
 # Last incident pipeline snapshot for /api/incidents/debug (tuning / diagnostics).
 _LAST_INCIDENT_PIPELINE: dict[str, Any] = {}
 
-XAI_API_KEY = os.getenv("XAI_API_KEY")
+settings = get_settings()
+configure_logging(settings.log_level)
+logger = logging.getLogger("albany-crime-tracker")
+
+XAI_API_KEY = settings.xai_api_key
 XAI_BASE = "https://api.x.ai/v1"
 XAI_MODEL = "grok-3"  # Strongest full xAI reasoning model (not mini / fast variants)
 
@@ -59,22 +71,9 @@ ASCII_PUNCT_TRANSLATION = str.maketrans({
 })
 
 # --- Cache ---
-cache = {}
-CACHE_TTL = {
-    "merged_news": 60,
-    "crime_articles": 30,
-    "crime_articles_v3": 60,
-    "dcjs_trends": 3600,
-    "ai_summaries": 600,
-    "patterns": 60,
-    "monthly_summary": 1800,   # 30 min
-    "daily_summary": 600,      # 10 min — today's briefing
-    "social_intel": 900,       # 15 min — X/Twitter monitoring
-    "grok_official_x_posts": 90,   # 1.5 min — Grok official X layer
-    "nitter_official_x": 180,      # 3 min — Nitter RSS mirrors for real /status/ permalinks
-    "scanner_talkgroups": 3600,   # 1 h — TG metadata from directory
-    "scanner_calls": 12,          # OpenMHz poll — keep tight for Scanner tab + intel strip
-}
+cache_backend = InMemoryTTLCache(DEFAULT_TTLS)
+refresh_guard = RefreshGuard()
+CACHE_TTL = DEFAULT_TTLS
 
 # =============================================================================
 # ALBANY KEYWORDS — Primary location vocabulary
@@ -1150,7 +1149,7 @@ _AI_SITUATION_REFRESH_IN_FLIGHT = False
 async def lifespan(_app):
     global http_client
     http_client = httpx.AsyncClient(
-        timeout=20.0,
+        timeout=settings.external_timeout_seconds,
         follow_redirects=True,
         headers={"User-Agent": "AlbanyCrimeTracker/5.0 (albany-crime-tracker.repl.co)"},
     )
@@ -1165,17 +1164,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(health_router)
+install_error_handlers(app)
+
+
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    req_id = request.headers.get("x-request-id") or f"req-{int(time.time() * 1000)}"
+    set_request_id(req_id)
+    started = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
+    logger.info(
+        "request_complete",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "elapsed_ms": elapsed_ms,
+        },
+    )
+    response.headers["x-request-id"] = req_id
+    return response
 
 
 def get_cached(key):
-    entry = cache.get(key)
-    if entry and (time.time() - entry["ts"]) < CACHE_TTL.get(key, 300):
-        return entry["data"]
-    return None
+    return cache_backend.get(key)
 
 
 def set_cached(key, data):
-    cache[key] = {"data": data, "ts": time.time()}
+    cache_backend.set(key, data, ttl_seconds=CACHE_TTL.get(key, 300))
 
 
 # =============================================================================
@@ -2582,8 +2600,13 @@ async def fetch_official_sources() -> list:
     async def _fetch(key, cfg):
         try:
             timeout = cfg.get("timeout", 15)
-            resp = await http_client.get(cfg["url"], timeout=timeout)
-            if resp.status_code == 200:
+            resp = await fetch_with_retry(
+                http_client,
+                cfg["url"],
+                timeout=float(timeout),
+                retries=settings.external_retry_attempts,
+            )
+            if resp and resp.status_code == 200:
                 parsed = parse_rss(resp.text, default_source=cfg.get("label"))
                 for a in parsed:
                     a["_feed_reliability"] = cfg.get("reliability", 0.97)
@@ -2601,7 +2624,7 @@ async def fetch_official_sources() -> list:
                     )]
                 return parsed
         except Exception as e:
-            print(f"Official feed [{key}]: {e}")
+            logger.warning("official_feed_error key=%s error=%s", key, e)
         return []
 
     tasks = [_fetch(k, v) for k, v in RSS_FEEDS_OFFICIAL.items()]
@@ -2619,8 +2642,13 @@ async def fetch_all_feeds():
 
     async def fetch_one(key, cfg):
         try:
-            resp = await http_client.get(cfg["url"])
-            if resp.status_code == 200:
+            resp = await fetch_with_retry(
+                http_client,
+                cfg["url"],
+                timeout=settings.external_timeout_seconds,
+                retries=settings.external_retry_attempts,
+            )
+            if resp and resp.status_code == 200:
                 parsed = parse_rss(resp.text, default_source=cfg.get("label"))
 
                 # Attach feed-level reliability and priority to articles
@@ -2656,7 +2684,7 @@ async def fetch_all_feeds():
 
                 return parsed
         except Exception as e:
-            print(f"Feed error [{key}]: {e}")
+            logger.warning("feed_fetch_error key=%s error=%s", key, e)
         return []
 
     all_feeds = {
@@ -2682,7 +2710,7 @@ async def fetch_all_feeds():
     )
     for batch in _extra_batches:
         if isinstance(batch, Exception):
-            print(f"Live feed extra batch error: {batch}")
+            logger.warning("live_feed_extra_batch_error error=%s", batch)
             continue
         articles.extend(batch)
 
@@ -2975,7 +3003,7 @@ async def get_news():
         sources = set(a.get("source", "Unknown") for a in cached)
         return {"status": "ok", "source": "cache", "count": len(cached), "source_count": len(sources), "articles": cached}
 
-    deduped = await fetch_all_feeds()
+    deduped = await refresh_guard.run_once("refresh_news", fetch_all_feeds)
     set_cached("merged_news", deduped)
     sources = set(a.get("source", "Unknown") for a in deduped)
     return {"status": "ok", "source": "live", "count": len(deduped), "source_count": len(sources), "articles": deduped}
@@ -2991,7 +3019,7 @@ async def get_crimes():
     if cached:
         return cached
 
-    all_articles = await fetch_all_feeds()
+    all_articles = await refresh_guard.run_once("refresh_crimes_feed", fetch_all_feeds)
 
     def _in_crime_pipeline(a: dict) -> bool:
         if not is_albany_related(a):
@@ -3077,6 +3105,7 @@ async def get_crimes():
     geocoded = now_rows + conf_rows + nctx_rows
     for row in geocoded:
         row["is_active_incident"] = compute_is_active_incident(row)
+        row["normalized_incident"] = article_to_incident(row).model_dump(mode="json")
 
     global _LAST_INCIDENT_PIPELINE
     diag = intel.build_pipeline_diagnostics(enriched, normalized, fused, scored)
@@ -3173,13 +3202,19 @@ async def get_trends():
     if cached:
         return {"status": "ok", "source": "cache", "data": cached}
     try:
-        resp = await http_client.get(DCJS_URL)
-        if resp.status_code == 200:
+        resp = await fetch_with_retry(
+            http_client,
+            DCJS_URL,
+            timeout=settings.external_timeout_seconds,
+            retries=settings.external_retry_attempts,
+        )
+        if resp and resp.status_code == 200:
             data = resp.json()
             set_cached("dcjs_trends", data)
             return {"status": "ok", "source": "live", "data": data}
-        return {"status": "error", "message": f"HTTP {resp.status_code}", "data": []}
+        return {"status": "error", "message": f"HTTP {(resp.status_code if resp else 'timeout')}", "data": []}
     except Exception as e:
+        logger.warning("trends_fetch_error error=%s", e)
         return {"status": "error", "message": str(e), "data": []}
 
 
@@ -3626,7 +3661,7 @@ ALBANY_NIBRS_AGENCIES = [
     {"ori": "NY0017500", "name": "SUNY Albany (Plaza)", "type": "University", "nibrs": False, "population": None},
 ]
 
-FBI_CDE_API_KEY = "DEMO_KEY"
+FBI_CDE_API_KEY = settings.data_gov_api_key or "DEMO_KEY"
 FBI_CDE_BASE = "https://api.usa.gov/crime/fbi/cde"
 
 
@@ -3659,8 +3694,14 @@ async def get_nibrs_agency_detail(ori: str):
     try:
         url = f"{FBI_CDE_BASE}/agency/{ori}/offenses/count/national/offense-category"
         params = {"api_key": FBI_CDE_API_KEY, "year": 2022}
-        resp = await http_client.get(url, params=params)
-        if resp.status_code == 200:
+        resp = await fetch_with_retry(
+            http_client,
+            url,
+            params=params,
+            timeout=settings.external_timeout_seconds,
+            retries=settings.external_retry_attempts,
+        )
+        if resp and resp.status_code == 200:
             data = resp.json()
             result = {
                 "status": "ok",
@@ -3672,7 +3713,7 @@ async def get_nibrs_agency_detail(ori: str):
             set_cached(cache_key, result)
             return result
     except Exception as e:
-        print(f"FBI CDE error [{ori}]: {e}")
+        logger.warning("fbi_cde_error ori=%s error=%s", ori, e)
 
     return {
         "status": "ok",

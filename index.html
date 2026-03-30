@@ -56,12 +56,12 @@
   </header>
 
   <!-- ===== DESKTOP TABS (hidden on mobile) ===== -->
-  <div class="desktop-tabs" id="desktopTabs">
-    <button class="desktop-tab active" data-view="feed">Feed</button>
-    <button class="desktop-tab" data-view="scanner">Scanner</button>
-    <button class="desktop-tab" data-view="directory">Directory</button>
-    <button class="desktop-tab" data-view="chat">AI Chat</button>
-    <button class="desktop-tab" data-view="more">More</button>
+  <div class="desktop-tabs" id="desktopTabs" role="tablist" aria-label="Primary views">
+    <button class="desktop-tab active" data-view="feed" aria-label="Open feed view">Feed</button>
+    <button class="desktop-tab" data-view="scanner" aria-label="Open scanner view">Scanner</button>
+    <button class="desktop-tab" data-view="directory" aria-label="Open directory view">Directory</button>
+    <button class="desktop-tab" data-view="chat" aria-label="Open AI chat view">AI Chat</button>
+    <button class="desktop-tab" data-view="more" aria-label="Open more view">More</button>
   </div>
 
   <!-- ===== MAIN CONTENT AREA ===== -->
@@ -105,13 +105,13 @@
       </div>
 
       <!-- Live / Confirmed / Context -->
-      <div class="feed-subtabs" id="feedSubtabs">
-        <button class="feed-subtab active" data-feedtab="live">
+      <div class="feed-subtabs" id="feedSubtabs" role="tablist" aria-label="Feed tabs">
+        <button class="feed-subtab active" data-feedtab="live" aria-label="Open live feed tab">
           <span class="live-pulse-sm"></span>
           Live
         </button>
-        <button class="feed-subtab" data-feedtab="confirmed">Confirmed</button>
-        <button class="feed-subtab" data-feedtab="context">Context</button>
+        <button class="feed-subtab" data-feedtab="confirmed" aria-label="Open confirmed feed tab">Confirmed</button>
+        <button class="feed-subtab" data-feedtab="context" aria-label="Open context feed tab">Context</button>
       </div>
 
       <!-- LIVE: Active now + Recent local activity -->
@@ -163,7 +163,7 @@
         <button class="map-filter-btn" data-filter="property">Property</button>
         <button class="map-filter-btn" data-filter="other">Other</button>
       </div>
-      <div id="map"></div>
+      <div id="map" role="region" aria-label="Incident map"></div>
     </section>
 
     <!-- === SCANNER VIEW === -->
@@ -276,7 +276,7 @@
         </div>
       </div>
       <form class="chat-input" id="chatForm">
-        <input type="text" id="chatInput" placeholder="Ask about Albany County..." autocomplete="off">
+        <input type="text" id="chatInput" placeholder="Ask about Albany County..." autocomplete="off" aria-label="Ask AI chat a question">
         <button type="submit" id="chatSend" aria-label="Send">
           <span class="material-icons" style="font-size:18px;">send</span>
         </button>
@@ -459,6 +459,15 @@
       <span>More</span>
     </button>
   </nav>
+
+  <script src="frontend/shared/state.js"></script>
+  <script src="frontend/shared/utils.js"></script>
+  <script src="frontend/api/client.js"></script>
+  <script src="frontend/feed/render.js"></script>
+  <script src="frontend/map/map.js"></script>
+  <script src="frontend/scanner/scanner.js"></script>
+  <script src="frontend/chat/chat.js"></script>
+  <script src="frontend/directory/directory.js"></script>
 
   <script>
     (function () {
