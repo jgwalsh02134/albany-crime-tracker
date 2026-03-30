@@ -3055,3 +3055,462 @@ a:hover { text-decoration: underline; }
   color: var(--text-3);
   margin-right: 4px;
 }
+
+/* ================================================================
+   PHASE 1 UI IMPROVEMENTS
+   ================================================================ */
+
+/* ── IMPROVED INCIDENT CARDS ── */
+.feed-item {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  background: var(--surface);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.12s, box-shadow 0.12s;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+  overflow: hidden;
+}
+.feed-item:hover {
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
+}
+.feed-item:active { background: var(--surface-2); }
+
+/* Left color indicator strip */
+.feed-indicator {
+  width: 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 0;
+  background: var(--surface-3);
+}
+.feed-item--violent .feed-indicator { background: var(--violent); }
+.feed-item--property .feed-indicator { background: var(--property); }
+.feed-item--other .feed-indicator { background: var(--accent); }
+
+.feed-body {
+  min-width: 0;
+  flex: 1;
+  padding: 10px 12px;
+}
+
+/* Title row: title + time on same line */
+.feed-head-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.feed-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Time display with freshness */
+.feed-time {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.feed-time--fresh {
+  color: var(--accent-gold);
+  font-weight: 700;
+}
+.feed-time--stale {
+  color: var(--text-3);
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.feed-summary-line {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Meta pills row */
+.feed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.feed-meta-icon {
+  font-size: 11px !important;
+  margin-right: 1px;
+  opacity: 0.7;
+}
+
+.feed-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-3);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.feed-meta-pill--area {
+  color: var(--text-2);
+}
+.feed-meta-pill--source {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.feed-meta-pill--verify {
+  color: var(--text-2);
+  text-transform: capitalize;
+}
+.feed-meta-pill--verify-official {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: var(--blue-dim);
+}
+.feed-meta-pill--verify-multi_source {
+  color: var(--live-dot);
+  border-color: color-mix(in srgb, var(--live-dot) 30%, transparent);
+  background: var(--green-dim);
+}
+
+/* Severity badges */
+.feed-sev {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.feed-sev--critical {
+  background: var(--red-dim);
+  color: var(--violent);
+  border: 1px solid color-mix(in srgb, var(--violent) 40%, transparent);
+}
+.feed-sev--high {
+  background: var(--amber-dim);
+  color: var(--property);
+  border: 1px solid color-mix(in srgb, var(--property) 35%, transparent);
+}
+.feed-sev--medium {
+  background: var(--surface-3);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+
+/* Severity card borders */
+.feed-item--sev-critical {
+  box-shadow: var(--shadow-card), inset 0 0 0 1px color-mix(in srgb, var(--violent) 20%, transparent);
+}
+.feed-item--sev-critical .feed-indicator { background: var(--violent); }
+.feed-item--sev-high {
+  box-shadow: var(--shadow-card), inset 0 0 0 1px color-mix(in srgb, var(--accent-gold) 20%, transparent);
+}
+.feed-item--quiet {
+  opacity: 0.65;
+}
+
+/* Hide the old feed-dot since we're using the strip indicator now */
+.feed-dot { display: none; }
+
+/* ── IMPROVED NEWS STORY CARDS ── */
+a.home-story-card {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+a.home-story-card:hover {
+  text-decoration: none;
+  box-shadow: var(--shadow-md);
+}
+a.home-story-card:active {
+  background: var(--surface-2);
+}
+
+.home-story-card {
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+  margin-bottom: var(--sp-2);
+  transition: box-shadow 0.12s, background 0.12s;
+}
+.home-story-card--major {
+  border-left: 4px solid var(--accent-gold);
+}
+.home-story-card--developing {
+  border-left: 4px solid var(--accent);
+}
+
+.home-story-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+.home-story-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+.home-story-time {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.home-story-desc {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.home-story-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+.home-story-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.home-story-pill--source {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.home-story-pill--sev-critical {
+  color: var(--violent);
+  background: var(--red-dim);
+  border-color: color-mix(in srgb, var(--violent) 30%, transparent);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.home-story-pill--sev-high {
+  color: var(--property);
+  background: var(--amber-dim);
+  border-color: color-mix(in srgb, var(--property) 30%, transparent);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* ── HOME RECAP CARDS ── */
+.home-recaps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--sp-2);
+}
+.home-recap-card {
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+.home-recap-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.home-recap-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.home-recap-detail {
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+/* ── HOME SECTION LABELS ── */
+.home-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin-bottom: var(--sp-2);
+  padding-top: var(--sp-2);
+}
+
+/* ── STREAMING CURSOR ── */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink-cursor 0.8s step-end infinite;
+}
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.chat-bubble.is-streaming p:last-child {
+  display: inline;
+}
+
+/* ── IMPROVED CHAT INPUT ── */
+.chat-input button:active {
+  opacity: 0.7;
+}
+.chat-input button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── DIRECTORY AGENCY HIGHLIGHT ── */
+.dir-agency-highlight {
+  animation: dir-highlight 2s ease-out;
+}
+@keyframes dir-highlight {
+  0% { box-shadow: 0 0 0 3px var(--accent); }
+  100% { box-shadow: var(--shadow-card); }
+}
+
+/* ── EMPTY STATE IMPROVEMENTS ── */
+.empty-state {
+  text-align: center;
+  padding: var(--sp-6) var(--sp-4);
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.feed-summary-empty {
+  text-align: center;
+  padding: var(--sp-4);
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+/* ── MOBILE FIXES ── */
+@media (max-width: 480px) {
+  .feed-title { font-size: 13px; }
+  .feed-summary-line { -webkit-line-clamp: 1; font-size: 11px; }
+  .feed-time { font-size: 10px; }
+  .feed-meta-pill { font-size: 9px; padding: 1px 5px; }
+  .home-story-title { font-size: 13px; }
+  .home-story-desc { -webkit-line-clamp: 2; }
+  .home-recaps-grid { grid-template-columns: 1fr; }
+
+  /* Ensure content doesn't get hidden behind bottom nav */
+  .view { padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 8px); }
+  .feed-list { padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px); }
+
+  /* Scanner player fits on small screens */
+  .sc-player { padding: var(--sp-2) var(--sp-3); }
+  .sc-card-summary { font-size: 12px; }
+}
+
+/* ── SUMMARY STRIP IMPROVEMENTS ── */
+.home-summary-grid .feed-summary-card {
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.feed-summary-v {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.feed-summary-k {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  margin-bottom: 2px;
+}
+.feed-summary-sub {
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+/* ── LIVE INDICATOR IMPROVEMENTS ── */
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live-dot);
+  animation: pulse-live 2s ease-in-out infinite;
+}
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--live-dot); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 4px transparent; }
+}
+.live-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--live-dot);
+}
+
+/* ── VIEW SCROLL FIX ── */
+.view-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px);
+}
+.home-scroll {
+  padding-bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px);
+}

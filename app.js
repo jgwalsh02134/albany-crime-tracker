@@ -630,18 +630,23 @@
   function _storyCard(item, cls) {
     var sev = (item.severity || "").toLowerCase();
     var sevCls = sev === "critical" ? " home-story-pill--sev-critical" : sev === "high" ? " home-story-pill--sev-high" : "";
-    var html = '<div class="home-story-card ' + cls + '">';
+    var link = item.source_url || item.link || "";
+    var tag = link ? "a" : "div";
+    var linkAttrs = link ? ' href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer"' : "";
+    var html = '<' + tag + ' class="home-story-card ' + cls + '"' + linkAttrs + '>';
     html += '<div class="home-story-body">';
+    html += '<div class="home-story-head">';
     html += '<div class="home-story-title">' + esc(item.title || "Untitled") + '</div>';
+    if (item.human_time) html += '<span class="home-story-time">' + esc(item.human_time) + '</span>';
+    html += '</div>';
     if (item.summary) html += '<div class="home-story-desc">' + esc(item.summary) + '</div>';
     html += '<div class="home-story-meta">';
-    if (item.municipality) html += '<span class="home-story-pill">' + esc(item.municipality) + '</span>';
-    if (item.human_time) html += '<span class="home-story-pill">' + esc(item.human_time) + '</span>';
+    if (item.municipality) html += '<span class="home-story-pill"><span class="material-icons" style="font-size:11px;margin-right:2px;">location_on</span>' + esc(item.municipality) + '</span>';
     if (item.source_name) html += '<span class="home-story-pill home-story-pill--source">' + esc(item.source_name) + '</span>';
     if (sev && sev !== "unknown") html += '<span class="home-story-pill' + sevCls + '">' + esc(sev) + '</span>';
     var vl = (item.verification_level || "").replace(/_/g, " ");
     if (vl && vl !== "unknown") html += '<span class="home-story-pill">' + esc(vl) + '</span>';
-    html += '</div></div></div>';
+    html += '</div></div></' + tag + '>';
     return html;
   }
 
@@ -1486,30 +1491,54 @@
     var sourceName = item.source || item.source_name || "Unknown source";
     var verify = item.verification_level || "unknown";
     var verifyLabel = item.verification_label || String(verify).replace(/_/g, " ");
-    var coord = item.coordinate_quality || "missing";
     var title = item.short_title || item.title || "Untitled";
     var ta = item.human_time || feedAgeCompact(item);
     var link = resolveIncidentCardHref(item);
     var area = item.municipality || item.matched_location || "Albany County";
-    var summary = item.summary || item.description || "Details are still limited.";
-    var coordClass = coord === "approximate" ? " feed-meta-pill--coord-approx" : coord === "missing" ? " feed-meta-pill--coord-missing" : "";
+    var summary = item.summary || item.description || "";
+    var sev = (item.severity || "unknown").toLowerCase();
 
-    var cls = "feed-item";
-    if ((item.severity || "").toLowerCase() === "critical" || (item.severity || "").toLowerCase() === "high") cls += " feed-item--high-priority";
-    if ((item.severity || "").toLowerCase() === "low" && (verify || "").toLowerCase() === "inferred") cls += " feed-item--quiet";
+    var cls = "feed-item feed-item--" + type;
+    if (sev === "critical") cls += " feed-item--sev-critical";
+    else if (sev === "high") cls += " feed-item--sev-high";
+    if (sev === "low" && (verify || "").toLowerCase() === "inferred") cls += " feed-item--quiet";
+
+    // Time freshness class
+    var ageH = itemAgeHours(item);
+    var timeClass = "feed-time";
+    if (ageH !== null && ageH <= 1) timeClass += " feed-time--fresh";
+    else if (ageH !== null && ageH > 12) timeClass += " feed-time--stale";
+
+    // Severity badge
+    var sevBadge = "";
+    if (sev === "critical") sevBadge = '<span class="feed-sev feed-sev--critical">Critical</span>';
+    else if (sev === "high") sevBadge = '<span class="feed-sev feed-sev--high">High</span>';
+    else if (sev === "medium") sevBadge = '<span class="feed-sev feed-sev--medium">Medium</span>';
 
     var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer" id="feed-card-' + escAttr(item.id || "") + '">';
-    html += '<span class="feed-dot ' + esc(type) + '"></span>';
+
+    // Left indicator strip
+    html += '<div class="feed-indicator"><span class="feed-dot ' + esc(type) + '"></span></div>';
+
     html += '<div class="feed-body">';
+    // Top row: title + time
+    html += '<div class="feed-head-row">';
     html += '<div class="feed-title">' + esc(title) + '</div>';
-    html += '<div class="feed-summary-line">' + esc(summary) + '</div>';
+    html += '<span class="' + timeClass + '">' + esc(ta || "") + '</span>';
+    html += '</div>';
+
+    // Summary
+    if (summary) html += '<div class="feed-summary-line">' + esc(summary) + '</div>';
+
+    // Meta row: area + source + severity + verification
     html += '<div class="feed-meta">';
-    html += '<span class="feed-meta-pill">' + esc(area) + '</span>';
-    html += '<span class="feed-meta-pill">' + esc(ta || "—") + '</span>';
-    html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(_sourceTypeLabel(sourceType) + " · " + sourceName) + '</span>';
-    html += '<span class="feed-meta-pill feed-meta-pill--verify">' + esc(verifyLabel) + '</span>';
-    html += '<span class="feed-meta-pill' + coordClass + '">' + esc(coord) + '</span>';
-    html += '</div></div></a>';
+    html += '<span class="feed-meta-pill feed-meta-pill--area"><span class="material-icons feed-meta-icon">location_on</span>' + esc(area) + '</span>';
+    html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(sourceName) + '</span>';
+    html += '<span class="feed-meta-pill feed-meta-pill--verify feed-meta-pill--verify-' + esc(verify) + '">' + esc(verifyLabel) + '</span>';
+    if (sevBadge) html += sevBadge;
+    html += '</div>';
+
+    html += '</div></a>';
     return html;
   }
 
@@ -2165,7 +2194,7 @@
       function doRender() {
         if (bubble && fullText) {
           bubble.classList.add("is-streaming");
-          bubble.textContent = fullText;
+          bubble.innerHTML = renderMarkdown(fullText) + '<span class="streaming-cursor"></span>';
           container.scrollTop = container.scrollHeight;
         }
         renderTimer = null;
