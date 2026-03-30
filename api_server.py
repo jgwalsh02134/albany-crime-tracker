@@ -45,12 +45,14 @@ from app.db.session import init_database
 from app.services.cache import DEFAULT_TTLS, create_cache_backend, create_refresh_guard
 from app.services.http_client import fetch_with_retry
 from app.services.incident_persistence import persist_articles_as_incidents
+from app.services.incident_repository import incident_store_backend
 from app.services.incident_repository import query_incidents
 from app.services.incident_transformers import article_to_incident
 
 # --- Config ---
 # Last incident pipeline snapshot for /api/incidents/debug (tuning / diagnostics).
 _LAST_INCIDENT_PIPELINE: dict[str, Any] = {}
+_GEO_FILTER_STATS: dict[str, Any] = {"accepted": 0, "rejected": 0, "reasons": {}}
 
 settings = get_settings()
 configure_logging(settings.log_level)
@@ -1146,18 +1148,23 @@ NEIGHBORHOODS = {
     "SUNY Albany": ["suny albany", "university at albany"],
 }
 
-http_client: Optional[httpx.AsyncClient] = None
+http_client: Optional[httpx.AsyncClient] = httpx.AsyncClient(
+    timeout=settings.external_timeout_seconds,
+    follow_redirects=True,
+    headers={"User-Agent": "AlbanyCrimeTracker/5.0 (albany-crime-tracker.repl.co)"},
+)
 _AI_SITUATION_REFRESH_IN_FLIGHT = False
 
 
 @asynccontextmanager
 async def lifespan(_app):
     global http_client
-    http_client = httpx.AsyncClient(
-        timeout=settings.external_timeout_seconds,
-        follow_redirects=True,
-        headers={"User-Agent": "AlbanyCrimeTracker/5.0 (albany-crime-tracker.repl.co)"},
-    )
+    if http_client is None:
+        http_client = httpx.AsyncClient(
+            timeout=settings.external_timeout_seconds,
+            follow_redirects=True,
+            headers={"User-Agent": "AlbanyCrimeTracker/5.0 (albany-crime-tracker.repl.co)"},
+        )
     if has_database():
         try:
             await init_database()
@@ -1165,7 +1172,9 @@ async def lifespan(_app):
         except Exception as exc:
             logger.warning("database_init_failed error=%s", exc)
     yield
-    await http_client.aclose()
+    if http_client is not None:
+        await http_client.aclose()
+        http_client = None
     await close_database()
 
 
@@ -1557,6 +1566,18 @@ def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
         if any(g in blob for g in GENERIC_REGION_TERMS):
             return False, "capital_region_without_county_anchor"
         if re.search(r"\balbany\b", blob):
+            # Accept plain "Albany" when strong city/public-safety context is present
+            # and there is no conflicting out-of-area marker.
+            if re.search(r"\bin\s+albany\b", blob):
+                return True, "albany_plain_city_context"
+            if (
+                "albany police" in blob
+                or "albany pd" in blob
+                or "albany sheriff" in blob
+                or "albany fire" in blob
+                or "city of albany" in blob
+            ):
+                return True, "albany_public_safety_context"
             if not any(a in blob for a in _ALBANY_TOKEN_NY_ANCHORS):
                 if any(s in blob for s in _directory_locality_signals()):
                     return True, "albany_token_with_directory_locality_signal"
@@ -1577,11 +1598,17 @@ def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
 
 def is_albany_related(article: dict) -> bool:
     """Strict Albany County, NY gate — used for all feeds before dedupe and in /api/crimes."""
+    global _GEO_FILTER_STATS
     ok, reason = evaluate_strict_albany_county(article)
     if ok:
+        _GEO_FILTER_STATS["accepted"] = int(_GEO_FILTER_STATS.get("accepted", 0)) + 1
         article["locality_match_reason"] = reason
         article.pop("rejected_reason", None)
     else:
+        _GEO_FILTER_STATS["rejected"] = int(_GEO_FILTER_STATS.get("rejected", 0)) + 1
+        rs = _GEO_FILTER_STATS.get("reasons") or {}
+        rs[reason] = int(rs.get(reason, 0)) + 1
+        _GEO_FILTER_STATS["reasons"] = rs
         article["rejected_reason"] = reason
         article.pop("locality_match_reason", None)
         t = (article.get("title") or "")[:90]
@@ -2650,6 +2677,7 @@ async def fetch_official_sources() -> list:
 # UNIFIED FEED FETCHER
 # =============================================================================
 async def fetch_all_feeds():
+    global _GEO_FILTER_STATS
     articles = []
 
     async def fetch_one(key, cfg):
@@ -2726,6 +2754,7 @@ async def fetch_all_feeds():
             continue
         articles.extend(batch)
 
+    _GEO_FILTER_STATS = {"accepted": 0, "rejected": 0, "reasons": {}}
     articles = [a for a in articles if is_albany_related(a)]
 
     def _norm_link(u: str) -> str:
@@ -3120,7 +3149,9 @@ async def get_crimes():
         row["normalized_incident"] = article_to_incident(row).model_dump(mode="json")
 
     # Persist normalized incidents for map/timeline/source querying.
-    await persist_articles_as_incidents(geocoded)
+    # Fallback to raw feed rows if the filtered crime list is temporarily empty.
+    rows_for_persistence = geocoded if geocoded else all_articles[:250]
+    await persist_articles_as_incidents(rows_for_persistence)
 
     global _LAST_INCIDENT_PIPELINE
     diag = intel.build_pipeline_diagnostics(enriched, normalized, fused, scored)
@@ -3173,6 +3204,16 @@ async def get_crimes():
         "source": "live",
         "data": geocoded,
         "total": len(geocoded),
+        "count": len(geocoded),
+        "accepted_count": int(_GEO_FILTER_STATS.get("accepted", 0)),
+        "rejected_count": int(_GEO_FILTER_STATS.get("rejected", 0)),
+        "rejection_reasons": dict(
+            sorted(
+                (_GEO_FILTER_STATS.get("reasons") or {}).items(),
+                key=lambda kv: kv[1],
+                reverse=True,
+            )[:10]
+        ),
         "feeds": {
             "now": now_rows,
             "live_active_now": live_active_now,
@@ -3188,6 +3229,12 @@ async def get_crimes():
             "news_context": len(nctx_rows),
         },
     }
+    logger.info(
+        "geo_filter_counts accepted=%s rejected=%s top_reasons=%s",
+        payload["accepted_count"],
+        payload["rejected_count"],
+        payload["rejection_reasons"],
+    )
     set_cached(CRIME_ARTICLES_CACHE_KEY, payload)
     return payload
 
@@ -3212,14 +3259,6 @@ async def get_incidents(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ):
-    qkey = (
-        f"incidents:{limit}:{offset}:{municipality or ''}:{incident_type or ''}:{status or ''}:"
-        f"{source_type or ''}:{start_date or ''}:{end_date or ''}"
-    )
-    cached = get_cached(qkey)
-    if cached:
-        return cached
-
     items = await query_incidents(
         limit=limit,
         offset=offset,
@@ -3232,11 +3271,10 @@ async def get_incidents(
     )
     payload = {
         "status": "ok",
-        "source": "postgres" if has_database() else "memory",
+        "source": incident_store_backend(),
         "count": len(items),
         "incidents": items,
     }
-    cache_backend.set(qkey, payload, ttl_seconds=CACHE_TTL.get("incidents_query", 45))
     return payload
 
 

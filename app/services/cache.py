@@ -68,7 +68,10 @@ class RedisCache(CacheBackend):
     def __init__(self, redis_url: str, default_ttls: Optional[dict[str, int]] = None) -> None:
         if redis is None:
             raise RuntimeError("redis package is unavailable")
-        self._client = redis.Redis.from_url(redis_url, decode_responses=True)
+        kwargs: dict[str, Any] = {"decode_responses": True}
+        if redis_url.lower().startswith("rediss://"):
+            kwargs["ssl"] = True
+        self._client = redis.Redis.from_url(redis_url, **kwargs)
         self._ttls = default_ttls or {}
 
     def get(self, key: str) -> Any:
@@ -174,7 +177,26 @@ def redis_ready(redis_url: str) -> bool:
     if not redis_url or redis is None:
         return False
     try:
-        return bool(redis.Redis.from_url(redis_url).ping())
+        kwargs: dict[str, Any] = {}
+        if redis_url.lower().startswith("rediss://"):
+            kwargs["ssl"] = True
+        return bool(redis.Redis.from_url(redis_url, **kwargs).ping())
     except Exception:
         return False
+
+
+def redis_last_error(redis_url: str) -> str:
+    if not redis_url:
+        return ""
+    if redis is None:
+        return "redis package unavailable"
+    try:
+        kwargs: dict[str, Any] = {}
+        if redis_url.lower().startswith("rediss://"):
+            kwargs["ssl"] = True
+        client = redis.Redis.from_url(redis_url, **kwargs)
+        client.ping()
+        return ""
+    except Exception as exc:
+        return f"{type(exc).__name__}: {exc}"
 

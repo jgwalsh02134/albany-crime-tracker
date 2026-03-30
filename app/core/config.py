@@ -4,6 +4,21 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def _extract_url_like(value: str, prefixes: tuple[str, ...]) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    low = raw.lower()
+    for prefix in prefixes:
+        idx = low.find(prefix)
+        if idx >= 0:
+            return raw[idx:].strip()
+    return raw
 
 
 def _as_bool(value: Optional[str], *, default: bool = False) -> bool:
@@ -63,8 +78,14 @@ def get_settings() -> Settings:
         xai_api_key=(os.getenv("XAI_API_KEY") or "").strip(),
         data_gov_api_key=(os.getenv("DATA_GOV_API_KEY") or "").strip(),
         socrata_app_token=(os.getenv("SOCRATA_APP_TOKEN") or "").strip(),
-        database_url=(os.getenv("DATABASE_URL") or "").strip(),
-        redis_url=(os.getenv("REDIS_URL") or "").strip(),
+        database_url=_extract_url_like(
+            os.getenv("DATABASE_URL") or "",
+            ("postgres://", "postgresql://"),
+        ),
+        redis_url=_extract_url_like(
+            os.getenv("REDIS_URL") or "",
+            ("rediss://", "redis://"),
+        ),
         mapbox_token=(os.getenv("MAPBOX_TOKEN") or "").strip(),
         google_maps_api_key=(os.getenv("GOOGLE_MAPS_API_KEY") or "").strip(),
         sentry_dsn=(os.getenv("SENTRY_DSN") or "").strip(),
