@@ -18,10 +18,9 @@
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
 <!-- Libraries -->
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<!-- Google Maps loaded dynamically by app.js via /api/config -->
 
 <link rel="stylesheet" href="style.css">
 </head>
@@ -149,12 +148,6 @@
         <button class="map-chip" data-filter="violent">Violent</button>
         <button class="map-chip" data-filter="property">Property</button>
         <button class="map-chip" data-filter="other">Other</button>
-        <button class="map-chip map-chip--mode active" id="mapModePoints" title="Point markers">
-          <span class="material-icons" style="font-size:16px;">place</span>
-        </button>
-        <button class="map-chip map-chip--mode" id="mapModeHeat" title="Heat map">
-          <span class="material-icons" style="font-size:16px;">whatshot</span>
-        </button>
       </div>
 
       <!-- Floating count badge — bottom-left -->

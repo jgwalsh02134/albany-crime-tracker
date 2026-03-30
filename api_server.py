@@ -3049,6 +3049,14 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
 # API ENDPOINTS
 # =============================================================================
 
+@app.get("/api/config")
+async def get_public_config():
+    """Return non-secret public configuration needed by the frontend."""
+    return {
+        "google_maps_api_key": settings.google_maps_api_key or "",
+    }
+
+
 @app.get("/api/news")
 async def get_news():
     cached = get_cached("merged_news")
