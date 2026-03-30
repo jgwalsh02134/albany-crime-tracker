@@ -31,8 +31,9 @@ from typing import Any, Optional
 import httpx
 import incident_intelligence as intel
 from sources.albany_open_data import fetch_albany_open_data
+from sources.albany_open_data import socrata_runtime_status
 from sources.tier1_official import fetch_tier1_sources
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -53,6 +54,8 @@ from app.services.incident_repository import summarize_incidents
 from app.services.incident_transformers import article_to_incident
 from app.services.source_registry import load_source_registry
 from app.services.source_registry import source_registry_summary
+from app.services.source_audit import audit_counts
+from app.services.source_audit import audit_entries
 
 # --- Config ---
 # Last incident pipeline snapshot for /api/incidents/debug (tuning / diagnostics).
@@ -2681,7 +2684,7 @@ async def fetch_official_sources() -> list:
 # =============================================================================
 # UNIFIED FEED FETCHER
 # =============================================================================
-async def fetch_all_feeds():
+async def fetch_all_feeds(strict_live_sources: bool = False):
     global _GEO_FILTER_STATS
     articles = []
 
@@ -2751,11 +2754,13 @@ async def fetch_all_feeds():
         # fetch_official_social_posts(),
         # fetch_nitter_official_x_rss_posts(),
         fetch_scanner_directory_items(),
-        fetch_tier1_sources(limit_per_source=80),
+        fetch_tier1_sources(limit_per_source=80, strict_live_sources=strict_live_sources),
         return_exceptions=True,
     )
     for batch in _extra_batches:
         if isinstance(batch, Exception):
+            if strict_live_sources:
+                raise batch
             logger.warning("live_feed_extra_batch_error error=%s", batch)
             continue
         articles.extend(batch)
@@ -3061,12 +3066,34 @@ def _operational_signal_article(a: dict) -> bool:
 
 
 @app.get("/api/crimes")
-async def get_crimes(force_refresh: bool = False):
+async def get_crimes(
+    force_refresh: bool = False,
+    source_type: Optional[str] = None,
+    strict_live_sources: Optional[str] = None,
+):
     cached = get_cached(CRIME_ARTICLES_CACHE_KEY)
     if cached and not force_refresh:
         return cached
 
-    all_articles = await refresh_guard.run_once("refresh_crimes_feed", fetch_all_feeds)
+    strict_live = _parse_optional_bool(strict_live_sources) is True
+    refresh_key = "refresh_crimes_feed_strict_live" if strict_live else "refresh_crimes_feed"
+    try:
+        all_articles = await refresh_guard.run_once(
+            refresh_key,
+            lambda: fetch_all_feeds(strict_live_sources=strict_live),
+        )
+    except Exception as exc:
+        if strict_live:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "error": "strict_live_sources_failed",
+                    "message": str(exc),
+                    "socrata": socrata_runtime_status(),
+                },
+            )
+        logger.warning("refresh_crimes_feed_error: %s", exc)
+        all_articles = []
 
     def _in_crime_pipeline(a: dict) -> bool:
         if not is_albany_related(a):
@@ -3076,6 +3103,8 @@ async def get_crimes(force_refresh: bool = False):
         return is_crime_related(a) or _operational_signal_article(a)
 
     crime_articles = [a for a in all_articles if _in_crime_pipeline(a)]
+    if (source_type or "").lower() == "open_data":
+        crime_articles = [a for a in crime_articles if str(((a.get("incident") or {}).get("source_type") or "")).lower() == "open_data"]
 
     enriched: list[dict] = []
     for a in crime_articles:
@@ -3237,6 +3266,7 @@ async def get_crimes(force_refresh: bool = False):
         },
         "structured_sources": {
             "socrata_records": sum(1 for r in geocoded if str(((r.get("incident") or {}).get("source_type") or "")).lower() == "open_data"),
+            "socrata_runtime": socrata_runtime_status(),
         },
     }
     logger.info(
@@ -3454,9 +3484,11 @@ SOURCE_EXPANSION_HOOKS = [
 
 @app.get("/api/methodology")
 async def get_methodology():
+    methodology = dict(SOURCE_METHODOLOGY)
+    methodology["socrata_runtime"] = socrata_runtime_status()
     return {
         "status": "ok",
-        "methodology": SOURCE_METHODOLOGY,
+        "methodology": methodology,
         "planned_hooks": SOURCE_EXPANSION_HOOKS,
     }
 
@@ -3782,30 +3814,66 @@ async def get_social_intel():
 @app.get("/api/sources")
 async def get_sources():
     registry = load_source_registry()
+    audited = audit_entries(registry)
+    audited_by_id = {str(x.get("source_id") or ""): x for x in audited}
+    socrata_state = socrata_runtime_status()
+    socrata_by_id = {
+        str(x.get("dataset_id") or ""): x
+        for x in (socrata_state.get("datasets") or [])
+        if isinstance(x, dict)
+    }
     sources = [
         {
             "name": x.get("source_name"),
             "type": x.get("category"),
             "trust_tier": x.get("trust_tier"),
             "active_status": bool(x.get("active_status")),
-            "canonical_url": x.get("canonical_url"),
-            "feed_url": x.get("feed_url"),
-            "api_url": x.get("api_url"),
-            "source_id": x.get("source_id"),
-            "lane": x.get("lane"),
-            "validation_status": x.get("validation_status"),
-            "last_checked_at": x.get("last_checked_at"),
+            "source_status": (
+                socrata_by_id.get(str((x.get("canonical_url") or "").split("/")[-1].replace(".json", "")), {}).get("source_status")
+                if str(x.get("category") or "") == "official_structured"
+                else None
+            ),
+            "last_success_at": (
+                socrata_by_id.get(str((x.get("canonical_url") or "").split("/")[-1].replace(".json", "")), {}).get("last_success_at")
+                if str(x.get("category") or "") == "official_structured"
+                else None
+            ),
+            "last_error": (
+                socrata_by_id.get(str((x.get("canonical_url") or "").split("/")[-1].replace(".json", "")), {}).get("last_error")
+                if str(x.get("category") or "") == "official_structured"
+                else None
+            ),
+            "dataset_url": (
+                socrata_by_id.get(str((x.get("canonical_url") or "").split("/")[-1].replace(".json", "")), {}).get("dataset_url")
+                if str(x.get("category") or "") == "official_structured"
+                else None
+            ),
+            "record_count_last_fetch": (
+                socrata_by_id.get(str((x.get("canonical_url") or "").split("/")[-1].replace(".json", "")), {}).get("record_count_last_fetch")
+                if str(x.get("category") or "") == "official_structured"
+                else None
+            ),
+            "implemented_ingestor": (audited_by_id.get(str(x.get("source_id") or ""), {}) or {}).get("implemented_ingestor", "no"),
+            "validated_live": (audited_by_id.get(str(x.get("source_id") or ""), {}) or {}).get("validated_live", "no"),
+            "unsuitable_flag": (audited_by_id.get(str(x.get("source_id") or ""), {}) or {}).get("unsuitable_flag", "no"),
+            "duplicate_flag": (audited_by_id.get(str(x.get("source_id") or ""), {}) or {}).get("duplicate_flag", "no"),
+            "audit_class": (audited_by_id.get(str(x.get("source_id") or ""), {}) or {}).get("audit_class", ""),
+            "audit_reason": (audited_by_id.get(str(x.get("source_id") or ""), {}) or {}).get("reason", ""),
         }
         for x in registry
     ]
     cached = get_cached("merged_news") or []
+    methodology = dict(SOURCE_METHODOLOGY)
+    methodology["socrata_runtime"] = socrata_state
     return {
         "status": "ok",
         "total_articles": len(cached) if isinstance(cached, list) else 0,
         "source_count": len(sources),
         "sources": sources,
+        "socrata_runtime": socrata_state,
         "registry_summary": source_registry_summary(registry),
-        "methodology": SOURCE_METHODOLOGY,
+        "audit_summary": audit_counts(audited),
+        "methodology": methodology,
         "planned_hooks": SOURCE_EXPANSION_HOOKS,
     }
 

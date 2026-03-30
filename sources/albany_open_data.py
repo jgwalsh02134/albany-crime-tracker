@@ -248,6 +248,7 @@ def _to_incident_article(row: dict[str, Any], dataset: dict[str, Any]) -> dict[s
     source_url = _dataset_url(dataset_id)
     tags = ["socrata", "structured", "open_data", kind]
     socrata_source_status = "fallback" if bool(row.get("_fallback_snapshot")) else "live"
+    tags.append(f"socrata_{socrata_source_status}")
     if latitude is not None and longitude is not None:
         tags.append("geocoded")
     return {
@@ -472,7 +473,7 @@ def albany_open_data_sources() -> list[dict[str, Any]]:
 def socrata_runtime_status() -> dict[str, Any]:
     _init_socrata_state()
     primary_ids = {str(ds.get("id") or "") for ds in SOCRATA_DATASET_DEFS}
-    datasets = [dict(v) for _, v in sorted(_SOCRATA_STATE.items(), key=lambda kv: kv[0]) if kv[0] in primary_ids]
+    datasets = [dict(v) for k, v in sorted(_SOCRATA_STATE.items(), key=lambda kv: kv[0]) if k in primary_ids]
     return {
         "configured": bool(settings.socrata_app_token),
         "datasets": datasets,
