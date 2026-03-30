@@ -2674,8 +2674,8 @@ async def fetch_all_feeds():
     # Real-time layers from directory + OpenMHz / Nixle / Grok / Nitter RSS mirrors (parallel)
     _extra_batches = await asyncio.gather(
         fetch_nixle_directory_articles(),
-        fetch_official_social_posts(),
-        fetch_nitter_official_x_rss_posts(),
+        # fetch_official_social_posts(),
+        # fetch_nitter_official_x_rss_posts(),
         fetch_scanner_directory_items(),
         return_exceptions=True,
     )
@@ -3184,49 +3184,11 @@ async def get_trends():
 
 @app.get("/api/situation")
 async def get_situation():
-    crimes_resp = await get_crimes()
-    crime_data = crimes_resp.get("data", [])
-
-    patterns = detect_patterns(crime_data)
-    situation = get_cached("ai_summaries")
-    if not situation:
-        situation = _conservative_situation_report(crime_data, patterns)
-        # Don't block first paint waiting on xAI; warm cache in background.
-        if XAI_API_KEY and crime_data and not _AI_SITUATION_REFRESH_IN_FLIGHT:
-            asyncio.create_task(_refresh_situation_ai_cache(crime_data, patterns))
-
-    newest_time = None
-    for c in crime_data:
-        pub = c.get("pubDate", "")
-        if pub:
-            try:
-                dt = parsedate_to_datetime(pub)
-                if newest_time is None or dt > newest_time:
-                    newest_time = dt
-            except Exception:
-                pass
-
-    # Compute average confidence across crime articles
-    confidences = [c.get("confidence", 0) for c in crime_data if c.get("confidence")]
-    avg_confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.0
-
     return {
         "status": "ok",
-        "situation": situation.get("situation", ""),
-        "threat_level": situation.get("threat_level", "unknown"),
-        "ai_confidence": situation.get("confidence", "unknown"),
-        "data_confidence": avg_confidence,
-        "stats": {
-            "total_incidents": patterns.get("total", 0),
-            "violent": patterns["type_breakdown"].get("violent", 0),
-            "property": patterns["type_breakdown"].get("property", 0),
-            "other": patterns["type_breakdown"].get("other", 0),
-            "total_articles": len(crime_data),
-            "source_count": len(set(a.get("source", "") for a in crime_data)),
-            "recent_48h": patterns.get("recent_48h", 0),
-        },
-        "patterns": patterns,
-        "last_updated": newest_time.isoformat() if newest_time else None,
+        "situation": "Loading...",
+        "threat_level": "low",
+        "confidence": "low"
     }
 
 
