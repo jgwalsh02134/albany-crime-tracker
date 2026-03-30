@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -15,8 +16,8 @@ from app.db.models import Base
 
 logger = logging.getLogger(__name__)
 
-_engine: Optional[AsyncEngine] = None
-_session_factory: Optional[async_sessionmaker[AsyncSession]] = None
+_engines_by_loop: dict[int, AsyncEngine] = {}
+_session_factories_by_loop: dict[int, async_sessionmaker[AsyncSession]] = {}
 _last_db_error: str = ""
 
 
@@ -78,35 +79,58 @@ def has_database() -> bool:
     return bool(_database_url())
 
 
+def _active_loop_id() -> Optional[int]:
+    try:
+        return id(asyncio.get_running_loop())
+    except RuntimeError:
+        return None
+
+
 def get_engine() -> Optional[AsyncEngine]:
-    global _engine, _session_factory, _last_db_error
+    global _last_db_error
     db_url = _database_url()
     if not db_url:
         return None
-    if _engine is None:
+    loop_id = _active_loop_id()
+    if loop_id is None:
+        _last_db_error = "RuntimeError: no running event loop for async database engine"
+        return None
+    engine = _engines_by_loop.get(loop_id)
+    if engine is None:
         try:
-            _engine = create_async_engine(
+            engine = create_async_engine(
                 db_url,
                 pool_pre_ping=True,
                 pool_recycle=1800,
                 future=True,
             )
-            _session_factory = async_sessionmaker(_engine, expire_on_commit=False, class_=AsyncSession)
+            _engines_by_loop[loop_id] = engine
+            _session_factories_by_loop[loop_id] = async_sessionmaker(
+                engine, expire_on_commit=False, class_=AsyncSession
+            )
             _last_db_error = ""
         except Exception as exc:
             _last_db_error = f"{type(exc).__name__}: {exc}"
             logger.warning("database engine init failed: %s", exc)
-            _engine = None
-            _session_factory = None
-    return _engine
+            _engines_by_loop.pop(loop_id, None)
+            _session_factories_by_loop.pop(loop_id, None)
+            return None
+    return engine
 
 
 def get_session_factory() -> Optional[async_sessionmaker[AsyncSession]]:
     if not has_database():
         return None
-    if _session_factory is None:
-        get_engine()
-    return _session_factory
+    loop_id = _active_loop_id()
+    if loop_id is None:
+        return None
+    session_factory = _session_factories_by_loop.get(loop_id)
+    if session_factory is None:
+        engine = get_engine()
+        if engine is None:
+            return None
+        session_factory = _session_factories_by_loop.get(loop_id)
+    return session_factory
 
 
 async def init_database() -> bool:
@@ -129,11 +153,14 @@ async def init_database() -> bool:
 
 
 async def close_database() -> None:
-    global _engine, _session_factory
-    if _engine is not None:
-        await _engine.dispose()
-    _engine = None
-    _session_factory = None
+    engines = list(_engines_by_loop.values())
+    _engines_by_loop.clear()
+    _session_factories_by_loop.clear()
+    for engine in engines:
+        try:
+            await engine.dispose()
+        except Exception as exc:
+            logger.warning("database dispose failed: %s", exc)
 
 
 async def database_ready() -> bool:
