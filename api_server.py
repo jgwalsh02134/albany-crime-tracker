@@ -3946,7 +3946,7 @@ ALBANY_NIBRS_AGENCIES = [
     {"ori": "NY0017500", "name": "SUNY Albany (Plaza)", "type": "University", "nibrs": False, "population": None},
 ]
 
-FBI_CDE_API_KEY = settings.fbi_api_key or settings.data_gov_api_key or "DEMO_KEY"
+FBI_CDE_API_KEY = settings.fbi_api_key or "DEMO_KEY"
 FBI_CDE_BASE = "https://api.usa.gov/crime/fbi/cde"
 
 

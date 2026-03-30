@@ -47,7 +47,6 @@ class Settings:
     # External keys / integrations
     xai_api_key: str
     fbi_api_key: str
-    data_gov_api_key: str
     socrata_app_token: str
     database_url: str
     redis_url: str
@@ -77,8 +76,7 @@ def get_settings() -> Settings:
         app_name=os.getenv("APP_NAME", "Albany Crime Tracker"),
         app_version=os.getenv("APP_VERSION", "1.0.0"),
         xai_api_key=(os.getenv("XAI_API_KEY") or "").strip(),
-        fbi_api_key=(os.getenv("FBI_API_KEY") or os.getenv("DATA_GOV_API_KEY") or "").strip(),
-        data_gov_api_key=(os.getenv("DATA_GOV_API_KEY") or "").strip(),
+        fbi_api_key=(os.getenv("FBI_API_KEY") or "").strip(),
         socrata_app_token=(os.getenv("SOCRATA_APP_TOKEN") or "").strip(),
         database_url=_extract_url_like(
             os.getenv("DATABASE_URL") or "",
