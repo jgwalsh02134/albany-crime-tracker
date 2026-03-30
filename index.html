@@ -49,107 +49,73 @@
         <span class="live-dot" id="liveDot"></span>
         <span class="live-text" id="topbarStatus">Connecting</span>
       </div>
+      <button class="icon-btn" id="menuToggle" title="Open menu" aria-label="Open menu" aria-expanded="false" aria-controls="overflowMenu">
+        <span class="material-icons" style="font-size:20px;">menu</span>
+      </button>
       <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle light/dark mode">
         <span class="material-icons" style="font-size:20px;">dark_mode</span>
       </button>
     </div>
   </header>
 
+  <div class="overflow-menu" id="overflowMenu" hidden>
+    <button type="button" class="overflow-link" data-overflow-target="trends">View trends</button>
+    <button type="button" class="overflow-link" data-overflow-target="sources">Sources &amp; methodology</button>
+    <button type="button" class="overflow-link" data-overflow-target="fbi">FBI / NIBRS resources</button>
+    <button type="button" class="overflow-link" data-overflow-target="settings">Toggle theme</button>
+  </div>
+
   <!-- ===== DESKTOP TABS (hidden on mobile) ===== -->
   <div class="desktop-tabs" id="desktopTabs" role="tablist" aria-label="Primary views">
-    <button class="desktop-tab active" data-view="feed" aria-label="Open feed view">Feed</button>
+    <button class="desktop-tab active" data-view="feed" aria-label="Open home view">Home</button>
+    <button class="desktop-tab" data-view="map" aria-label="Open map view">Map</button>
     <button class="desktop-tab" data-view="scanner" aria-label="Open scanner view">Scanner</button>
+    <button class="desktop-tab" data-view="chat" aria-label="Open AI chat view">AI</button>
     <button class="desktop-tab" data-view="directory" aria-label="Open directory view">Directory</button>
-    <button class="desktop-tab" data-view="chat" aria-label="Open AI chat view">AI Chat</button>
-    <button class="desktop-tab" data-view="more" aria-label="Open more view">More</button>
   </div>
 
   <!-- ===== MAIN CONTENT AREA ===== -->
   <main class="main">
 
-    <!-- === FEED VIEW (default) === -->
+    <!-- === HOME VIEW (default) === -->
     <section class="view active" id="viewFeed">
+      <div class="home-scroll">
+      <section class="home-summary-panel" aria-label="Home overview">
+        <div class="home-summary-header">
+          <div>
+            <h1 class="home-title">Home</h1>
+            <p class="home-subtitle">What happened, where it happened, who reported it, and how certain ACT is.</p>
+          </div>
+          <span class="home-updated" id="topbarTime"></span>
+        </div>
+        <div class="feed-summary-grid home-summary-grid" id="feedSummaryGrid">
+          <div class="feed-summary-empty">Loading overview…</div>
+        </div>
+      </section>
 
-      <!-- Situation card -->
-      <div class="situation-card" id="situationCard">
-        <div class="situation-row">
-          <span class="threat-badge" id="threatBadge">---</span>
-          <span class="situation-time" id="topbarTime"></span>
-        </div>
-        <p class="situation-text" id="situationText">Loading briefing… incidents below update on their own.</p>
-        <button class="situation-expand-btn" id="situationExpandBtn" aria-label="See full analysis">
-          Full report <span class="material-icons" style="font-size:12px;vertical-align:middle;">expand_more</span>
-        </button>
-        <p class="situation-text-full" id="situationTextFull" hidden></p>
-      </div>
+      <section class="home-cta-panel" aria-label="Quick actions">
+        <button type="button" class="home-cta-btn" data-view-target="map">Open map</button>
+        <button type="button" class="home-cta-btn" data-view-target="scanner">Open scanner</button>
+        <button type="button" class="home-cta-btn" data-view-target="chat">Open AI</button>
+        <button type="button" class="home-cta-btn" data-view-target="directory">Open directory</button>
+        <button type="button" class="home-cta-btn" data-overflow-target="trends">View trends</button>
+      </section>
 
-      <!-- Stats row -->
-      <div class="stats-row">
-        <div class="stat-chip stat-chip--live">
-          <span class="stat-val" id="statTotal">--</span>
-          <span class="stat-lbl">Live feed</span>
-          <span class="stat-sublbl" id="statLiveSub"></span>
-        </div>
-        <div class="stat-chip stat-violent">
-          <span class="stat-val" id="statViolent">--</span>
-          <span class="stat-lbl">Violent</span>
-        </div>
-        <div class="stat-chip stat-property">
-          <span class="stat-val" id="statProperty">--</span>
-          <span class="stat-lbl">Property</span>
-        </div>
-        <div class="stat-chip" title="Stats-eligible incidents with a timestamp in the last 48 hours (broader than the Live feed list)">
-          <span class="stat-val" id="statRecent">--</span>
-          <span class="stat-lbl">48H</span>
+      <section class="home-feed-panel" aria-label="Live feed">
+      <div class="home-feed-header">
+        <div>
+          <h2 class="home-feed-title">Live feed</h2>
+          <p class="home-feed-subtitle">Latest 48 hours, newest first.</p>
         </div>
       </div>
-
-      <!-- Product lanes -->
       <div class="feed-subtabs" id="feedSubtabs" role="tablist" aria-label="Feed tabs">
         <button class="feed-subtab active" data-feedtab="verified" aria-label="Open verified incidents lane">Verified Incidents</button>
         <button class="feed-subtab" data-feedtab="developing" aria-label="Open developing incidents lane">Developing Incidents</button>
         <button class="feed-subtab" data-feedtab="official" aria-label="Open official updates lane">Official Updates</button>
-        <button class="feed-subtab" data-feedtab="trendsmap" aria-label="Open trends and map lane">Trends &amp; Map</button>
       </div>
-      <div class="feed-controls" role="region" aria-label="Feed controls">
-        <input
-          type="search"
-          id="feedSearchInput"
-          class="feed-search-input"
-          placeholder="Search feed title, location, source…"
-          aria-label="Search feed incidents"
-        >
-        <div class="feed-priority-toggle" role="group" aria-label="Feed order toggle">
-          <button type="button" id="feedOrderPriority" class="feed-order-btn active" aria-pressed="true">Top Incidents</button>
-          <button type="button" id="feedOrderNewest" class="feed-order-btn" aria-pressed="false">Latest</button>
-        </div>
-        <select id="feedSortSelect" class="feed-sort-select" aria-label="Sort feed incidents">
-          <option value="priority" selected>Sort: Priority</option>
-          <option value="newest">Sort: Newest</option>
-          <option value="severity">Sort: Severity</option>
-          <option value="verification">Sort: Verification</option>
-        </select>
-      </div>
-      <section class="feed-summary-panel" aria-label="Incident summary and trends">
-        <div class="feed-summary-header">
-          <h2 class="feed-summary-title">Summary &amp; trends</h2>
-          <div class="feed-summary-controls" role="group" aria-label="Summary time window controls">
-            <label for="summaryWindowSelect" class="feed-summary-label">Window</label>
-            <select id="summaryWindowSelect" class="feed-summary-select" aria-label="Select summary time window">
-              <option value="24h">Last 24h</option>
-              <option value="7d" selected>Last 7d</option>
-              <option value="30d">Last 30d</option>
-            </select>
-          </div>
-        </div>
-        <div class="feed-summary-grid" id="feedSummaryGrid">
-          <div class="feed-summary-empty">Loading summary…</div>
-        </div>
-      </section>
 
       <!-- VERIFIED -->
       <div class="feed-tab-content active" id="feedTabVerified">
-        <div id="promotedSocialPosts"></div>
         <div class="feed-list" id="incidentListVerified">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
@@ -170,31 +136,7 @@
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
       </div>
-
-      <!-- TRENDS + MAP -->
-      <div class="feed-tab-content" id="feedTabTrendsmap">
-        <div class="news-ai-card" id="trendsMapLaneCard">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-        </div>
-        <div class="news-ai-card" id="dailySummaryCard">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-        </div>
-        <div class="news-ai-card" id="monthlySummaryCard">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-        </div>
-        <div class="news-ai-card" id="monthlyProjectionCard"></div>
-        <div class="news-section-divider">
-          <span class="material-icons" style="font-size:12px;vertical-align:-2px;">campaign</span>
-          Police Social Media Posts
-        </div>
-        <div id="socialIntelList">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-        </div>
-        <div class="news-section-divider">Follow-ups &amp; older reports (48h–7d)</div>
-        <div class="feed-list" id="incidentListTrendsmap">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-        </div>
+      </section>
       </div>
     </section>
 
@@ -225,6 +167,7 @@
         </select>
       </div>
       <div class="map-status" id="mapStatus" role="status" aria-live="polite"></div>
+      <div class="map-sync-note" id="mapSyncNote">Showing the same persisted incident records used by the Home feed.</div>
       <div id="map" role="region" aria-label="Incident map"></div>
     </section>
 
@@ -511,7 +454,7 @@
   <nav class="bottom-nav" id="bottomNav">
     <button class="nav-btn active" data-view="feed">
       <span class="material-icons">article</span>
-      <span>Feed</span>
+      <span>Home</span>
     </button>
     <button class="nav-btn" data-view="map">
       <span class="material-icons">map</span>
@@ -521,17 +464,13 @@
       <span class="material-icons">sensors</span>
       <span>Scanner</span>
     </button>
-    <button class="nav-btn" data-view="directory">
-      <span class="material-icons">badge</span>
-      <span>Directory</span>
-    </button>
     <button class="nav-btn" data-view="chat">
       <span class="material-icons">psychology</span>
       <span>AI</span>
     </button>
-    <button class="nav-btn" data-view="more">
-      <span class="material-icons">more_horiz</span>
-      <span>More</span>
+    <button class="nav-btn" data-view="directory">
+      <span class="material-icons">badge</span>
+      <span>Directory</span>
     </button>
   </nav>
 

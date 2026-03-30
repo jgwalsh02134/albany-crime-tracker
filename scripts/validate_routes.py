@@ -4,12 +4,23 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import re
 
 import httpx
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from api_server import app
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _read(rel_path: str) -> str:
+    try:
+        with open(os.path.join(ROOT, rel_path), "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return ""
 
 
 CRITICAL_ROUTES = [
@@ -28,6 +39,40 @@ CRITICAL_ROUTES = [
 
 async def main() -> int:
     failures = 0
+    index_html = _read("index.html")
+    app_js = _read("app.js")
+
+    # Frontend shell checks
+    nav_labels = re.findall(r'<button class="nav-btn[^"]*"[^>]*>\s*<span class="material-icons">[^<]+</span>\s*<span>([^<]+)</span>', index_html)
+    print(f"bottom_nav_labels: {nav_labels}")
+    if nav_labels != ["Home", "Map", "Scanner", "AI", "Directory"]:
+        print("bottom nav invalid: expected exactly Home, Map, Scanner, AI, Directory")
+        failures += 1
+    if re.search(r'<button class="nav-btn[^"]*"[^>]*>\s*<span class="material-icons">[^<]+</span>\s*<span>More</span>', index_html):
+        print("primary nav invalid: More still present in bottom nav")
+        failures += 1
+    if re.search(r'<button class="desktop-tab[^"]*"[^>]*>More</button>', index_html):
+        print("primary nav invalid: More still present in desktop tabs")
+        failures += 1
+    required_home_ids = ["feedSummaryGrid", "incidentListVerified", "incidentListDeveloping", "incidentListOfficial"]
+    for rid in required_home_ids:
+        if f'id="{rid}"' not in index_html:
+            print(f"home shell invalid: missing {rid}")
+            failures += 1
+    if "Latest 48 hours, newest first." not in index_html:
+        print("home feed invalid: 48h newest-first text missing")
+        failures += 1
+    for scanner_label in ["All", "Police", "Fire", "EMS"]:
+        if f'data-scanner-filter="{scanner_label.lower()}"' not in index_html and scanner_label != "All":
+            print(f"scanner shell invalid: missing {scanner_label} filter")
+            failures += 1
+    if 'data-scanner-filter="all"' not in index_html:
+        print("scanner shell invalid: missing All filter")
+        failures += 1
+    if "window.ACTFocusIncident = focusIncidentCard;" not in app_js:
+        print("map/feed sync invalid: focusIncidentCard hook missing")
+        failures += 1
+
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver", timeout=20.0) as client:
         for route in CRITICAL_ROUTES:

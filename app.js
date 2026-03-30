@@ -1,6 +1,6 @@
-/* Albany County Crime Tracker v8 — app.js
-   Mobile-first, feed-first, card-based, touch-optimized.
-   Views: Feed (Now / Confirmed / Context lanes), Map, Scanner, AI Chat, More */
+/* Albany County Crime Tracker v9 — app.js
+   Mobile-first product reset.
+   Views: Home, Map, Scanner, AI, Directory, with overflow resources. */
 
 (function () {
   "use strict";
@@ -31,7 +31,7 @@
   var mapReady = false;
   var chatHistory = [];
   var activeView = "feed";
-  var activeFeedTab = "verified";       // verified | developing | official | trendsmap
+  var activeFeedTab = "verified";       // verified | developing | official
   var lastLiveActiveItems = [];
   var lastLiveRecentItems = [];
   var lastCrimeCounts = {};
@@ -45,13 +45,14 @@
   var activeMapFilter = "all";
   var allIncidentData = [];          // holds all crime articles for tab filtering
   var feedSearchQuery = "";
-  var feedSortMode = "priority";
+  var feedSortMode = "newest";
   var mapSearchQuery = "";
   var mapVerification = "";
   var mapSeverity = "";
   var mapFetchTimer = null;
   var feedControlTimer = null;
   var summaryWindow = "7d";
+  var HOME_WINDOW_HOURS = 48;
 
   // Law enforcement directory (lazy-loaded from /api/directory/*)
   var leDirectory = null;
@@ -348,25 +349,17 @@
     initChat();
     startClock();
 
-    // First paint: load core incident feed first, defer heavier noncritical calls.
     fetchIncidents();
-    setTimeout(fetchSituation, 700);
-    setTimeout(fetchScannerCalls, 1200);
-    setTimeout(fetchScannerTalkgroups, 1800);
-    setTimeout(fetchTrends, 2400);
-    setTimeout(fetchSummarySnapshot, 2600);
-    setTimeout(fetchDailySummary, 3000);
-    setTimeout(fetchMonthlySummary, 3600);
-    setTimeout(fetchSocialIntel, 4200);
+    setTimeout(fetchScannerCalls, 900);
+    setTimeout(fetchScannerTalkgroups, 1400);
+    setTimeout(fetchSummarySnapshot, 1800);
 
     setInterval(function () {
       fetchIncidents();
-      fetchSituation();
       fetchSummarySnapshot();
     }, REFRESH_MS);
 
     setInterval(fetchScannerCalls, SCANNER_REFRESH_MS);
-    setInterval(fetchSocialIntel, 900000);   // social intel every 15 min
   });
 
   function refreshHeaderPrimaryCount() {
@@ -506,86 +499,74 @@
       .join(" · ");
   }
 
-  function renderSummarySnapshot(summary, trends) {
+  function _developingCount(summary) {
+    var rows = summary && summary.groups && summary.groups.verification_level;
+    var total = 0;
+    if (!Array.isArray(rows)) return total;
+    rows.forEach(function (r) {
+      var key = String(r.key || "").toLowerCase();
+      if (key === "scanner" || key === "inferred" || key === "media") total += Number(r.count || 0);
+    });
+    return total;
+  }
+
+  function renderSummarySnapshot(currentSummary, weekSummary, monthSummary) {
     var el = document.getElementById("feedSummaryGrid");
     if (!el) return;
-    if (!summary || summary.status === "error") {
-      el.innerHTML = '<div class="feed-summary-empty">Summary is temporarily unavailable.</div>';
+    if (!currentSummary || currentSummary.status === "error") {
+      el.innerHTML = '<div class="feed-summary-empty">Overview is temporarily unavailable.</div>';
       return;
     }
 
-    var total = Number(summary.total || 0);
-    var delta = Number(summary.delta_count || 0);
-    var pct = Number(summary.delta_percent || 0);
-    var trendText =
-      (delta > 0 ? "+" : "") + delta + " vs prev window" + " (" + (isFinite(pct) ? pct : 0) + "%)";
-
-    var topTypes = _topText(summary.groups && summary.groups.incident_type);
-    var topMunis = _topText(summary.groups && summary.groups.municipality);
-    var sourceMix = _topText(summary.groups && summary.groups.source_type);
-    var verifyMix = _topText(summary.groups && summary.groups.verification_level);
-
-    var daily = trends && trends.series && Array.isArray(trends.series.daily_counts)
-      ? trends.series.daily_counts
-      : [];
-    var recentDaily = daily.slice(-7).map(function (p) { return p.count || 0; });
-    var spike = recentDaily.length ? Math.max.apply(Math, recentDaily) : 0;
-
     var html = "";
     html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Total incidents</div>';
-    html += '<div class="feed-summary-v">' + esc(String(total)) + '</div>';
-    html += '<div class="feed-summary-sub">' + esc(trendText) + "</div>";
+    html += '<div class="feed-summary-k">Current</div>';
+    html += '<div class="feed-summary-v">' + esc(String(Number(currentSummary.total || 0))) + '</div>';
+    html += '<div class="feed-summary-sub">Reported in the last 24 hours</div>';
     html += "</div>";
 
     html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Trend snapshot</div>';
-    html += '<div class="feed-summary-v">' + esc(String(spike)) + '</div>';
-    html += '<div class="feed-summary-sub">Highest daily count in recent trend</div>';
+    html += '<div class="feed-summary-k">Developing</div>';
+    html += '<div class="feed-summary-v">' + esc(String(_developingCount(currentSummary))) + '</div>';
+    html += '<div class="feed-summary-sub">Signals still being confirmed</div>';
     html += "</div>";
 
     html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Top categories</div>';
-    html += '<div class="feed-summary-list">' + esc(topTypes) + "</div>";
+    html += '<div class="feed-summary-k">Week overview</div>';
+    html += '<div class="feed-summary-v">' + esc(String(Number(weekSummary && weekSummary.total || 0))) + '</div>';
+    html += '<div class="feed-summary-list">' + esc(_topText(weekSummary && weekSummary.groups && weekSummary.groups.incident_type)) + "</div>";
     html += "</div>";
 
     html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Top municipalities</div>';
-    html += '<div class="feed-summary-list">' + esc(topMunis) + "</div>";
-    html += "</div>";
-
-    html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Source mix</div>';
-    html += '<div class="feed-summary-list">' + esc(sourceMix) + "</div>";
-    html += "</div>";
-
-    html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Verification mix</div>';
-    html += '<div class="feed-summary-list">' + esc(verifyMix) + "</div>";
+    html += '<div class="feed-summary-k">Month overview</div>';
+    html += '<div class="feed-summary-v">' + esc(String(Number(monthSummary && monthSummary.total || 0))) + '</div>';
+    html += '<div class="feed-summary-list">' + esc(_topText(monthSummary && monthSummary.groups && monthSummary.groups.municipality)) + "</div>";
     html += "</div>";
 
     el.innerHTML = html;
   }
 
   function fetchSummarySnapshot() {
-    var summaryReq = apiClient && apiClient.getIncidentSummary
-      ? apiClient.getIncidentSummary({ window: summaryWindow })
-      : fetch(API + "/api/incidents/summary?window=" + encodeURIComponent(summaryWindow)).then(ok);
-    var trendsReq = apiClient && apiClient.getIncidentTrends
-      ? apiClient.getIncidentTrends({ window: summaryWindow === "24h" ? "7d" : summaryWindow })
-      : fetch(API + "/api/incidents/trends?window=" + encodeURIComponent(summaryWindow === "24h" ? "7d" : summaryWindow)).then(ok);
-    Promise.all([summaryReq, trendsReq])
+    var req24 = apiClient && apiClient.getIncidentSummary
+      ? apiClient.getIncidentSummary({ window: "24h" })
+      : fetch(API + "/api/incidents/summary?window=24h").then(ok);
+    var req7 = apiClient && apiClient.getIncidentSummary
+      ? apiClient.getIncidentSummary({ window: "7d" })
+      : fetch(API + "/api/incidents/summary?window=7d").then(ok);
+    var req30 = apiClient && apiClient.getIncidentSummary
+      ? apiClient.getIncidentSummary({ window: "30d" })
+      : fetch(API + "/api/incidents/summary?window=30d").then(ok);
+    Promise.all([req24, req7, req30])
       .then(function (res) {
-        renderSummarySnapshot(res[0], res[1]);
+        renderSummarySnapshot(res[0], res[1], res[2]);
       })
       .catch(function () {
-        renderSummarySnapshot({ status: "error" }, null);
+        renderSummarySnapshot({ status: "error" }, null, null);
       });
   }
 
   // ── NAVIGATION ────────────────────────────────────────────────
   function initNav() {
-    // Mobile bottom nav
     var btns = document.querySelectorAll(".nav-btn");
     btns.forEach(function (btn) {
       btn.addEventListener("click", function () {
@@ -594,7 +575,6 @@
       });
     });
 
-    // Desktop tabs
     var dtabs = document.querySelectorAll(".desktop-tab");
     dtabs.forEach(function (tab) {
       tab.addEventListener("click", function () {
@@ -603,8 +583,58 @@
       });
     });
 
-    // Set feed as default active view
+    var menuToggle = document.getElementById("menuToggle");
+    var menu = document.getElementById("overflowMenu");
+    if (menuToggle && menu) {
+      menuToggle.addEventListener("click", function () {
+        var open = !menu.hasAttribute("hidden");
+        if (open) menu.setAttribute("hidden", "");
+        else menu.removeAttribute("hidden");
+        menuToggle.setAttribute("aria-expanded", open ? "false" : "true");
+      });
+      document.addEventListener("click", function (evt) {
+        if (menu.hasAttribute("hidden")) return;
+        if (evt.target === menuToggle || menu.contains(evt.target)) return;
+        menu.setAttribute("hidden", "");
+        menuToggle.setAttribute("aria-expanded", "false");
+      });
+      menu.querySelectorAll("[data-overflow-target]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          handleOverflowAction(btn.getAttribute("data-overflow-target"));
+          menu.setAttribute("hidden", "");
+          menuToggle.setAttribute("aria-expanded", "false");
+        });
+      });
+    }
+
+    document.querySelectorAll("[data-view-target]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var target = btn.getAttribute("data-view-target");
+        if (target) switchView(target);
+      });
+    });
+
     switchView("feed");
+  }
+
+  function handleOverflowAction(target) {
+    if (target === "settings") {
+      var themeBtn = document.getElementById("themeToggle");
+      if (themeBtn) themeBtn.click();
+      return;
+    }
+    switchView("more");
+    setTimeout(function () {
+      var ids = {
+        trends: "patternsContent",
+        sources: "methodologyPanel",
+        fbi: "nibrsAgencies"
+      };
+      var el = document.getElementById(ids[target] || "");
+      if (el && typeof el.scrollIntoView === "function") {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 60);
   }
 
   function switchView(viewName) {
@@ -629,7 +659,6 @@
     var target = document.getElementById("view" + capitalize(viewName));
     if (target) target.classList.add("active");
 
-    // Lazy init map when first shown
     if (viewName === "map" && !mapInitialized) {
       initMap();
       mapInitialized = true;
@@ -638,13 +667,6 @@
       refreshMapMarkers();
     }
 
-    // On tablet+, map is always visible — also init it on first load
-    if (isTablet() && !mapInitialized) {
-      initMap();
-      mapInitialized = true;
-    }
-
-    // Lazy-load NIBRS
     if (viewName === "more") {
       var list = document.getElementById("nibrsAgencies");
       if (list && list.querySelector(".skeleton")) {
@@ -654,6 +676,10 @@
       if (meth && meth.querySelector(".skeleton")) {
         fetchMethodologyPanel();
       }
+      fetchTrends();
+      fetchDailySummary();
+      fetchMonthlySummary();
+      fetchSocialIntel();
     }
 
     // Lazy-load law enforcement directory
@@ -665,19 +691,10 @@
   // Expose globally so inline onclick in scanner-intel cards can call it
   window.switchView = switchView;
 
-  function isTablet() {
-    return window.innerWidth >= 768;
-  }
-
-  // On resize, ensure map is initialized for tablet+
   var resizeTimer;
   window.addEventListener("resize", function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
-      if (isTablet() && !mapInitialized) {
-        initMap();
-        mapInitialized = true;
-      }
       if (map) map.invalidateSize();
     }, 200);
   });
@@ -840,6 +857,7 @@
     var params = {
       has_coordinates: "true",
       limit: 500,
+      start_date: homeWindowStartIso(),
       q: mapSearchQuery,
       verification_level: mapVerification,
       severity: mapSeverity,
@@ -847,7 +865,9 @@
     };
     var fetcher = apiClient && apiClient.getIncidentMarkers
       ? apiClient.getIncidentMarkers(params)
-      : fetch(API + "/api/incidents/map?has_coordinates=true&limit=500").then(ok);
+      : fetch(
+          API + "/api/incidents/map?has_coordinates=true&limit=500&sort_by=newest&start_date=" + encodeURIComponent(params.start_date)
+        ).then(ok);
     fetcher
       .then(function (r) {
         var markers = (r && Array.isArray(r.markers)) ? r.markers : [];
@@ -879,37 +899,35 @@
                   type === "property" ? "#d9953a" : "#4d8fdb";
 
       var inc = item.incident || {};
-      var ps = typeof item.public_safety_score === "number" ? item.public_safety_score : 0;
       var vf = item.verification_level || inc.verification_level || "";
-      var lf = inc.live_frame || "";
-      var radius = lf === "live_now" ? 12 : lf === "developing" ? 10 : ps >= 55 ? 9 : 7;
-      var fillOp = vf === "multi_source" || vf === "official" ? 0.92 : vf === "scanner" ? 0.72 : 0.85;
-      if (item._scanner_call && vf !== "multi_source" && vf !== "official") fillOp = 0.68;
+      var cq = String(item.coordinate_quality || "missing").toLowerCase();
+      var radius = cq === "exact" ? 9 : 11;
+      var fillOp = cq === "exact" ? 0.9 : 0.45;
 
       var circle = L.circleMarker([lat, lng], {
         radius: radius,
         fillColor: color,
         color: "#fff",
-        weight: lf === "live_now" ? 2.2 : 1.5,
+        dashArray: cq === "approximate" ? "4 4" : null,
+        weight: cq === "exact" ? 2.2 : 2,
         opacity: 1,
         fillOpacity: fillOp
       });
 
       var ta = item.human_time || (item.occurred_at ? timeAgo(new Date(item.occurred_at)) : "");
       var popup = '<div style="font-family:Satoshi,system-ui,sans-serif;max-width:260px;">';
-      popup += '<div style="font-size:12px;font-weight:600;line-height:1.4;margin-bottom:6px;">' + esc(item.title || "Incident") + '</div>';
-      var typeBadge = type === "violent"
-        ? '<span style="background:#e05252;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;text-transform:uppercase;font-weight:700;">Violent</span>'
-        : type === "property"
-        ? '<span style="background:#d9953a;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;text-transform:uppercase;font-weight:700;">Property</span>'
-        : '<span style="background:#4d8fdb;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;text-transform:uppercase;font-weight:700;">Other</span>';
-      popup += '<div style="margin-bottom:6px;">' + typeBadge + '</div>';
-      popup += '<div style="font-size:10px;color:#888;">' + esc(item.source_type || "unknown") + " · " + esc(item.source_name || "Unknown source") + '</div>';
-      popup += '<div style="font-size:10px;color:#888;">verification: ' + esc(item.verification_level || "unknown") + '</div>';
-      popup += '<div style="font-size:10px;color:#888;">coordinate quality: ' + esc(item.coordinate_quality || "missing") + '</div>';
-      if (ta) popup += '<div style="font-size:10px;color:#888;">' + esc(ta) + '</div>';
+      popup += '<div style="font-size:13px;font-weight:700;line-height:1.35;margin-bottom:6px;">' + esc(item.title || "Incident") + '</div>';
+      popup += '<div style="font-size:11px;color:#94a3b8;margin-bottom:6px;">' + esc(item.municipality || "Albany County") + (ta ? " · " + esc(ta) : "") + '</div>';
+      popup += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">';
+      popup += '<span style="background:#1e2535;color:#f1f5f9;font-size:10px;padding:2px 7px;border-radius:999px;">' + esc(_sourceTypeLabel(item.source_type || "unknown") + " · " + (item.source_name || "Unknown source")) + '</span>';
+      popup += '<span style="background:#1e2535;color:#f1f5f9;font-size:10px;padding:2px 7px;border-radius:999px;">' + esc(item.verification_level || "unknown") + '</span>';
+      popup += '<span style="background:#1e2535;color:#f1f5f9;font-size:10px;padding:2px 7px;border-radius:999px;' + (cq === "approximate" ? 'border:1px dashed #94a3b8;' : '') + '">' + esc(cq) + '</span>';
+      popup += '</div>';
       if (item.source_url) {
-        popup += '<div style="margin-top:6px;"><a href="' + escAttr(item.source_url) + '" target="_blank" rel="noopener" style="font-size:11px;color:#4d8fdb;text-decoration:none;font-weight:500;">Open source →</a></div>';
+        popup += '<div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;">';
+        popup += '<a href="' + escAttr(item.source_url) + '" target="_blank" rel="noopener" style="font-size:11px;color:#4d8fdb;text-decoration:none;font-weight:600;">Open source</a>';
+        popup += '<a href="#feed-card-' + escAttr(item.id || "") + '" onclick="window.ACTFocusIncident && window.ACTFocusIncident(\'' + escAttr(item.id || "") + '\');return false;" style="font-size:11px;color:#4d8fdb;text-decoration:none;font-weight:600;">Open in Home</a>';
+        popup += '</div>';
       }
       popup += '</div>';
 
@@ -918,6 +936,18 @@
     });
     setMapStatus(filtered.length ? (filtered.length + " markers") : "No incidents match the current map filters.");
   }
+
+  function focusIncidentCard(id) {
+    if (!id) return;
+    switchView("feed");
+    setTimeout(function () {
+      var el = document.getElementById("feed-card-" + id);
+      if (el && typeof el.scrollIntoView === "function") {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 120);
+  }
+  window.ACTFocusIncident = focusIncidentCard;
 
   // ── SITUATION EXPAND ──────────────────────────────────────────
   (function initSituationExpand() {
@@ -1127,6 +1157,10 @@
     };
   }
 
+  function homeWindowStartIso() {
+    return new Date(Date.now() - HOME_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+  }
+
   function fetchIncidents() {
     var myGen = ++_crimesFetchGeneration;
     var ctrl = new AbortController();
@@ -1134,13 +1168,16 @@
       ctrl.abort();
     }, CRIMES_FETCH_MS);
     var params = {
-      limit: 300,
-      q: feedSearchQuery || "",
-      sort_by: feedSortMode || "newest"
+      limit: 180,
+      sort_by: "newest",
+      start_date: homeWindowStartIso()
     };
     (apiClient && apiClient.getPersistedIncidents
       ? apiClient.getPersistedIncidents(params)
-      : fetch(API + "/api/incidents?limit=300", { signal: ctrl.signal }).then(ok))
+      : fetch(
+          API + "/api/incidents?limit=180&sort_by=newest&start_date=" + encodeURIComponent(params.start_date),
+          { signal: ctrl.signal }
+        ).then(ok))
       .finally(function () {
         clearTimeout(tid);
       })
@@ -1164,7 +1201,6 @@
         renderLiveFeed(verifiedItems, []);
         renderConfirmedFeed(developingItems);
         renderContextFeed(officialItems);
-        renderTrendsMapLane(data);
         refreshHeaderPrimaryCount();
         markTopbarLiveIfStillConnecting();
       })
@@ -1183,7 +1219,6 @@
             renderLiveFeed(verifiedItems, []);
             renderConfirmedFeed(developingItems);
             renderContextFeed(officialItems);
-            renderTrendsMapLane(data);
             markTopbarLiveIfStillConnecting();
           })
           .catch(function (fallbackErr) {
@@ -1303,26 +1338,24 @@
     var ta = item.human_time || feedAgeCompact(item);
     var link = resolveIncidentCardHref(item);
     var area = item.municipality || item.matched_location || "Albany County";
-    var priority = Math.round(Number(item.priority_score || 0));
-    var isHighPriority = item.is_high_priority === true || priority >= 72;
-    var isTrending = item.is_trending === true;
+    var summary = item.summary || item.description || "Details are still limited.";
+    var coordClass = coord === "approximate" ? " feed-meta-pill--coord-approx" : coord === "missing" ? " feed-meta-pill--coord-missing" : "";
 
     var cls = "feed-item";
-    if (isHighPriority) cls += " feed-item--high-priority";
+    if ((item.severity || "").toLowerCase() === "critical" || (item.severity || "").toLowerCase() === "high") cls += " feed-item--high-priority";
     if ((item.severity || "").toLowerCase() === "low" && (verify || "").toLowerCase() === "inferred") cls += " feed-item--quiet";
 
-    var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer">';
+    var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer" id="feed-card-' + escAttr(item.id || "") + '">';
     html += '<span class="feed-dot ' + esc(type) + '"></span>';
     html += '<div class="feed-body">';
     html += '<div class="feed-title">' + esc(title) + '</div>';
-    html += '<div class="feed-op-line"><span class="feed-op-k">Source</span>' + esc(sourceType) + " · " + esc(sourceName) + "</div>";
-    html += '<div class="feed-op-line"><span class="feed-op-k">Verification</span>' + esc(verifyLabel) + "</div>";
-    html += '<div class="feed-op-line"><span class="feed-op-k">Location</span>' + esc(area) + " · " + esc(coord) + "</div>";
+    html += '<div class="feed-summary-line">' + esc(summary) + '</div>';
     html += '<div class="feed-meta">';
-    html += '<span class="feed-age">' + esc(ta || "—") + '</span>';
-    html += '<span class="scanner-feed-badge scanner-feed-badge--lg">P' + esc(String(priority)) + "</span>";
-    if (isHighPriority) html += '<span class="scanner-feed-badge scanner-feed-badge--priority scanner-feed-badge--lg">TOP</span>';
-    if (isTrending) html += '<span class="scanner-feed-badge scanner-feed-badge--trend scanner-feed-badge--lg">TRENDING</span>';
+    html += '<span class="feed-meta-pill">' + esc(area) + '</span>';
+    html += '<span class="feed-meta-pill">' + esc(ta || "—") + '</span>';
+    html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(_sourceTypeLabel(sourceType) + " · " + sourceName) + '</span>';
+    html += '<span class="feed-meta-pill feed-meta-pill--verify">' + esc(verifyLabel) + '</span>';
+    html += '<span class="feed-meta-pill' + coordClass + '">' + esc(coord) + '</span>';
     html += '</div></div></a>';
     return html;
   }
@@ -1421,7 +1454,6 @@
       list.innerHTML = '<div class="empty-state">No verified incidents in this window.</div>';
       return;
     }
-    html += '<div class="feed-section-note">Highest-trust records. Source and verification appear on every card.</div>';
     activeItems.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
   }
@@ -1435,7 +1467,7 @@
         '<div class="empty-state">No developing incidents right now.</div>';
       return;
     }
-    var html = '<div class="feed-live-stale-note" role="note">Developing incidents may include scanner/media/inferred signals and are not official records until corroborated.</div>';
+    var html = '<div class="feed-live-stale-note" role="note">Developing incidents are still being confirmed. Treat them as early reports, not final records.</div>';
     confirmedItems.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
   }
@@ -1449,7 +1481,7 @@
       list.innerHTML = '<div class="empty-state">No official updates in this window.</div>';
       return;
     }
-    var html = '<div class="feed-section-note">Agency/open-data updates with strongest provenance.</div>';
+    var html = '<div class="feed-section-note">Official agency and structured public-record updates.</div>';
     contextItems.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
   }
@@ -2460,6 +2492,7 @@
       var catClass = cat !== "other" ? " scanner-cat-" + cat : "";
       var confidenceLabel = (dept.priority === "high" && len >= 8) ? "medium" : "low";
       var summaryTitle = dept.name + (dept.location ? " — " + dept.location : "");
+      var summaryText = scannerSummaryText(call, dept, catLabel);
 
       var isHigh = dept.priority === "high";
       var dotCls = "scanner-priority-dot scanner-dot-" + cat;
@@ -2484,21 +2517,28 @@
       html += '<span class="scanner-call-time">' + esc(ta || "\u2014") + '</span>';
       html += '</div>';
 
-      if (detailLine) {
-        html += '<div class="scanner-call-detail scanner-call-detail--prominent">talkgroup event · ' + esc(detailLine) + '</div>';
-      }
-
+      html += '<div class="scanner-call-summary">' + esc(summaryText) + '</div>';
       html += '<div class="scanner-call-bottom">';
       if (catLabel) {
         html += '<span class="scanner-call-cat scanner-cat-tag-' + esc(cat) + '">' + esc(catLabel) + '</span>';
       }
       html += '<span class="scanner-call-cat">confidence ' + esc(confidenceLabel) + '</span>';
+      html += '</div>';
+      html += '<details class="scanner-call-details">';
+      html += '<summary>More details</summary>';
+      if (detailLine) {
+        html += '<div class="scanner-call-raw">' + esc(detailLine) + '</div>';
+      }
+      html += '<div class="scanner-call-raw">Talkgroup ' + esc(String(call.talkgroup_num || call.talkgroup || "—")) + '</div>';
       if (audioUrl) {
+        html += '<div class="scanner-call-bottom">';
         html += '<button type="button" class="scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" title="Play raw transmission">';
         html += '<span class="material-icons" style="font-size:14px;">play_arrow</span>';
         html += '</button>';
+        html += '<span class="scanner-call-raw">Play raw audio</span>';
+        html += '</div>';
       }
-      html += '</div>';
+      html += '</details>';
 
       if (agencyId) {
         html += '<div class="scanner-call-item-hint"><span class="material-icons">open_in_new</span> Directory</div>';
@@ -2510,10 +2550,28 @@
     container.innerHTML = html;
     bindScannerAudio(container);
     bindScannerCallCards(container, recentCalls);
-    updateMainPlayer(recentCalls);
+    updateMainPlayer(filtered);
 
     var tsEl = document.getElementById("scannerTimestamp");
     if (tsEl) tsEl.textContent = "Updated " + new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  }
+
+  function scannerSummaryText(call, dept, catLabel) {
+    var raw = [
+      call && call.talkgroup_tag,
+      call && call.talkgroup_description,
+      dept && dept.name,
+      dept && dept.location
+    ].join(" ").toLowerCase();
+    var callType = "radio update";
+    if (raw.indexOf("fire") >= 0 || raw.indexOf("alarm") >= 0) callType = "fire response";
+    else if (raw.indexOf("ems") >= 0 || raw.indexOf("medical") >= 0 || raw.indexOf("ambulance") >= 0) callType = "medical response";
+    else if (raw.indexOf("traffic") >= 0 || raw.indexOf("crash") >= 0) callType = "traffic incident";
+    else if (raw.indexOf("pursuit") >= 0) callType = "police pursuit";
+    else if (raw.indexOf("shots") >= 0 || raw.indexOf("shoot") >= 0) callType = "shots-fired report";
+    else if (raw.indexOf("assault") >= 0) callType = "assault report";
+    else if (raw.indexOf("burglary") >= 0) callType = "burglary report";
+    return (catLabel || "Scanner") + " traffic for " + callType + (dept && dept.location ? " in " + dept.location : "") + ".";
   }
 
   function bindScannerCallCards(container) {
@@ -2541,7 +2599,15 @@
     var deptEl = document.getElementById("mainPlayerDept");
     var metaEl = document.getElementById("mainPlayerMeta");
     var badge  = document.getElementById("mainPlayerBadge");
-    if (!btn || !calls || calls.length === 0) return;
+    if (!btn) return;
+    if (!calls || calls.length === 0) {
+      if (deptEl) deptEl.textContent = "No transmissions in this filter";
+      if (metaEl) metaEl.textContent = "";
+      btn.disabled = true;
+      btn.removeAttribute("data-audio");
+      if (badge) badge.style.opacity = "0.4";
+      return;
+    }
 
     var call = null;
     currentMainPlayerCallIdx = -1;
