@@ -574,30 +574,59 @@
       return;
     }
 
+    var total24 = Number(currentSummary.total || 0);
+    var total7d = Number(weekSummary && weekSummary.total || 0);
+
+    // Top crime type from 24h data
+    var topType = "";
+    var typeGroups = currentSummary.groups && currentSummary.groups.incident_type;
+    if (typeGroups) {
+      var best = "", bestN = 0;
+      for (var k in typeGroups) {
+        if (Object.prototype.hasOwnProperty.call(typeGroups, k) && Number(typeGroups[k]) > bestN) {
+          bestN = Number(typeGroups[k]); best = k;
+        }
+      }
+      if (best) topType = best.charAt(0).toUpperCase() + best.slice(1).replace(/_/g, " ");
+    }
+
+    // Top municipality from 24h data
+    var topArea = "";
+    var areaGroups = currentSummary.groups && currentSummary.groups.municipality;
+    if (areaGroups) {
+      var bestA = "", bestAN = 0;
+      for (var ka in areaGroups) {
+        if (Object.prototype.hasOwnProperty.call(areaGroups, ka) && Number(areaGroups[ka]) > bestAN) {
+          bestAN = Number(areaGroups[ka]); bestA = ka;
+        }
+      }
+      if (bestA) topArea = bestA;
+    }
+
     var html = "";
-    html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Current</div>';
-    html += '<div class="feed-summary-v">' + esc(String(Number(currentSummary.total || 0))) + '</div>';
-    html += '<div class="feed-summary-sub">Reported in the last 24 hours</div>';
+    html += '<div class="feed-summary-card feed-summary-card--hero">';
+    html += '<div class="feed-summary-v">' + esc(String(total24)) + '</div>';
+    html += '<div class="feed-summary-k">incidents today</div>';
     html += "</div>";
 
     html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Developing</div>';
-    html += '<div class="feed-summary-v">' + esc(String(_developingCount(currentSummary))) + '</div>';
-    html += '<div class="feed-summary-sub">Signals still being confirmed</div>';
+    html += '<div class="feed-summary-v">' + esc(String(total7d)) + '</div>';
+    html += '<div class="feed-summary-k">this week</div>';
     html += "</div>";
 
-    html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Week overview</div>';
-    html += '<div class="feed-summary-v">' + esc(String(Number(weekSummary && weekSummary.total || 0))) + '</div>';
-    html += '<div class="feed-summary-list">' + esc(_topText(weekSummary && weekSummary.groups && weekSummary.groups.incident_type)) + "</div>";
-    html += "</div>";
+    if (topType) {
+      html += '<div class="feed-summary-card">';
+      html += '<div class="feed-summary-v feed-summary-v--sm">' + esc(topType) + '</div>';
+      html += '<div class="feed-summary-k">top type</div>';
+      html += "</div>";
+    }
 
-    html += '<div class="feed-summary-card">';
-    html += '<div class="feed-summary-k">Month overview</div>';
-    html += '<div class="feed-summary-v">' + esc(String(Number(monthSummary && monthSummary.total || 0))) + '</div>';
-    html += '<div class="feed-summary-list">' + esc(_topText(monthSummary && monthSummary.groups && monthSummary.groups.municipality)) + "</div>";
-    html += "</div>";
+    if (topArea) {
+      html += '<div class="feed-summary-card">';
+      html += '<div class="feed-summary-v feed-summary-v--sm">' + esc(topArea) + '</div>';
+      html += '<div class="feed-summary-k">top area</div>';
+      html += "</div>";
+    }
 
     el.innerHTML = html;
   }
@@ -1607,6 +1636,39 @@
     return html;
   }
 
+  /** Strip raw radio metadata (MHz, PL tone, "conventional frequency listing", etc.) from scanner text */
+  function cleanScannerText(text) {
+    if (!text) return "";
+    // Remove patterns like "155.625 MHz · 118.8 PL · analog · Directory conventional frequency listing."
+    var cleaned = text
+      .replace(/\d+(\.\d+)?\s*MHz/gi, "")
+      .replace(/\d+(\.\d+)?\s*PL\b/gi, "")
+      .replace(/\b(analog|digital|P25|DMR|NXDN)\b/gi, "")
+      .replace(/\bDirectory\s+(conventional|trunked)\s+frequency\s+listing\.?/gi, "")
+      .replace(/\b(conventional|trunked)\s+frequency\s+listing\.?/gi, "")
+      .replace(/·\s*·/g, "·")           // collapse double separators
+      .replace(/^[\s·\-–—]+|[\s·\-–—]+$/g, "")  // trim leading/trailing separators
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    return cleaned;
+  }
+
+  /** Shorten verbose scanner titles: "SCANNER · Name / Long Description — Place: Long Desc (code)" → "Name" */
+  function cleanScannerTitle(title) {
+    if (!title) return "Scanner Activity";
+    // Remove "SCANNER · " prefix
+    var t = title.replace(/^SCANNER\s*·\s*/i, "");
+    // Take the part before " — " or " / " (whichever is shorter/first)
+    var dashIdx = t.indexOf(" \u2014 ");
+    var slashIdx = t.indexOf(" / ");
+    var cutIdx = -1;
+    if (dashIdx > 0 && slashIdx > 0) cutIdx = Math.min(dashIdx, slashIdx);
+    else if (dashIdx > 0) cutIdx = dashIdx;
+    else if (slashIdx > 0) cutIdx = slashIdx;
+    if (cutIdx > 0) t = t.substring(0, cutIdx);
+    return t.trim() || "Scanner Activity";
+  }
+
   function buildIncidentCard(item) {
     var type = item.crime_type || "other";
     var sourceType = (item.source_type || "unknown").toLowerCase();
@@ -1619,6 +1681,15 @@
     var area = item.municipality || item.matched_location || "Albany County";
     var summary = item.summary || item.description || "";
     var sev = (item.severity || "unknown").toLowerCase();
+
+    // Clean up scanner-sourced items for readability
+    var isScanner = isScannerCrimeSource(sourceName);
+    if (isScanner) {
+      title = cleanScannerTitle(title);
+      summary = cleanScannerText(summary);
+      // Simplify the source label
+      sourceName = "Scanner";
+    }
 
     var cls = "feed-item feed-item--" + type;
     if (sev === "critical") cls += " feed-item--sev-critical";
