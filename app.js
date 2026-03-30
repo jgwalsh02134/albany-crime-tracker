@@ -1687,8 +1687,31 @@
     if (isScanner) {
       title = cleanScannerTitle(title);
       summary = cleanScannerText(summary);
-      // Simplify the source label
       sourceName = "Scanner";
+      // If cleaning stripped everything, generate a useful summary from title + raw data
+      if (!summary) {
+        var rawTitle = (item.title || "").toLowerCase();
+        if (/\b(dispatch|e911|911)\b/.test(rawTitle)) {
+          if (/\bfire\b/i.test(rawTitle)) summary = "Fire dispatch communication detected";
+          else if (/\bems|ambulance|medic/i.test(rawTitle)) summary = "EMS dispatch communication detected";
+          else summary = "Emergency dispatch communication detected";
+        } else if (/\bnysp|state\s*police|troop/i.test(rawTitle)) {
+          summary = "New York State Police radio traffic detected";
+        } else if (/\bapd|albany\s*p/i.test(rawTitle)) {
+          summary = "Albany Police Department radio activity";
+        } else if (/\bsheriff|acso/i.test(rawTitle)) {
+          summary = "Albany County Sheriff radio activity";
+        } else if (/\bfire/i.test(rawTitle)) {
+          summary = "Fire department radio traffic detected";
+        } else {
+          summary = "Law enforcement radio activity detected";
+        }
+      }
+      // Don't show "Scanner" as verification when source is already "Scanner"
+      if (verify === "scanner") {
+        verifyLabel = "Developing";
+        verify = "developing";
+      }
     }
 
     var cls = "feed-item feed-item--" + type;

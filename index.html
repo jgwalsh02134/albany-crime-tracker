@@ -36,8 +36,10 @@
         <span class="header-sub">Crime Tracker</span>
       </div>
     </div>
-    <div class="header-right">
+    <div class="header-center">
       <span class="header-date" id="headerDate"></span>
+    </div>
+    <div class="header-right">
       <div class="live-indicator" id="liveIndicator">
         <span class="live-dot" id="liveDot"></span>
         <span class="live-text" id="topbarStatus">Live</span>
@@ -81,12 +83,7 @@
       <!-- ── LIVE MODE (default) ── -->
       <div class="home-mode-panel active" id="homePanelLive">
         <div class="home-scroll">
-          <div class="home-summary-strip" id="feedSummaryStrip">
-            <div class="feed-summary-grid home-summary-grid" id="feedSummaryGrid">
-              <div class="feed-summary-empty">Loading…</div>
-            </div>
-            <div class="feed-freshness" id="feedFreshness" aria-live="polite"></div>
-          </div>
+          <div class="feed-freshness" id="feedFreshness" aria-live="polite"></div>
           <div class="feed-search-bar" id="feedSearchBar">
             <span class="material-icons feed-search-icon">search</span>
             <input type="search" id="feedSearchInput" class="feed-search-input" placeholder="Search incidents…" aria-label="Search incidents">

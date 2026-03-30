@@ -145,35 +145,43 @@ a:hover { text-decoration: underline; }
   position: fixed; top: 0; left: 0; right: 0;
   height: var(--header-h);
   display: flex; align-items: center; justify-content: space-between;
-  padding: 0 var(--sp-3) 0 var(--sp-4);
+  padding: 0 var(--sp-3);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   z-index: 200;
+  gap: var(--sp-2);
 }
 
-.header-left { display: flex; align-items: center; gap: 10px; }
+.header-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .logo-icon {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   display: block;
   object-fit: contain;
   flex-shrink: 0;
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 40%, transparent));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 40%, transparent));
 }
 .header-title { display: flex; flex-direction: column; line-height: 1.15; }
-.header-name { font-size: 16px; font-weight: 700; letter-spacing: 0.01em; color: var(--text); }
-.header-sub { font-size: 9px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.12em; }
+.header-name { font-size: 15px; font-weight: 700; letter-spacing: 0.01em; color: var(--text); }
+.header-sub { font-size: 8px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.12em; }
 
-.header-right { display: flex; align-items: center; gap: var(--sp-2); }
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
 .header-date {
   font-size: 11px;
   font-weight: 500;
   color: var(--text-3);
   white-space: nowrap;
 }
-@media (max-width: 400px) {
+@media (max-width: 420px) {
   .header-date { display: none; }
 }
+
+.header-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 @media (max-width: 680px) {
   .feed-controls {
@@ -3508,15 +3516,16 @@ a.home-story-card:active {
 
 /* ── FRESHNESS INDICATOR ── */
 .feed-freshness {
-  font-size: 11px;
-  color: var(--text-muted, #888);
+  font-size: 10px;
+  color: var(--text-3);
   text-align: center;
-  padding: 4px 0 2px;
+  padding: 6px 12px 2px;
   letter-spacing: 0.02em;
   transition: color 0.3s;
 }
+.feed-freshness:empty { display: none; }
 .feed-freshness--stale {
-  color: var(--color-caution, #e6a817);
+  color: var(--property);
 }
 
 /* ── SEARCH BAR ── */
