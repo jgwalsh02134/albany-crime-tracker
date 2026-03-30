@@ -27,7 +27,7 @@
   var SCANNER_REFRESH_MS = 20000;
 
   // State
-  var map, trendsChart;
+  var map, markerGroup, trendsChart, tileLayer;
   var mapReady = false;
   var chatHistory = [];
   var activeView = "feed";
@@ -61,10 +61,9 @@
   var dirTierFilter = "all";
   var dirSearchQuery = "";
 
-  // MapLibre style URLs
-  var STYLE_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json";
-  var STYLE_LIGHT = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
-  var mapHeatmapOn = false;
+  // Tile URLs
+  var TILES_DARK = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+  var TILES_LIGHT = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 
   // Safe storage wrapper
   var storage = { _m: {} };
@@ -830,7 +829,7 @@
       initMap();
       mapInitialized = true;
     } else if (viewName === "map" && map) {
-      setTimeout(function () { map.resize(); }, 100);
+      setTimeout(function () { map.invalidateSize(); }, 100);
       refreshMapMarkers();
     }
 
@@ -862,7 +861,7 @@
   window.addEventListener("resize", function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
-      if (map) map.resize();
+      if (map) map.invalidateSize();
     }, 200);
   });
 
@@ -881,286 +880,95 @@
     setInterval(tick, 1000);
   }
 
-  // ── MAP (MapLibre GL JS) ──────────────────────────────────────
-  var _mapPopup = null;
-
+  // ── MAP ───────────────────────────────────────────────────────
   function initMap() {
     var el = document.getElementById("map");
     if (!el || map) return;
 
     try {
+      map = L.map("map", {
+        center: [42.65, -73.75],
+        zoom: 11,
+        zoomControl: false,
+        attributionControl: false,
+        tap: true,
+        tapTolerance: 15,
+        touchZoom: true,
+        dragging: true,
+        bounceAtZoomLimits: true,
+        inertia: true,
+        inertiaDeceleration: 3000,
+        zoomAnimation: true,
+        scrollWheelZoom: true
+      });
+
+      L.control.zoom({ position: "topright" }).addTo(map);
+
       var theme = getTheme();
-      map = new maplibregl.Map({
-        container: "map",
-        style: theme === "dark" ? STYLE_DARK : STYLE_LIGHT,
-        center: [-73.75, 42.65],
-        zoom: 10.5,
-        minZoom: 8,
-        maxZoom: 18,
-        attributionControl: false
-      });
+      var tileUrl = theme === "dark" ? TILES_DARK : TILES_LIGHT;
+      tileLayer = L.tileLayer(tileUrl, {
+        maxZoom: 19,
+        subdomains: "abcd"
+      }).addTo(map);
 
-      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-
-      _mapPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: "300px" });
-
-      map.on("load", function () {
-        mapReady = true;
-
-        // ── GeoJSON source for incidents ──
-        map.addSource("incidents", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-          cluster: true,
-          clusterMaxZoom: 13,
-          clusterRadius: 55
-        });
-
-        // ── Cluster circles ──
-        map.addLayer({
-          id: "clusters",
-          type: "circle",
-          source: "incidents",
-          filter: ["has", "point_count"],
-          paint: {
-            "circle-color": [
-              "step", ["get", "point_count"],
-              "rgba(108,92,231,0.7)",  // < 5
-              5, "rgba(108,92,231,0.8)",  // 5-14
-              15, "rgba(108,92,231,0.9)"  // 15+
-            ],
-            "circle-radius": [
-              "step", ["get", "point_count"],
-              18, 5, 24, 15, 32
-            ],
-            "circle-stroke-width": 2,
-            "circle-stroke-color": "rgba(255,255,255,0.3)"
+      if (typeof L.markerClusterGroup === "function") {
+        markerGroup = L.markerClusterGroup({
+          maxClusterRadius: 60,
+          disableClusteringAtZoom: 14,
+          spiderfyOnMaxZoom: false,
+          showCoverageOnHover: false,
+          zoomToBoundsOnClick: true,
+          chunkedLoading: true,
+          iconCreateFunction: function (cluster) {
+            var count = cluster.getChildCount();
+            var size = count < 5 ? "small" : count < 15 ? "medium" : "large";
+            return L.divIcon({
+              html: '<div class="cluster-inner">' + count + '</div>',
+              className: "marker-cluster marker-cluster-" + size,
+              iconSize: L.point(40, 40)
+            });
           }
         });
-
-        // ── Cluster labels ──
-        map.addLayer({
-          id: "cluster-count",
-          type: "symbol",
-          source: "incidents",
-          filter: ["has", "point_count"],
-          layout: {
-            "text-field": "{point_count_abbreviated}",
-            "text-font": ["Open Sans Bold"],
-            "text-size": 13,
-            "text-allow-overlap": true
-          },
-          paint: {
-            "text-color": "#fff"
-          }
-        });
-
-        // ── Individual incident points ──
-        map.addLayer({
-          id: "incident-points",
-          type: "circle",
-          source: "incidents",
-          filter: ["!", ["has", "point_count"]],
-          paint: {
-            "circle-radius": [
-              "match", ["get", "severity"],
-              "critical", 10,
-              "high", 8,
-              7
-            ],
-            "circle-color": [
-              "match", ["get", "category"],
-              "violent", "#e05252",
-              "property", "#d9953a",
-              "#4d8fdb"
-            ],
-            "circle-opacity": [
-              "match", ["get", "quality"],
-              "exact", 0.9,
-              0.5
-            ],
-            "circle-stroke-width": [
-              "match", ["get", "quality"],
-              "exact", 2,
-              1.5
-            ],
-            "circle-stroke-color": [
-              "match", ["get", "quality"],
-              "exact", "#fff",
-              ["match", ["get", "category"],
-                "violent", "#e05252",
-                "property", "#d9953a",
-                "#4d8fdb"
-              ]
-            ]
-          }
-        });
-
-        // ── Heatmap layer (hidden by default) ──
-        map.addLayer({
-          id: "incident-heat",
-          type: "heatmap",
-          source: "incidents",
-          filter: ["!", ["has", "point_count"]],
-          layout: { visibility: "none" },
-          paint: {
-            "heatmap-weight": [
-              "match", ["get", "category"],
-              "violent", 1.0,
-              "property", 0.6,
-              0.3
-            ],
-            "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 8, 0.6, 15, 2],
-            "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 8, 15, 15, 25],
-            "heatmap-color": [
-              "interpolate", ["linear"], ["heatmap-density"],
-              0, "rgba(0,0,0,0)",
-              0.15, "rgba(75,0,130,0.3)",
-              0.3, "rgba(0,0,255,0.4)",
-              0.5, "rgba(0,200,200,0.5)",
-              0.7, "rgba(255,200,0,0.65)",
-              0.9, "rgba(255,100,0,0.8)",
-              1.0, "rgba(255,0,0,0.9)"
-            ],
-            "heatmap-opacity": 0.7
-          }
-        });
-
-        // ── Click handlers ──
-        map.on("click", "clusters", function (e) {
-          var features = map.queryRenderedFeatures(e.point, { layers: ["clusters"] });
-          if (!features.length) return;
-          var clusterId = features[0].properties.cluster_id;
-          map.getSource("incidents").getClusterExpansionZoom(clusterId, function (err, zoom) {
-            if (err) return;
-            map.easeTo({ center: features[0].geometry.coordinates, zoom: zoom + 1 });
-          });
-        });
-
-        map.on("click", "incident-points", function (e) {
-          if (!e.features || !e.features.length) return;
-          var f = e.features[0];
-          var p = f.properties;
-          var coords = f.geometry.coordinates.slice();
-          var ta = p.human_time || "";
-          var verLabel = String(p.verification || "unknown").replace(/_/g, " ");
-          var qualLabel = p.quality === "exact" ? "Exact location" : "Approximate area";
-
-          var html = '<div class="map-popup">';
-          html += '<div class="map-popup-title">' + esc(p.title || "Incident") + '</div>';
-          html += '<div class="map-popup-meta">' + esc(p.municipality || "Albany County") + (ta ? " · " + esc(ta) : "") + '</div>';
-          html += '<div class="map-popup-pills">';
-          html += '<span class="map-popup-pill">' + esc(_sourceTypeLabel(p.source_type || "unknown")) + '</span>';
-          if (p.source_name) html += '<span class="map-popup-pill map-popup-pill--src">' + esc(p.source_name) + '</span>';
-          html += '<span class="map-popup-pill">' + esc(verLabel) + '</span>';
-          html += '<span class="map-popup-pill' + (p.quality === "exact" ? '' : ' map-popup-pill--approx') + '">' + esc(qualLabel) + '</span>';
-          html += '</div>';
-          html += '<div class="map-popup-actions">';
-          if (p.source_url) html += '<a href="' + escAttr(p.source_url) + '" target="_blank" rel="noopener">Source</a>';
-          html += '<a href="#" onclick="window.ACTFocusIncident && window.ACTFocusIncident(\'' + escAttr(p.id || "") + '\');return false;">View in feed</a>';
-          html += '</div></div>';
-
-          _mapPopup.setLngLat(coords).setHTML(html).addTo(map);
-        });
-
-        // Cursor styles
-        map.on("mouseenter", "clusters", function () { map.getCanvas().style.cursor = "pointer"; });
-        map.on("mouseleave", "clusters", function () { map.getCanvas().style.cursor = ""; });
-        map.on("mouseenter", "incident-points", function () { map.getCanvas().style.cursor = "pointer"; });
-        map.on("mouseleave", "incident-points", function () { map.getCanvas().style.cursor = ""; });
-
-        // Load initial data
-        if (pendingMarkerData) plotMarkers(pendingMarkerData);
-        refreshMapMarkers();
-      });
-
-      // Heatmap toggle
-      var heatBtn = document.getElementById("mapHeatmapToggle");
-      if (heatBtn) {
-        heatBtn.addEventListener("click", function () {
-          mapHeatmapOn = !mapHeatmapOn;
-          heatBtn.classList.toggle("active", mapHeatmapOn);
-          if (map.getLayer("incident-heat")) {
-            map.setLayoutProperty("incident-heat", "visibility", mapHeatmapOn ? "visible" : "none");
-          }
-          if (map.getLayer("incident-points")) {
-            map.setLayoutProperty("incident-points", "visibility", mapHeatmapOn ? "none" : "visible");
-          }
-        });
+      } else {
+        markerGroup = L.layerGroup();
       }
+      map.addLayer(markerGroup);
+      mapReady = true;
+
+      // Bottom-left legend control
+      var legend = L.control({ position: "bottomleft" });
+      legend.onAdd = function () {
+        var div = L.DomUtil.create("div", "map-legend-ctrl");
+        div.innerHTML =
+          '<span class="legend-item"><span class="legend-dot violent"></span>Violent</span>' +
+          '<span class="legend-item"><span class="legend-dot property"></span>Property</span>' +
+          '<span class="legend-item"><span class="legend-dot other"></span>Other</span>';
+        return div;
+      };
+      legend.addTo(map);
 
       initMapFilters();
+
+      if (pendingMarkerData) plotMarkers(pendingMarkerData);
+      refreshMapMarkers();
+
+      setTimeout(function () { map.invalidateSize(); }, 300);
+      el.style.touchAction = "none";
     } catch (err) {
       console.error("Map init error:", err);
-      if (el) {
+      // Degrade gracefully — show a message in the map container
+      if (window.ACTMap && window.ACTMap.mountMapUnavailableMessage) {
+        window.ACTMap.mountMapUnavailableMessage(el, "Map unavailable right now");
+      } else if (el) {
         el.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#888;font-size:13px;">Map unavailable</div>';
       }
     }
   }
 
   function updateMapTiles(theme) {
-    if (!map) return;
-    map.setStyle(theme === "dark" ? STYLE_DARK : STYLE_LIGHT);
-    // Re-add source and layers after style change
-    map.once("style.load", function () {
-      _addMapLayers();
-      if (pendingMarkerData) plotMarkers(pendingMarkerData);
-    });
-  }
-
-  function _addMapLayers() {
-    if (map.getSource("incidents")) return;
-    map.addSource("incidents", {
-      type: "geojson",
-      data: { type: "FeatureCollection", features: [] },
-      cluster: true,
-      clusterMaxZoom: 13,
-      clusterRadius: 55
-    });
-    map.addLayer({
-      id: "clusters", type: "circle", source: "incidents",
-      filter: ["has", "point_count"],
-      paint: {
-        "circle-color": ["step", ["get", "point_count"], "rgba(108,92,231,0.7)", 5, "rgba(108,92,231,0.8)", 15, "rgba(108,92,231,0.9)"],
-        "circle-radius": ["step", ["get", "point_count"], 18, 5, 24, 15, 32],
-        "circle-stroke-width": 2, "circle-stroke-color": "rgba(255,255,255,0.3)"
-      }
-    });
-    map.addLayer({
-      id: "cluster-count", type: "symbol", source: "incidents",
-      filter: ["has", "point_count"],
-      layout: { "text-field": "{point_count_abbreviated}", "text-font": ["Open Sans Bold"], "text-size": 13, "text-allow-overlap": true },
-      paint: { "text-color": "#fff" }
-    });
-    map.addLayer({
-      id: "incident-points", type: "circle", source: "incidents",
-      filter: ["!", ["has", "point_count"]],
-      paint: {
-        "circle-radius": ["match", ["get", "severity"], "critical", 10, "high", 8, 7],
-        "circle-color": ["match", ["get", "category"], "violent", "#e05252", "property", "#d9953a", "#4d8fdb"],
-        "circle-opacity": ["match", ["get", "quality"], "exact", 0.9, 0.5],
-        "circle-stroke-width": ["match", ["get", "quality"], "exact", 2, 1.5],
-        "circle-stroke-color": ["match", ["get", "quality"], "exact", "#fff",
-          ["match", ["get", "category"], "violent", "#e05252", "property", "#d9953a", "#4d8fdb"]]
-      }
-    });
-    map.addLayer({
-      id: "incident-heat", type: "heatmap", source: "incidents",
-      filter: ["!", ["has", "point_count"]],
-      layout: { visibility: mapHeatmapOn ? "visible" : "none" },
-      paint: {
-        "heatmap-weight": ["match", ["get", "category"], "violent", 1.0, "property", 0.6, 0.3],
-        "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 8, 0.6, 15, 2],
-        "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 8, 15, 15, 25],
-        "heatmap-color": ["interpolate", ["linear"], ["heatmap-density"],
-          0, "rgba(0,0,0,0)", 0.15, "rgba(75,0,130,0.3)", 0.3, "rgba(0,0,255,0.4)",
-          0.5, "rgba(0,200,200,0.5)", 0.7, "rgba(255,200,0,0.65)", 0.9, "rgba(255,100,0,0.8)", 1.0, "rgba(255,0,0,0.9)"],
-        "heatmap-opacity": 0.7
-      }
-    });
-    if (map.getLayer("incident-points")) {
-      map.setLayoutProperty("incident-points", "visibility", mapHeatmapOn ? "none" : "visible");
-    }
+    if (!map || !tileLayer) return;
+    var newUrl = theme === "dark" ? TILES_DARK : TILES_LIGHT;
+    tileLayer.setUrl(newUrl);
   }
 
   function initMapFilters() {
@@ -1240,13 +1048,13 @@
   }
 
   function plotMarkers(data) {
-    if (!map || !map.getSource("incidents")) return;
+    if (!markerGroup) return;
+    markerGroup.clearLayers();
 
     var filtered = activeMapFilter === "all"
       ? data
       : data.filter(function (d) { return mapCategory(d) === activeMapFilter; });
 
-    var features = [];
     var exactCount = 0;
     var approxCount = 0;
 
@@ -1261,30 +1069,53 @@
       var isExact = cq === "exact";
       if (isExact) exactCount++; else approxCount++;
 
+      var type = mapCategory(item);
+      var color = type === "violent" ? "#e05252" :
+                  type === "property" ? "#d9953a" : "#4d8fdb";
+
+      var marker;
+      if (isExact) {
+        marker = L.circleMarker([lat, lng], {
+          radius: 7,
+          fillColor: color,
+          color: "#fff",
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.9
+        });
+      } else {
+        marker = L.circleMarker([lat, lng], {
+          radius: 10,
+          fillColor: color,
+          color: color,
+          weight: 2,
+          opacity: 0.7,
+          fillOpacity: 0.2,
+          dashArray: "4 3"
+        });
+      }
+
       var ta = item.human_time || (item.occurred_at ? timeAgo(new Date(item.occurred_at)) : "");
+      var verLabel = String(item.verification_level || "unknown").replace(/_/g, " ");
+      var coordLabel = isExact ? "Exact location" : "Approximate area";
 
-      features.push({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [lng, lat] },
-        properties: {
-          id: item.id || "",
-          title: item.title || "Incident",
-          municipality: item.municipality || "Albany County",
-          category: mapCategory(item),
-          severity: item.severity || "low",
-          quality: isExact ? "exact" : "approximate",
-          verification: item.verification_level || "unknown",
-          source_type: item.source_type || "unknown",
-          source_name: item.source_name || "",
-          source_url: item.source_url || "",
-          human_time: ta
-        }
-      });
-    });
+      var p = '<div class="map-popup">';
+      p += '<div class="map-popup-title">' + esc(item.title || "Incident") + '</div>';
+      p += '<div class="map-popup-meta">' + esc(item.municipality || "Albany County") + (ta ? " · " + esc(ta) : "") + '</div>';
+      p += '<div class="map-popup-pills">';
+      p += '<span class="map-popup-pill">' + esc(_sourceTypeLabel(item.source_type || "unknown")) + '</span>';
+      if (item.source_name) p += '<span class="map-popup-pill map-popup-pill--src">' + esc(item.source_name) + '</span>';
+      p += '<span class="map-popup-pill">' + esc(verLabel) + '</span>';
+      p += '<span class="map-popup-pill' + (isExact ? '' : ' map-popup-pill--approx') + '">' + esc(coordLabel) + '</span>';
+      p += '</div>';
+      p += '<div class="map-popup-actions">';
+      if (item.source_url) p += '<a href="' + escAttr(item.source_url) + '" target="_blank" rel="noopener">Source</a>';
+      p += '<a href="#" onclick="window.ACTFocusIncident && window.ACTFocusIncident(\'' + escAttr(item.id || "") + '\');return false;">View in feed</a>';
+      p += '</div>';
+      p += '</div>';
 
-    map.getSource("incidents").setData({
-      type: "FeatureCollection",
-      features: features
+      marker.bindPopup(p, { closeButton: true, autoPan: true, autoPanPaddingTopLeft: [10, 60], maxWidth: 280 });
+      markerGroup.addLayer(marker);
     });
 
     var statusParts = [];
