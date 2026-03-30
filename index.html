@@ -139,42 +139,33 @@
 
     </section>
 
-    <!-- === MAP VIEW === -->
+    <!-- === MAP VIEW (full-screen with floating overlays) === -->
     <section class="view" id="viewMap">
-      <div class="map-filters" id="mapFilters">
-        <button class="map-filter-btn active" data-filter="all">All</button>
-        <button class="map-filter-btn" data-filter="violent">Violent</button>
-        <button class="map-filter-btn" data-filter="property">Property</button>
-        <button class="map-filter-btn" data-filter="other">Other</button>
-      </div>
-      <div class="map-controls" role="region" aria-label="Map controls">
-        <input type="search" id="mapSearchInput" class="map-search-input" placeholder="Search incidents…" aria-label="Search map incidents">
-        <select id="mapVerificationSelect" class="map-select" aria-label="Filter by verification">
-          <option value="">All verification</option>
-          <option value="official">Official</option>
-          <option value="multi_source">Multi-source</option>
-          <option value="media">Media</option>
-          <option value="scanner">Scanner</option>
-          <option value="inferred">Inferred</option>
-        </select>
-        <select id="mapSeveritySelect" class="map-select" aria-label="Filter by severity">
-          <option value="">All severity</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
-      </div>
-      <div class="map-status" id="mapStatus" role="status" aria-live="polite"></div>
-      <div class="map-legend">
-        <span class="map-legend-item"><span class="map-legend-dot" style="background:#e05252;"></span> Violent</span>
-        <span class="map-legend-item"><span class="map-legend-dot" style="background:#d9953a;"></span> Property</span>
-        <span class="map-legend-item"><span class="map-legend-dot" style="background:#4d8fdb;"></span> Other</span>
-        <span class="map-legend-sep">·</span>
-        <button class="map-mode-btn active" id="mapModePoints" title="Point view">Points</button>
-        <button class="map-mode-btn" id="mapModeHeat" title="Heatmap view">Heat</button>
-      </div>
       <div id="map" role="region" aria-label="Incident map"></div>
+
+      <!-- Floating filter chips — top of map -->
+      <div class="map-float-top" id="mapFilters">
+        <button class="map-chip active" data-filter="all">All</button>
+        <button class="map-chip" data-filter="violent">Violent</button>
+        <button class="map-chip" data-filter="property">Property</button>
+        <button class="map-chip" data-filter="other">Other</button>
+        <button class="map-chip map-chip--mode active" id="mapModePoints" title="Point markers">
+          <span class="material-icons" style="font-size:16px;">place</span>
+        </button>
+        <button class="map-chip map-chip--mode" id="mapModeHeat" title="Heat map">
+          <span class="material-icons" style="font-size:16px;">whatshot</span>
+        </button>
+      </div>
+
+      <!-- Floating count badge — bottom-left -->
+      <div class="map-float-bottom">
+        <div class="map-count" id="mapStatus" role="status" aria-live="polite"></div>
+      </div>
+
+      <!-- Hidden controls wired to JS (not visible, keep IDs for existing code) -->
+      <input type="hidden" id="mapSearchInput" value="">
+      <select id="mapVerificationSelect" hidden><option value=""></option></select>
+      <select id="mapSeveritySelect" hidden><option value=""></option></select>
     </section>
 
     <!-- === SCANNER VIEW === -->

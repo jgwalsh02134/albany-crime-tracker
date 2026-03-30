@@ -1026,26 +1026,30 @@
           });
         });
 
-        // Click incident → popup
+        // Click incident → popup (clean, minimal per Apple HIG)
         map.on("click", "incident-points", function (e) {
           if (!e.features || !e.features.length) return;
           var p = e.features[0].properties;
           var coords = e.features[0].geometry.coordinates.slice();
-          var verLabel = String(p.verification || "unknown").replace(/_/g, " ");
-          var qualLabel = p.qual === "exact" ? "Exact" : "Approx";
+
+          // Clean the title for scanner sources
+          var popTitle = p.title || "Incident";
+          var popSource = p.source_name || "";
+          if (/^scanner\s*·/i.test(popSource)) {
+            popTitle = cleanScannerTitle(popTitle);
+            popSource = "";
+          }
+
+          // Severity color dot
+          var cat = (p.crime_type || "other").toLowerCase();
+          var dotColor = cat === "violent" ? "var(--violent)" : cat === "property" ? "var(--property)" : "var(--accent)";
 
           var html = '<div class="map-popup">';
-          html += '<div class="map-popup-title">' + esc(p.title || "Incident") + '</div>';
+          html += '<div class="map-popup-title"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';margin-right:6px;vertical-align:middle;"></span>' + esc(popTitle) + '</div>';
           html += '<div class="map-popup-meta">' + esc(p.municipality || "Albany County") + (p.time ? " · " + esc(p.time) : "") + '</div>';
-          html += '<div class="map-popup-pills">';
-          html += '<span class="map-popup-pill">' + esc(_sourceTypeLabel(p.source_type || "unknown")) + '</span>';
-          if (p.source_name) html += '<span class="map-popup-pill map-popup-pill--src">' + esc(p.source_name) + '</span>';
-          html += '<span class="map-popup-pill">' + esc(verLabel) + '</span>';
-          html += '<span class="map-popup-pill">' + esc(qualLabel) + '</span>';
-          html += '</div>';
           html += '<div class="map-popup-actions">';
+          html += '<a href="#" onclick="window.ACTFocusIncident && window.ACTFocusIncident(\'' + escAttr(p.fid || "") + '\');return false;">View in feed</a>';
           if (p.source_url) html += '<a href="' + escAttr(p.source_url) + '" target="_blank" rel="noopener">Source</a>';
-          html += '<a href="#" onclick="window.ACTFocusIncident && window.ACTFocusIncident(\'' + escAttr(p.fid || "") + '\');return false;">Feed</a>';
           html += '</div></div>';
 
           _mapPopup.setLngLat(coords).setHTML(html).addTo(map);
@@ -1094,7 +1098,7 @@
   }
 
   function initMapFilters() {
-    var btns = document.querySelectorAll(".map-filter-btn");
+    var btns = document.querySelectorAll(".map-chip[data-filter]");
     btns.forEach(function (btn) {
       btn.addEventListener("click", function () {
         btns.forEach(function (b) { b.classList.remove("active"); });
@@ -1194,10 +1198,8 @@
 
     map.getSource("incidents").setData({ type: "FeatureCollection", features: features });
 
-    var parts = [];
-    if (exactN) parts.push(exactN + " exact");
-    if (approxN) parts.push(approxN + " approx");
-    setMapStatus(parts.length ? parts.join(", ") + " — " + (exactN + approxN) + " total" : "No incidents with coordinates.");
+    var total = exactN + approxN;
+    setMapStatus(total ? total + " incident" + (total === 1 ? "" : "s") : "");
   }
 
   function focusIncidentCard(id) {
