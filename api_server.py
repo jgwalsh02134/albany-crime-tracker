@@ -4348,10 +4348,8 @@ async def root():
     try:
         with open(index_path, "r", encoding="utf-8") as f:
             return HTMLResponse(f.read())
-    except Exception:
-        return HTMLResponse(
-            "<!DOCTYPE html><html><head><title>Albany Crime Tracker</title></head><body><h1>Server Running</h1></body></html>"
-        )
+    except Exception as e:
+        return HTMLResponse(f"<h1>ERROR loading index.html</h1><pre>{str(e)}</pre>")
 
 
 app.mount("/", StaticFiles(directory=os.path.dirname(os.path.abspath(__file__)), html=True), name="static")
