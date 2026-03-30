@@ -50,6 +50,7 @@
   var mapVerification = "";
   var mapSeverity = "";
   var mapFetchTimer = null;
+  var feedControlTimer = null;
 
   // Law enforcement directory (lazy-loaded from /api/directory/*)
   var leDirectory = null;
@@ -426,14 +427,15 @@
     if (search) {
       search.addEventListener("input", function () {
         feedSearchQuery = (search.value || "").trim().toLowerCase();
-        renderIncidentList(allIncidentData || []);
+        if (feedControlTimer) clearTimeout(feedControlTimer);
+        feedControlTimer = setTimeout(fetchIncidents, 220);
       });
     }
     var sort = document.getElementById("feedSortSelect");
     if (sort) {
       sort.addEventListener("change", function () {
         feedSortMode = sort.value || "newest";
-        renderIncidentList(allIncidentData || []);
+        fetchIncidents();
       });
     }
   }
@@ -911,65 +913,108 @@
     return document.getElementById("incidentListLive") || document.getElementById("incidentListNow");
   }
 
+  function _verificationLabel(v) {
+    var m = (v || "").toLowerCase();
+    if (m === "official") return "Official";
+    if (m === "multi_source") return "Multi-source";
+    if (m === "media") return "Media";
+    if (m === "scanner") return "Scanner";
+    if (m === "inferred") return "Inferred";
+    return "Unknown";
+  }
+
+  function _crimeTypeFromIncidentType(t) {
+    var v = (t || "").toLowerCase();
+    if (v.indexOf("violent") !== -1 || v.indexOf("shooting") !== -1 || v.indexOf("stabbing") !== -1 || v.indexOf("homicide") !== -1) return "violent";
+    if (v.indexOf("property") !== -1 || v.indexOf("burglary") !== -1 || v.indexOf("theft") !== -1 || v.indexOf("robbery") !== -1) return "property";
+    return "other";
+  }
+
+  function _feedTabFromRecord(r) {
+    var s = (r.status || "").toLowerCase();
+    var v = (r.verification_level || "").toLowerCase();
+    if (s === "active" || s === "recent") return "live";
+    if (v === "official" || v === "multi_source" || v === "media") return "confirmed";
+    return "news_context";
+  }
+
+  function _toFeedItemFromIncident(r) {
+    var pub = r.occurred_at || r.published_at || "";
+    var tags = Array.isArray(r.badges) && r.badges.length ? r.badges : (r.tags || []);
+    var feedTab = _feedTabFromRecord(r);
+    return {
+      id: r.id,
+      title: r.short_title || r.title || "Untitled",
+      short_title: r.short_title || r.title || "Untitled",
+      summary: r.description || "",
+      description: r.description || "",
+      pubDate: pub,
+      link: r.source_url || "",
+      source: r.source_name || "",
+      sources: r.source_name ? [r.source_name] : [],
+      latitude: r.latitude,
+      longitude: r.longitude,
+      municipality: r.municipality || "",
+      neighborhood: r.municipality || "",
+      matched_location: r.address_text || "",
+      confidence: typeof r.confidence_score === "number" ? r.confidence_score : 0,
+      verification_level: r.verification_level || "unknown",
+      verification_label: _verificationLabel(r.verification_level || ""),
+      severity: r.severity || "unknown",
+      crime_type: _crimeTypeFromIncidentType(r.incident_type || ""),
+      coordinate_quality: r.coordinate_quality || "missing",
+      human_time: r.human_time || "",
+      feed_tab: feedTab,
+      is_active_incident: (r.status || "").toLowerCase() === "active" || (r.status || "").toLowerCase() === "recent",
+      badges: tags,
+      incident: {
+        id: r.id,
+        event_type: r.incident_type || "general",
+        sub_type: "",
+        status: r.status || "unknown",
+        verification_level: r.verification_level || "unknown",
+        operational_badges: tags,
+        why_it_matters: r.description || "",
+        feed_lane: feedTab === "news_context" ? "news_context" : feedTab
+      }
+    };
+  }
+
   function fetchIncidents() {
     var myGen = ++_crimesFetchGeneration;
     var ctrl = new AbortController();
     var tid = setTimeout(function () {
       ctrl.abort();
     }, CRIMES_FETCH_MS);
-    (apiClient ? apiClient.getIncidents() : fetch(API + "/api/crimes", { signal: ctrl.signal }).then(ok))
+    var params = {
+      limit: 300,
+      q: feedSearchQuery || "",
+      sort_by: feedSortMode || "newest"
+    };
+    (apiClient && apiClient.getPersistedIncidents
+      ? apiClient.getPersistedIncidents(params)
+      : fetch(API + "/api/incidents?limit=300", { signal: ctrl.signal }).then(ok))
       .finally(function () {
         clearTimeout(tid);
       })
       .then(function (r) {
         if (myGen !== _crimesFetchGeneration) return;
-        if (!r || r.status !== "ok") return;
-        var data = Array.isArray(r.data) ? r.data : [];
+        if (!r || r.status !== "ok") throw new Error("incidents_api_invalid");
+        var records = Array.isArray(r.incidents) ? r.incidents : [];
+        var data = records.map(_toFeedItemFromIncident);
         allIncidentData = data;
-        pendingMarkerData = data;
-        if (mapReady) plotMarkers(data);
-        if (r.counts) {
-          Object.assign(lastCrimeCounts, r.counts);
-        }
-        lastFeedTotals.confirmed =
-          (r.feeds_total && typeof r.feeds_total.confirmed === "number")
-            ? r.feeds_total.confirmed
-            : ((r.feeds && r.feeds.confirmed) || []).length;
+        lastCrimeCounts.visible_feed_count = data.length;
+        lastCrimeCounts.live_now_count = data.filter(function (x) { return x.feed_tab === "live"; }).length;
+        lastCrimeCounts.stats_total_incidents = data.length;
+        lastFeedTotals.confirmed = data.filter(function (x) { return x.feed_tab === "confirmed"; }).length;
 
-        var feeds = r.feeds || {};
-        var activeItems = Array.isArray(feeds.live_active_now) ? feeds.live_active_now : [];
-        var recentItems = Array.isArray(feeds.live_recent_local) ? feeds.live_recent_local : [];
-        if (!activeItems.length && !recentItems.length && Array.isArray(feeds.now)) {
-          var merged = feeds.now.slice();
-          activeItems = merged.filter(function (x) {
-            var s = x.live_section || (x.incident && x.incident.live_section);
-            return s === "active_now";
-          });
-          recentItems = merged.filter(function (x) {
-            var s = x.live_section || (x.incident && x.incident.live_section);
-            return s === "recent_local";
-          });
-          if (!activeItems.length && !recentItems.length) {
-            activeItems = merged;
-          }
-        }
-        if (!activeItems.length && !recentItems.length && data.length) {
-          activeItems = data.filter(function (x) {
-            var t = x.feed_tab;
-            return t === "live" || t === "now" || x.is_live_eligible === true;
-          });
-        }
+        var activeItems = data.filter(function (x) { return x.feed_tab === "live"; });
+        var recentItems = [];
         lastLiveActiveItems = activeItems;
         lastLiveRecentItems = recentItems;
 
-        var confItems =
-          Array.isArray(feeds.confirmed) ? feeds.confirmed : data.filter(function (x) {
-            return x.feed_tab === "confirmed";
-          });
-        var ctxItems =
-          Array.isArray(feeds.news_context) ? feeds.news_context : data.filter(function (x) {
-            return x.feed_tab === "news_context" || x.feed_tab === "news";
-          });
+        var confItems = data.filter(function (x) { return x.feed_tab === "confirmed"; });
+        var ctxItems = data.filter(function (x) { return x.feed_tab === "news_context" || x.feed_tab === "news"; });
         renderLiveFeed(activeItems, recentItems);
         renderConfirmedFeed(confItems);
         renderContextFeed(ctxItems);
@@ -977,30 +1022,35 @@
         markTopbarLiveIfStillConnecting();
       })
       .catch(function (err) {
-        console.error("Incidents fetch error:", err);
+        console.error("Incidents fetch error (/api/incidents):", err);
         if (myGen !== _crimesFetchGeneration) return;
-        markTopbarLiveIfStillConnecting();
-        var netDown = typeof navigator !== "undefined" && navigator.onLine === false;
-        var failedFetch =
-          err &&
-          err.name !== "AbortError" &&
-          (err.message === "Failed to fetch" || /network|load failed|fetch/i.test(String(err.message || "")));
-        if (netDown || failedFetch) {
-          var msgText = "Could not reach the API (network error). Check your connection and try again.";
-          var liveL = getLiveFeedListEl();
-          var confL = document.getElementById("incidentListConfirmed");
-          var ctxL = document.getElementById("incidentListContext");
-          if (window.ACTFeed && window.ACTFeed.renderErrorState) {
-            if (liveL && !liveL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(liveL, msgText);
-            if (confL && !confL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(confL, msgText);
-            if (ctxL && !ctxL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(ctxL, msgText);
-          } else {
-            var msg = '<div class="empty-state">' + msgText + "</div>";
-            if (liveL && !liveL.querySelector(".feed-item")) liveL.innerHTML = msg;
-            if (confL && !confL.querySelector(".feed-item")) confL.innerHTML = msg;
-            if (ctxL && !ctxL.querySelector(".feed-item")) ctxL.innerHTML = msg;
-          }
-        }
+        // Backward-compatible fallback to legacy /api/crimes payload.
+        (apiClient ? apiClient.getIncidents() : fetch(API + "/api/crimes", { signal: ctrl.signal }).then(ok))
+          .then(function (legacy) {
+            if (!legacy || legacy.status !== "ok") throw new Error("legacy_incidents_invalid");
+            var data = Array.isArray(legacy.data) ? legacy.data : [];
+            allIncidentData = data;
+            var activeItems = data.filter(function (x) { return x.feed_tab === "live" || x.feed_tab === "now" || x.is_live_eligible === true; });
+            var confItems = data.filter(function (x) { return x.feed_tab === "confirmed"; });
+            var ctxItems = data.filter(function (x) { return x.feed_tab === "news_context" || x.feed_tab === "news"; });
+            renderLiveFeed(activeItems, []);
+            renderConfirmedFeed(confItems);
+            renderContextFeed(ctxItems);
+            markTopbarLiveIfStillConnecting();
+          })
+          .catch(function (fallbackErr) {
+            console.error("Legacy incidents fallback error:", fallbackErr);
+            markTopbarLiveIfStillConnecting();
+            var msgText = "Could not load feed incidents right now. Please try again.";
+            var liveL = getLiveFeedListEl();
+            var confL = document.getElementById("incidentListConfirmed");
+            var ctxL = document.getElementById("incidentListContext");
+            if (window.ACTFeed && window.ACTFeed.renderErrorState) {
+              if (liveL && !liveL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(liveL, msgText);
+              if (confL && !confL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(confL, msgText);
+              if (ctxL && !ctxL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(ctxL, msgText);
+            }
+          });
       });
   }
 
@@ -1101,7 +1151,7 @@
     var primarySrc = item.source || "";
     var srcs = (Array.isArray(item.sources) && item.sources.length)
       ? item.sources : (primarySrc ? [primarySrc] : []);
-    var ta = feedAgeCompact(item);
+    var ta = item.human_time || feedAgeCompact(item);
     var link = resolveIncidentCardHref(item);
     var official = isOfficialSource(primarySrc);
     var scannerCrime = isScannerCrimeSource(primarySrc);
@@ -1126,7 +1176,10 @@
     var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer">';
     html += '<span class="feed-dot ' + esc(type) + '"></span>';
     html += '<div class="feed-body">';
-    html += '<div class="feed-title">' + esc(item.title || "Untitled") + '</div>';
+    html += '<div class="feed-title">' + esc(item.short_title || item.title || "Untitled") + '</div>';
+    if (item.subtitle) {
+      html += '<div class="feed-op-line"><span class="feed-op-k">Source</span>' + esc(item.subtitle) + "</div>";
+    }
     var areaDisp = hood || item.matched_location || item.neighborhood || "Albany County, NY";
     var typeStr =
       inc.event_type && inc.sub_type
@@ -1145,6 +1198,9 @@
     html += '<div class="feed-op-line"><span class="feed-op-k">Verification</span>' + esc(verStr) + "</div>";
     html += '<div class="feed-op-line"><span class="feed-op-k">Sources</span>' + esc(srcSummary) + "</div>";
     html += renderOperationalBadges(inc);
+    if (item.coordinate_quality) {
+      html += '<div class="feed-op-line"><span class="feed-op-k">Location</span>' + esc(item.coordinate_quality) + "</div>";
+    }
     if (inc.why_it_matters != null && String(inc.why_it_matters).trim() !== "") {
       html +=
         '<div class="feed-why"><span class="feed-op-k">Why it matters</span> ' +
@@ -1180,6 +1236,14 @@
       html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">SCANNER</span>';
     } else if (item.is_active_incident) {
       html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">ACTIVE</span>';
+    }
+    if (item.verification_level) {
+      html += '<span class="scanner-feed-badge scanner-feed-badge--lg">' + esc(String(item.verification_level).replace(/_/g, " ").toUpperCase()) + '</span>';
+    }
+    if (Array.isArray(item.badges)) {
+      item.badges.slice(0, 3).forEach(function (b) {
+        html += '<span class="scanner-feed-badge scanner-feed-badge--lg">' + esc(String(b)) + '</span>';
+      });
     }
     if (multiSource) {
       html += '<span class="multi-source">' + srcs.map(esc).join('<span class="src-sep"> + </span>') + '</span>';

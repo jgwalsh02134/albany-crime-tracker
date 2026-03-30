@@ -84,6 +84,26 @@ async def main() -> int:
                     if missing:
                         print(f"/api/incidents/map payload invalid: missing keys {missing}")
                         failures += 1
+
+                # Feed/map consistency check on shared IDs and core fields
+                feed_resp = await client.get("/api/incidents", params={"limit": 50, "has_coordinates": "true"})
+                print(f"/api/incidents?limit=50&has_coordinates=true: {feed_resp.status_code}")
+                if feed_resp.status_code != 200:
+                    failures += 1
+                else:
+                    feed_body = feed_resp.json()
+                    feed_items = feed_body.get("incidents") if isinstance(feed_body, dict) else None
+                    if not isinstance(feed_items, list):
+                        print("/api/incidents payload invalid: incidents is not a list")
+                        failures += 1
+                    else:
+                        feed_ids = {str(x.get("id")) for x in feed_items if isinstance(x, dict) and x.get("id")}
+                        map_ids = {str(x.get("id")) for x in markers if isinstance(x, dict) and x.get("id")}
+                        overlap = sorted(list(feed_ids.intersection(map_ids)))
+                        print(f"feed_map_id_overlap_count: {len(overlap)}")
+                        if feed_items and markers and len(overlap) == 0:
+                            print("feed/map consistency invalid: no shared incident IDs")
+                            failures += 1
         except Exception as exc:
             print(f"/api/incidents/map payload check: ERROR {exc}")
             failures += 1
