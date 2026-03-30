@@ -594,7 +594,7 @@
       });
       document.addEventListener("click", function (evt) {
         if (menu.hasAttribute("hidden")) return;
-        if (evt.target === menuToggle || menu.contains(evt.target)) return;
+        if (menuToggle.contains(evt.target) || menu.contains(evt.target)) return;
         menu.setAttribute("hidden", "");
         menuToggle.setAttribute("aria-expanded", "false");
       });
@@ -611,6 +611,12 @@
       btn.addEventListener("click", function () {
         var target = btn.getAttribute("data-view-target");
         if (target) switchView(target);
+      });
+    });
+
+    document.querySelectorAll(".home-cta-panel [data-overflow-target]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        handleOverflowAction(btn.getAttribute("data-overflow-target"));
       });
     });
 
