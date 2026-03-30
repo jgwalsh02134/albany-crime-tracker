@@ -31,7 +31,7 @@
   var mapReady = false;
   var chatHistory = [];
   var activeView = "feed";
-  var activeFeedTab = "live";       // "live" | "confirmed" | "context"
+  var activeFeedTab = "verified";       // verified | developing | official | trendsmap
   var lastLiveActiveItems = [];
   var lastLiveRecentItems = [];
   var lastCrimeCounts = {};
@@ -376,8 +376,8 @@
     var a = lastCrimeCounts.live_now_count;
     var confN = lastFeedTotals.confirmed;
     var tracked = lastCrimeCounts.stats_total_incidents;
-    if (activeFeedTab === "live") {
-      if (chipLbl) chipLbl.textContent = "Live feed";
+    if (activeFeedTab === "verified") {
+      if (chipLbl) chipLbl.textContent = "Verified";
       if (typeof v === "number") setNum("statTotal", v);
       if (sub) {
         if (typeof v !== "number" || v === 0) sub.textContent = "";
@@ -385,18 +385,22 @@
           var rsec = Math.max(0, v - (typeof a === "number" ? a : 0));
           sub.textContent =
             (typeof a === "number" ? a : 0) +
-            " active now" +
-            (rsec ? " · " + rsec + " recent" : "");
+            " verified now" +
+            (rsec ? " · " + rsec + " additional" : "");
         }
       }
-    } else if (activeFeedTab === "confirmed") {
-      if (chipLbl) chipLbl.textContent = "Confirmed (48h)";
+    } else if (activeFeedTab === "developing") {
+      if (chipLbl) chipLbl.textContent = "Developing";
       if (typeof confN === "number") setNum("statTotal", confN);
-      if (sub) sub.textContent = "This tab · fused + official + media";
-    } else {
-      if (chipLbl) chipLbl.textContent = "Tracked";
+      if (sub) sub.textContent = "Early signals and corroboration";
+    } else if (activeFeedTab === "official") {
+      if (chipLbl) chipLbl.textContent = "Official";
       if (typeof tracked === "number") setNum("statTotal", tracked);
-      if (sub) sub.textContent = "Stats-eligible (all lanes)";
+      if (sub) sub.textContent = "Agency/open-data updates";
+    } else {
+      if (chipLbl) chipLbl.textContent = "Trends";
+      if (typeof tracked === "number") setNum("statTotal", tracked);
+      if (sub) sub.textContent = "Map trust + trend snapshot";
     }
   }
 
@@ -416,7 +420,7 @@
 
         refreshHeaderPrimaryCount();
 
-        if (target === "context") {
+        if (target === "trendsmap") {
           var card = document.getElementById("monthlySummaryCard");
           if (card && card.querySelector(".skeleton-card")) {
             fetchMonthlySummary();
@@ -645,6 +649,10 @@
       var list = document.getElementById("nibrsAgencies");
       if (list && list.querySelector(".skeleton")) {
         fetchNibrsAgencies();
+      }
+      var meth = document.getElementById("methodologyPanel");
+      if (meth && meth.querySelector(".skeleton")) {
+        fetchMethodologyPanel();
       }
     }
 
@@ -887,40 +895,21 @@
         fillOpacity: fillOp
       });
 
-      var ta = item.human_time || (item.pubDate ? timeAgo(new Date(item.pubDate)) : "");
-      var loc = item.matched_location
-        ? esc(item.matched_location.replace(/\b\w/g, function(c){ return c.toUpperCase(); }))
-        : "";
-
+      var ta = item.human_time || (item.occurred_at ? timeAgo(new Date(item.occurred_at)) : "");
       var popup = '<div style="font-family:Satoshi,system-ui,sans-serif;max-width:260px;">';
       popup += '<div style="font-size:12px;font-weight:600;line-height:1.4;margin-bottom:6px;">' + esc(item.title || "Incident") + '</div>';
-      if (inc.why_it_matters && inc.why_it_matters !== item.title) {
-        popup += '<div style="font-size:11px;color:#aaa;line-height:1.35;margin-bottom:6px;">' + esc(inc.why_it_matters.slice(0, 200)) + '</div>';
-      }
-      if (inc.source_count > 1) {
-        popup += '<div style="font-size:10px;color:#7cb87c;margin-bottom:4px;">' + esc(String(inc.source_count)) + ' sources</div>';
-      }
-      if (loc) {
-        popup += '<div style="font-size:11px;color:#4d8fdb;margin-bottom:3px;font-weight:500;">📍 ' + loc + '</div>';
-      }
       var typeBadge = type === "violent"
         ? '<span style="background:#e05252;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;text-transform:uppercase;font-weight:700;">Violent</span>'
         : type === "property"
         ? '<span style="background:#d9953a;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;text-transform:uppercase;font-weight:700;">Property</span>'
         : '<span style="background:#4d8fdb;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;text-transform:uppercase;font-weight:700;">Other</span>';
       popup += '<div style="margin-bottom:6px;">' + typeBadge + '</div>';
-      if (item.source || ta) {
-        popup += '<div style="font-size:10px;color:#888;">';
-        if (item.source) popup += esc(item.source);
-        if (item.source && ta) popup += ' · ';
-        if (ta) popup += esc(ta);
-        popup += '</div>';
-      }
-      if (item.link) {
-        popup += '<div style="margin-top:6px;"><a href="' + escAttr(item.link) + '" target="_blank" rel="noopener" style="font-size:11px;color:#4d8fdb;text-decoration:none;font-weight:500;">Read article →</a></div>';
-      }
-      if (item.coordinate_quality && item.coordinate_quality !== "exact") {
-        popup += '<div style="margin-top:6px;font-size:10px;color:#c9b37f;">Coordinate: ' + esc(item.coordinate_quality) + '</div>';
+      popup += '<div style="font-size:10px;color:#888;">' + esc(item.source_type || "unknown") + " · " + esc(item.source_name || "Unknown source") + '</div>';
+      popup += '<div style="font-size:10px;color:#888;">verification: ' + esc(item.verification_level || "unknown") + '</div>';
+      popup += '<div style="font-size:10px;color:#888;">coordinate quality: ' + esc(item.coordinate_quality || "missing") + '</div>';
+      if (ta) popup += '<div style="font-size:10px;color:#888;">' + esc(ta) + '</div>';
+      if (item.source_url) {
+        popup += '<div style="margin-top:6px;"><a href="' + escAttr(item.source_url) + '" target="_blank" rel="noopener" style="font-size:11px;color:#4d8fdb;text-decoration:none;font-weight:500;">Open source →</a></div>';
       }
       popup += '</div>';
 
@@ -1049,7 +1038,7 @@
 
   /** Live feed container (supports older HTML that used incidentListNow). */
   function getLiveFeedListEl() {
-    return document.getElementById("incidentListLive") || document.getElementById("incidentListNow");
+    return document.getElementById("incidentListVerified") || document.getElementById("incidentListNow");
   }
 
   function _verificationLabel(v) {
@@ -1079,11 +1068,11 @@
   }
 
   function _feedTabFromRecord(r) {
-    var s = (r.status || "").toLowerCase();
+    var st = (r.source_type || "").toLowerCase();
     var v = (r.verification_level || "").toLowerCase();
-    if (s === "active" || s === "recent") return "live";
-    if (v === "official" || v === "multi_source" || v === "media") return "confirmed";
-    return "news_context";
+    if (st === "official" || v === "official") return "official";
+    if (v === "multi_source") return "verified";
+    return "developing";
   }
 
   function _toFeedItemFromIncident(r) {
@@ -1131,7 +1120,7 @@
         verification_level: r.verification_level || "unknown",
         operational_badges: tags,
         why_it_matters: r.description || "",
-        feed_lane: feedTab === "news_context" ? "news_context" : feedTab
+        feed_lane: feedTab
       }
     };
   }
@@ -1160,20 +1149,20 @@
         var data = records.map(_toFeedItemFromIncident);
         allIncidentData = data;
         lastCrimeCounts.visible_feed_count = data.length;
-        lastCrimeCounts.live_now_count = data.filter(function (x) { return x.feed_tab === "live"; }).length;
+        lastCrimeCounts.live_now_count = data.filter(function (x) { return x.feed_tab === "verified"; }).length;
         lastCrimeCounts.stats_total_incidents = data.length;
-        lastFeedTotals.confirmed = data.filter(function (x) { return x.feed_tab === "confirmed"; }).length;
+        lastFeedTotals.confirmed = data.filter(function (x) { return x.feed_tab === "developing"; }).length;
 
-        var activeItems = data.filter(function (x) { return x.feed_tab === "live"; });
-        var recentItems = [];
-        lastLiveActiveItems = activeItems;
-        lastLiveRecentItems = recentItems;
+        var verifiedItems = data.filter(function (x) { return x.feed_tab === "verified"; });
+        var developingItems = data.filter(function (x) { return x.feed_tab === "developing"; });
+        var officialItems = data.filter(function (x) { return x.feed_tab === "official"; });
+        lastLiveActiveItems = verifiedItems;
+        lastLiveRecentItems = [];
 
-        var confItems = data.filter(function (x) { return x.feed_tab === "confirmed"; });
-        var ctxItems = data.filter(function (x) { return x.feed_tab === "news_context" || x.feed_tab === "news"; });
-        renderLiveFeed(activeItems, recentItems);
-        renderConfirmedFeed(confItems);
-        renderContextFeed(ctxItems);
+        renderLiveFeed(verifiedItems, []);
+        renderConfirmedFeed(developingItems);
+        renderContextFeed(officialItems);
+        renderTrendsMapLane(data);
         refreshHeaderPrimaryCount();
         markTopbarLiveIfStillConnecting();
       })
@@ -1186,12 +1175,13 @@
             if (!legacy || legacy.status !== "ok") throw new Error("legacy_incidents_invalid");
             var data = Array.isArray(legacy.data) ? legacy.data : [];
             allIncidentData = data;
-            var activeItems = data.filter(function (x) { return x.feed_tab === "live" || x.feed_tab === "now" || x.is_live_eligible === true; });
-            var confItems = data.filter(function (x) { return x.feed_tab === "confirmed"; });
-            var ctxItems = data.filter(function (x) { return x.feed_tab === "news_context" || x.feed_tab === "news"; });
-            renderLiveFeed(activeItems, []);
-            renderConfirmedFeed(confItems);
-            renderContextFeed(ctxItems);
+            var verifiedItems = data.filter(function (x) { return x.feed_tab === "verified" || x.feed_tab === "live" || x.feed_tab === "now"; });
+            var developingItems = data.filter(function (x) { return x.feed_tab === "developing" || x.feed_tab === "confirmed"; });
+            var officialItems = data.filter(function (x) { return x.feed_tab === "official"; });
+            renderLiveFeed(verifiedItems, []);
+            renderConfirmedFeed(developingItems);
+            renderContextFeed(officialItems);
+            renderTrendsMapLane(data);
             markTopbarLiveIfStillConnecting();
           })
           .catch(function (fallbackErr) {
@@ -1199,8 +1189,8 @@
             markTopbarLiveIfStillConnecting();
             var msgText = "Could not load feed incidents right now. Please try again.";
             var liveL = getLiveFeedListEl();
-            var confL = document.getElementById("incidentListConfirmed");
-            var ctxL = document.getElementById("incidentListContext");
+            var confL = document.getElementById("incidentListDeveloping");
+            var ctxL = document.getElementById("incidentListOfficial");
             if (window.ACTFeed && window.ACTFeed.renderErrorState) {
               if (liveL && !liveL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(liveL, msgText);
               if (confL && !confL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(confL, msgText);
@@ -1301,138 +1291,36 @@
   }
 
   function buildIncidentCard(item) {
-    var inc = item.incident || {};
     var type = item.crime_type || "other";
-    var hood = item.municipality || item.neighborhood || item.matched_location || "";
-    var primarySrc = item.source || "";
-    var srcs = (Array.isArray(item.sources) && item.sources.length)
-      ? item.sources : (primarySrc ? [primarySrc] : []);
+    var sourceType = (item.source_type || "unknown").toLowerCase();
+    var sourceName = item.source || item.source_name || "Unknown source";
+    var verify = item.verification_level || "unknown";
+    var verifyLabel = item.verification_label || String(verify).replace(/_/g, " ");
+    var coord = item.coordinate_quality || "missing";
+    var title = item.short_title || item.title || "Untitled";
     var ta = item.human_time || feedAgeCompact(item);
     var link = resolveIncidentCardHref(item);
-    var official = isOfficialSource(primarySrc);
-    var scannerCrime = isScannerCrimeSource(primarySrc);
-    var scannerCritical = !!item._scanner_critical_live;
-    var multiSource = srcs.length > 1;
-    var isHighPriority = item.is_high_priority === true || Number(item.priority_score || 0) >= 72;
+    var area = item.municipality || item.matched_location || "Albany County";
+    var priority = Math.round(Number(item.priority_score || 0));
+    var isHighPriority = item.is_high_priority === true || priority >= 72;
     var isTrending = item.is_trending === true;
-    var weakVerification = (item.verification_level || "").toLowerCase() === "inferred" || (item.verification_level || "").toLowerCase() === "scanner";
-    var lowSeverity = (item.severity || "").toLowerCase() === "low";
 
     var cls = "feed-item";
-    if (official) cls += " feed-item-official feed-item-official-prominent";
-    if (scannerCrime) cls += " feed-item-scanner-crime";
-    if (scannerCritical) cls += " feed-item-scanner-critical";
     if (isHighPriority) cls += " feed-item--high-priority";
-    var ageHForStale =
-      item && typeof item.age_hours === "number" && !isNaN(item.age_hours)
-        ? item.age_hours
-        : null;
-    if (ageHForStale === null && item && item.pubDate) {
-      var _ms = new Date(item.pubDate).getTime();
-      if (!isNaN(_ms)) ageHForStale = (Date.now() - _ms) / 3600000;
-    }
-    if (activeFeedTab === "live" && ageHForStale !== null && ageHForStale > 1.5) {
-      cls += " feed-item--stale";
-    }
-    if (lowSeverity && weakVerification && ageHForStale !== null && ageHForStale > 6) {
-      cls += " feed-item--quiet";
-    }
+    if ((item.severity || "").toLowerCase() === "low" && (verify || "").toLowerCase() === "inferred") cls += " feed-item--quiet";
+
     var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer">';
     html += '<span class="feed-dot ' + esc(type) + '"></span>';
     html += '<div class="feed-body">';
-    html += '<div class="feed-title">' + esc(item.short_title || item.title || "Untitled") + '</div>';
-    if (item.subtitle) {
-      html += '<div class="feed-op-line"><span class="feed-op-k">Source</span>' + esc(item.subtitle) + "</div>";
-    }
-    var areaDisp = hood || item.matched_location || item.neighborhood || "Albany County, NY";
-    var typeStr =
-      inc.event_type && inc.sub_type
-        ? inc.event_type.replace(/_/g, " ") + " · " + inc.sub_type.replace(/_/g, " ")
-        : String(item.crime_type || "public safety").replace(/_/g, " ");
-    var sourceTypeLabel = item.source_type_label || "Unknown";
-    var verificationExplain = item.verification_explanation || "Verification confidence metadata unavailable.";
-    var coordinateExplain = item.coordinate_explanation || "Coordinate quality metadata unavailable.";
-    var verStr =
-      item.verification_label || String(inc.verification_level || "").replace(/_/g, " ") || "—";
-    if (typeof item.confidence === "number" && !isNaN(item.confidence)) {
-      var pctL = item.confidence <= 1 ? Math.round(item.confidence * 100) : Math.round(item.confidence);
-      verStr = verStr + " · locality " + pctL + "%";
-    }
-    var srcSummary = multiSource ? srcs.slice(0, 4).join(" + ") : primarySrc || "—";
-    html += '<div class="feed-op-line"><span class="feed-op-k">Area</span>' + esc(capitalize(areaDisp)) + "</div>";
-    html += '<div class="feed-op-line"><span class="feed-op-k">Fresh</span>' + esc(ta || "—") + "</div>";
-    html += '<div class="feed-op-line"><span class="feed-op-k">Priority</span>' + esc(String(Math.round(Number(item.priority_score || 0)))) + "</div>";
-    html += '<div class="feed-op-line"><span class="feed-op-k">Type</span>' + esc(typeStr) + "</div>";
-    html += '<div class="feed-op-line" title="' + escAttr(item.source_type_explanation || "") + '"><span class="feed-op-k">Source class</span>' + esc(sourceTypeLabel) + "</div>";
-    html += '<div class="feed-op-line" title="' + escAttr(verificationExplain) + '"><span class="feed-op-k">Verification</span>' + esc(verStr) + "</div>";
-    html += '<div class="feed-op-line"><span class="feed-op-k">Sources</span>' + esc(srcSummary) + "</div>";
-    html += renderOperationalBadges(inc);
-    if (item.coordinate_quality) {
-      html += '<div class="feed-op-line" title="' + escAttr(coordinateExplain) + '"><span class="feed-op-k">Location</span>' + esc(item.coordinate_quality) + "</div>";
-    }
-    if (inc.why_it_matters != null && String(inc.why_it_matters).trim() !== "") {
-      html +=
-        '<div class="feed-why"><span class="feed-op-k">Why it matters</span> ' +
-        esc(String(inc.why_it_matters).slice(0, 240)) +
-        "</div>";
-    }
-    if (inc.feed_lane === "now" && inc.now_channel) {
-      var ch = String(inc.now_channel).replace(/_/g, " ");
-      html +=
-        '<div class="feed-now-channel"><span class="now-channel-pill">' +
-        esc(ch) +
-        "</span>";
-      if (typeof inc.score_source_confidence === "number") {
-        html +=
-          ' <span class="now-score-hint">rank · locality ' +
-          (inc.score_locality != null ? Math.round(inc.score_locality) : "—") +
-          " · impact " +
-          (inc.score_impact != null ? Math.round(inc.score_impact) : "—") +
-          "</span>";
-      }
-      html += "</div>";
-    }
+    html += '<div class="feed-title">' + esc(title) + '</div>';
+    html += '<div class="feed-op-line"><span class="feed-op-k">Source</span>' + esc(sourceType) + " · " + esc(sourceName) + "</div>";
+    html += '<div class="feed-op-line"><span class="feed-op-k">Verification</span>' + esc(verifyLabel) + "</div>";
+    html += '<div class="feed-op-line"><span class="feed-op-k">Location</span>' + esc(area) + " · " + esc(coord) + "</div>";
     html += '<div class="feed-meta">';
-    if (hood) html += '<span class="feed-hood">' + esc(capitalize(hood)) + '</span>';
-    if (official) {
-      html += '<span class="official-badge official-badge--lg">OFFICIAL</span>';
-      if (isLikelyValidXStatusUrl(link)) {
-        html += '<span class="feed-x-cta">View post on X</span>';
-      }
-    } else if (isHighPriority) {
-      html += '<span class="scanner-feed-badge scanner-feed-badge--priority scanner-feed-badge--lg">TOP PRIORITY</span>';
-      if (isTrending) {
-        html += '<span class="scanner-feed-badge scanner-feed-badge--trend scanner-feed-badge--lg">TRENDING</span>';
-      }
-    } else if (scannerCritical) {
-      html += '<span class="scanner-feed-badge scanner-feed-badge--critical scanner-feed-badge--lg scanner-badge-police">SCANNER · CRITICAL</span>';
-    } else if (scannerCrime) {
-      html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">SCANNER</span>';
-    } else if (item.is_active_incident) {
-      html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-police">ACTIVE</span>';
-    } else if (isTrending) {
-      html += '<span class="scanner-feed-badge scanner-feed-badge--trend scanner-feed-badge--lg">TRENDING</span>';
-    }
-    if (item.verification_level) {
-      html += '<span class="scanner-feed-badge scanner-feed-badge--lg">' + esc(String(item.verification_level).replace(/_/g, " ").toUpperCase()) + '</span>';
-    }
-    if (Array.isArray(item.badges)) {
-      item.badges.slice(0, 3).forEach(function (b) {
-        html += '<span class="scanner-feed-badge scanner-feed-badge--lg">' + esc(String(b)) + '</span>';
-      });
-    }
-    if (multiSource) {
-      html += '<span class="multi-source">' + srcs.map(esc).join('<span class="src-sep"> + </span>') + '</span>';
-    } else if (srcs.length === 1) {
-      html += '<span>' + esc(srcs[0]) + '</span>';
-    }
-    if (ta) {
-      var mFresh = item && typeof item.age_minutes === "number" && !isNaN(item.age_minutes) ? item.age_minutes : null;
-      var ageCls = "feed-age";
-      if (mFresh !== null && mFresh <= 30) ageCls += " feed-age--fresh";
-      if (activeFeedTab === "live" && ageHForStale !== null && ageHForStale > 1.5) ageCls += " feed-age--stale";
-      html += '<span class="' + ageCls + '">' + esc(ta) + "</span>";
-    }
+    html += '<span class="feed-age">' + esc(ta || "—") + '</span>';
+    html += '<span class="scanner-feed-badge scanner-feed-badge--lg">P' + esc(String(priority)) + "</span>";
+    if (isHighPriority) html += '<span class="scanner-feed-badge scanner-feed-badge--priority scanner-feed-badge--lg">TOP</span>';
+    if (isTrending) html += '<span class="scanner-feed-badge scanner-feed-badge--trend scanner-feed-badge--lg">TRENDING</span>';
     html += '</div></div></a>';
     return html;
   }
@@ -1526,112 +1414,60 @@
     var list = getLiveFeedListEl();
     if (!list) return;
     activeItems = applyFeedUiFilters(activeItems || []);
-    recentItems = applyFeedUiFilters(recentItems || []);
-
     var html = "";
-    var hasActive = activeItems && activeItems.length;
-    var hasRecent = recentItems && recentItems.length;
-    var anyIncidentCards = hasActive || hasRecent;
-
-    if (scannerIntelItems.length > 0 && !anyIncidentCards) {
-      scannerIntelItems.forEach(function (intel) {
-        var catLabel = intel.cat === "fire" ? "Fire" : intel.cat === "ems" ? "EMS" : "Police";
-        var catIcon  = intel.cat === "fire" ? "local_fire_department"
-                     : intel.cat === "ems"  ? "emergency"
-                     :                        "local_police";
-        var borderCls = " scanner-intel-" + (intel.cat || "police");
-        var detailParts = [];
-        if (intel.freqMHz) detailParts.push(intel.freqMHz + " MHz");
-        if (intel.len > 0) detailParts.push(intel.len.toFixed(0) + "s");
-        var durText = detailParts.length ? detailParts.join(" \u00b7 ") : "active";
-        html += '<div class="feed-item scanner-intel' + borderCls + ' scanner-intel-clickable" role="button" tabindex="0" title="View in Scanner tab" onclick="switchView(\'scanner\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \')switchView(\'scanner\')">';
-        html += '<span class="feed-dot scanner-dot scanner-dot-' + esc(intel.cat || "police") + '"></span>';
-        html += '<div class="feed-body">';
-        html += '<div class="feed-title">';
-        html += '<span class="material-icons" style="font-size:13px;vertical-align:-2px;margin-right:3px;">' + catIcon + '</span>';
-        html += '<strong>' + esc(intel.tgName) + '</strong>';
-        if (intel.location) html += '<span class="scanner-call-loc"> \u2014 ' + esc(intel.location) + '</span>';
-        html += '<span class="scanner-intel-arrow material-icons" style="font-size:12px;opacity:0.4;margin-left:4px;vertical-align:-1px;">chevron_right</span>';
-        html += '</div>';
-        html += '<div class="scanner-call-detail">' + esc(durText) + '</div>';
-        html += '<div class="feed-meta">';
-        html += '<span class="scanner-feed-badge scanner-feed-badge--lg scanner-badge-' + esc(intel.cat || "police") + '">SCANNER · ' + esc(catLabel) + '</span>';
-        html += '<span>' + esc(intel.time) + '</span>';
-        html += '<span class="scanner-intel-tap-hint">Tap for scanner</span>';
-        html += '</div></div></div>';
-      });
+    if (!activeItems.length) {
+      list.innerHTML = '<div class="empty-state">No verified incidents in this window.</div>';
+      return;
     }
-
-    if (!hasActive && hasRecent) {
-      html +=
-        '<div class="feed-section-note" role="status">' +
-        "<strong>Active now</strong> is empty. Showing <strong>Recent local activity</strong> (Albany County, up to 48h) so the feed stays useful." +
-        "</div>";
-    } else if (
-      !liveActiveSectionHasFreshItems(activeItems, 1.5) &&
-      !hasRecent &&
-      !anyIncidentCards &&
-      scannerIntelItems.length === 0
-    ) {
-      html +=
-        '<div class="feed-live-stale-note" role="status">' +
-        "No active or recent incidents in the Live feed yet. Sources refresh on a short interval." +
-        "</div>";
-    }
-
-    if (hasActive) {
-      html += '<div class="feed-section-title">Active now</div>';
-      if (!liveActiveSectionHasFreshItems(activeItems, 1.5)) {
-        html +=
-          '<div class="feed-section-note">Nothing fresher than ~90m in this block; cards here are older operational mentions kept for context.</div>';
-      }
-      activeItems.forEach(function (item) { html += buildIncidentCard(item); });
-    }
-
-    if (hasRecent) {
-      html += '<div class="feed-section-title">Recent local activity</div>';
-      html +=
-        '<div class="feed-section-note">Up to 48 hours · may not be an ongoing scene · same strict Albany County filter as the rest of the app.</div>';
-      recentItems.forEach(function (item) { html += buildIncidentCard(item); });
-    }
-
-    if (!anyIncidentCards && scannerIntelItems.length === 0) {
-      html +=
-        '<div class="empty-state">No Albany County incidents on the Live feed right now. Try the Scanner tab or wait for the next refresh.</div>';
-    }
-
+    html += '<div class="feed-section-note">Highest-trust records. Source and verification appear on every card.</div>';
+    activeItems.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
   }
 
   function renderConfirmedFeed(confirmedItems) {
-    var list = document.getElementById("incidentListConfirmed");
+    var list = document.getElementById("incidentListDeveloping");
     if (!list) return;
     confirmedItems = applyFeedUiFilters(confirmedItems || []);
     if (!confirmedItems || confirmedItems.length === 0) {
       list.innerHTML =
-        '<div class="empty-state">No confirmed incidents in the last 48 hours (fused scanner + official + substantive local media).</div>';
+        '<div class="empty-state">No developing incidents right now.</div>';
       return;
     }
-    var html = "";
+    var html = '<div class="feed-live-stale-note" role="note">Developing incidents may include scanner/media/inferred signals and are not official records until corroborated.</div>';
     confirmedItems.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
   }
 
   function renderContextFeed(contextItems) {
-    var list = document.getElementById("incidentListContext");
+    var list = document.getElementById("incidentListOfficial");
     if (!list) return;
     contextItems = applyFeedUiFilters(contextItems || []);
 
     if (!contextItems || contextItems.length === 0) {
-      list.innerHTML = '<div class="empty-state">No follow-ups or older reports in the 48h–7d window.</div>';
+      list.innerHTML = '<div class="empty-state">No official updates in this window.</div>';
       return;
     }
+    var html = '<div class="feed-section-note">Agency/open-data updates with strongest provenance.</div>';
+    contextItems.forEach(function (item) { html += buildIncidentCard(item); });
+    list.innerHTML = html;
+  }
 
-    var sorted = contextItems.slice().sort(function (a, b) {
-      var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
-      var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
-      return tb - ta;
-    });
+  function renderTrendsMapLane(items) {
+    var card = document.getElementById("trendsMapLaneCard");
+    var list = document.getElementById("incidentListTrendsmap");
+    if (card) {
+      card.innerHTML =
+        '<div class="nac-body">' +
+        '<div class="nac-briefing">Trend lane: use map + summaries for pattern awareness. Coordinate precision is explicit (exact / approximate / missing).</div>' +
+        '<div style="margin-top:8px;"><button type="button" class="link-btn" onclick="switchView(\'map\')">Open Map</button></div>' +
+        '</div>';
+    }
+    if (!list) return;
+    var sorted = applyFeedUiFilters((items || []).slice(0, 30));
+    if (!sorted.length) {
+      list.innerHTML = '<div class="empty-state">No trend-support incidents available.</div>';
+      return;
+    }
     var html = "";
     sorted.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
@@ -1648,11 +1484,12 @@
       return s === "recent_local";
     });
     if (!liveA.length && !liveR.length) {
-      liveA = data.filter(function (x) { return x.feed_tab === "now" || x.feed_tab === "live"; });
+      liveA = data.filter(function (x) { return x.feed_tab === "verified" || x.feed_tab === "live"; });
     }
     renderLiveFeed(liveA, liveR);
-    renderConfirmedFeed(data.filter(function (x) { return x.feed_tab === "confirmed"; }));
-    renderContextFeed(data.filter(function (x) { return x.feed_tab === "news_context" || x.feed_tab === "news"; }));
+    renderConfirmedFeed(data.filter(function (x) { return x.feed_tab === "developing" || x.feed_tab === "confirmed"; }));
+    renderContextFeed(data.filter(function (x) { return x.feed_tab === "official"; }));
+    renderTrendsMapLane(data);
   }
 
   // ── DAILY BRIEFING ────────────────────────────────────────────
@@ -2251,6 +2088,41 @@
     return '<p>' + esc(text || "") + '</p>';
   }
 
+  function fetchMethodologyPanel() {
+    var req = apiClient && apiClient.getMethodology
+      ? apiClient.getMethodology()
+      : fetch(API + "/api/methodology").then(ok);
+    req.then(function (r) {
+      renderMethodologyPanel(r && r.methodology, r && r.planned_hooks);
+    }).catch(function () {
+      renderMethodologyPanel(null, null);
+    });
+  }
+
+  function renderMethodologyPanel(methodology, hooks) {
+    var panel = document.getElementById("methodologyPanel");
+    if (!panel) return;
+    if (!methodology) {
+      panel.innerHTML = '<div class="placeholder-text">Methodology details unavailable.</div>';
+      return;
+    }
+    var html = "";
+    html += '<div class="pattern-card"><div class="pattern-card-header">Lane model</div><div class="pattern-text">' +
+      esc((methodology.lane_model || []).join(" · ")) + "</div></div>";
+    html += '<div class="pattern-card"><div class="pattern-card-header">Trust model</div><div class="pattern-text">';
+    html += 'Official = highest trust · Scanner = early signal only · Media = corroboration/enrichment · Inferred = preliminary';
+    html += "</div></div>";
+    html += '<div class="pattern-card"><div class="pattern-card-header">Coordinate precision</div><div class="pattern-text">';
+    html += 'Exact / Approximate / Missing are explicitly shown on cards and map popups.';
+    html += "</div></div>";
+    if (Array.isArray(hooks) && hooks.length) {
+      html += '<div class="pattern-card"><div class="pattern-card-header">Planned source hooks</div><div class="pattern-text">';
+      html += esc(hooks.slice(0, 12).map(function (h) { return h.label; }).join(" · "));
+      html += "</div></div>";
+    }
+    panel.innerHTML = html;
+  }
+
   // ── FBI NIBRS ─────────────────────────────────────────────────
   function fetchNibrsAgencies() {
     fetch(API + "/api/nibrs/agencies")
@@ -2553,6 +2425,7 @@
     html += '<span class="scanner-status-text">Receiving radio traffic</span>';
     html += '<span class="scanner-status-meta">' + source.length + " calls · " + filtered.length + " shown</span>";
     html += '</div>';
+    html += '<div class="feed-live-stale-note" role="note">Scanner lane shows early signal summaries. These are not confirmed official incident records.</div>';
 
     var liveInd = document.getElementById("scannerLiveIndicator");
     if (liveInd) {
@@ -2583,6 +2456,8 @@
       var cat = dept.cat;
       var catLabel = cat === "police" ? "Police" : cat === "fire" ? "Fire" : cat === "ems" ? "EMS" : "";
       var catClass = cat !== "other" ? " scanner-cat-" + cat : "";
+      var confidenceLabel = (dept.priority === "high" && len >= 8) ? "medium" : "low";
+      var summaryTitle = dept.name + (dept.location ? " — " + dept.location : "");
 
       var isHigh = dept.priority === "high";
       var dotCls = "scanner-priority-dot scanner-dot-" + cat;
@@ -2602,22 +2477,22 @@
 
       html += '<div class="scanner-call-top">';
       html += '<span class="scanner-call-tg">' + priorityDot;
-      html += '<span class="scanner-call-dept">' + esc(dept.name) + '</span>';
-      html += '<span class="scanner-call-loc"> \u2014 ' + esc(dept.location) + '</span>';
+      html += '<span class="scanner-call-dept">' + esc(summaryTitle) + '</span>';
       html += '</span>';
       html += '<span class="scanner-call-time">' + esc(ta || "\u2014") + '</span>';
       html += '</div>';
 
       if (detailLine) {
-        html += '<div class="scanner-call-detail scanner-call-detail--prominent">' + esc(detailLine) + '</div>';
+        html += '<div class="scanner-call-detail scanner-call-detail--prominent">talkgroup event · ' + esc(detailLine) + '</div>';
       }
 
       html += '<div class="scanner-call-bottom">';
       if (catLabel) {
         html += '<span class="scanner-call-cat scanner-cat-tag-' + esc(cat) + '">' + esc(catLabel) + '</span>';
       }
+      html += '<span class="scanner-call-cat">confidence ' + esc(confidenceLabel) + '</span>';
       if (audioUrl) {
-        html += '<button type="button" class="scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" title="Play transmission">';
+        html += '<button type="button" class="scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" title="Play raw transmission">';
         html += '<span class="material-icons" style="font-size:14px;">play_arrow</span>';
         html += '</button>';
       }

@@ -32,6 +32,7 @@
       getDailySummary: function () { return requestJSON(base + "/api/daily_summary"); },
       getMonthlySummary: function () { return requestJSON(base + "/api/monthly_summary"); },
       getSocialIntel: function () { return requestJSON(base + "/api/social_intel"); },
+      getMethodology: function () { return requestJSON(base + "/api/methodology"); },
       getDirectoryPart: function (path) { return requestJSON(base + path); },
       streamChat: function (payload) {
         return fetch(base + "/api/chat", {

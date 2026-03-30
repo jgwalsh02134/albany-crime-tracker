@@ -21,6 +21,7 @@ CRITICAL_ROUTES = [
     "/api/incidents/map",
     "/api/incidents/summary",
     "/api/incidents/trends",
+    "/api/methodology",
 ]
 
 
@@ -184,6 +185,23 @@ async def main() -> int:
                     failures += 1
         except Exception as exc:
             print(f"/api/incidents summary/trends payload check: ERROR {exc}")
+            failures += 1
+
+        try:
+            meth = await client.get("/api/methodology")
+            print(f"/api/methodology: {meth.status_code}")
+            if meth.status_code != 200:
+                failures += 1
+            else:
+                body = meth.json()
+                if not isinstance(body.get("methodology"), dict):
+                    print("/api/methodology payload invalid: methodology missing")
+                    failures += 1
+                if not isinstance(body.get("planned_hooks"), list):
+                    print("/api/methodology payload invalid: planned_hooks missing")
+                    failures += 1
+        except Exception as exc:
+            print(f"/api/methodology check: ERROR {exc}")
             failures += 1
     if failures:
         print(f"\nValidation failed: {failures} route(s) did not pass.")

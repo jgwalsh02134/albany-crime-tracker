@@ -3363,8 +3363,11 @@ async def get_incidents_map(
             "longitude": it.get("longitude"),
             "occurred_at": it.get("occurred_at") or it.get("published_at"),
             "source_type": it.get("source_type"),
+            "source_name": it.get("source_name"),
             "verification_level": it.get("verification_level"),
             "coordinate_quality": it.get("coordinate_quality", "missing"),
+            "confidence_score": it.get("confidence_score"),
+            "source_url": it.get("source_url"),
         }
         for it in items
     ]
@@ -3384,6 +3387,70 @@ async def get_incidents_summary(window: str = "7d"):
 @app.get("/api/incidents/trends")
 async def get_incidents_trends(window: str = "30d"):
     return {"status": "ok", "source": incident_store_backend(), **(await incident_trends(window=window))}
+
+
+SOURCE_METHODOLOGY = {
+    "lane_model": [
+        "Verified Incidents",
+        "Developing Incidents",
+        "Official Updates",
+        "Trends & Map",
+    ],
+    "source_types": {
+        "official": "Highest trust structured/open-data/government records and agency updates.",
+        "scanner": "Early signal only; not an official incident record until corroborated.",
+        "media": "Corroboration and enrichment from local reporting.",
+        "inferred": "Fused/inferred signal from multiple partial sources; preliminary.",
+    },
+    "verification_levels": {
+        "official": "Direct official/public record source.",
+        "multi_source": "Corroborated by multiple independent sources.",
+        "media": "Media-confirmed but may still evolve.",
+        "scanner": "Scanner-derived early signal; unconfirmed.",
+        "inferred": "Model/system inferred from partial evidence.",
+    },
+    "coordinate_quality": {
+        "exact": "Precise incident-level location.",
+        "approximate": "Area-level location, not exact address.",
+        "missing": "No reliable location available for map placement.",
+    },
+    "freshness": {
+        "incidents_refresh_seconds": 45,
+        "scanner_refresh_seconds": 20,
+        "social_refresh_seconds": 900,
+    },
+}
+
+SOURCE_EXPANSION_HOOKS = [
+    {"id": "albany-pd-civicalerts-rss", "label": "Albany PD CivicAlerts / RSS", "enabled": False},
+    {"id": "albany-county-da-press", "label": "Albany County DA press releases", "enabled": False},
+    {"id": "nysp-troopg-news-blotter", "label": "NYSP Troop G newsroom + daily blotter", "enabled": False},
+    {"id": "usao-ndny-rss", "label": "USAO NDNY RSS", "enabled": False},
+    {"id": "city-albany-openalbany", "label": "City of Albany Socrata/openAlbany", "enabled": False},
+    {"id": "ny-open-data-public-safety", "label": "NY Open Data public safety datasets", "enabled": False},
+    {"id": "511ny", "label": "511NY", "enabled": False},
+    {"id": "fbi-cde-fbi-albany", "label": "FBI CDE / FBI Albany", "enabled": False},
+    {"id": "ualbany-pd-log", "label": "UAlbany PD incident log", "enabled": False},
+    {"id": "daily-voice-albany", "label": "Daily Voice Albany", "enabled": False},
+    {"id": "patch-municipality-pages", "label": "Patch municipality pages", "enabled": False},
+    {"id": "news10-rss", "label": "NEWS10 crime/local RSS", "enabled": False},
+    {"id": "cbs6-rss", "label": "CBS6 local/crime RSS where available", "enabled": False},
+    {"id": "wnyt-google-news-fallback", "label": "WNYT via Google News RSS fallback", "enabled": False},
+    {"id": "spectrum-public-safety-rss", "label": "Spectrum News public safety RSS", "enabled": False},
+    {"id": "wamc-news", "label": "WAMC news", "enabled": False},
+    {"id": "spotlight-daily-gazette", "label": "Spotlight / Daily Gazette", "enabled": False},
+    {"id": "spotcrime", "label": "SpotCrime", "enabled": False},
+    {"id": "scanner-transcription-openai", "label": "Optional scanner transcription pipeline using OPENAI_API_KEY", "enabled": False},
+]
+
+
+@app.get("/api/methodology")
+async def get_methodology():
+    return {
+        "status": "ok",
+        "methodology": SOURCE_METHODOLOGY,
+        "planned_hooks": SOURCE_EXPANSION_HOOKS,
+    }
 
 
 @app.get("/api/incidents/operational-summary")
@@ -3723,8 +3790,17 @@ async def get_sources():
             "total_articles": len(cached),
             "source_count": len(sources),
             "sources": sources,
+            "methodology": SOURCE_METHODOLOGY,
+            "planned_hooks": SOURCE_EXPANSION_HOOKS,
         }
-    return {"status": "ok", "total_articles": 0, "source_count": 0, "sources": []}
+    return {
+        "status": "ok",
+        "total_articles": 0,
+        "source_count": 0,
+        "sources": [],
+        "methodology": SOURCE_METHODOLOGY,
+        "planned_hooks": SOURCE_EXPANSION_HOOKS,
+    }
 
 
 @app.post("/api/chat")
@@ -3870,7 +3946,7 @@ ALBANY_NIBRS_AGENCIES = [
     {"ori": "NY0017500", "name": "SUNY Albany (Plaza)", "type": "University", "nibrs": False, "population": None},
 ]
 
-FBI_CDE_API_KEY = settings.data_gov_api_key or "DEMO_KEY"
+FBI_CDE_API_KEY = settings.fbi_api_key or settings.data_gov_api_key or "DEMO_KEY"
 FBI_CDE_BASE = "https://api.usa.gov/crime/fbi/cde"
 
 

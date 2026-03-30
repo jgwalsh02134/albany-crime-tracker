@@ -35,7 +35,8 @@ Open: `http://127.0.0.1:8000`
 Required for full functionality:
 
 - `XAI_API_KEY` (AI chat / summaries)
-- `DATA_GOV_API_KEY` (FBI CDE API; falls back to demo key if empty)
+- `FBI_API_KEY` (primary FBI CDE/api.data.gov key)
+- `DATA_GOV_API_KEY` (backward-compatible alias; used only if `FBI_API_KEY` is not set)
 - `SOCRATA_APP_TOKEN` (Albany open data rate limits)
 - `DATABASE_URL` (Postgres persistence for `/api/incidents`)
 - `REDIS_URL` (cache + refresh lock; optional but recommended)

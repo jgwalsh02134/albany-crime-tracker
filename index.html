@@ -104,14 +104,12 @@
         </div>
       </div>
 
-      <!-- Live / Confirmed / Context -->
+      <!-- Product lanes -->
       <div class="feed-subtabs" id="feedSubtabs" role="tablist" aria-label="Feed tabs">
-        <button class="feed-subtab active" data-feedtab="live" aria-label="Open live feed tab">
-          <span class="live-pulse-sm"></span>
-          Live
-        </button>
-        <button class="feed-subtab" data-feedtab="confirmed" aria-label="Open confirmed feed tab">Confirmed</button>
-        <button class="feed-subtab" data-feedtab="context" aria-label="Open context feed tab">Context</button>
+        <button class="feed-subtab active" data-feedtab="verified" aria-label="Open verified incidents lane">Verified Incidents</button>
+        <button class="feed-subtab" data-feedtab="developing" aria-label="Open developing incidents lane">Developing Incidents</button>
+        <button class="feed-subtab" data-feedtab="official" aria-label="Open official updates lane">Official Updates</button>
+        <button class="feed-subtab" data-feedtab="trendsmap" aria-label="Open trends and map lane">Trends &amp; Map</button>
       </div>
       <div class="feed-controls" role="region" aria-label="Feed controls">
         <input
@@ -149,25 +147,35 @@
         </div>
       </section>
 
-      <!-- LIVE: Active now + Recent local activity -->
-      <div class="feed-tab-content active" id="feedTabLive">
+      <!-- VERIFIED -->
+      <div class="feed-tab-content active" id="feedTabVerified">
         <div id="promotedSocialPosts"></div>
-        <div class="feed-list" id="incidentListLive">
+        <div class="feed-list" id="incidentListVerified">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
       </div>
 
-      <!-- CONFIRMED (0–48h fused / official / substantive media) -->
-      <div class="feed-tab-content" id="feedTabConfirmed">
-        <div class="feed-list" id="incidentListConfirmed">
+      <!-- DEVELOPING -->
+      <div class="feed-tab-content" id="feedTabDeveloping">
+        <div class="feed-list" id="incidentListDeveloping">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
       </div>
 
-      <!-- CONTEXT (briefings, social, 48h–7d follow-ups) -->
-      <div class="feed-tab-content" id="feedTabContext">
+      <!-- OFFICIAL -->
+      <div class="feed-tab-content" id="feedTabOfficial">
+        <div class="feed-list" id="incidentListOfficial">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        </div>
+      </div>
+
+      <!-- TRENDS + MAP -->
+      <div class="feed-tab-content" id="feedTabTrendsmap">
+        <div class="news-ai-card" id="trendsMapLaneCard">
+          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+        </div>
         <div class="news-ai-card" id="dailySummaryCard">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
@@ -183,7 +191,7 @@
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
         <div class="news-section-divider">Follow-ups &amp; older reports (48h–7d)</div>
-        <div class="feed-list" id="incidentListContext">
+        <div class="feed-list" id="incidentListTrendsmap">
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
         </div>
@@ -231,6 +239,9 @@
             <span class="scanner-ts" id="scannerTimestamp"></span>
           </div>
           <p class="scanner-subtitle">Albany County Police, Fire &amp; EMS</p>
+          <p class="scanner-warning" id="scannerWarning">
+            Scanner items are early signals and are not confirmed official incident records.
+          </p>
         </div>
 
         <div class="scanner-toolbar">
@@ -475,6 +486,16 @@
             <span class="resource-title">UCR Annual Report</span>
             <span class="resource-desc">Full 2024 Uniform Crime Report tables</span>
           </a>
+        </div>
+
+        <div class="more-section">
+          <h2 class="more-section-title">
+            <span class="material-icons" style="font-size:16px;">fact_check</span>
+            Sources &amp; Methodology
+          </h2>
+          <div id="methodologyPanel" class="patterns-cards">
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+          </div>
         </div>
 
         <div class="more-footer">
