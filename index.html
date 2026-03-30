@@ -79,61 +79,68 @@
 
     <!-- === HOME VIEW (default) === -->
     <section class="view active" id="viewFeed">
-      <div class="home-scroll">
 
-      <section class="home-summary-strip" aria-label="Overview">
-        <div class="feed-summary-grid home-summary-grid" id="feedSummaryGrid">
-          <div class="feed-summary-empty">Loading…</div>
-        </div>
-      </section>
-
-      <section class="home-major" aria-label="Major stories">
-        <h2 class="home-section-label">Major stories</h2>
-        <div id="homeMajorStories" class="home-stories-list">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-        </div>
-      </section>
-
-      <section class="home-developing" aria-label="Developing">
-        <h2 class="home-section-label">Developing</h2>
-        <div id="homeDevelopingStories" class="home-stories-list">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
-        </div>
-      </section>
-
-      <section class="home-feed-panel" aria-label="Live feed">
-        <h2 class="home-section-label">Live feed</h2>
-        <div class="feed-subtabs" id="feedSubtabs" role="tablist" aria-label="Feed tabs">
-          <button class="feed-subtab active" data-feedtab="verified" aria-label="Open verified incidents lane">Verified</button>
-          <button class="feed-subtab" data-feedtab="developing" aria-label="Open developing incidents lane">Developing</button>
-          <button class="feed-subtab" data-feedtab="official" aria-label="Open official updates lane">Official</button>
-        </div>
-        <div class="feed-tab-content active" id="feedTabVerified">
-          <div class="feed-list" id="incidentListVerified">
-            <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-            <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-          </div>
-        </div>
-        <div class="feed-tab-content" id="feedTabDeveloping">
-          <div class="feed-list" id="incidentListDeveloping">
-            <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
-          </div>
-        </div>
-        <div class="feed-tab-content" id="feedTabOfficial">
-          <div class="feed-list" id="incidentListOfficial">
-            <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="home-recaps" aria-label="Recaps">
-        <h2 class="home-section-label">Recaps</h2>
-        <div id="homeRecaps" class="home-recaps-grid">
-          <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
-        </div>
-      </section>
-
+      <div class="home-mode-bar" role="tablist" aria-label="Home mode">
+        <button class="home-mode-btn active" data-home-mode="live" role="tab" aria-selected="true">Live</button>
+        <button class="home-mode-btn" data-home-mode="news" role="tab" aria-selected="false">News</button>
       </div>
+
+      <!-- ── LIVE MODE (default) ── -->
+      <div class="home-mode-panel active" id="homePanelLive">
+        <div class="home-scroll">
+          <div class="home-summary-strip" id="feedSummaryStrip">
+            <div class="feed-summary-grid home-summary-grid" id="feedSummaryGrid">
+              <div class="feed-summary-empty">Loading…</div>
+            </div>
+          </div>
+          <div class="feed-subtabs" id="feedSubtabs" role="tablist" aria-label="Feed lanes">
+            <button class="feed-subtab active" data-feedtab="verified">Verified</button>
+            <button class="feed-subtab" data-feedtab="developing">Developing</button>
+            <button class="feed-subtab" data-feedtab="official">Official</button>
+          </div>
+          <div class="feed-tab-content active" id="feedTabVerified">
+            <div class="feed-list" id="incidentListVerified">
+              <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+              <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+            </div>
+          </div>
+          <div class="feed-tab-content" id="feedTabDeveloping">
+            <div class="feed-list" id="incidentListDeveloping">
+              <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+            </div>
+          </div>
+          <div class="feed-tab-content" id="feedTabOfficial">
+            <div class="feed-list" id="incidentListOfficial">
+              <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── NEWS MODE ── -->
+      <div class="home-mode-panel" id="homePanelNews">
+        <div class="home-scroll">
+          <section class="home-major" aria-label="Major stories">
+            <h2 class="home-section-label">Major stories</h2>
+            <div id="homeMajorStories" class="home-stories-list">
+              <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+            </div>
+          </section>
+          <section class="home-developing" aria-label="Developing">
+            <h2 class="home-section-label">Developing</h2>
+            <div id="homeDevelopingStories" class="home-stories-list">
+              <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+            </div>
+          </section>
+          <section class="home-recaps" aria-label="Recaps">
+            <h2 class="home-section-label">Recaps</h2>
+            <div id="homeRecaps" class="home-recaps-grid">
+              <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
     </section>
 
     <!-- === MAP VIEW === -->

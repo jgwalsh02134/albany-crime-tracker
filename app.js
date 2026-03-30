@@ -358,6 +358,7 @@
 
     initTheme();
     initNav();
+    initHomeModeTabs();
     initDirSearch();
     initDirFilters();
     loadScannerAliases();
@@ -369,14 +370,12 @@
     startClock();
 
     fetchIncidents();
-    fetchHomeNews();
     setTimeout(fetchScannerCalls, 900);
     setTimeout(fetchScannerTalkgroups, 1400);
     setTimeout(fetchSummarySnapshot, 1800);
 
     setInterval(function () {
       fetchIncidents();
-      fetchHomeNews();
       fetchSummarySnapshot();
     }, REFRESH_MS);
 
@@ -584,6 +583,32 @@
       .catch(function () {
         renderSummarySnapshot({ status: "error" }, null, null);
       });
+  }
+
+  // ── HOME LIVE / NEWS MODE TABS ────────────────────────────────
+  var _homeMode = "live";
+  var _newsLoaded = false;
+
+  function initHomeModeTabs() {
+    var btns = document.querySelectorAll("[data-home-mode]");
+    btns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var mode = btn.getAttribute("data-home-mode");
+        if (mode === _homeMode) return;
+        _homeMode = mode;
+        btns.forEach(function (b) {
+          var isActive = b.getAttribute("data-home-mode") === mode;
+          b.classList.toggle("active", isActive);
+          b.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+        document.getElementById("homePanelLive").classList.toggle("active", mode === "live");
+        document.getElementById("homePanelNews").classList.toggle("active", mode === "news");
+        if (mode === "news" && !_newsLoaded) {
+          _newsLoaded = true;
+          fetchHomeNews();
+        }
+      });
+    });
   }
 
   // ── HOME NEWS (major stories, developing, recaps) ─────────────

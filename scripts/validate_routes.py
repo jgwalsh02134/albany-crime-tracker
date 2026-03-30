@@ -55,16 +55,19 @@ async def main() -> int:
     if re.search(r'<button class="desktop-tab[^"]*"[^>]*>More</button>', index_html):
         print("primary nav invalid: More still present in desktop tabs")
         failures += 1
-    required_home_ids = ["feedSummaryGrid", "homeMajorStories", "homeDevelopingStories", "homeRecaps", "incidentListVerified", "incidentListDeveloping", "incidentListOfficial"]
+    required_home_ids = ["homePanelLive", "homePanelNews", "feedSummaryGrid", "incidentListVerified", "incidentListDeveloping", "incidentListOfficial", "homeMajorStories", "homeDevelopingStories", "homeRecaps"]
     for rid in required_home_ids:
         if f'id="{rid}"' not in index_html:
             print(f"home shell invalid: missing {rid}")
             failures += 1
-    if 'id="feedSummaryGrid"' not in index_html or 'id="incidentListVerified"' not in index_html:
-        print("home feed invalid: summary grid or feed list missing from Home")
+    if 'data-home-mode="live"' not in index_html or 'data-home-mode="news"' not in index_html:
+        print("home invalid: Live/News segmented control missing")
         failures += 1
     if "home-cta-panel" in index_html or "home-cta-btn" in index_html:
         print("home invalid: CTA buttons still present on Home")
+        failures += 1
+    if "initHomeModeTabs" not in app_js:
+        print("home invalid: mode tab init missing from JS")
         failures += 1
     for scanner_label in ["All", "Police", "Fire", "EMS"]:
         if f'data-scanner-filter="{scanner_label.lower()}"' not in index_html and scanner_label != "All":
