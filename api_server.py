@@ -29,6 +29,7 @@ from typing import Any, Optional
 
 import httpx
 import incident_intelligence as intel
+from sources.albany_open_data import fetch_albany_open_data
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse
@@ -4528,6 +4529,22 @@ async def directory_media():
 async def directory_community():
     d = _le_dir_cache()
     return {"status": "ok", "communityPlatforms": d.get("communityPlatforms", [])}
+
+
+@app.get("/api/dev/albany-open-data")
+async def dev_albany_open_data(request: Request):
+    try:
+        qp = request.query_params
+        limit = int(qp.get("limit", "100"))
+        offset = int(qp.get("offset", "0"))
+    except Exception:
+        limit, offset = 100, 0
+    try:
+        data = await fetch_albany_open_data(limit=limit, offset=offset)
+        return data if isinstance(data, list) else []
+    except Exception as e:
+        print(f"/api/dev/albany-open-data error: {e}")
+        return []
 
 
 # =============================================================================
