@@ -1499,7 +1499,9 @@ def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
             return False, "capital_region_without_county_anchor"
         if re.search(r"\balbany\b", blob):
             if not any(a in blob for a in _ALBANY_TOKEN_NY_ANCHORS):
-                return False, "albany_token_without_ny_confirmation"
+                # Only reject if there is ALSO a conflicting out-of-area signal
+                if any(m in blob for m in OUT_OF_AREA_GEO_MARKERS):
+                    return False, "albany_token_without_ny_confirmation"
         return False, "no_albany_county_locality_evidence"
 
     if "albany county, ga" in blob or "albany county georgia" in blob:
