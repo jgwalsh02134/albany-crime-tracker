@@ -5,6 +5,7 @@ import time
 from typing import Any
 from typing import Callable
 from typing import Optional
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 from uuid import uuid4
 
 try:
@@ -68,10 +69,8 @@ class RedisCache(CacheBackend):
     def __init__(self, redis_url: str, default_ttls: Optional[dict[str, int]] = None) -> None:
         if redis is None:
             raise RuntimeError("redis package is unavailable")
-        kwargs: dict[str, Any] = {"decode_responses": True}
-        if redis_url.lower().startswith("rediss://"):
-            kwargs["ssl"] = True
-        self._client = redis.Redis.from_url(redis_url, **kwargs)
+        normalized_url = normalize_redis_url(redis_url)
+        self._client = redis.Redis.from_url(normalized_url, **_redis_client_kwargs())
         self._ttls = default_ttls or {}
 
     def get(self, key: str) -> Any:
@@ -154,7 +153,7 @@ class RefreshGuard:
 def create_cache_backend(redis_url: str, default_ttls: Optional[dict[str, int]] = None) -> CacheBackend:
     if redis_url:
         try:
-            rc = RedisCache(redis_url, default_ttls=default_ttls)
+            rc = RedisCache(normalize_redis_url(redis_url), default_ttls=default_ttls)
             if rc.is_ready():
                 return rc
         except Exception:
@@ -165,7 +164,7 @@ def create_cache_backend(redis_url: str, default_ttls: Optional[dict[str, int]] 
 def create_refresh_guard(redis_url: str) -> RefreshGuard:
     if redis_url:
         try:
-            rc = RedisCache(redis_url)
+            rc = RedisCache(normalize_redis_url(redis_url))
             if rc.is_ready():
                 return RefreshGuard(redis_cache=rc)
         except Exception:
@@ -177,10 +176,8 @@ def redis_ready(redis_url: str) -> bool:
     if not redis_url or redis is None:
         return False
     try:
-        kwargs: dict[str, Any] = {}
-        if redis_url.lower().startswith("rediss://"):
-            kwargs["ssl"] = True
-        return bool(redis.Redis.from_url(redis_url, **kwargs).ping())
+        normalized = normalize_redis_url(redis_url)
+        return bool(redis.Redis.from_url(normalized, **_redis_client_kwargs()).ping())
     except Exception:
         return False
 
@@ -191,12 +188,58 @@ def redis_last_error(redis_url: str) -> str:
     if redis is None:
         return "redis package unavailable"
     try:
-        kwargs: dict[str, Any] = {}
-        if redis_url.lower().startswith("rediss://"):
-            kwargs["ssl"] = True
-        client = redis.Redis.from_url(redis_url, **kwargs)
+        normalized = normalize_redis_url(redis_url)
+        client = redis.Redis.from_url(normalized, **_redis_client_kwargs())
         client.ping()
         return ""
     except Exception as exc:
         return f"{type(exc).__name__}: {exc}"
+
+
+def normalize_redis_url(redis_url: str) -> str:
+    value = (redis_url or "").strip()
+    if not value:
+        return ""
+    try:
+        parsed = urlsplit(value)
+        scheme = (parsed.scheme or "").lower()
+        host = (parsed.hostname or "").lower()
+        q = {k.lower(): v for k, v in parse_qs(parsed.query).items()}
+        wants_tls = q.get("ssl", [""])[0].lower() in ("1", "true", "yes", "required")
+        if scheme == "redis" and (host.endswith("upstash.io") or wants_tls):
+            return urlunsplit(("rediss", parsed.netloc, parsed.path, parsed.query, parsed.fragment))
+        return value
+    except Exception:
+        return value
+
+
+def _redis_client_kwargs() -> dict[str, Any]:
+    return {"decode_responses": True}
+
+
+def redis_target_info(redis_url: str) -> dict[str, object]:
+    normalized = normalize_redis_url(redis_url)
+    if not normalized:
+        return {
+            "scheme": "",
+            "hostname": "",
+            "port": None,
+            "database": "",
+        }
+    try:
+        parsed = urlsplit(normalized)
+        db_name = (parsed.path or "").lstrip("/")
+        return {
+            "scheme": parsed.scheme or "",
+            "hostname": parsed.hostname or "",
+            "port": parsed.port,
+            "database": db_name,
+        }
+    except Exception:
+        return {
+            "scheme": "",
+            "hostname": "",
+            "port": None,
+            "database": "",
+        }
 

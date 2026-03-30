@@ -6,9 +6,10 @@ from fastapi import APIRouter
 
 from app.core.config import get_settings
 from app.db.session import database_ready
+from app.db.session import database_target_info
 from app.db.session import has_database
 from app.db.session import last_database_error
-from app.services.cache import redis_last_error, redis_ready
+from app.services.cache import redis_last_error, redis_ready, redis_target_info
 
 router = APIRouter(tags=["health"])
 
@@ -39,6 +40,10 @@ async def readiness() -> dict[str, object]:
         "checks": {
             "database": {"configured": db_required, "ok": db_ok, "error": db_err},
             "redis": {"configured": redis_required, "ok": redis_ok, "error": redis_err},
+        },
+        "targets": {
+            "database": database_target_info() if db_required else {"scheme": "", "hostname": "", "port": None, "database": ""},
+            "redis": redis_target_info(settings.redis_url) if redis_required else {"scheme": "", "hostname": "", "port": None, "database": ""},
         },
     }
 

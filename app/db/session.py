@@ -47,6 +47,33 @@ def _database_url() -> str:
     return _normalize_database_url(get_settings().database_url)
 
 
+def database_target_info() -> dict[str, object]:
+    db_url = _database_url()
+    if not db_url:
+        return {
+            "scheme": "",
+            "hostname": "",
+            "port": None,
+            "database": "",
+        }
+    try:
+        parsed = urlsplit(db_url)
+        db_name = (parsed.path or "").lstrip("/")
+        return {
+            "scheme": parsed.scheme or "",
+            "hostname": parsed.hostname or "",
+            "port": parsed.port,
+            "database": db_name,
+        }
+    except Exception:
+        return {
+            "scheme": "",
+            "hostname": "",
+            "port": None,
+            "database": "",
+        }
+
+
 def has_database() -> bool:
     return bool(_database_url())
 
