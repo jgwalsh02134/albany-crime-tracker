@@ -51,6 +51,7 @@
   var mapSeverity = "";
   var mapFetchTimer = null;
   var feedControlTimer = null;
+  var summaryWindow = "7d";
 
   // Law enforcement directory (lazy-loaded from /api/directory/*)
   var leDirectory = null;
@@ -343,6 +344,7 @@
     initScannerToolbar();
     initFeedTabs();
     initFeedControls();
+    initSummaryControls();
     initChat();
     startClock();
 
@@ -352,6 +354,7 @@
     setTimeout(fetchScannerCalls, 1200);
     setTimeout(fetchScannerTalkgroups, 1800);
     setTimeout(fetchTrends, 2400);
+    setTimeout(fetchSummarySnapshot, 2600);
     setTimeout(fetchDailySummary, 3000);
     setTimeout(fetchMonthlySummary, 3600);
     setTimeout(fetchSocialIntel, 4200);
@@ -359,6 +362,7 @@
     setInterval(function () {
       fetchIncidents();
       fetchSituation();
+      fetchSummarySnapshot();
     }, REFRESH_MS);
 
     setInterval(fetchScannerCalls, SCANNER_REFRESH_MS);
@@ -438,6 +442,103 @@
         fetchIncidents();
       });
     }
+  }
+
+  function initSummaryControls() {
+    var sel = document.getElementById("summaryWindowSelect");
+    if (!sel) return;
+    sel.value = summaryWindow;
+    sel.addEventListener("change", function () {
+      summaryWindow = sel.value || "7d";
+      fetchSummarySnapshot();
+    });
+  }
+
+  function _topText(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) return "No data";
+    return rows
+      .slice(0, 2)
+      .map(function (r) {
+        return (r.key || "unknown") + " (" + (r.count || 0) + ")";
+      })
+      .join(" · ");
+  }
+
+  function renderSummarySnapshot(summary, trends) {
+    var el = document.getElementById("feedSummaryGrid");
+    if (!el) return;
+    if (!summary || summary.status === "error") {
+      el.innerHTML = '<div class="feed-summary-empty">Summary is temporarily unavailable.</div>';
+      return;
+    }
+
+    var total = Number(summary.total || 0);
+    var delta = Number(summary.delta_count || 0);
+    var pct = Number(summary.delta_percent || 0);
+    var trendText =
+      (delta > 0 ? "+" : "") + delta + " vs prev window" + " (" + (isFinite(pct) ? pct : 0) + "%)";
+
+    var topTypes = _topText(summary.groups && summary.groups.incident_type);
+    var topMunis = _topText(summary.groups && summary.groups.municipality);
+    var sourceMix = _topText(summary.groups && summary.groups.source_type);
+    var verifyMix = _topText(summary.groups && summary.groups.verification_level);
+
+    var daily = trends && trends.series && Array.isArray(trends.series.daily_counts)
+      ? trends.series.daily_counts
+      : [];
+    var recentDaily = daily.slice(-7).map(function (p) { return p.count || 0; });
+    var spike = recentDaily.length ? Math.max.apply(Math, recentDaily) : 0;
+
+    var html = "";
+    html += '<div class="feed-summary-card">';
+    html += '<div class="feed-summary-k">Total incidents</div>';
+    html += '<div class="feed-summary-v">' + esc(String(total)) + '</div>';
+    html += '<div class="feed-summary-sub">' + esc(trendText) + "</div>";
+    html += "</div>";
+
+    html += '<div class="feed-summary-card">';
+    html += '<div class="feed-summary-k">Trend snapshot</div>';
+    html += '<div class="feed-summary-v">' + esc(String(spike)) + '</div>';
+    html += '<div class="feed-summary-sub">Highest daily count in recent trend</div>';
+    html += "</div>";
+
+    html += '<div class="feed-summary-card">';
+    html += '<div class="feed-summary-k">Top categories</div>';
+    html += '<div class="feed-summary-list">' + esc(topTypes) + "</div>";
+    html += "</div>";
+
+    html += '<div class="feed-summary-card">';
+    html += '<div class="feed-summary-k">Top municipalities</div>';
+    html += '<div class="feed-summary-list">' + esc(topMunis) + "</div>";
+    html += "</div>";
+
+    html += '<div class="feed-summary-card">';
+    html += '<div class="feed-summary-k">Source mix</div>';
+    html += '<div class="feed-summary-list">' + esc(sourceMix) + "</div>";
+    html += "</div>";
+
+    html += '<div class="feed-summary-card">';
+    html += '<div class="feed-summary-k">Verification mix</div>';
+    html += '<div class="feed-summary-list">' + esc(verifyMix) + "</div>";
+    html += "</div>";
+
+    el.innerHTML = html;
+  }
+
+  function fetchSummarySnapshot() {
+    var summaryReq = apiClient && apiClient.getIncidentSummary
+      ? apiClient.getIncidentSummary({ window: summaryWindow })
+      : fetch(API + "/api/incidents/summary?window=" + encodeURIComponent(summaryWindow)).then(ok);
+    var trendsReq = apiClient && apiClient.getIncidentTrends
+      ? apiClient.getIncidentTrends({ window: summaryWindow === "24h" ? "7d" : summaryWindow })
+      : fetch(API + "/api/incidents/trends?window=" + encodeURIComponent(summaryWindow === "24h" ? "7d" : summaryWindow)).then(ok);
+    Promise.all([summaryReq, trendsReq])
+      .then(function (res) {
+        renderSummarySnapshot(res[0], res[1]);
+      })
+      .catch(function () {
+        renderSummarySnapshot({ status: "error" }, null);
+      });
   }
 
   // ── NAVIGATION ────────────────────────────────────────────────
@@ -923,6 +1024,15 @@
     return "Unknown";
   }
 
+  function _sourceTypeLabel(v) {
+    var m = (v || "").toLowerCase();
+    if (m === "official") return "Official";
+    if (m === "scanner") return "Scanner";
+    if (m === "media") return "Media";
+    if (m === "fused" || m === "inferred") return "Inferred/Fused";
+    return "Unknown";
+  }
+
   function _crimeTypeFromIncidentType(t) {
     var v = (t || "").toLowerCase();
     if (v.indexOf("violent") !== -1 || v.indexOf("shooting") !== -1 || v.indexOf("stabbing") !== -1 || v.indexOf("homicide") !== -1) return "violent";
@@ -960,9 +1070,13 @@
       confidence: typeof r.confidence_score === "number" ? r.confidence_score : 0,
       verification_level: r.verification_level || "unknown",
       verification_label: _verificationLabel(r.verification_level || ""),
+      verification_explanation: r.verification_explanation || "",
       severity: r.severity || "unknown",
+      source_type: r.source_type || "",
+      source_type_label: _sourceTypeLabel(r.source_type || ""),
       crime_type: _crimeTypeFromIncidentType(r.incident_type || ""),
       coordinate_quality: r.coordinate_quality || "missing",
+      coordinate_explanation: r.coordinate_explanation || "",
       human_time: r.human_time || "",
       feed_tab: feedTab,
       is_active_incident: (r.status || "").toLowerCase() === "active" || (r.status || "").toLowerCase() === "recent",
@@ -1185,6 +1299,9 @@
       inc.event_type && inc.sub_type
         ? inc.event_type.replace(/_/g, " ") + " · " + inc.sub_type.replace(/_/g, " ")
         : String(item.crime_type || "public safety").replace(/_/g, " ");
+    var sourceTypeLabel = item.source_type_label || "Unknown";
+    var verificationExplain = item.verification_explanation || "Verification confidence metadata unavailable.";
+    var coordinateExplain = item.coordinate_explanation || "Coordinate quality metadata unavailable.";
     var verStr =
       item.verification_label || String(inc.verification_level || "").replace(/_/g, " ") || "—";
     if (typeof item.confidence === "number" && !isNaN(item.confidence)) {
@@ -1195,11 +1312,12 @@
     html += '<div class="feed-op-line"><span class="feed-op-k">Area</span>' + esc(capitalize(areaDisp)) + "</div>";
     html += '<div class="feed-op-line"><span class="feed-op-k">Fresh</span>' + esc(ta || "—") + "</div>";
     html += '<div class="feed-op-line"><span class="feed-op-k">Type</span>' + esc(typeStr) + "</div>";
-    html += '<div class="feed-op-line"><span class="feed-op-k">Verification</span>' + esc(verStr) + "</div>";
+    html += '<div class="feed-op-line" title="' + escAttr(verificationExplain) + '"><span class="feed-op-k">Verification</span>' + esc(verStr) + "</div>";
+    html += '<div class="feed-op-line"><span class="feed-op-k">Source class</span>' + esc(sourceTypeLabel) + "</div>";
     html += '<div class="feed-op-line"><span class="feed-op-k">Sources</span>' + esc(srcSummary) + "</div>";
     html += renderOperationalBadges(inc);
     if (item.coordinate_quality) {
-      html += '<div class="feed-op-line"><span class="feed-op-k">Location</span>' + esc(item.coordinate_quality) + "</div>";
+      html += '<div class="feed-op-line" title="' + escAttr(coordinateExplain) + '"><span class="feed-op-k">Location</span>' + esc(item.coordinate_quality) + "</div>";
     }
     if (inc.why_it_matters != null && String(inc.why_it_matters).trim() !== "") {
       html +=

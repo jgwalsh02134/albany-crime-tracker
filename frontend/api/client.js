@@ -24,6 +24,8 @@
       getIncidents: function () { return requestJSON(base + "/api/crimes"); },
       getPersistedIncidents: function (params) { return requestJSON(base + "/api/incidents" + toQuery(params)); },
       getIncidentMarkers: function (params) { return requestJSON(base + "/api/incidents/map" + toQuery(params)); },
+      getIncidentSummary: function (params) { return requestJSON(base + "/api/incidents/summary" + toQuery(params)); },
+      getIncidentTrends: function (params) { return requestJSON(base + "/api/incidents/trends" + toQuery(params)); },
       getScannerCalls: function () { return requestJSON(base + "/api/scanner/calls"); },
       getScannerTalkgroups: function () { return requestJSON(base + "/api/scanner/talkgroups"); },
       getSituation: function () { return requestJSON(base + "/api/situation"); },

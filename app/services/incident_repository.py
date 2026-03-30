@@ -4,6 +4,7 @@ import hashlib
 import logging
 from datetime import datetime
 from datetime import timedelta
+from datetime import timezone
 from typing import Any
 from typing import Optional
 
@@ -454,6 +455,54 @@ async def query_incidents(
         return "approximate"
 
     def _decorate(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        def _verification_label(v: str) -> str:
+            m = (v or "").lower()
+            return {
+                "official": "Official",
+                "multi_source": "Multi-source",
+                "media": "Media",
+                "scanner": "Scanner",
+                "inferred": "Inferred",
+            }.get(m, "Unknown")
+
+        def _verification_explanation(v: str) -> str:
+            m = (v or "").lower()
+            return {
+                "official": "Directly reported by an official agency source.",
+                "multi_source": "Corroborated by multiple independent sources.",
+                "media": "Reported by local media and pending official corroboration.",
+                "scanner": "Derived from scanner traffic and not fully confirmed.",
+                "inferred": "Inferred from partial signals and should be treated as preliminary.",
+            }.get(m, "Verification confidence is currently unknown.")
+
+        def _coordinate_explanation(qv: str) -> str:
+            m = (qv or "").lower()
+            return {
+                "exact": "Coordinates are specific to the incident location.",
+                "approximate": "Coordinates are approximate to area-level context, not exact address.",
+                "missing": "No reliable coordinates are available for mapping.",
+            }.get(m, "Coordinate quality is unknown.")
+
+        def _source_type_label(v: str) -> str:
+            m = (v or "").lower()
+            return {
+                "official": "Official",
+                "scanner": "Scanner",
+                "media": "Media",
+                "fused": "Inferred/Fused",
+                "inferred": "Inferred/Fused",
+            }.get(m, "Unknown")
+
+        def _source_type_explanation(v: str) -> str:
+            m = (v or "").lower()
+            return {
+                "official": "Published directly by an official public safety source.",
+                "scanner": "Derived from live scanner traffic and dispatch monitoring.",
+                "media": "Reported by media sources and subject to follow-up verification.",
+                "fused": "Combined from multiple signals and inferred context.",
+                "inferred": "Combined from multiple signals and inferred context.",
+            }.get(m, "Source class is unknown.")
+
         for it in items:
             it["short_title"] = (it.get("title") or "")[:96]
             it["subtitle"] = " · ".join([p for p in [it.get("source_name"), it.get("municipality")] if p])
@@ -466,6 +515,11 @@ async def query_incidents(
             it["human_time"] = _human_time(dt)
             it["badges"] = list(it.get("tags") or [])[:5]
             it["coordinate_quality"] = _coord_quality(it.get("latitude"), it.get("longitude"), it.get("raw_payload") or {})
+            it["verification_label"] = _verification_label(str(it.get("verification_level") or ""))
+            it["verification_explanation"] = _verification_explanation(str(it.get("verification_level") or ""))
+            it["coordinate_explanation"] = _coordinate_explanation(str(it.get("coordinate_quality") or ""))
+            it["source_type_label"] = _source_type_label(str(it.get("source_type") or ""))
+            it["source_type_explanation"] = _source_type_explanation(str(it.get("source_type") or ""))
         return items
 
     def _apply_post_filters(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -646,4 +700,199 @@ def incident_store_backend() -> str:
 
 def last_upsert_stats() -> dict[str, Any]:
     return dict(_LAST_UPSERT_STATS)
+
+
+def _parse_incident_dt(item: dict[str, Any]) -> Optional[datetime]:
+    raw = item.get("occurred_at") or item.get("published_at")
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _window_delta(window: str) -> timedelta:
+    w = (window or "").strip().lower()
+    if w in ("24h", "1d", "day"):
+        return timedelta(hours=24)
+    if w in ("7d", "week", "weekly"):
+        return timedelta(days=7)
+    if w in ("30d", "month", "monthly"):
+        return timedelta(days=30)
+    return timedelta(days=7)
+
+
+def _group_counts(items: list[dict[str, Any]], key: str, *, top_n: int = 8) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for it in items:
+        val = str(it.get(key) or "unknown").strip() or "unknown"
+        counts[val] = counts.get(val, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+    return [{"key": k, "count": v} for k, v in ranked[:top_n]]
+
+
+def _bucket_daily(items: list[dict[str, Any]], start: datetime, days: int) -> list[dict[str, Any]]:
+    slots = {}
+    for i in range(days):
+        d = (start + timedelta(days=i)).date().isoformat()
+        slots[d] = 0
+    for it in items:
+        dt = _parse_incident_dt(it)
+        if not dt:
+            continue
+        key = dt.date().isoformat()
+        if key in slots:
+            slots[key] += 1
+    return [{"date": d, "count": slots[d]} for d in sorted(slots.keys())]
+
+
+async def _load_incidents_for_window(start: datetime, end: datetime, *, cap: int = 10000) -> list[dict[str, Any]]:
+    session_factory = get_session_factory()
+    if session_factory is None:
+        rows = list(_MEMORY_INCIDENTS.values())
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            dt = _parse_incident_dt(r)
+            if dt is not None and start <= dt < end:
+                out.append(r)
+        return out
+
+    stmt = (
+        select(IncidentORM)
+        .where(
+            or_(
+                and_(
+                    IncidentORM.occurred_at.is_not(None),
+                    IncidentORM.occurred_at >= start,
+                    IncidentORM.occurred_at < end,
+                ),
+                and_(
+                    IncidentORM.occurred_at.is_(None),
+                    IncidentORM.published_at.is_not(None),
+                    IncidentORM.published_at >= start,
+                    IncidentORM.published_at < end,
+                ),
+            )
+        )
+        .order_by(IncidentORM.occurred_at.desc().nullslast(), IncidentORM.created_at.desc())
+        .limit(max(100, min(cap, 25000)))
+    )
+    try:
+        async with session_factory() as session:
+            rows = (await session.execute(stmt)).scalars().all()
+            return [
+                {
+                    "id": r.id,
+                    "incident_type": r.incident_type,
+                    "municipality": r.municipality,
+                    "source_type": r.source_type,
+                    "verification_level": r.verification_level,
+                    "occurred_at": r.occurred_at.isoformat() if r.occurred_at else None,
+                    "published_at": r.published_at.isoformat() if r.published_at else None,
+                    "latitude": r.latitude,
+                    "longitude": r.longitude,
+                    "raw_payload": r.raw_payload or {},
+                }
+                for r in rows
+            ]
+    except Exception:
+        rows = list(_MEMORY_INCIDENTS.values())
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            dt = _parse_incident_dt(r)
+            if dt is not None and start <= dt < end:
+                out.append(r)
+        return out
+
+
+async def summarize_incidents(window: str = "7d") -> dict[str, Any]:
+    delta = _window_delta(window)
+    end = datetime.now(timezone.utc)
+    start = end - delta
+    prev_start = start - delta
+
+    current_items = await _load_incidents_for_window(start, end)
+    previous_items = await _load_incidents_for_window(prev_start, start)
+
+    total = len(current_items)
+    prev_total = len(previous_items)
+    change = total - prev_total
+    pct = (change / prev_total * 100.0) if prev_total > 0 else (100.0 if total > 0 else 0.0)
+
+    coord_counts = {"exact": 0, "approximate": 0, "missing": 0}
+    for it in current_items:
+        lat = it.get("latitude")
+        lon = it.get("longitude")
+        if lat is None or lon is None:
+            coord_counts["missing"] += 1
+            continue
+        acc = str((it.get("raw_payload") or {}).get("location_accuracy") or "").lower()
+        if acc in ("specific", "exact", "verified"):
+            coord_counts["exact"] += 1
+        else:
+            coord_counts["approximate"] += 1
+
+    return {
+        "window": window,
+        "start": start.isoformat() + "Z",
+        "end": end.isoformat() + "Z",
+        "total": total,
+        "previous_total": prev_total,
+        "delta_count": change,
+        "delta_percent": round(pct, 1),
+        "groups": {
+            "incident_type": _group_counts(current_items, "incident_type"),
+            "municipality": _group_counts(current_items, "municipality"),
+            "source_type": _group_counts(current_items, "source_type"),
+            "verification_level": _group_counts(current_items, "verification_level"),
+        },
+        "trust": {
+            "verification_levels": _group_counts(current_items, "verification_level"),
+            "coordinate_quality": [{"key": k, "count": v} for k, v in coord_counts.items()],
+            "verification_help": {
+                "official": "Directly reported by an official agency source.",
+                "multi_source": "Corroborated by multiple independent sources.",
+                "media": "Reported by local media and pending official corroboration.",
+                "scanner": "Derived from scanner traffic and not fully confirmed.",
+                "inferred": "Inferred from partial signals and should be treated as preliminary.",
+            },
+            "coordinate_help": {
+                "exact": "Coordinates are specific to the incident location.",
+                "approximate": "Coordinates are approximate to area-level context.",
+                "missing": "No reliable coordinates are available.",
+            },
+        },
+    }
+
+
+async def incident_trends(window: str = "30d") -> dict[str, Any]:
+    delta = _window_delta(window)
+    end = datetime.now(timezone.utc)
+    start = end - delta
+    items = await _load_incidents_for_window(start, end)
+
+    days = max(1, int(delta.total_seconds() // 86400))
+    daily = _bucket_daily(items, start=start, days=days)
+    summary = await summarize_incidents(window=window)
+    return {
+        "window": window,
+        "start": start.isoformat() + "Z",
+        "end": end.isoformat() + "Z",
+        "total": len(items),
+        "series": {
+            "daily_counts": daily,
+        },
+        "top": {
+            "incident_type": summary["groups"]["incident_type"],
+            "municipality": summary["groups"]["municipality"],
+            "source_type": summary["groups"]["source_type"],
+            "verification_level": summary["groups"]["verification_level"],
+        },
+        "delta_count": summary["delta_count"],
+        "delta_percent": summary["delta_percent"],
+    }
 

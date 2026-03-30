@@ -127,6 +127,22 @@
           <option value="verification">Sort: Verification</option>
         </select>
       </div>
+      <section class="feed-summary-panel" aria-label="Incident summary and trends">
+        <div class="feed-summary-header">
+          <h2 class="feed-summary-title">Summary &amp; trends</h2>
+          <div class="feed-summary-controls" role="group" aria-label="Summary time window controls">
+            <label for="summaryWindowSelect" class="feed-summary-label">Window</label>
+            <select id="summaryWindowSelect" class="feed-summary-select" aria-label="Select summary time window">
+              <option value="24h">Last 24h</option>
+              <option value="7d" selected>Last 7d</option>
+              <option value="30d">Last 30d</option>
+            </select>
+          </div>
+        </div>
+        <div class="feed-summary-grid" id="feedSummaryGrid">
+          <div class="feed-summary-empty">Loading summary…</div>
+        </div>
+      </section>
 
       <!-- LIVE: Active now + Recent local activity -->
       <div class="feed-tab-content active" id="feedTabLive">

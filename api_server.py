@@ -45,8 +45,10 @@ from app.db.session import init_database
 from app.services.cache import DEFAULT_TTLS, create_cache_backend, create_refresh_guard
 from app.services.http_client import fetch_with_retry
 from app.services.incident_persistence import persist_articles_as_incidents
+from app.services.incident_repository import incident_trends
 from app.services.incident_repository import incident_store_backend
 from app.services.incident_repository import query_incidents
+from app.services.incident_repository import summarize_incidents
 from app.services.incident_transformers import article_to_incident
 
 # --- Config ---
@@ -3372,6 +3374,16 @@ async def get_incidents_map(
         "count": len(markers),
         "markers": markers,
     }
+
+
+@app.get("/api/incidents/summary")
+async def get_incidents_summary(window: str = "7d"):
+    return {"status": "ok", "source": incident_store_backend(), **(await summarize_incidents(window=window))}
+
+
+@app.get("/api/incidents/trends")
+async def get_incidents_trends(window: str = "30d"):
+    return {"status": "ok", "source": incident_store_backend(), **(await incident_trends(window=window))}
 
 
 @app.get("/api/incidents/operational-summary")

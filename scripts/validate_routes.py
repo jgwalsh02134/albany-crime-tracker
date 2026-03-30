@@ -19,6 +19,8 @@ CRITICAL_ROUTES = [
     "/api/sources",
     "/api/incidents",
     "/api/incidents/map",
+    "/api/incidents/summary",
+    "/api/incidents/trends",
 ]
 
 
@@ -106,6 +108,55 @@ async def main() -> int:
                             failures += 1
         except Exception as exc:
             print(f"/api/incidents/map payload check: ERROR {exc}")
+            failures += 1
+
+        # Summary + trends payload checks
+        try:
+            summary = await client.get("/api/incidents/summary", params={"window": "7d"})
+            print(f"/api/incidents/summary?window=7d: {summary.status_code}")
+            if summary.status_code != 200:
+                failures += 1
+            else:
+                body = summary.json()
+                expected_top = {"status", "source", "window", "total", "groups", "trust", "delta_count"}
+                missing_top = sorted(list(expected_top - set(body.keys()))) if isinstance(body, dict) else sorted(list(expected_top))
+                if missing_top:
+                    print(f"/api/incidents/summary payload invalid: missing keys {missing_top}")
+                    failures += 1
+                groups = body.get("groups") if isinstance(body, dict) else None
+                if not isinstance(groups, dict):
+                    print("/api/incidents/summary payload invalid: groups is not an object")
+                    failures += 1
+                else:
+                    for key in ("incident_type", "municipality", "source_type", "verification_level"):
+                        if not isinstance(groups.get(key), list):
+                            print(f"/api/incidents/summary payload invalid: groups.{key} is not a list")
+                            failures += 1
+
+            trends = await client.get("/api/incidents/trends", params={"window": "30d"})
+            print(f"/api/incidents/trends?window=30d: {trends.status_code}")
+            if trends.status_code != 200:
+                failures += 1
+            else:
+                t_body = trends.json()
+                series = t_body.get("series") if isinstance(t_body, dict) else None
+                daily = series.get("daily_counts") if isinstance(series, dict) else None
+                if not isinstance(daily, list):
+                    print("/api/incidents/trends payload invalid: series.daily_counts is not a list")
+                    failures += 1
+
+            # Empty-window safety (frontend should tolerate this shape)
+            empty_summary = await client.get("/api/incidents/summary", params={"window": "24h"})
+            print(f"/api/incidents/summary?window=24h: {empty_summary.status_code}")
+            if empty_summary.status_code != 200:
+                failures += 1
+            else:
+                e_body = empty_summary.json()
+                if not isinstance(e_body.get("groups"), dict):
+                    print("/api/incidents/summary 24h payload invalid: groups missing")
+                    failures += 1
+        except Exception as exc:
+            print(f"/api/incidents summary/trends payload check: ERROR {exc}")
             failures += 1
     if failures:
         print(f"\nValidation failed: {failures} route(s) did not pass.")
