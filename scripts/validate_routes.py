@@ -22,6 +22,7 @@ CRITICAL_ROUTES = [
     "/api/incidents/summary",
     "/api/incidents/trends",
     "/api/methodology",
+    "/api/dev/albany-open-data",
 ]
 
 
@@ -202,6 +203,57 @@ async def main() -> int:
                     failures += 1
         except Exception as exc:
             print(f"/api/methodology check: ERROR {exc}")
+            failures += 1
+
+        # Socrata structured-source integration checks
+        try:
+            soc = await client.get("/api/dev/albany-open-data", params={"limit": 20})
+            print(f"/api/dev/albany-open-data?limit=20: {soc.status_code}")
+            if soc.status_code != 200:
+                failures += 1
+            else:
+                s_payload = soc.json()
+                s_rows = s_payload if isinstance(s_payload, list) else []
+                print(f"socrata_fetch_count: {len(s_rows)}")
+                if len(s_rows) == 0:
+                    print("socrata fetch invalid: no rows returned")
+                    failures += 1
+
+            prime = await client.get("/api/crimes", params={"force_refresh": "true"})
+            print(f"/api/crimes?force_refresh=true: {prime.status_code}")
+            if prime.status_code != 200:
+                failures += 1
+
+            open_data_inc = await client.get("/api/incidents", params={"source_type": "open_data", "limit": 20})
+            print(f"/api/incidents?source_type=open_data&limit=20: {open_data_inc.status_code}")
+            if open_data_inc.status_code != 200:
+                failures += 1
+            else:
+                body = open_data_inc.json()
+                items = body.get("incidents") if isinstance(body, dict) else None
+                count = len(items) if isinstance(items, list) else 0
+                print(f"open_data_incident_count: {count}")
+                if count == 0:
+                    print("open_data incident integration invalid: no persisted Socrata-backed incidents")
+                    failures += 1
+
+            open_data_map = await client.get(
+                "/api/incidents/map",
+                params={"source_type": "open_data", "has_coordinates": "true", "limit": 20},
+            )
+            print("/api/incidents/map?source_type=open_data&has_coordinates=true&limit=20: " + str(open_data_map.status_code))
+            if open_data_map.status_code != 200:
+                failures += 1
+            else:
+                m_body = open_data_map.json()
+                markers = m_body.get("markers") if isinstance(m_body, dict) else None
+                m_count = len(markers) if isinstance(markers, list) else 0
+                print(f"open_data_map_marker_count: {m_count}")
+                if m_count == 0:
+                    print("open_data map integration invalid: no Socrata-backed coordinates in map payload")
+                    failures += 1
+        except Exception as exc:
+            print(f"/api/socrata integration check: ERROR {exc}")
             failures += 1
     if failures:
         print(f"\nValidation failed: {failures} route(s) did not pass.")

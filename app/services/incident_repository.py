@@ -244,17 +244,27 @@ def _apply_updates(existing: IncidentORM, record: IncidentRecord) -> bool:
     _set("incident_type", record.incident_type)
     _set("severity", record.severity)
     _set("status", record.status)
-    _set("source_type", record.source_type)
+    existing_source_type = (existing.source_type or "").lower()
+    incoming_source_type = (record.source_type or "").lower()
+    if not (existing_source_type == "open_data" and incoming_source_type != "open_data"):
+        _set("source_type", record.source_type)
     _set("source_name", record.source_name)
     _set("source_url", record.source_url)
     _set("occurred_at", record.occurred_at)
     _set("published_at", record.published_at)
     _set("municipality", record.municipality)
     _set("address_text", record.address_text)
-    _set("latitude", record.latitude)
-    _set("longitude", record.longitude)
+    # Preserve highest-trust structured coordinates unless a better open-data value arrives.
+    if record.latitude is not None and record.longitude is not None:
+        if existing.latitude is None or existing.longitude is None:
+            _set("latitude", record.latitude)
+            _set("longitude", record.longitude)
+        elif incoming_source_type == "open_data" and existing_source_type != "open_data":
+            _set("latitude", record.latitude)
+            _set("longitude", record.longitude)
     _set("confidence_score", record.confidence_score)
-    _set("verification_level", record.verification_level)
+    if not (existing_source_type == "open_data" and incoming_source_type != "open_data"):
+        _set("verification_level", record.verification_level)
     _set("tags", record.tags)
     return changed
 
@@ -441,6 +451,7 @@ async def query_incidents(
         }.get(str(item.get("verification_level") or "").lower(), 4)
         source_score = {
             "official": 20,
+            "open_data": 22,
             "media": 12,
             "scanner": 8,
             "fused": 10,
@@ -495,6 +506,15 @@ async def query_incidents(
     def _coord_quality(lat: Optional[float], lon: Optional[float], payload: dict[str, Any]) -> str:
         if lat is None or lon is None:
             return "missing"
+        src_type = str(
+            payload.get("source_type")
+            or (payload.get("incident") or {}).get("source_type")
+            or payload.get("source_class")
+            or (payload.get("raw_payload") or {}).get("source_class")
+            or ""
+        ).lower()
+        if "open_data" in src_type or "official_structured" in src_type:
+            return "exact"
         acc = str(payload.get("location_accuracy") or "").lower()
         if acc in ("specific", "exact", "verified"):
             return "exact"
@@ -533,6 +553,7 @@ async def query_incidents(
             m = (v or "").lower()
             return {
                 "official": "Official",
+                "open_data": "Official Open Data",
                 "scanner": "Scanner",
                 "media": "Media",
                 "fused": "Inferred/Fused",
@@ -543,6 +564,7 @@ async def query_incidents(
             m = (v or "").lower()
             return {
                 "official": "Published directly by an official public safety source.",
+                "open_data": "Structured city open-data record with strong provenance.",
                 "scanner": "Derived from live scanner traffic and dispatch monitoring.",
                 "media": "Reported by media sources and subject to follow-up verification.",
                 "fused": "Combined from multiple signals and inferred context.",
@@ -746,6 +768,14 @@ async def query_incidents(
                 }
                 for r in rows
             ]
+            if _MEMORY_INCIDENTS:
+                # Include memory fallback writes when DB upserts temporarily fail.
+                merged: dict[str, dict[str, Any]] = {str(it.get("id") or ""): it for it in items}
+                for it in _MEMORY_INCIDENTS.values():
+                    key = str(it.get("id") or "")
+                    if key and key not in merged:
+                        merged[key] = it
+                items = list(merged.values())
             items = _apply_post_filters(items)
             return items[offset : offset + limit]
     except Exception:

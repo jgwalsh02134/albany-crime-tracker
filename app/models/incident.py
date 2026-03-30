@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 IncidentSeverity = Literal["low", "medium", "high", "critical", "unknown"]
 IncidentStatus = Literal["active", "recent", "cleared", "historical", "unknown"]
-IncidentSourceType = Literal["scanner", "official_alerts", "local_news", "enrichment", "unknown"]
+IncidentSourceType = Literal["scanner", "official_alerts", "local_news", "enrichment", "open_data", "unknown"]
 IncidentVerification = Literal["official", "multi_source", "media", "scanner", "inferred", "unknown"]
 
 

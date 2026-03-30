@@ -32,7 +32,7 @@ def article_to_incident(article: dict[str, Any]) -> IncidentRecord:
     occurred = _safe_dt(article.get("pubDate")) or _safe_dt(incident.get("occurred_at"))
     published = _safe_dt(article.get("pubDate")) or _safe_dt(incident.get("last_updated_at"))
     source_type = (incident.get("source_type") or "unknown").lower()
-    if source_type not in {"scanner", "official_alerts", "local_news", "enrichment"}:
+    if source_type not in {"scanner", "official_alerts", "local_news", "enrichment", "open_data"}:
         source_type = "unknown"
     status = (incident.get("status") or "unknown").lower()
     if status not in {"active", "recent", "cleared", "historical", "unknown"}:
@@ -44,7 +44,7 @@ def article_to_incident(article: dict[str, Any]) -> IncidentRecord:
     if article.get("_scanner_call"):
         tags.append("scanner_call")
     return IncidentRecord(
-        id=str(article.get("id") or incident.get("id") or ""),
+        id=str(article.get("id") or incident.get("id") or article.get("external_id") or ""),
         title=str(article.get("title") or incident.get("title") or ""),
         description=str(article.get("summary") or article.get("description") or incident.get("summary") or ""),
         incident_type=str(article.get("event_type") or incident.get("event_type") or "general"),
@@ -64,6 +64,6 @@ def article_to_incident(article: dict[str, Any]) -> IncidentRecord:
         tags=sorted(set(t for t in tags if t)),
         # TODO: populate when Postgres/PostGIS storage is introduced.
         geom_wkt=None,
-        external_ref=str(article.get("guid") or ""),
+        external_ref=str(article.get("external_ref") or article.get("external_id") or article.get("guid") or ""),
     )
 

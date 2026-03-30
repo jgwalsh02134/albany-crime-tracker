@@ -1054,6 +1054,7 @@
   function _sourceTypeLabel(v) {
     var m = (v || "").toLowerCase();
     if (m === "official") return "Official";
+    if (m === "open_data") return "Official Open Data";
     if (m === "scanner") return "Scanner";
     if (m === "media") return "Media";
     if (m === "fused" || m === "inferred") return "Inferred/Fused";
@@ -1070,6 +1071,7 @@
   function _feedTabFromRecord(r) {
     var st = (r.source_type || "").toLowerCase();
     var v = (r.verification_level || "").toLowerCase();
+    if (st === "open_data") return "verified";
     if (st === "official" || v === "official") return "official";
     if (v === "multi_source") return "verified";
     return "developing";

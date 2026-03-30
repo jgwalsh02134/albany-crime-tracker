@@ -30,6 +30,7 @@ from typing import Any, Optional
 
 import httpx
 import incident_intelligence as intel
+from sources.albany_open_data import albany_open_data_sources
 from sources.albany_open_data import fetch_albany_open_data
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -3063,6 +3064,12 @@ async def get_crimes(force_refresh: bool = False):
         return cached
 
     all_articles = await refresh_guard.run_once("refresh_crimes_feed", fetch_all_feeds)
+    socrata_rows: list[dict[str, Any]] = []
+    try:
+        socrata_rows = await fetch_albany_open_data(limit=250, offset=0)
+    except Exception as exc:
+        logger.warning("socrata_fetch_failed: %s", exc)
+        socrata_rows = []
 
     def _in_crime_pipeline(a: dict) -> bool:
         if not is_albany_related(a):
@@ -3072,6 +3079,10 @@ async def get_crimes(force_refresh: bool = False):
         return is_crime_related(a) or _operational_signal_article(a)
 
     crime_articles = [a for a in all_articles if _in_crime_pipeline(a)]
+    if socrata_rows:
+        # Treat Albany structured open data as high-trust incidents.
+        crime_articles = socrata_rows + crime_articles
+        all_articles = socrata_rows + all_articles
 
     enriched: list[dict] = []
     for a in crime_articles:
@@ -3152,7 +3163,7 @@ async def get_crimes(force_refresh: bool = False):
 
     # Persist normalized incidents for map/timeline/source querying.
     # Fallback to raw feed rows if the filtered crime list is temporarily empty.
-    rows_for_persistence = geocoded if geocoded else all_articles[:250]
+    rows_for_persistence = geocoded + socrata_rows if geocoded else (socrata_rows if socrata_rows else all_articles[:250])
     persistence_stats = await persist_articles_as_incidents(rows_for_persistence)
 
     global _LAST_INCIDENT_PIPELINE
@@ -3230,6 +3241,9 @@ async def get_crimes(force_refresh: bool = False):
             "live_recent_local": len(live_recent_local),
             "confirmed": len(conf_rows),
             "news_context": len(nctx_rows),
+        },
+        "structured_sources": {
+            "socrata_records": len(socrata_rows),
         },
     }
     logger.info(
@@ -3398,6 +3412,7 @@ SOURCE_METHODOLOGY = {
     ],
     "source_types": {
         "official": "Highest trust structured/open-data/government records and agency updates.",
+        "open_data": "City of Albany structured Socrata/open-data records (highest trust for mapped precision).",
         "scanner": "Early signal only; not an official incident record until corroborated.",
         "media": "Corroboration and enrichment from local reporting.",
         "inferred": "Fused/inferred signal from multiple partial sources; preliminary.",
@@ -3426,7 +3441,7 @@ SOURCE_EXPANSION_HOOKS = [
     {"id": "albany-county-da-press", "label": "Albany County DA press releases", "enabled": False},
     {"id": "nysp-troopg-news-blotter", "label": "NYSP Troop G newsroom + daily blotter", "enabled": False},
     {"id": "usao-ndny-rss", "label": "USAO NDNY RSS", "enabled": False},
-    {"id": "city-albany-openalbany", "label": "City of Albany Socrata/openAlbany", "enabled": False},
+    {"id": "city-albany-openalbany", "label": "City of Albany Socrata/openAlbany", "enabled": True},
     {"id": "ny-open-data-public-safety", "label": "NY Open Data public safety datasets", "enabled": False},
     {"id": "511ny", "label": "511NY", "enabled": False},
     {"id": "fbi-cde-fbi-albany", "label": "FBI CDE / FBI Albany", "enabled": False},
@@ -3774,6 +3789,7 @@ async def get_social_intel():
 @app.get("/api/sources")
 async def get_sources():
     cached = get_cached("merged_news")
+    structured = albany_open_data_sources()
     if cached:
         source_data = {}
         for a in cached:
@@ -3785,6 +3801,17 @@ async def get_sources():
             [{"source": s, **v} for s, v in source_data.items()],
             key=lambda x: (-x["reliability"], -x["count"])
         )
+        for s in structured:
+            sources.append(
+                {
+                    "source": s.get("source"),
+                    "count": 0,
+                    "reliability": 1.0,
+                    "source_type": "open_data",
+                    "active": True,
+                    "dataset_id": s.get("dataset_id"),
+                }
+            )
         return {
             "status": "ok",
             "total_articles": len(cached),
@@ -3796,8 +3823,8 @@ async def get_sources():
     return {
         "status": "ok",
         "total_articles": 0,
-        "source_count": 0,
-        "sources": [],
+        "source_count": len(structured),
+        "sources": structured,
         "methodology": SOURCE_METHODOLOGY,
         "planned_hooks": SOURCE_EXPANSION_HOOKS,
     }
