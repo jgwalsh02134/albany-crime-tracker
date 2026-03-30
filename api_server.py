@@ -31,7 +31,7 @@ import httpx
 import incident_intelligence as intel
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 # --- Config ---
@@ -4342,6 +4342,19 @@ async def directory_community():
 # =============================================================================
 # STATIC FILES — Must be last (catches all unmatched routes)
 # =============================================================================
+@app.get("/")
+async def root():
+    index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    except Exception:
+        return HTMLResponse(
+            "<!DOCTYPE html><html><head><title>Albany Crime Tracker</title></head>"
+            "<body><h1>Server Running</h1></body></html>"
+        )
+
+
 app.mount("/", StaticFiles(directory=os.path.dirname(os.path.abspath(__file__)), html=True), name="static")
 
 
