@@ -18,11 +18,8 @@
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
 <!-- Libraries -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 
@@ -177,12 +174,13 @@
       </div>
       <div class="map-status" id="mapStatus" role="status" aria-live="polite"></div>
       <div class="map-legend">
-        <span class="map-legend-item"><span class="map-legend-dot map-legend-dot--exact"></span> Exact</span>
-        <span class="map-legend-item"><span class="map-legend-dot map-legend-dot--approx"></span> Approximate</span>
-        <span class="map-legend-sep">·</span>
         <span class="map-legend-item"><span class="map-legend-dot" style="background:#e05252;"></span> Violent</span>
         <span class="map-legend-item"><span class="map-legend-dot" style="background:#d9953a;"></span> Property</span>
         <span class="map-legend-item"><span class="map-legend-dot" style="background:#4d8fdb;"></span> Other</span>
+        <span class="map-legend-sep">·</span>
+        <button class="map-heatmap-toggle" id="mapHeatmapToggle" title="Toggle heatmap">
+          <span class="material-icons" style="font-size:16px;">layers</span> Heatmap
+        </button>
       </div>
       <div id="map" role="region" aria-label="Incident map"></div>
     </section>

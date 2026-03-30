@@ -1281,28 +1281,59 @@ a:hover { text-decoration: underline; }
 .map-filter-btn.active[data-filter="other"]    { background: var(--accent); border-color: var(--accent); color: #fff; }
 #viewMap #map {
   flex: 1;
+  min-height: 300px;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
 }
-
-/* Legend rendered as a Leaflet control inside the map (bottom-left) */
-.map-legend-ctrl {
-  display: flex; gap: var(--sp-3);
-  padding: 6px var(--sp-3);
-  background: var(--surface);
-  border-radius: var(--r-md);
-  font-size: 11px; color: var(--text-2);
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--border-subtle);
-  margin: 0 0 var(--sp-2) var(--sp-2);
-  pointer-events: none;
+#viewMap #map canvas {
+  outline: none;
 }
-.legend-item { display: flex; align-items: center; gap: 5px; }
-.legend-dot { width: 8px; height: 8px; border-radius: 50%; }
-.legend-dot.violent { background: var(--violent); }
-.legend-dot.property { background: var(--property); }
-.legend-dot.other { background: var(--accent); }
+
+/* Heatmap toggle button */
+.map-heatmap-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2, #aaa);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.map-heatmap-toggle:hover {
+  background: var(--surface-2, rgba(255,255,255,0.06));
+}
+.map-heatmap-toggle.active {
+  background: var(--accent, #6c5ce7);
+  color: #fff;
+  border-color: var(--accent, #6c5ce7);
+}
+
+/* MapLibre popup overrides */
+.maplibregl-popup-content {
+  background: var(--surface, #1a1c2e) !important;
+  border: 1px solid var(--border-subtle, #262836) !important;
+  border-radius: 10px !important;
+  padding: 0 !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
+}
+.maplibregl-popup-close-button {
+  color: var(--text-2, #aaa) !important;
+  font-size: 18px !important;
+  padding: 4px 8px !important;
+}
+.maplibregl-popup-tip {
+  border-top-color: var(--surface, #1a1c2e) !important;
+}
+
+/* MapLibre cluster styling */
+.maplibregl-canvas {
+  outline: none;
+}
 
 /* ===== NEW SCANNER (sc-*) ===== */
 .sc-filters {
