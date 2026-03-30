@@ -711,7 +711,7 @@ def _scanner_blob_matches_critical_live(blob: str) -> bool:
 def _include_scanner_item_in_crime_feed(article: dict) -> bool:
     """Broadcastify stream cards stay off crime feed; OpenMHz needs critical and/or recent-live flag."""
     if article.get("_scanner_feed_link"):
-        return False
+        return bool(article.get("_scanner_critical_live") or article.get("_scanner_recent_live"))
     if article.get("_scanner_call"):
         return bool(article.get("_scanner_critical_live") or article.get("_scanner_recent_live"))
     return True
@@ -1396,6 +1396,33 @@ _ALBANY_TOKEN_NY_ANCHORS = frozenset(
     ]
 )
 
+_DIR_LOCALITY_SIGNALS_CACHE: Optional[frozenset[str]] = None
+
+
+def _directory_locality_signals() -> frozenset[str]:
+    """Extra locality anchors learned from le_directory.json (cities/municipal labels)."""
+    global _DIR_LOCALITY_SIGNALS_CACHE
+    if _DIR_LOCALITY_SIGNALS_CACHE is not None:
+        return _DIR_LOCALITY_SIGNALS_CACHE
+    vals: set[str] = set()
+    try:
+        d = _le_dir_cache()
+        for m in d.get("municipalities") or []:
+            n = (m.get("name") or "").strip().lower()
+            if n and len(n) >= 4:
+                vals.add(n)
+        for ag in d.get("agencies") or []:
+            c = ((ag.get("contact") or {}).get("city") or "").strip().lower()
+            if c and len(c) >= 4:
+                vals.add(c)
+            abb = (ag.get("abbreviation") or "").strip().lower()
+            if abb and 3 <= len(abb) <= 10:
+                vals.add(abb)
+    except Exception:
+        pass
+    _DIR_LOCALITY_SIGNALS_CACHE = frozenset(vals)
+    return _DIR_LOCALITY_SIGNALS_CACHE
+
 
 def _strict_blob(article: dict) -> str:
     parts = [
@@ -1500,9 +1527,12 @@ def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
             return False, "capital_region_without_county_anchor"
         if re.search(r"\balbany\b", blob):
             if not any(a in blob for a in _ALBANY_TOKEN_NY_ANCHORS):
+                if any(s in blob for s in _directory_locality_signals()):
+                    return True, "albany_token_with_directory_locality_signal"
                 # Only reject if there is ALSO a conflicting out-of-area signal
                 if any(m in blob for m in OUT_OF_AREA_GEO_MARKERS):
                     return False, "albany_token_without_ny_confirmation"
+                return True, "albany_token_without_conflict_marker"
         return False, "no_albany_county_locality_evidence"
 
     if "albany county, ga" in blob or "albany county georgia" in blob:
@@ -2425,8 +2455,10 @@ async def generate_situation_report(crime_data, patterns):
 
 Input: Live-tab-heavy incident lines (Tab:live first), then News, each tagged Conf/Rel/source; plus pattern counts.
 1) Drop non-local noise (wrong Albany, no NY anchor).
-2) situation: ONE dense sentence (max 32 words) — blend official + scanner + blotter themes, name geography where data supports it.
-3) threat_level + confidence per system rules.
+2) Prioritize freshest items from the last 12 hours, especially critical scanner traffic, official X posts, Nixle alerts, and verified blotter entries.
+3) Never stitch uncertain mixed-source incidents into one confirmed narrative. If signals are mixed, summarize conservatively as multiple incidents of note.
+4) situation: ONE dense sentence (max 32 words) — blend official + scanner + blotter themes, name geography where data supports it.
+5) threat_level + confidence per system rules.
 
 {chr(10).join(context_lines)}
 {pattern_ctx}
@@ -2786,6 +2818,9 @@ async def fetch_all_feeds():
         full_a = (t1 + " " + (art.get("description", "") or ""))[:1200]
         full_b = (t2 + " " + (rep.get("description", "") or ""))[:1200]
         hrs = _hours_apart(art, rep)
+        op_a = bool(art.get("_scanner_call") or art.get("_nixle_item") or art.get("_official_x_post"))
+        op_b = bool(rep.get("_scanner_call") or rep.get("_nixle_item") or rep.get("_official_x_post"))
+        op_pair = op_a and op_b
 
         la = _norm_link(art.get("link", "") or "")
         lb = _norm_link(rep.get("link", "") or "")
@@ -2833,16 +2868,16 @@ async def fetch_all_feeds():
         if len(shared) >= 2 and hrs is not None and hrs <= 8.0:
             return True
 
-        if jac_title >= 0.65 and len(shared) >= 1 and hrs is not None and hrs <= 6.0:
+        if (not op_pair) and jac_title >= 0.65 and len(shared) >= 1 and hrs is not None and hrs <= 6.0:
             return True
 
-        if jac_title >= 0.55 and hrs is not None and hrs <= 4.0:
+        if (not op_pair) and jac_title >= 0.55 and hrs is not None and hrs <= 4.0:
             return True
 
         w1, w2 = _title_words(t1), _title_words(t2)
         if w1 and w2 and hrs is not None and hrs <= 12.0:
             tw = len(w1 & w2)
-            if _title_sequence_ratio(t1, t2) >= 0.52 and tw >= 4:
+            if (not op_pair) and _title_sequence_ratio(t1, t2) >= 0.52 and tw >= 4:
                 return True
 
         return False
@@ -3010,6 +3045,31 @@ async def get_crimes():
 
     now_rows = [intel.incident_to_api_row(x) for x in now_scored]
     now_rows = dedupe_redundant_live_scanner_cards(now_rows)
+
+    def _live_rank(row: dict) -> tuple[int, int, float]:
+        age_h = row.get("age_hours")
+        try:
+            age_h_f = float(age_h) if age_h is not None else 999.0
+        except Exception:
+            age_h_f = 999.0
+        fresh12 = 1 if age_h_f <= 12.0 else 0
+        p = 0
+        if row.get("_scanner_critical_live"):
+            p = 5
+        elif row.get("_official_x_post"):
+            p = 4
+        elif row.get("_nixle_item"):
+            p = 3
+        else:
+            blob = _article_combined_text(row)
+            if "arrest" in blob or "charged" in blob or "in custody" in blob:
+                p = 2
+            else:
+                p = 1
+        # Higher first: fresh<=12h, then source/incident class, then recency.
+        return (fresh12, p, -age_h_f)
+
+    now_rows.sort(key=_live_rank, reverse=True)
     conf_rows = [intel.incident_to_api_row(x) for x in conf_scored]
     nctx_rows = [intel.incident_to_api_row(x) for x in nctx_scored]
 
@@ -3028,6 +3088,41 @@ async def get_crimes():
         "debug_lists": intel.debug_top_lists(scored, 50),
     }
 
+    def _row_age_hours(r: dict) -> float:
+        try:
+            ah = r.get("age_hours")
+            if ah is not None:
+                return float(ah)
+            pub = r.get("pubDate", "")
+            if pub:
+                dt = parsedate_to_datetime(pub)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
+        except Exception:
+            pass
+        return 999.0
+
+    def _is_arrestish(r: dict) -> bool:
+        blob = _article_combined_text(r)
+        return ("arrest" in blob) or ("charged" in blob) or ("in custody" in blob)
+
+    live_active_now = list(now_rows)
+    for r in conf_rows:
+        ah = _row_age_hours(r)
+        if ah <= 12.0 and (
+            r.get("_official_x_post")
+            or r.get("_nixle_item")
+            or r.get("_scanner_call")
+            or _is_arrestish(r)
+        ):
+            live_active_now.append(r)
+    live_recent_local = [
+        r
+        for r in (conf_rows + nctx_rows)
+        if _row_age_hours(r) <= 120.0 and r not in live_active_now
+    ]
+
     payload = {
         "status": "ok",
         "source": "live",
@@ -3035,11 +3130,15 @@ async def get_crimes():
         "total": len(geocoded),
         "feeds": {
             "now": now_rows,
+            "live_active_now": live_active_now,
+            "live_recent_local": live_recent_local,
             "confirmed": conf_rows,
             "news_context": nctx_rows,
         },
         "feeds_total": {
             "now": len(now_rows),
+            "live_active_now": len(live_active_now),
+            "live_recent_local": len(live_recent_local),
             "confirmed": len(conf_rows),
             "news_context": len(nctx_rows),
         },
@@ -3707,6 +3806,11 @@ def _le_dir_cache() -> dict[str, Any]:
     return _LE_DIRECTORY_CACHE
 
 
+def _load_le_directory() -> dict[str, Any]:
+    """Compatibility helper: single loader for all directory-derived source expansion."""
+    return _le_dir_cache()
+
+
 def _scanner_tg_dept_loc(
     agencies_by_id: dict[str, Any],
     agency_id: Optional[str],
@@ -3812,7 +3916,7 @@ def build_directory_rss_feeds() -> dict[str, dict[str, Any]]:
         out[key] = cfg
 
     try:
-        data = _le_dir_cache()
+        data = _load_le_directory()
     except Exception as e:
         print(f"build_directory_rss_feeds: {e}")
         return out
@@ -3826,28 +3930,33 @@ def build_directory_rss_feeds() -> dict[str, dict[str, Any]]:
     for ms in data.get("mediaSources") or []:
         mid = ms.get("id") or "media"
         name = ms.get("name") or mid
-        page = (ms.get("crimeCourtsSectionUrl") or ms.get("website") or "").strip()
-        if not page:
-            continue
-        dom = _directory_domain(page)
-        if not dom:
-            continue
         blot = bool(ms.get("publishesBlotters"))
         priority = SOURCE_PRIORITY_DIRECTORY_BLOTTER if blot else 3
         lbl = f"Blotter · {name}" if blot else name
-        q = f"site:{dom}+{gnews_body}"
-        gurl = f"https://news.google.com/rss/search?q={quote(q, safe='')}&hl=en-US&gl=US&ceid=US:en"
-        _add(
-            f"dir_media_gnews_{mid}",
-            {
-                "url": gurl,
-                "label": lbl,
-                "filter": "albany",
-                "reliability": 0.91 if blot else 0.84,
-                "priority": priority,
-                "force_label": blot,
-            },
-        )
+        pages = []
+        for pu in (ms.get("crimeCourtsSectionUrl"), ms.get("website")):
+            purl = (pu or "").strip()
+            if purl:
+                pages.append(purl)
+        seen_dom_local: set[str] = set()
+        for j, page in enumerate(pages):
+            dom = _directory_domain(page)
+            if not dom or dom in seen_dom_local:
+                continue
+            seen_dom_local.add(dom)
+            q = f"site:{dom}+{gnews_body}"
+            gurl = f"https://news.google.com/rss/search?q={quote(q, safe='')}&hl=en-US&gl=US&ceid=US:en"
+            _add(
+                f"dir_media_gnews_{mid}_{j}",
+                {
+                    "url": gurl,
+                    "label": lbl,
+                    "filter": "albany",
+                    "reliability": 0.91 if blot else 0.84,
+                    "priority": priority,
+                    "force_label": blot,
+                },
+            )
 
     for ag in data.get("agencies") or []:
         if ag.get("active") is False:
@@ -3875,6 +3984,31 @@ def build_directory_rss_feeds() -> dict[str, dict[str, Any]]:
                         "force_label": True,
                     },
                 )
+        # Additive coverage: include every agency news/press URL via site-scoped Google RSS,
+        # even when explicit RSS is unavailable.
+        for idx, surf in enumerate(ag.get("newsPressSurfaces") or []):
+            su = (surf.get("url") or "").strip()
+            if not su:
+                continue
+            dom2 = _directory_domain(su)
+            if not dom2:
+                continue
+            s_type = (surf.get("type") or "").lower()
+            s_label = (surf.get("label") or s_type or "News").strip()
+            is_blotterish = any(k in s_type or k in s_label.lower() for k in ("blotter", "incident", "crime", "arrest"))
+            q3 = f"site:{dom2}+albany+county+police+arrest+crime+investigation+when:2d"
+            g3 = f"https://news.google.com/rss/search?q={quote(q3, safe='')}&hl=en-US&gl=US&ceid=US:en"
+            _add(
+                f"dir_agency_surface_gnews_{aid}_{idx}",
+                {
+                    "url": g3,
+                    "label": f"Blotter · {aname}" if is_blotterish else f"Official · {aname}",
+                    "filter": "albany",
+                    "reliability": 0.95 if is_blotterish else 0.90,
+                    "priority": SOURCE_PRIORITY_DIRECTORY_BLOTTER if is_blotterish else 4,
+                    "force_label": is_blotterish,
+                },
+            )
         qn = f"{aname} {abb + ' ' if abb else ''}police albany county arrest OR crime OR investigation when:2d"
         g2 = f"https://news.google.com/rss/search?q={quote_plus(qn)}&hl=en-US&gl=US&ceid=US:en"
         _add(
@@ -4002,17 +4136,9 @@ _SOCIAL_GROK_SYSTEM = (
 def _official_x_handles_from_directory() -> list[str]:
     found: set[str] = set(_OFFICIAL_X_HANDLES_CORE)
     try:
-        data = _le_dir_cache()
+        data = _load_le_directory()
         for ag in data.get("agencies") or []:
             if ag.get("active") is False:
-                continue
-            tier = (ag.get("tier") or "").lower()
-            name_low = (ag.get("name") or "").lower()
-            in_tier = tier in ("municipal", "county", "state", "village", "town")
-            fed_local = tier == "federal" and (
-                "albany" in name_low or "capital region" in name_low or "northern district" in name_low
-            )
-            if not (in_tier or fed_local):
                 continue
             for acct in ag.get("socialAccounts") or []:
                 plat = (acct.get("platform") or "").lower()
@@ -4023,7 +4149,7 @@ def _official_x_handles_from_directory() -> list[str]:
                     found.add(h)
     except Exception:
         pass
-    return sorted(found, key=str.lower)[:80]
+    return sorted(found, key=str.lower)
 
 
 async def fetch_official_social_posts() -> list[dict[str, Any]]:
@@ -4148,7 +4274,7 @@ async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
             continue
         seen_h.add(key)
         handles_ordered.append(h)
-        if len(handles_ordered) >= 14:
+        if len(handles_ordered) >= 40:
             break
 
     async def _pull_one(handle: str) -> list[dict[str, Any]]:
@@ -4160,7 +4286,7 @@ async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
                 if resp.status_code != 200:
                     continue
                 parsed = parse_rss(resp.text, default_source=f"Official @{handle}")
-                for a in parsed[:4]:
+                for a in parsed[:6]:
                     xu = _nitter_link_to_x_status(a.get("link", "") or "")
                     if not xu:
                         continue
@@ -4241,7 +4367,7 @@ def _openmhz_time_to_rfc(raw: str) -> str:
 async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     try:
-        data = _le_dir_cache()
+        data = _load_le_directory()
     except Exception:
         return out
 
@@ -4264,7 +4390,9 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
             row = tg_map.get(stripped)
         return row, tid
 
-    feeds = (data.get("scannerEcosystem") or {}).get("feeds") or []
+    agencies_by_id = {a.get("id"): a for a in (data.get("agencies") or []) if a.get("id")}
+    se = data.get("scannerEcosystem") or {}
+    feeds = se.get("feeds") or []
     for i, fd in enumerate(feeds):
         prov = (fd.get("provider") or "").lower()
         label = fd.get("label") or "Scanner"
@@ -4364,11 +4492,43 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
                     + "Broadcastify stream — police / fire / EMS traffic (third-party relay).",
                     "source": f"Scanner · {label}",
                     "source_priority": SOURCE_PRIORITY_SCANNER_FEED_LINK,
+                    "_scanner_call": True,
                     "_scanner_feed_link": True,
+                    "_scanner_recent_live": True,
                     "_feed_reliability": 0.75,
                     "source_url": "",
                 }
             )
+    # Additive: include all listed conventional frequency channels as recent scanner rows.
+    for i, cf in enumerate(se.get("conventionalFrequencies") or []):
+        agency_id = (cf.get("agency") or "").strip()
+        ag = agencies_by_id.get(agency_id) or {}
+        ag_name = (ag.get("abbreviation") or ag.get("name") or agency_id or "Agency").strip()
+        city = ((ag.get("contact") or {}).get("city") or "").strip()
+        loc = city or "Albany County"
+        freq = (cf.get("frequency") or "").strip()
+        tone = (cf.get("tone") or "").strip()
+        use = (cf.get("use") or "").strip() or "Conventional channel"
+        mode = (cf.get("mode") or "").strip()
+        ts = datetime.now(timezone.utc) - timedelta(seconds=(i + 1) * 4)
+        detail = " · ".join(x for x in (freq, tone, mode) if x)
+        out.append(
+            {
+                "title": f"SCANNER · {ag_name} — {loc}: {use}",
+                "link": "",
+                "pubDate": format_datetime(ts, usegmt=True),
+                "description": ((detail + " · ") if detail else "") + "Directory conventional frequency listing.",
+                "source": f"Scanner · {ag_name}",
+                "source_priority": SOURCE_PRIORITY_SCANNER_RECENT,
+                "_scanner_call": True,
+                "_scanner_recent_live": True,
+                "_scanner_conventional": True,
+                "_feed_reliability": 0.86,
+                "matched_location": loc,
+                "municipality": loc,
+                "source_url": "",
+            }
+        )
     return out
 
 

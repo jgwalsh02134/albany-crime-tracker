@@ -914,6 +914,7 @@
     var s = (src || "").toLowerCase();
     if (OFFICIAL_SOURCES.has(s)) return true;
     if (s.indexOf("official @") === 0) return true;
+    if (s.indexOf("official ·") === 0) return true;
     if (s === "official x") return true;
     if (s.indexOf("nixle") !== -1) return true;
     return false;
@@ -926,7 +927,10 @@
   function officialHandleFromSource(src) {
     var s = (src || "").trim();
     var m = /^official @(.+)$/i.exec(s);
-    return m ? m[1].trim() : "";
+    if (m) return m[1].trim();
+    var m2 = /^official ·\s*@?([a-z0-9_]{2,20})$/i.exec(s);
+    if (m2) return m2[1].trim();
+    return "";
   }
 
   /** Visible freshness: Xm ago / Xh ago (uses API age_minutes when present). */
