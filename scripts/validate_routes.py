@@ -17,6 +17,7 @@ CRITICAL_ROUTES = [
     "/ready",
     "/api/situation",
     "/api/sources",
+    "/api/incidents",
 ]
 
 

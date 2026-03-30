@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 
 from app.core.config import get_settings
+from app.db.session import database_ready
+from app.db.session import has_database
+from app.services.cache import redis_ready
 
 router = APIRouter(tags=["health"])
 
@@ -19,11 +22,20 @@ async def health() -> dict[str, str]:
 
 
 @router.get("/ready")
-async def readiness() -> dict[str, str]:
-    # TODO: include DB/Redis downstream checks once those integrations land.
+async def readiness() -> dict[str, object]:
+    settings = get_settings()
+    db_required = has_database()
+    db_ok = (await database_ready()) if db_required else False
+    redis_required = bool(settings.redis_url)
+    redis_ok = redis_ready(settings.redis_url) if redis_required else False
+    ready = (db_ok if db_required else True) and (redis_ok if redis_required else True)
     return {
-        "status": "ready",
-        "service": get_settings().app_name,
+        "status": "ready" if ready else "degraded",
+        "service": settings.app_name,
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "checks": {
+            "database": {"configured": db_required, "ok": db_ok},
+            "redis": {"configured": redis_required, "ok": redis_ok},
+        },
     }
 

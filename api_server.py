@@ -39,8 +39,13 @@ from app.api.health import router as health_router
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging, set_request_id
-from app.services.cache import DEFAULT_TTLS, InMemoryTTLCache, RefreshGuard
+from app.db.session import close_database
+from app.db.session import has_database
+from app.db.session import init_database
+from app.services.cache import DEFAULT_TTLS, create_cache_backend, create_refresh_guard
 from app.services.http_client import fetch_with_retry
+from app.services.incident_persistence import persist_articles_as_incidents
+from app.services.incident_repository import query_incidents
 from app.services.incident_transformers import article_to_incident
 
 # --- Config ---
@@ -71,8 +76,8 @@ ASCII_PUNCT_TRANSLATION = str.maketrans({
 })
 
 # --- Cache ---
-cache_backend = InMemoryTTLCache(DEFAULT_TTLS)
-refresh_guard = RefreshGuard()
+cache_backend = create_cache_backend(settings.redis_url, DEFAULT_TTLS)
+refresh_guard = create_refresh_guard(settings.redis_url)
 CACHE_TTL = DEFAULT_TTLS
 
 # =============================================================================
@@ -1153,8 +1158,15 @@ async def lifespan(_app):
         follow_redirects=True,
         headers={"User-Agent": "AlbanyCrimeTracker/5.0 (albany-crime-tracker.repl.co)"},
     )
+    if has_database():
+        try:
+            await init_database()
+            logger.info("database_initialized")
+        except Exception as exc:
+            logger.warning("database_init_failed error=%s", exc)
     yield
     await http_client.aclose()
+    await close_database()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -3107,6 +3119,9 @@ async def get_crimes():
         row["is_active_incident"] = compute_is_active_incident(row)
         row["normalized_incident"] = article_to_incident(row).model_dump(mode="json")
 
+    # Persist normalized incidents for map/timeline/source querying.
+    await persist_articles_as_incidents(geocoded)
+
     global _LAST_INCIDENT_PIPELINE
     diag = intel.build_pipeline_diagnostics(enriched, normalized, fused, scored)
     diag["filler_reject_count"] = sum(
@@ -3174,6 +3189,54 @@ async def get_crimes():
         },
     }
     set_cached(CRIME_ARTICLES_CACHE_KEY, payload)
+    return payload
+
+
+def _parse_iso_dt(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+@app.get("/api/incidents")
+async def get_incidents(
+    limit: int = 100,
+    offset: int = 0,
+    municipality: Optional[str] = None,
+    incident_type: Optional[str] = None,
+    status: Optional[str] = None,
+    source_type: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    qkey = (
+        f"incidents:{limit}:{offset}:{municipality or ''}:{incident_type or ''}:{status or ''}:"
+        f"{source_type or ''}:{start_date or ''}:{end_date or ''}"
+    )
+    cached = get_cached(qkey)
+    if cached:
+        return cached
+
+    items = await query_incidents(
+        limit=limit,
+        offset=offset,
+        municipality=municipality,
+        incident_type=incident_type,
+        status=status,
+        source_type=source_type,
+        start_date=_parse_iso_dt(start_date),
+        end_date=_parse_iso_dt(end_date),
+    )
+    payload = {
+        "status": "ok",
+        "source": "postgres" if has_database() else "memory",
+        "count": len(items),
+        "incidents": items,
+    }
+    cache_backend.set(qkey, payload, ttl_seconds=CACHE_TTL.get("incidents_query", 45))
     return payload
 
 
