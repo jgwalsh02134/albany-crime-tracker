@@ -200,44 +200,126 @@ async def fetch_tier1_sources(limit_per_source: int = 60, *, strict_live_sources
             )
         )
 
-        events_rows: list[dict[str, str]] = []
+        # 511NY Events API — traffic incidents with coordinates
+        ny_511_key = settings.ny_511_api_key
+        events_params: dict[str, str] = {"format": "json"}
+        if ny_511_key:
+            events_params["key"] = ny_511_key
         events_resp = await fetch_with_retry(
             client,
             "https://511ny.org/api/GetEvents",
-            params={"format": "json"},
+            params=events_params,
             retries=settings.external_retry_attempts,
             timeout=settings.external_timeout_seconds,
         )
         if events_resp and events_resp.status_code == 200:
             try:
                 payload = events_resp.json()
-                events = payload.get("events") if isinstance(payload, dict) else payload
+                events = payload if isinstance(payload, list) else (payload.get("events") or payload.get("Events") or [])
                 if isinstance(events, list):
-                    for ev in events[:limit_per_source]:
-                        title = _clean_text(str(ev.get("event_type") or ev.get("title") or "511NY Traffic Event"))
-                        link = str(ev.get("url") or "https://511ny.org/")
-                        events_rows.append(
-                            {
-                                "title": title,
-                                "link": link,
-                                "pubDate": format_datetime(datetime.now(timezone.utc)),
-                                "description": _clean_text(str(ev.get("description") or "")),
-                                "guid": str(ev.get("id") or link or title),
-                            }
-                        )
+                    _albany_counties = {"albany", "albany county"}
+                    _albany_roadways = {"i-90", "i-87", "i-787", "i-88", "route 9w", "route 20", "route 5",
+                                        "us-9", "us-20", "ny-5", "ny-7", "ny-85", "thruway", "northway"}
+                    for ev in events:
+                        # Filter to Albany County area
+                        county = str(ev.get("CountyName") or ev.get("county") or "").strip().lower()
+                        region = str(ev.get("RegionName") or ev.get("region") or "").strip().lower()
+                        roadway = str(ev.get("RoadwayName") or ev.get("roadway") or "").strip().lower()
+                        lat_raw = ev.get("Latitude") or ev.get("latitude")
+                        lon_raw = ev.get("Longitude") or ev.get("longitude")
+                        # Accept if county is Albany or if roadway is in Albany area
+                        is_albany = county in _albany_counties
+                        if not is_albany and roadway:
+                            is_albany = any(r in roadway for r in _albany_roadways)
+                        if not is_albany:
+                            # Geo-fence check: Albany County roughly 42.4-42.85 lat, -74.1 to -73.55 lon
+                            try:
+                                lat_f = float(lat_raw) if lat_raw is not None else None
+                                lon_f = float(lon_raw) if lon_raw is not None else None
+                                if lat_f and lon_f and 42.4 <= lat_f <= 42.85 and -74.1 <= lon_f <= -73.55:
+                                    is_albany = True
+                            except (TypeError, ValueError):
+                                pass
+                        if not is_albany:
+                            continue
+
+                        event_type = _clean_text(str(ev.get("EventType") or ev.get("event_type") or ""))
+                        title_parts = []
+                        if event_type:
+                            title_parts.append(event_type)
+                        road = str(ev.get("RoadwayName") or ev.get("roadway") or "")
+                        direction = str(ev.get("DirectionOfTravel") or ev.get("direction") or "")
+                        if road:
+                            road_label = road
+                            if direction:
+                                road_label += " " + direction
+                            title_parts.append(road_label)
+                        title = " — ".join(title_parts) if title_parts else "511NY Traffic Event"
+                        desc = _clean_text(str(ev.get("Description") or ev.get("description") or ""))
+                        location = _clean_text(str(ev.get("Location") or ev.get("PrimaryLocation") or ""))
+                        severity_raw = str(ev.get("Severity") or "").lower()
+                        event_id = str(ev.get("ID") or ev.get("id") or title)
+                        link = f"https://511ny.org/map#EventId={event_id}" if event_id else "https://511ny.org/"
+                        reported = str(ev.get("Reported") or ev.get("StartDate") or "")
+                        pub_date = reported if reported else format_datetime(datetime.now(timezone.utc))
+
+                        row: dict[str, Any] = {
+                            "title": title,
+                            "link": link,
+                            "pubDate": pub_date,
+                            "description": desc or location,
+                            "guid": f"511ny-{event_id}",
+                            "_511_incident": True,
+                        }
+                        # Attach coordinates if available
+                        try:
+                            lat_v = float(lat_raw) if lat_raw is not None else None
+                            lon_v = float(lon_raw) if lon_raw is not None else None
+                            if lat_v and lon_v:
+                                row["latitude"] = lat_v
+                                row["longitude"] = lon_v
+                                row["coordinate_quality"] = "exact"
+                        except (TypeError, ValueError):
+                            pass
+
+                        # Attach location metadata
+                        if location:
+                            row["matched_location"] = location
+                        municipality = county.replace(" county", "").title() if county else ""
+                        if municipality:
+                            row["municipality"] = municipality
+
+                        rows.append({
+                            **row,
+                            "id": f"511NY Events API:511ny-{event_id}",
+                            "source": "511NY Events API",
+                            "source_name": "511NY Events API",
+                            "source_url": "https://511ny.org/api/GetEvents",
+                            "confidence": 0.96,
+                            "event_type": "traffic_incident",
+                            "incident": {
+                                "id": f"511NY Events API:511ny-{event_id}",
+                                "event_type": "traffic_incident",
+                                "status": "active" if severity_raw in ("major", "critical") else "recent",
+                                "severity": "high" if severity_raw in ("major", "critical") else "medium",
+                                "source_type": "official_alerts",
+                                "source_name": "511NY Events API",
+                                "source_url": "https://511ny.org/api/GetEvents",
+                                "verification_level": "official",
+                                "confidence_score": 0.96,
+                                "municipality": municipality or "Albany",
+                                "operational_badges": ["tier1", "official", "official_updates", "tier_1", "511"],
+                            },
+                            "raw_payload": {
+                                "source_class": "official_structured_or_press",
+                                "trust_tier": "tier_1",
+                                "lane": "official_updates",
+                                "ingestion": "tier1_official",
+                                "511_raw": {k: str(v)[:200] for k, v in ev.items() if v},
+                            },
+                        })
             except Exception:
                 pass
-        rows.extend(
-            _as_incident_rows(
-                events_rows,
-                source_name="511NY Events API",
-                source_url="https://511ny.org/api/GetEvents",
-                source_type="official_alerts",
-                incident_type="traffic_incident",
-                trust_tier="tier_1",
-                lane="official_updates",
-            )
-        )
 
     # Socrata is fetched through the dedicated structured adapter.
     socrata_rows = await fetch_albany_open_data(

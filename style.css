@@ -3505,6 +3505,49 @@ a.home-story-card:active {
   color: var(--live-dot);
 }
 
+/* ── FRESHNESS INDICATOR ── */
+.feed-freshness {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  text-align: center;
+  padding: 4px 0 2px;
+  letter-spacing: 0.02em;
+  transition: color 0.3s;
+}
+.feed-freshness--stale {
+  color: var(--color-caution, #e6a817);
+}
+
+/* ── ERROR STATE ── */
+.feed-error-state {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted, #888);
+}
+.feed-error-state .material-icons {
+  font-size: 36px;
+  display: block;
+  margin: 0 auto 8px;
+  opacity: 0.5;
+}
+.feed-error-state p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+.feed-error-retry {
+  margin-top: 12px;
+  padding: 8px 20px;
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text, #eee);
+  cursor: pointer;
+  font-size: 13px;
+}
+.feed-error-retry:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.06));
+}
+
 /* ── VIEW SCROLL FIX ── */
 .view-scroll {
   overflow-y: auto;

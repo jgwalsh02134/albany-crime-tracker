@@ -380,7 +380,31 @@
     }, REFRESH_MS);
 
     setInterval(fetchScannerCalls, SCANNER_REFRESH_MS);
+
+    // Freshness indicator: update "Last updated X min ago" every 15s
+    setInterval(updateFreshnessIndicator, 15000);
   });
+
+  var _lastFeedFetchTs = null;
+  function markFeedFreshNow() {
+    _lastFeedFetchTs = Date.now();
+    updateFreshnessIndicator();
+  }
+  function updateFreshnessIndicator() {
+    var el = document.getElementById("feedFreshness");
+    if (!el) return;
+    if (!_lastFeedFetchTs) {
+      el.textContent = "";
+      return;
+    }
+    var ago = Math.round((Date.now() - _lastFeedFetchTs) / 1000);
+    var label;
+    if (ago < 30) label = "Updated just now";
+    else if (ago < 90) label = "Updated ~1 min ago";
+    else label = "Updated " + Math.round(ago / 60) + " min ago";
+    el.textContent = label;
+    el.classList.toggle("feed-freshness--stale", ago > 180);
+  }
 
   function refreshHeaderPrimaryCount() {
     var chipLbl = document.querySelector(".stat-chip--live .stat-lbl");
@@ -1361,6 +1385,7 @@
         autoSelectBestLane(verifiedItems, developingItems, officialItems);
         refreshHeaderPrimaryCount();
         markTopbarLiveIfStillConnecting();
+        markFeedFreshNow();
       })
       .catch(function (err) {
         console.error("Incidents fetch error (/api/incidents):", err);
@@ -1378,19 +1403,23 @@
             renderConfirmedFeed(developingItems);
             renderContextFeed(officialItems);
             markTopbarLiveIfStillConnecting();
+            markFeedFreshNow();
           })
           .catch(function (fallbackErr) {
             console.error("Legacy incidents fallback error:", fallbackErr);
             markTopbarLiveIfStillConnecting();
-            var msgText = "Could not load feed incidents right now. Please try again.";
             var liveL = getLiveFeedListEl();
             var confL = document.getElementById("incidentListDeveloping");
             var ctxL = document.getElementById("incidentListOfficial");
-            if (window.ACTFeed && window.ACTFeed.renderErrorState) {
-              if (liveL && !liveL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(liveL, msgText);
-              if (confL && !confL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(confL, msgText);
-              if (ctxL && !ctxL.querySelector(".feed-item")) window.ACTFeed.renderErrorState(ctxL, msgText);
-            }
+            var errorHtml = '<div class="feed-error-state">' +
+              '<span class="material-icons">cloud_off</span>' +
+              '<p>Could not load incidents right now.</p>' +
+              '<p style="font-size:11px;opacity:0.7">Check your connection or try again shortly.</p>' +
+              '<button class="feed-error-retry" onclick="location.reload()">Retry</button>' +
+              '</div>';
+            [liveL, confL, ctxL].forEach(function (el) {
+              if (el && !el.querySelector(".feed-item")) el.innerHTML = errorHtml;
+            });
           });
       });
   }

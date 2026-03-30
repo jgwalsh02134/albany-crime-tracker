@@ -52,6 +52,7 @@ from app.services.incident_repository import incident_store_backend
 from app.services.incident_repository import query_incidents
 from app.services.incident_repository import summarize_incidents
 from app.services.incident_transformers import article_to_incident
+from app.services.geocoding import geocode_article_mapbox, geocode_cache_stats
 from app.services.source_registry import load_source_registry
 from app.services.source_registry import source_registry_summary
 from app.services.source_audit import audit_counts
@@ -3109,6 +3110,9 @@ async def get_crimes(
     enriched: list[dict] = []
     for a in crime_articles:
         geo = geocode_article(a)
+        # Mapbox fallback: if dictionary geocoder found no coords, try Mapbox
+        if geo.get("latitude") is None and geo.get("longitude") is None:
+            geo = await geocode_article_mapbox(geo)
         geo["crime_type"] = classify_crime_type(a)
         geo["neighborhood"] = get_neighborhood(geo.get("matched_location", ""))
         geo["confidence"] = compute_article_confidence(a)
@@ -3561,12 +3565,12 @@ SOURCE_METHODOLOGY = {
 
 SOURCE_EXPANSION_HOOKS = [
     {"id": "albany-pd-civicalerts-rss", "label": "Albany PD CivicAlerts / RSS", "enabled": False},
-    {"id": "albany-county-da-press", "label": "Albany County DA press releases", "enabled": False},
-    {"id": "nysp-troopg-news-blotter", "label": "NYSP Troop G newsroom + daily blotter", "enabled": False},
-    {"id": "usao-ndny-rss", "label": "USAO NDNY RSS", "enabled": False},
+    {"id": "albany-county-da-press", "label": "Albany County DA press releases", "enabled": True},
+    {"id": "nysp-troopg-news-blotter", "label": "NYSP Troop G newsroom + daily blotter", "enabled": True},
+    {"id": "usao-ndny-rss", "label": "USAO NDNY press releases", "enabled": True},
     {"id": "city-albany-openalbany", "label": "City of Albany Socrata/openAlbany", "enabled": True},
     {"id": "ny-open-data-public-safety", "label": "NY Open Data public safety datasets", "enabled": False},
-    {"id": "511ny", "label": "511NY", "enabled": False},
+    {"id": "511ny", "label": "511NY Events API — traffic incidents with coordinates", "enabled": True},
     {"id": "fbi-cde-fbi-albany", "label": "FBI CDE / FBI Albany", "enabled": False},
     {"id": "ualbany-pd-log", "label": "UAlbany PD incident log", "enabled": False},
     {"id": "daily-voice-albany", "label": "Daily Voice Albany", "enabled": False},
@@ -3591,6 +3595,12 @@ async def get_methodology():
         "methodology": methodology,
         "planned_hooks": SOURCE_EXPANSION_HOOKS,
     }
+
+
+@app.get("/api/geocoding/stats")
+async def geocoding_stats():
+    """Mapbox geocoding cache stats for monitoring."""
+    return {"status": "ok", "geocoding": geocode_cache_stats()}
 
 
 @app.get("/api/incidents/operational-summary")

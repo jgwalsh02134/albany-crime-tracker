@@ -56,6 +56,7 @@ class Settings:
     posthog_key: str
     openrouter_api_key: str
     openai_api_key: str
+    ny_511_api_key: str
 
     # HTTP controls
     external_timeout_seconds: float
@@ -93,6 +94,7 @@ def get_settings() -> Settings:
         posthog_key=(os.getenv("POSTHOG_KEY") or "").strip(),
         openrouter_api_key=(os.getenv("OPENROUTER_API_KEY") or "").strip(),
         openai_api_key=(os.getenv("OPENAI_API_KEY") or "").strip(),
+        ny_511_api_key=(os.getenv("511_NY_API_KEY") or "").strip(),
         external_timeout_seconds=_as_float(os.getenv("EXTERNAL_TIMEOUT_SECONDS"), default=20.0),
         external_retry_attempts=max(1, int(os.getenv("EXTERNAL_RETRY_ATTEMPTS", "3"))),
         enable_ai_chat=_as_bool(os.getenv("FEATURE_AI_CHAT"), default=True),
