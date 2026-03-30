@@ -205,6 +205,27 @@ async def main() -> int:
             print(f"/api/methodology check: ERROR {exc}")
             failures += 1
 
+        try:
+            src = await client.get("/api/sources")
+            print(f"/api/sources: {src.status_code}")
+            if src.status_code != 200:
+                failures += 1
+            else:
+                s_body = src.json()
+                sources = s_body.get("sources") if isinstance(s_body, dict) else None
+                if not isinstance(sources, list) or not sources:
+                    print("/api/sources payload invalid: sources missing")
+                    failures += 1
+                else:
+                    required = {"name", "type", "trust_tier", "active_status"}
+                    missing = sorted(list(required - set((sources[0] or {}).keys())))
+                    if missing:
+                        print(f"/api/sources payload invalid: missing keys {missing}")
+                        failures += 1
+        except Exception as exc:
+            print(f"/api/sources check: ERROR {exc}")
+            failures += 1
+
         # Socrata structured-source integration checks
         try:
             soc = await client.get("/api/dev/albany-open-data", params={"limit": 20})
@@ -223,6 +244,10 @@ async def main() -> int:
             print(f"/api/crimes?force_refresh=true: {prime.status_code}")
             if prime.status_code != 200:
                 failures += 1
+            else:
+                p_body = prime.json()
+                structured = (p_body.get("structured_sources") or {}) if isinstance(p_body, dict) else {}
+                print(f"socrata_records_in_crimes_payload: {structured.get('socrata_records', 0)}")
 
             open_data_inc = await client.get("/api/incidents", params={"source_type": "open_data", "limit": 20})
             print(f"/api/incidents?source_type=open_data&limit=20: {open_data_inc.status_code}")

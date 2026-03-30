@@ -30,8 +30,8 @@ from typing import Any, Optional
 
 import httpx
 import incident_intelligence as intel
-from sources.albany_open_data import albany_open_data_sources
 from sources.albany_open_data import fetch_albany_open_data
+from sources.tier1_official import fetch_tier1_sources
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse
@@ -51,6 +51,8 @@ from app.services.incident_repository import incident_store_backend
 from app.services.incident_repository import query_incidents
 from app.services.incident_repository import summarize_incidents
 from app.services.incident_transformers import article_to_incident
+from app.services.source_registry import load_source_registry
+from app.services.source_registry import source_registry_summary
 
 # --- Config ---
 # Last incident pipeline snapshot for /api/incidents/debug (tuning / diagnostics).
@@ -2749,6 +2751,7 @@ async def fetch_all_feeds():
         # fetch_official_social_posts(),
         # fetch_nitter_official_x_rss_posts(),
         fetch_scanner_directory_items(),
+        fetch_tier1_sources(limit_per_source=80),
         return_exceptions=True,
     )
     for batch in _extra_batches:
@@ -3064,12 +3067,6 @@ async def get_crimes(force_refresh: bool = False):
         return cached
 
     all_articles = await refresh_guard.run_once("refresh_crimes_feed", fetch_all_feeds)
-    socrata_rows: list[dict[str, Any]] = []
-    try:
-        socrata_rows = await fetch_albany_open_data(limit=250, offset=0)
-    except Exception as exc:
-        logger.warning("socrata_fetch_failed: %s", exc)
-        socrata_rows = []
 
     def _in_crime_pipeline(a: dict) -> bool:
         if not is_albany_related(a):
@@ -3079,10 +3076,6 @@ async def get_crimes(force_refresh: bool = False):
         return is_crime_related(a) or _operational_signal_article(a)
 
     crime_articles = [a for a in all_articles if _in_crime_pipeline(a)]
-    if socrata_rows:
-        # Treat Albany structured open data as high-trust incidents.
-        crime_articles = socrata_rows + crime_articles
-        all_articles = socrata_rows + all_articles
 
     enriched: list[dict] = []
     for a in crime_articles:
@@ -3163,7 +3156,7 @@ async def get_crimes(force_refresh: bool = False):
 
     # Persist normalized incidents for map/timeline/source querying.
     # Fallback to raw feed rows if the filtered crime list is temporarily empty.
-    rows_for_persistence = geocoded + socrata_rows if geocoded else (socrata_rows if socrata_rows else all_articles[:250])
+    rows_for_persistence = geocoded if geocoded else all_articles[:250]
     persistence_stats = await persist_articles_as_incidents(rows_for_persistence)
 
     global _LAST_INCIDENT_PIPELINE
@@ -3243,7 +3236,7 @@ async def get_crimes(force_refresh: bool = False):
             "news_context": len(nctx_rows),
         },
         "structured_sources": {
-            "socrata_records": len(socrata_rows),
+            "socrata_records": sum(1 for r in geocoded if str(((r.get("incident") or {}).get("source_type") or "")).lower() == "open_data"),
         },
     }
     logger.info(
@@ -3788,43 +3781,30 @@ async def get_social_intel():
 
 @app.get("/api/sources")
 async def get_sources():
-    cached = get_cached("merged_news")
-    structured = albany_open_data_sources()
-    if cached:
-        source_data = {}
-        for a in cached:
-            src = a.get("source", "Unknown")
-            if src not in source_data:
-                source_data[src] = {"count": 0, "reliability": get_source_reliability(src)}
-            source_data[src]["count"] += 1
-        sources = sorted(
-            [{"source": s, **v} for s, v in source_data.items()],
-            key=lambda x: (-x["reliability"], -x["count"])
-        )
-        for s in structured:
-            sources.append(
-                {
-                    "source": s.get("source"),
-                    "count": 0,
-                    "reliability": 1.0,
-                    "source_type": "open_data",
-                    "active": True,
-                    "dataset_id": s.get("dataset_id"),
-                }
-            )
-        return {
-            "status": "ok",
-            "total_articles": len(cached),
-            "source_count": len(sources),
-            "sources": sources,
-            "methodology": SOURCE_METHODOLOGY,
-            "planned_hooks": SOURCE_EXPANSION_HOOKS,
+    registry = load_source_registry()
+    sources = [
+        {
+            "name": x.get("source_name"),
+            "type": x.get("category"),
+            "trust_tier": x.get("trust_tier"),
+            "active_status": bool(x.get("active_status")),
+            "canonical_url": x.get("canonical_url"),
+            "feed_url": x.get("feed_url"),
+            "api_url": x.get("api_url"),
+            "source_id": x.get("source_id"),
+            "lane": x.get("lane"),
+            "validation_status": x.get("validation_status"),
+            "last_checked_at": x.get("last_checked_at"),
         }
+        for x in registry
+    ]
+    cached = get_cached("merged_news") or []
     return {
         "status": "ok",
-        "total_articles": 0,
-        "source_count": len(structured),
-        "sources": structured,
+        "total_articles": len(cached) if isinstance(cached, list) else 0,
+        "source_count": len(sources),
+        "sources": sources,
+        "registry_summary": source_registry_summary(registry),
         "methodology": SOURCE_METHODOLOGY,
         "planned_hooks": SOURCE_EXPANSION_HOOKS,
     }

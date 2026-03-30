@@ -69,6 +69,7 @@ MAX_RETRIES = settings.external_retry_attempts
 
 _cache: dict[tuple[int, int], dict[str, Any]] = {}
 _warned_missing_token = False
+_SOCRATA_STATE: dict[str, dict[str, Any]] = {}
 
 
 def _cache_get(limit: int, offset: int) -> Optional[list[dict[str, Any]]]:
@@ -87,6 +88,56 @@ def _cache_get(limit: int, offset: int) -> Optional[list[dict[str, Any]]]:
 
 def _cache_set(limit: int, offset: int, data: list[dict[str, Any]]) -> None:
     _cache[(limit, offset)] = {"ts": time.time(), "data": data}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _init_socrata_state() -> None:
+    for ds in SOCRATA_DATASET_DEFS:
+        ds_id = str(ds.get("id") or "").strip()
+        if not ds_id:
+            continue
+        if ds_id not in _SOCRATA_STATE:
+            _SOCRATA_STATE[ds_id] = {
+                "dataset_id": ds_id,
+                "dataset_name": str(ds.get("name") or ds_id),
+                "dataset_url": _dataset_url(ds_id),
+                "source_status": "unavailable",
+                "last_success_at": "",
+                "last_error": "never_fetched",
+                "record_count_last_fetch": 0,
+            }
+
+
+def _update_dataset_state(
+    dataset_id: str,
+    *,
+    dataset_name: str,
+    source_status: str,
+    record_count_last_fetch: int,
+    last_error: str = "",
+    set_success: bool = False,
+) -> None:
+    if dataset_id not in _SOCRATA_STATE:
+        _SOCRATA_STATE[dataset_id] = {
+            "dataset_id": dataset_id,
+            "dataset_name": dataset_name,
+            "dataset_url": _dataset_url(dataset_id),
+            "source_status": "unavailable",
+            "last_success_at": "",
+            "last_error": "never_fetched",
+            "record_count_last_fetch": 0,
+        }
+    st = _SOCRATA_STATE[dataset_id]
+    st["dataset_name"] = dataset_name
+    st["dataset_url"] = _dataset_url(dataset_id)
+    st["source_status"] = source_status
+    st["record_count_last_fetch"] = int(max(0, record_count_last_fetch))
+    st["last_error"] = last_error
+    if set_success:
+        st["last_success_at"] = _now_iso()
 
 
 def _pick_first_str(row: dict[str, Any], keys: list[str]) -> str:
@@ -196,6 +247,7 @@ def _to_incident_article(row: dict[str, Any], dataset: dict[str, Any]) -> dict[s
     stable_id = f"socrata_{dataset_id}_{row_id}"
     source_url = _dataset_url(dataset_id)
     tags = ["socrata", "structured", "open_data", kind]
+    socrata_source_status = "fallback" if bool(row.get("_fallback_snapshot")) else "live"
     if latitude is not None and longitude is not None:
         tags.append("geocoded")
     return {
@@ -239,6 +291,7 @@ def _to_incident_article(row: dict[str, Any], dataset: dict[str, Any]) -> dict[s
             **row,
             "socrata_dataset_id": dataset_id,
             "socrata_dataset_name": dataset_name,
+                "socrata_source_status": socrata_source_status,
             "location_accuracy": "verified",
             "source_class": "official_structured_open_data",
             "socrata_fallback_snapshot": bool(row.get("_fallback_snapshot")),
@@ -277,12 +330,19 @@ async def _discover_use_of_force_dataset(client: httpx.AsyncClient, headers: dic
     return {"id": rid, "name": name, "kind": "use_of_force"}
 
 
-async def fetch_albany_open_data(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+async def fetch_albany_open_data(
+    limit: int = 100,
+    offset: int = 0,
+    *,
+    allow_fallback: bool = True,
+    strict_live: bool = False,
+) -> list[dict[str, Any]]:
     limit = max(1, min(int(limit), 1000))
     offset = max(0, int(offset))
+    _init_socrata_state()
 
     cached = _cache_get(limit, offset)
-    if cached is not None:
+    if cached is not None and allow_fallback and not strict_live:
         return cached
 
     headers: dict[str, str] = {"Accept": "application/json"}
@@ -303,10 +363,12 @@ async def fetch_albany_open_data(limit: int = 100, offset: int = 0) -> list[dict
             if discovered:
                 datasets.append(discovered)
             all_rows: list[dict[str, Any]] = []
+            live_dataset_ids: set[str] = set()
             for ds in datasets:
                 ds_id = str(ds.get("id") or "").strip()
                 if not ds_id:
                     continue
+                ds_name = str(ds.get("name") or ds_id)
                 resp = await fetch_with_retry(
                     client,
                     _dataset_url(ds_id),
@@ -315,15 +377,48 @@ async def fetch_albany_open_data(limit: int = 100, offset: int = 0) -> list[dict
                     retries=MAX_RETRIES,
                     timeout=REQUEST_TIMEOUT_SECONDS,
                 )
-                if not resp or resp.status_code != 200:
+                if not resp:
+                    _update_dataset_state(
+                        ds_id,
+                        dataset_name=ds_name,
+                        source_status="unavailable",
+                        record_count_last_fetch=0,
+                        last_error="request_failed",
+                    )
+                    continue
+                if resp.status_code != 200:
+                    _update_dataset_state(
+                        ds_id,
+                        dataset_name=ds_name,
+                        source_status="unavailable",
+                        record_count_last_fetch=0,
+                        last_error=f"http_{resp.status_code}",
+                    )
                     continue
                 payload = resp.json()
                 if not isinstance(payload, list):
+                    _update_dataset_state(
+                        ds_id,
+                        dataset_name=ds_name,
+                        source_status="unavailable",
+                        record_count_last_fetch=0,
+                        last_error="invalid_payload",
+                    )
                     continue
+                _update_dataset_state(
+                    ds_id,
+                    dataset_name=ds_name,
+                    source_status="live" if len(payload) > 0 else "unavailable",
+                    record_count_last_fetch=len(payload),
+                    last_error="" if len(payload) > 0 else "empty_payload",
+                    set_success=(len(payload) > 0),
+                )
+                if len(payload) > 0:
+                    live_dataset_ids.add(ds_id)
                 for row in payload:
                     if isinstance(row, dict):
                         all_rows.append(_to_incident_article(row, ds))
-            if not all_rows:
+            if not all_rows and allow_fallback:
                 logger.warning("albany_open_data_live_empty: using degraded fallback snapshot")
                 for row in FALLBACK_SNAPSHOT_ROWS[offset : offset + limit]:
                     ds = {
@@ -331,11 +426,32 @@ async def fetch_albany_open_data(limit: int = 100, offset: int = 0) -> list[dict
                         "name": row.get("dataset_name"),
                         "kind": "crime" if str(row.get("dataset_id")) == "qq93-cnn2" else ("arrest" if str(row.get("dataset_id")) == "7y34-47cz" else "calls_for_service"),
                     }
+                    ds_id = str(ds.get("id") or "")
+                    ds_name = str(ds.get("name") or ds_id)
+                    if ds_id and ds_id not in live_dataset_ids:
+                        _update_dataset_state(
+                            ds_id,
+                            dataset_name=ds_name,
+                            source_status="fallback",
+                            record_count_last_fetch=1,
+                            last_error=str(_SOCRATA_STATE.get(ds_id, {}).get("last_error") or "live_unavailable"),
+                        )
                     all_rows.append(_to_incident_article({**row, "_fallback_snapshot": True}, ds))
+            if strict_live:
+                primary_ids = [str(ds.get("id") or "") for ds in SOCRATA_DATASET_DEFS if str(ds.get("id") or "")]
+                bad = []
+                for ds_id in primary_ids:
+                    st = _SOCRATA_STATE.get(ds_id) or {}
+                    if st.get("source_status") != "live":
+                        bad.append({"dataset_id": ds_id, "source_status": st.get("source_status"), "last_error": st.get("last_error")})
+                if bad:
+                    raise RuntimeError(f"strict_live_socrata_failed:{bad}")
             _cache_set(limit, offset, all_rows)
             return all_rows
         except Exception as exc:
             logger.warning("albany_open_data_fetch_error: %s", exc)
+            if strict_live:
+                raise
             return []
     return []
 
@@ -351,3 +467,13 @@ def albany_open_data_sources() -> list[dict[str, Any]]:
         }
         for ds in SOCRATA_DATASET_DEFS
     ]
+
+
+def socrata_runtime_status() -> dict[str, Any]:
+    _init_socrata_state()
+    primary_ids = {str(ds.get("id") or "") for ds in SOCRATA_DATASET_DEFS}
+    datasets = [dict(v) for _, v in sorted(_SOCRATA_STATE.items(), key=lambda kv: kv[0]) if kv[0] in primary_ids]
+    return {
+        "configured": bool(settings.socrata_app_token),
+        "datasets": datasets,
+    }
