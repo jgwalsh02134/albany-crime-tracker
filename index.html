@@ -417,29 +417,62 @@
 
   </main>
 
-  <!-- ===== BOTTOM NAV ===== -->
-  <nav class="bottom-nav" id="bottomNav">
-    <button class="nav-btn active" data-view="feed">
-      <span class="material-icons">article</span>
-      <span>Home</span>
+  <!-- ===== BOTTOM TAB BAR (Apple HIG) ===== -->
+  <nav class="tab-bar" id="bottomNav" role="tablist" aria-label="Main navigation">
+    <button class="tab-bar-item active" data-view="feed" role="tab" aria-selected="true" aria-label="Home">
+      <span class="tab-bar-icon material-icons">home</span>
+      <span class="tab-bar-label">Home</span>
     </button>
-    <button class="nav-btn" data-view="map">
-      <span class="material-icons">map</span>
-      <span>Map</span>
+    <button class="tab-bar-item" data-view="map" role="tab" aria-selected="false" aria-label="Map">
+      <span class="tab-bar-icon material-icons">map</span>
+      <span class="tab-bar-label">Map</span>
     </button>
-    <button class="nav-btn" data-view="scanner">
-      <span class="material-icons">sensors</span>
-      <span>Scanner</span>
+    <button class="tab-bar-item" data-view="scanner" role="tab" aria-selected="false" aria-label="Scanner">
+      <span class="tab-bar-icon material-icons">sensors</span>
+      <span class="tab-bar-label">Scanner</span>
     </button>
-    <button class="nav-btn" data-view="chat">
-      <span class="material-icons">psychology</span>
-      <span>AI</span>
+    <button class="tab-bar-item" data-view="directory" role="tab" aria-selected="false" aria-label="Directory">
+      <span class="tab-bar-icon material-icons">shield</span>
+      <span class="tab-bar-label">Directory</span>
     </button>
-    <button class="nav-btn" data-view="directory">
-      <span class="material-icons">badge</span>
-      <span>Directory</span>
+    <button class="tab-bar-item" id="moreTabBtn" role="tab" aria-selected="false" aria-label="More" aria-haspopup="true">
+      <span class="tab-bar-icon material-icons">more_horiz</span>
+      <span class="tab-bar-label">More</span>
     </button>
   </nav>
+
+  <!-- More sheet (slides up from tab bar) -->
+  <div class="more-sheet-backdrop" id="moreSheetBackdrop" hidden></div>
+  <div class="more-sheet" id="moreSheet" hidden aria-label="More options">
+    <div class="more-sheet-handle"></div>
+    <div class="more-sheet-list">
+      <button class="more-sheet-item" data-view="chat">
+        <span class="material-icons more-sheet-icon">psychology</span>
+        <span class="more-sheet-text">AI Assistant</span>
+        <span class="material-icons more-sheet-chevron">chevron_right</span>
+      </button>
+      <button class="more-sheet-item" data-view="more">
+        <span class="material-icons more-sheet-icon">insights</span>
+        <span class="more-sheet-text">Trends &amp; Analytics</span>
+        <span class="material-icons more-sheet-chevron">chevron_right</span>
+      </button>
+      <button class="more-sheet-item" data-overflow-target="sources">
+        <span class="material-icons more-sheet-icon">source</span>
+        <span class="more-sheet-text">Sources &amp; Methodology</span>
+        <span class="material-icons more-sheet-chevron">chevron_right</span>
+      </button>
+      <button class="more-sheet-item" data-overflow-target="fbi">
+        <span class="material-icons more-sheet-icon">policy</span>
+        <span class="more-sheet-text">FBI / NIBRS Resources</span>
+        <span class="material-icons more-sheet-chevron">chevron_right</span>
+      </button>
+      <button class="more-sheet-item" id="moreSheetThemeBtn">
+        <span class="material-icons more-sheet-icon">dark_mode</span>
+        <span class="more-sheet-text">Toggle Theme</span>
+        <span class="material-icons more-sheet-chevron">chevron_right</span>
+      </button>
+    </div>
+  </div>
 
   <script src="frontend/shared/state.js"></script>
   <script src="frontend/shared/utils.js"></script>

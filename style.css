@@ -14,7 +14,7 @@
   --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
 
   --header-h: 56px;
-  --nav-h: 64px;
+  --nav-h: 49px; /* Apple HIG: 49pt tab bar height */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -1749,7 +1749,8 @@ a:hover { text-decoration: underline; }
 }
 
 /* Nav alert flash */
-.nav-btn--alert {
+.nav-btn--alert,
+.tab-bar-item--alert {
   animation: navAlertPulse 0.8s ease-in-out 4;
 }
 @keyframes navAlertPulse {
@@ -2670,32 +2671,143 @@ a:hover { text-decoration: underline; }
 .more-footer a { color: var(--text-3); }
 
 /* ===== BOTTOM NAV ===== */
-.bottom-nav {
+/* ═══════════════════════════════════════════════════════════════════════════
+   TAB BAR — Apple HIG compliant
+   Height: 49pt content + safe-area-inset-bottom
+   Touch targets: 44pt minimum
+   Typography: 10px Medium (SF system fallback)
+   Icons: 25pt, filled when active
+   ═══════════════════════════════════════════════════════════════════════════ */
+.tab-bar {
   position: fixed; bottom: 0; left: 0; right: 0;
   height: calc(var(--nav-h) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
   display: flex;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
+  align-items: stretch;
+  /* Translucent background material per HIG */
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid color-mix(in srgb, var(--border) 60%, transparent);
   z-index: 200;
 }
-.nav-btn {
+.tab-bar-item {
   flex: 1;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px;
-  font-size: 10px; font-weight: 700; color: var(--text-3);
-  text-transform: uppercase; letter-spacing: 0.04em;
-  transition: color 0.15s;
+  gap: 2px;
+  /* 10pt Medium — Apple HIG tab bar label spec */
+  font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--text-2) 55%, transparent);
+  transition: color 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 49px;
+  min-width: 44px; /* 44pt touch target */
+  border: none; background: none; cursor: pointer;
+  padding: 0;
+  position: relative;
+}
+.tab-bar-icon {
+  font-size: 25px !important;
+  line-height: 1;
+  transition: color 0.18s ease, font-variation-settings 0.18s ease;
+}
+.tab-bar-label {
+  line-height: 1;
+  text-transform: none; /* Apple HIG: sentence case, not uppercase */
+}
+/* Active state — system blue tint */
+.tab-bar-item.active {
+  color: var(--cyan);
+}
+.tab-bar-item.active .tab-bar-icon {
+  color: var(--cyan);
+}
+/* Inactive state */
+.tab-bar-item:not(.active) .tab-bar-icon {
+  color: color-mix(in srgb, var(--text-2) 50%, transparent);
+}
+/* Tap feedback */
+.tab-bar-item:active {
+  opacity: 0.7;
+  transition: opacity 0.05s;
+}
+
+/* ── More sheet (iOS action sheet pattern) ─────────────────────────────── */
+.more-sheet-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 250;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.more-sheet-backdrop.visible { opacity: 1; }
+
+.more-sheet {
+  position: fixed;
+  bottom: calc(var(--nav-h) + var(--safe-bottom));
+  left: 0; right: 0;
+  background: var(--surface);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
+  z-index: 260;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  overflow: hidden;
+  max-height: 60vh;
+}
+.more-sheet.visible {
+  transform: translateY(0);
+}
+.more-sheet-handle {
+  width: 36px; height: 5px;
+  background: color-mix(in srgb, var(--text-3) 30%, transparent);
+  border-radius: 2.5px;
+  margin: 8px auto 4px;
+}
+.more-sheet-list {
+  padding: 4px 0 8px;
+}
+.more-sheet-item {
+  display: flex; align-items: center; gap: 14px;
+  width: 100%;
+  padding: 14px 20px;
+  border: none; background: none; cursor: pointer;
+  font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+  font-size: 17px; font-weight: 400;
+  color: var(--text-1);
+  text-align: left;
+  transition: background 0.12s;
   -webkit-tap-highlight-color: transparent;
   min-height: 44px;
 }
-.nav-btn .material-icons {
-  font-size: 22px !important;
-  opacity: 0.45;
-  transition: opacity 0.15s, color 0.15s;
+.more-sheet-item:active {
+  background: color-mix(in srgb, var(--text-3) 12%, transparent);
 }
-.nav-btn.active { color: var(--cyan); }
-.nav-btn.active .material-icons { opacity: 1; color: var(--cyan); }
+.more-sheet-icon {
+  font-size: 22px !important;
+  color: var(--cyan);
+  flex-shrink: 0;
+}
+.more-sheet-text {
+  flex: 1;
+}
+.more-sheet-chevron {
+  font-size: 18px !important;
+  color: color-mix(in srgb, var(--text-3) 40%, transparent);
+  flex-shrink: 0;
+}
+/* Separator lines between items */
+.more-sheet-item + .more-sheet-item {
+  border-top: 0.5px solid var(--border);
+}
+
+/* Alert animation on tab bar items */
+.tab-bar-item--alert {
+  animation: navAlertPulse 0.8s ease-in-out 4;
+}
 
 /* ===== GOOGLE MAPS INFOWINDOW OVERRIDES ===== */
 .gm-style .gm-style-iw-c {
@@ -2746,7 +2858,8 @@ a:hover { text-decoration: underline; }
     --dtabs-h: 40px;
   }
 
-  .bottom-nav { display: none; }
+  .tab-bar { display: none; }
+  .more-sheet, .more-sheet-backdrop { display: none; }
 
   .desktop-tabs {
     display: flex;

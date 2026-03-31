@@ -766,14 +766,63 @@
 
   // ── NAVIGATION ────────────────────────────────────────────────
   function initNav() {
-    var btns = document.querySelectorAll(".nav-btn");
-    btns.forEach(function (btn) {
+    // Tab bar items (mobile)
+    var tabItems = document.querySelectorAll(".tab-bar-item[data-view]");
+    tabItems.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var view = btn.getAttribute("data-view");
+        closeMoreSheet();
+        switchView(view);
+      });
+    });
+
+    // More tab button — toggles sheet
+    var moreBtn = document.getElementById("moreTabBtn");
+    var moreSheet = document.getElementById("moreSheet");
+    var moreBackdrop = document.getElementById("moreSheetBackdrop");
+    if (moreBtn && moreSheet && moreBackdrop) {
+      moreBtn.addEventListener("click", function () {
+        var isOpen = moreSheet.classList.contains("visible");
+        if (isOpen) closeMoreSheet();
+        else openMoreSheet();
+      });
+      moreBackdrop.addEventListener("click", closeMoreSheet);
+
+      // More sheet items — navigate and close sheet
+      moreSheet.querySelectorAll(".more-sheet-item[data-view]").forEach(function (item) {
+        item.addEventListener("click", function () {
+          var view = item.getAttribute("data-view");
+          closeMoreSheet();
+          switchView(view);
+        });
+      });
+      moreSheet.querySelectorAll(".more-sheet-item[data-overflow-target]").forEach(function (item) {
+        item.addEventListener("click", function () {
+          var target = item.getAttribute("data-overflow-target");
+          closeMoreSheet();
+          handleOverflowAction(target);
+        });
+      });
+      var moreThemeBtn = document.getElementById("moreSheetThemeBtn");
+      if (moreThemeBtn) {
+        moreThemeBtn.addEventListener("click", function () {
+          closeMoreSheet();
+          var themeBtn = document.getElementById("themeToggle");
+          if (themeBtn) themeBtn.click();
+        });
+      }
+    }
+
+    // Legacy nav-btn support (backward compat)
+    var legacyBtns = document.querySelectorAll(".nav-btn");
+    legacyBtns.forEach(function (btn) {
       btn.addEventListener("click", function () {
         var view = btn.getAttribute("data-view");
         switchView(view);
       });
     });
 
+    // Desktop tabs
     var dtabs = document.querySelectorAll(".desktop-tab");
     dtabs.forEach(function (tab) {
       tab.addEventListener("click", function () {
@@ -782,6 +831,7 @@
       });
     });
 
+    // Header overflow menu
     var menuToggle = document.getElementById("menuToggle");
     var menu = document.getElementById("overflowMenu");
     if (menuToggle && menu) {
@@ -816,6 +866,37 @@
     switchView("feed");
   }
 
+  function openMoreSheet() {
+    var sheet = document.getElementById("moreSheet");
+    var backdrop = document.getElementById("moreSheetBackdrop");
+    var btn = document.getElementById("moreTabBtn");
+    if (!sheet || !backdrop) return;
+    sheet.removeAttribute("hidden");
+    backdrop.removeAttribute("hidden");
+    // Trigger reflow for CSS transition
+    void sheet.offsetHeight;
+    sheet.classList.add("visible");
+    backdrop.classList.add("visible");
+    if (btn) btn.classList.add("active");
+  }
+
+  function closeMoreSheet() {
+    var sheet = document.getElementById("moreSheet");
+    var backdrop = document.getElementById("moreSheetBackdrop");
+    var btn = document.getElementById("moreTabBtn");
+    if (!sheet || !backdrop) return;
+    sheet.classList.remove("visible");
+    backdrop.classList.remove("visible");
+    setTimeout(function () {
+      sheet.setAttribute("hidden", "");
+      backdrop.setAttribute("hidden", "");
+    }, 300);
+    // Only remove active if we're not navigating to a "more" sub-view
+    if (btn && !["chat", "more"].includes(activeView)) {
+      btn.classList.remove("active");
+    }
+  }
+
   function handleOverflowAction(target) {
     if (target === "settings") {
       var themeBtn = document.getElementById("themeToggle");
@@ -839,9 +920,21 @@
   function switchView(viewName) {
     activeView = viewName;
 
-    // Update nav buttons (mobile)
-    var btns = document.querySelectorAll(".nav-btn");
-    btns.forEach(function (b) {
+    // Update tab bar items (mobile) — 4 primary tabs
+    var tabItems = document.querySelectorAll(".tab-bar-item[data-view]");
+    tabItems.forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-view") === viewName);
+    });
+    // If navigating to chat or more (via More sheet), highlight the More tab
+    var moreBtn = document.getElementById("moreTabBtn");
+    if (moreBtn) {
+      var isMoreChild = (viewName === "chat" || viewName === "more");
+      moreBtn.classList.toggle("active", isMoreChild);
+    }
+
+    // Legacy nav-btn support
+    var legacyBtns = document.querySelectorAll(".nav-btn");
+    legacyBtns.forEach(function (b) {
       b.classList.toggle("active", b.getAttribute("data-view") === viewName);
     });
 
@@ -3093,14 +3186,15 @@
   }
 
   function _flashScannerAlert() {
-    var navBtn = document.querySelector('.nav-btn[onclick*="scanner"], .nav-btn[data-view="scanner"]');
+    var navBtn = document.querySelector('.tab-bar-item[data-view="scanner"], .nav-btn[data-view="scanner"]');
     if (!navBtn) {
       // Try desktop tabs
       navBtn = document.querySelector('.desktop-tab[onclick*="scanner"], .desktop-tab[data-view="scanner"]');
     }
     if (!navBtn) return;
+    navBtn.classList.add("tab-bar-item--alert");
     navBtn.classList.add("nav-btn--alert");
-    setTimeout(function () { navBtn.classList.remove("nav-btn--alert"); }, 8000);
+    setTimeout(function () { navBtn.classList.remove("tab-bar-item--alert"); navBtn.classList.remove("nav-btn--alert"); }, 8000);
   }
 
   // Keywords that make ANY scanner call worthy of the Live feed regardless of TG priority
