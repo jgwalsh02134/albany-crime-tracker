@@ -186,17 +186,43 @@
         <button class="map-chip" data-filter="violent">Violent</button>
         <button class="map-chip" data-filter="property">Property</button>
         <button class="map-chip" data-filter="other">Other</button>
+        <button class="map-chip map-chip--layer" id="mapHeatmapToggle" title="Toggle heatmap">
+          <span class="material-icons" style="font-size:16px;vertical-align:middle;">layers</span>
+        </button>
       </div>
 
-      <!-- Floating bottom bar — count + share -->
-      <div class="map-float-bottom">
-        <div class="map-count" id="mapStatus" role="status" aria-live="polite"></div>
-        <button class="map-share-btn" id="mapShareBtn" aria-label="Share my location" title="Share location">
+      <!-- Floating right controls — locate + layers -->
+      <div class="map-float-right">
+        <button class="map-fab" id="mapLocateBtn" aria-label="Center on my location" title="My location">
           <span class="material-icons">my_location</span>
         </button>
       </div>
 
-      <!-- Hidden controls wired to JS (not visible, keep IDs for existing code) -->
+      <!-- Floating bottom bar — count + time scrubber -->
+      <div class="map-float-bottom">
+        <div class="map-count" id="mapStatus" role="status" aria-live="polite"></div>
+        <div class="map-time-scrubber" id="mapTimeScrubber">
+          <label class="map-scrubber-label" id="mapScrubberLabel">24h</label>
+          <input type="range" class="map-scrubber-range" id="mapScrubberRange" min="0" max="24" value="24" step="1">
+          <label class="map-scrubber-label">Now</label>
+        </div>
+        <button class="map-share-btn" id="mapShareBtn" aria-label="Share my location" title="Share location">
+          <span class="material-icons">share</span>
+        </button>
+      </div>
+
+      <!-- Map incident bottom sheet (replaces InfoWindow popup) -->
+      <div class="map-sheet-backdrop" id="mapSheetBackdrop"></div>
+      <div class="map-sheet" id="mapSheet">
+        <div class="map-sheet-handle"></div>
+        <div class="map-sheet-cat" id="mapSheetCat"></div>
+        <div class="map-sheet-title" id="mapSheetTitle"></div>
+        <div class="map-sheet-meta" id="mapSheetMeta"></div>
+        <div class="map-sheet-source" id="mapSheetSource"></div>
+        <div class="map-sheet-actions" id="mapSheetActions"></div>
+      </div>
+
+      <!-- Hidden controls wired to JS -->
       <input type="hidden" id="mapSearchInput" value="">
       <select id="mapVerificationSelect" hidden><option value=""></option></select>
       <select id="mapSeveritySelect" hidden><option value=""></option></select>
