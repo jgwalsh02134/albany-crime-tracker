@@ -912,16 +912,23 @@
 
   // ── MAP (Google Maps) ─────────────────────────────────────────
 
-  var _GMAP_DARK_STYLE = [
+  // Hide POIs and transit to keep focus on crime markers
+  var _GMAP_CLEAN_BASE = [
+    { featureType: "poi", stylers: [{ visibility: "off" }] },
+    { featureType: "poi.park", stylers: [{ visibility: "simplified" }] },
+    { featureType: "poi.park", elementType: "labels", stylers: [{ visibility: "off" }] },
+    { featureType: "transit", stylers: [{ visibility: "off" }] },
+    { featureType: "poi.business", stylers: [{ visibility: "off" }] }
+  ];
+  var _GMAP_LIGHT_STYLE = _GMAP_CLEAN_BASE.concat([]);
+  var _GMAP_DARK_STYLE = _GMAP_CLEAN_BASE.concat([
     { elementType: "geometry", stylers: [{ color: "#1d2c4d" }] },
     { elementType: "labels.text.fill", stylers: [{ color: "#8ec3b9" }] },
     { elementType: "labels.text.stroke", stylers: [{ color: "#1a3646" }] },
     { featureType: "water", elementType: "geometry.fill", stylers: [{ color: "#0e1626" }] },
     { featureType: "road", elementType: "geometry", stylers: [{ color: "#304a7d" }] },
-    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#255763" }] },
-    { featureType: "poi", elementType: "geometry", stylers: [{ color: "#283d6a" }] },
-    { featureType: "transit", stylers: [{ visibility: "off" }] }
-  ];
+    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#255763" }] }
+  ]);
 
   /** Load the Google Maps JS SDK dynamically from API key served by backend */
   function _loadGoogleMaps(callback) {
@@ -948,15 +955,27 @@
   }
 
   function _markerColor(cat) {
-    if (cat === "violent") return "#e05252";
-    if (cat === "property") return "#d9953a";
-    return "#4d8fdb";
+    if (cat === "violent") return "#E53935";
+    if (cat === "property") return "#FB8C00";
+    return "#1E88E5";
   }
 
-  function _makeSvgPin(color) {
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="34" viewBox="0 0 24 34">' +
-      '<path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 22 12 22s12-13 12-22C24 5.4 18.6 0 12 0z" fill="' + color + '"/>' +
-      '<circle cx="12" cy="11" r="5" fill="white" opacity="0.85"/></svg>';
+  /** Category icon character for marker label */
+  function _markerIcon(cat) {
+    if (cat === "violent") return "!";
+    if (cat === "property") return "$";
+    return "i";
+  }
+
+  /** Build a large, bold, distinct SVG marker with icon glyph inside */
+  function _makeSvgPin(color, iconChar) {
+    var w = 32, h = 42;
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">' +
+      '<filter id="s"><feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-opacity="0.3"/></filter>' +
+      '<path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 26 16 26s16-14 16-26C32 7.2 24.8 0 16 0z" fill="' + color + '" filter="url(#s)"/>' +
+      '<circle cx="16" cy="14" r="10" fill="white" opacity="0.95"/>' +
+      '<text x="16" y="18" text-anchor="middle" font-size="14" font-weight="800" font-family="system-ui,sans-serif" fill="' + color + '">' + iconChar + '</text>' +
+      '</svg>';
     return "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg);
   }
 
@@ -985,7 +1004,7 @@
           streetViewControl: false,
           fullscreenControl: false,
           gestureHandling: "greedy",
-          styles: isDark ? _GMAP_DARK_STYLE : []
+          styles: isDark ? _GMAP_DARK_STYLE : _GMAP_LIGHT_STYLE
         });
 
         _gmapInfoWindow = new google.maps.InfoWindow({ maxWidth: 280 });
@@ -1003,7 +1022,7 @@
 
   function updateMapTiles(theme) {
     if (!map || !window.google) return;
-    map.setOptions({ styles: theme === "dark" ? _GMAP_DARK_STYLE : [] });
+    map.setOptions({ styles: theme === "dark" ? _GMAP_DARK_STYLE : _GMAP_LIGHT_STYLE });
   }
 
   function initMapFilters() {
@@ -1017,6 +1036,64 @@
       });
     });
     initMapControls();
+    initShareLocation();
+  }
+
+  /** Share / show user's location on the map */
+  function initShareLocation() {
+    var btn = document.getElementById("mapShareBtn");
+    if (!btn) return;
+    var userMarker = null;
+
+    btn.addEventListener("click", function () {
+      if (!navigator.geolocation) {
+        setMapStatus("Location not supported");
+        return;
+      }
+      btn.style.opacity = "0.5";
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          btn.style.opacity = "1";
+          var lat = pos.coords.latitude;
+          var lng = pos.coords.longitude;
+
+          // Drop a distinct blue pulsing marker for user location
+          if (userMarker) userMarker.setMap(null);
+          var locSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
+            '<circle cx="12" cy="12" r="11" fill="#4285F4" fill-opacity="0.2" stroke="#4285F4" stroke-width="2"/>' +
+            '<circle cx="12" cy="12" r="5" fill="#4285F4"/></svg>';
+          userMarker = new google.maps.Marker({
+            position: { lat: lat, lng: lng },
+            map: map,
+            icon: {
+              url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(locSvg),
+              scaledSize: new google.maps.Size(24, 24),
+              anchor: new google.maps.Point(12, 12)
+            },
+            title: "Your location",
+            zIndex: 9999
+          });
+          map.panTo({ lat: lat, lng: lng });
+          map.setZoom(14);
+
+          // Copy shareable link to clipboard
+          var shareUrl = "https://www.google.com/maps?q=" + lat + "," + lng;
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(shareUrl).then(function () {
+              setMapStatus("Location link copied!");
+              setTimeout(function () { setMapStatus(_gmapMarkers.length + " incidents"); }, 2500);
+            });
+          } else {
+            setMapStatus("Lat: " + lat.toFixed(4) + ", Lng: " + lng.toFixed(4));
+          }
+        },
+        function () {
+          btn.style.opacity = "1";
+          setMapStatus("Location access denied");
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    });
   }
 
   function initMapControls() {
@@ -1094,12 +1171,13 @@
       var color = _markerColor(cat);
       var ta = item.human_time || (item.occurred_at ? timeAgo(new Date(item.occurred_at)) : "");
 
+      var iconChar = _markerIcon(cat);
       var marker = new google.maps.Marker({
         position: { lat: lat, lng: lng },
         icon: {
-          url: _makeSvgPin(color),
-          scaledSize: new google.maps.Size(24, 34),
-          anchor: new google.maps.Point(12, 34)
+          url: _makeSvgPin(color, iconChar),
+          scaledSize: new google.maps.Size(32, 42),
+          anchor: new google.maps.Point(16, 42)
         },
         title: item.title || "Incident",
         optimized: true
@@ -1121,10 +1199,13 @@
         var popTitle = d.title;
         if (/^scanner\s*·/i.test(d.source_name)) popTitle = cleanScannerTitle(popTitle);
 
-        var dotColor = d.cat === "violent" ? "#e05252" : d.cat === "property" ? "#d9953a" : "#4d8fdb";
+        var catColor = _markerColor(d.cat);
+        var catLabel = d.cat === "violent" ? "Violent" : d.cat === "property" ? "Property" : "Other";
         var html = '<div class="map-popup">';
-        html += '<div class="map-popup-title"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + dotColor + ';margin-right:6px;vertical-align:middle;"></span>' + esc(popTitle) + '</div>';
-        html += '<div class="map-popup-meta">' + esc(d.municipality || "Albany County") + (d.time ? " · " + esc(d.time) : "") + '</div>';
+        html += '<div class="map-popup-cat" style="background:' + catColor + '">' + catLabel + '</div>';
+        html += '<div class="map-popup-title">' + esc(popTitle) + '</div>';
+        html += '<div class="map-popup-meta">' + esc(d.municipality || "Albany County") + (d.time ? " &middot; " + esc(d.time) : "") + '</div>';
+        if (d.source_name) html += '<div class="map-popup-source">via ' + esc(d.source_name) + '</div>';
         html += '<div class="map-popup-actions">';
         html += '<a href="#" onclick="window.ACTFocusIncident && window.ACTFocusIncident(\'' + escAttr(d.fid) + '\');return false;">View in feed</a>';
         if (d.source_url) html += '<a href="' + escAttr(d.source_url) + '" target="_blank" rel="noopener">Source</a>';
@@ -1145,10 +1226,12 @@
         renderer: {
           render: function (cluster) {
             var count = cluster.count;
-            var size = count < 10 ? 36 : count < 30 ? 44 : 52;
+            var size = count < 10 ? 42 : count < 30 ? 52 : 60;
+            var fs = count < 10 ? 15 : count < 100 ? 14 : 12;
             var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '">' +
-              '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + (size/2 - 2) + '" fill="#6366f1" fill-opacity="0.8" stroke="white" stroke-width="2"/>' +
-              '<text x="50%" y="52%" text-anchor="middle" dominant-baseline="central" fill="white" font-size="13" font-weight="700" font-family="system-ui">' + count + '</text></svg>';
+              '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + (size/2) + '" fill="#6366f1" fill-opacity="0.15"/>' +
+              '<circle cx="' + size/2 + '" cy="' + size/2 + '" r="' + (size/2 - 6) + '" fill="#6366f1" fill-opacity="0.9" stroke="white" stroke-width="2.5"/>' +
+              '<text x="50%" y="52%" text-anchor="middle" dominant-baseline="central" fill="white" font-size="' + fs + '" font-weight="800" font-family="system-ui">' + count + '</text></svg>';
             return new google.maps.Marker({
               position: cluster.position,
               icon: {
