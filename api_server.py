@@ -4304,50 +4304,283 @@ async def get_nibrs_agency_detail(ori: str):
     }
 
 
-@app.get("/api/scanner/calls")
-async def get_scanner_calls():
-    cache_key = "scanner_calls"
-    cached = get_cached(cache_key)
-    if cached:
-        return {"status": "ok", "source": "cache", "calls": cached}
+# ── Multi-source scanner: OpenMHz + Broadcastify + RadioReference ──────
 
-    OPENMHZ_SYSTEM = "albanycony"  # Albany County NY system slug on OpenMHz
+# RadioReference talkgroup cache (enriched metadata)
+_rr_talkgroup_cache: dict[str, dict] = {}
+_rr_talkgroup_ts: float = 0.0
+
+
+async def _fetch_openmhz_calls() -> list[dict]:
+    """Fetch decoded calls from OpenMHz (free, no auth)."""
+    OPENMHZ_SYSTEM = "albanycony"
     try:
         resp = await http_client.get(
             f"https://api.openmhz.com/{OPENMHZ_SYSTEM}/calls",
             params={"num": 40},
             timeout=12.0,
         )
-        if resp.status_code == 200:
-            data = resp.json()
-            calls = []
-            for call in data.get("calls", [])[:40]:
-                # Extract TG number — OpenMHz embeds it in the audio URL path
-                # e.g. /media/albanycony/10702/albanycony-10702-timestamp.m4a
-                audio_url = call.get("url", "")
-                tg_num = str(call.get("talkgroup", "") or "")
-                if not tg_num:
-                    import re as _re
-                    m = _re.search(r"/(\d{4,6})/", audio_url)
-                    if m:
-                        tg_num = m.group(1)
-                calls.append({
-                    "id": call.get("_id", ""),
-                    "time": call.get("time", ""),
-                    "talkgroup_num": tg_num,
-                    "talkgroup_tag": call.get("talkgroup_tag", "") or call.get("talkgroupTag", ""),
-                    "talkgroup_description": call.get("talkgroup_description", "") or call.get("talkgroupDescription", ""),
-                    "audio_url": audio_url,
-                    "duration": call.get("len", 0) or call.get("duration", 0),
-                    "freq": call.get("freq", 0),
-                })
-            set_cached(cache_key, calls)
-            return {"status": "ok", "source": "live", "calls": calls}
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        calls = []
+        for call in data.get("calls", [])[:40]:
+            audio_url = call.get("url", "")
+            tg_num = str(call.get("talkgroup", "") or "")
+            if not tg_num:
+                m = re.search(r"/(\d{4,6})/", audio_url)
+                if m:
+                    tg_num = m.group(1)
+            calls.append({
+                "id": f"omhz_{call.get('_id', '')}",
+                "time": call.get("time", ""),
+                "talkgroup_num": tg_num,
+                "talkgroup_tag": call.get("talkgroup_tag", "") or call.get("talkgroupTag", ""),
+                "talkgroup_description": call.get("talkgroup_description", "") or call.get("talkgroupDescription", ""),
+                "audio_url": audio_url,
+                "duration": call.get("len", 0) or call.get("duration", 0),
+                "freq": call.get("freq", 0),
+                "source": "openmhz",
+            })
+        return calls
     except Exception as e:
-        print(f"Scanner error: {e}")
+        logger.warning("OpenMHz fetch error: %s", e)
+        return []
 
-    # Fallback — no mock data
-    return {"status": "ok", "source": "unavailable", "calls": []}
+
+async def _fetch_broadcastify_calls() -> list[dict]:
+    """Fetch decoded calls from Broadcastify Calls API (requires API key)."""
+    api_key = settings.broadcastify_api_key
+    system_id = settings.broadcastify_system_id or "8553"
+    if not api_key:
+        return []
+
+    try:
+        # Broadcastify Calls API - fetch recent calls for Albany County system
+        resp = await http_client.get(
+            f"https://api.broadcastify.com/calls/node/{system_id}",
+            params={"apiKey": api_key, "type": "json", "num": 40},
+            timeout=12.0,
+        )
+        if resp.status_code != 200:
+            logger.warning("Broadcastify API returned %d", resp.status_code)
+            return []
+
+        data = resp.json()
+        calls_raw = data if isinstance(data, list) else data.get("calls", [])
+        calls = []
+        for call in calls_raw[:40]:
+            tg = str(call.get("talkgroupID", "") or call.get("talkgroup", "") or "")
+            calls.append({
+                "id": f"bcfy_{call.get('id', call.get('callId', ''))}",
+                "time": call.get("startTime", "") or call.get("time", ""),
+                "talkgroup_num": tg,
+                "talkgroup_tag": call.get("talkgroupAlpha", "") or call.get("talkgroup_tag", ""),
+                "talkgroup_description": call.get("talkgroupDescription", "") or call.get("talkgroup_description", ""),
+                "audio_url": call.get("audioUrl", "") or call.get("url", ""),
+                "duration": call.get("duration", 0) or call.get("len", 0),
+                "freq": call.get("freq", 0),
+                "source": "broadcastify",
+                # Extra Broadcastify metadata
+                "enc": call.get("enc", 0),  # encrypted flag
+                "emergency": call.get("emergency", 0),  # emergency flag
+                "unit_ids": call.get("srcList", []),  # responding units
+            })
+        return calls
+    except Exception as e:
+        logger.warning("Broadcastify fetch error: %s", e)
+        return []
+
+
+async def _fetch_radioreference_talkgroups() -> dict[str, dict]:
+    """Fetch talkgroup metadata from RadioReference SOAP API (requires premium)."""
+    global _rr_talkgroup_cache, _rr_talkgroup_ts
+    # Cache for 1 hour — talkgroup data rarely changes
+    if _rr_talkgroup_cache and (time.time() - _rr_talkgroup_ts) < 3600:
+        return _rr_talkgroup_cache
+
+    api_key = settings.radioreference_api_key
+    username = settings.radioreference_username
+    password = settings.radioreference_password
+    if not api_key or not username or not password:
+        return _rr_talkgroup_cache
+
+    try:
+        # RadioReference SOAP API - getTrsTalkgroups for Albany County system (sid=8553)
+        soap_body = f"""<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+               xmlns:rr="http://api.radioreference.com/soap2/">
+  <soap:Body>
+    <rr:getTrsTalkgroups>
+      <rr:sid>8553</rr:sid>
+      <rr:authInfo>
+        <rr:appKey>{api_key}</rr:appKey>
+        <rr:username>{username}</rr:username>
+        <rr:password>{password}</rr:password>
+        <rr:version>latest</rr:version>
+        <rr:style>doc</rr:style>
+      </rr:authInfo>
+    </rr:getTrsTalkgroups>
+  </soap:Body>
+</soap:Envelope>"""
+
+        resp = await http_client.post(
+            "https://api.radioreference.com/soap2/",
+            content=soap_body,
+            headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": ""},
+            timeout=15.0,
+        )
+        if resp.status_code != 200:
+            logger.warning("RadioReference API returned %d", resp.status_code)
+            return _rr_talkgroup_cache
+
+        # Parse SOAP XML response
+        root = ET.fromstring(resp.text)
+        ns = {"soap": "http://schemas.xmlsoap.org/soap/envelope/"}
+        tg_map = {}
+        # Extract talkgroup elements from SOAP response
+        for tg_elem in root.iter():
+            tag_local = tg_elem.tag.split("}")[-1] if "}" in tg_elem.tag else tg_elem.tag
+            if tag_local in ("talkgroup", "return", "item"):
+                tg_id = ""
+                tg_data = {}
+                for child in tg_elem:
+                    child_tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                    child_text = (child.text or "").strip()
+                    if child_tag in ("tgDec", "tgId", "dec"):
+                        tg_id = child_text
+                    elif child_tag in ("alpha", "tgAlpha"):
+                        tg_data["alpha"] = child_text
+                    elif child_tag in ("description", "tgDescr"):
+                        tg_data["description"] = child_text
+                    elif child_tag in ("tag", "tgTag"):
+                        tg_data["tag"] = child_text
+                    elif child_tag in ("category", "catName"):
+                        tg_data["category"] = child_text
+                    elif child_tag in ("mode",):
+                        tg_data["mode"] = child_text
+                if tg_id and tg_data:
+                    tg_map[tg_id] = tg_data
+
+        if tg_map:
+            _rr_talkgroup_cache = tg_map
+            _rr_talkgroup_ts = time.time()
+            logger.info("RadioReference: loaded %d talkgroups", len(tg_map))
+
+        return _rr_talkgroup_cache
+    except Exception as e:
+        logger.warning("RadioReference fetch error: %s", e)
+        return _rr_talkgroup_cache
+
+
+def _enrich_call_with_rr(call: dict, rr_talkgroups: dict[str, dict]) -> dict:
+    """Enrich a scanner call with RadioReference talkgroup metadata."""
+    tg = call.get("talkgroup_num", "")
+    rr = rr_talkgroups.get(tg)
+    if not rr:
+        return call
+
+    enriched = dict(call)
+    # Fill in missing fields from RadioReference
+    if not enriched.get("talkgroup_tag") and rr.get("alpha"):
+        enriched["talkgroup_tag"] = rr["alpha"]
+    if not enriched.get("talkgroup_description") and rr.get("description"):
+        enriched["talkgroup_description"] = rr["description"]
+    # Add RadioReference-specific metadata
+    enriched["rr_category"] = rr.get("category", "")
+    enriched["rr_tag"] = rr.get("tag", "")
+    enriched["rr_mode"] = rr.get("mode", "")
+    return enriched
+
+
+def _dedupe_calls(all_calls: list[dict]) -> list[dict]:
+    """Deduplicate calls across sources by talkgroup + time proximity (30s)."""
+    deduped = []
+    seen = {}
+    for call in all_calls:
+        tg = call.get("talkgroup_num", "")
+        t = call.get("time", "")
+        try:
+            ts = datetime.fromisoformat(t.replace("Z", "+00:00")).timestamp() if t else 0
+        except Exception:
+            ts = 0
+        key = f"{tg}_{int(ts // 30)}"
+        if key in seen:
+            # Prefer Broadcastify (more metadata) over OpenMHz
+            if call.get("source") == "broadcastify" and seen[key].get("source") == "openmhz":
+                # Replace with Broadcastify version
+                for i, d in enumerate(deduped):
+                    if d is seen[key]:
+                        deduped[i] = call
+                        seen[key] = call
+                        break
+            continue
+        seen[key] = call
+        deduped.append(call)
+    return deduped
+
+
+@app.get("/api/scanner/calls")
+async def get_scanner_calls():
+    cache_key = "scanner_calls"
+    cached = get_cached(cache_key)
+    if cached:
+        return {"status": "ok", "source": "cache", "calls": cached, "sources_used": cached[0].get("_sources", []) if cached else []}
+
+    # Fetch from all available sources concurrently
+    openmhz_task = _fetch_openmhz_calls()
+    broadcastify_task = _fetch_broadcastify_calls()
+    rr_task = _fetch_radioreference_talkgroups()
+
+    openmhz_calls, bcfy_calls, rr_talkgroups = await asyncio.gather(
+        openmhz_task, broadcastify_task, rr_task,
+        return_exceptions=True,
+    )
+
+    # Handle exceptions gracefully
+    if isinstance(openmhz_calls, Exception):
+        logger.warning("OpenMHz exception: %s", openmhz_calls)
+        openmhz_calls = []
+    if isinstance(bcfy_calls, Exception):
+        logger.warning("Broadcastify exception: %s", bcfy_calls)
+        bcfy_calls = []
+    if isinstance(rr_talkgroups, Exception):
+        logger.warning("RadioReference exception: %s", rr_talkgroups)
+        rr_talkgroups = {}
+
+    sources_used = []
+    if openmhz_calls:
+        sources_used.append("openmhz")
+    if bcfy_calls:
+        sources_used.append("broadcastify")
+    if rr_talkgroups:
+        sources_used.append("radioreference")
+
+    # Merge all calls, sorted by time (newest first)
+    all_calls = list(openmhz_calls) + list(bcfy_calls)
+    all_calls.sort(key=lambda c: c.get("time", ""), reverse=True)
+
+    # Deduplicate across sources
+    merged = _dedupe_calls(all_calls)
+
+    # Enrich with RadioReference metadata
+    if rr_talkgroups:
+        merged = [_enrich_call_with_rr(c, rr_talkgroups) for c in merged]
+
+    # Mark emergency / high-priority calls from Broadcastify metadata
+    for call in merged:
+        if call.get("emergency"):
+            call["is_emergency"] = True
+        if call.get("unit_ids"):
+            call["responding_units"] = call.get("unit_ids", [])
+
+    set_cached(cache_key, merged)
+    return {
+        "status": "ok",
+        "source": "multi" if len(sources_used) > 1 else (sources_used[0] if sources_used else "unavailable"),
+        "sources_used": sources_used,
+        "calls": merged,
+    }
 
 
 @app.post("/api/scanner/summarize")

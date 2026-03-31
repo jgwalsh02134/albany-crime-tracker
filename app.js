@@ -372,6 +372,7 @@
 
     fetchIncidents();
     setTimeout(fetchScannerCalls, 900);
+    setTimeout(initOpenMhzRealtime, 2000);  // Start real-time after initial fetch
     setTimeout(fetchScannerTalkgroups, 1400);
     setTimeout(fetchSummarySnapshot, 1800);
     setTimeout(fetchSituation, 2500);
@@ -2776,11 +2777,108 @@
   }
 
   // ── SCANNER ───────────────────────────────────────────────────
+  // ── OpenMHz Socket.IO real-time connection ───────────────────
+  var _omhzSocket = null;
+  var _omhzConnected = false;
+  var _omhzRealtimeCalls = [];  // buffer of calls received via Socket.IO
+
+  function initOpenMhzRealtime() {
+    // Load Socket.IO client if not already present
+    if (window.io) { _connectOpenMhz(); return; }
+    var s = document.createElement("script");
+    s.src = "https://cdn.socket.io/4.7.4/socket.io.min.js";
+    s.onload = _connectOpenMhz;
+    s.onerror = function () { console.warn("Socket.IO CDN failed, using polling only"); };
+    document.head.appendChild(s);
+  }
+
+  function _connectOpenMhz() {
+    if (_omhzSocket || !window.io) return;
+    try {
+      _omhzSocket = io("https://api.openmhz.com", {
+        transports: ["websocket", "polling"],
+        reconnection: true,
+        reconnectionDelay: 5000,
+        reconnectionAttempts: 10,
+        query: { system: "albanycony" }
+      });
+
+      _omhzSocket.on("connect", function () {
+        _omhzConnected = true;
+        console.log("[Scanner] OpenMHz real-time connected");
+        // Subscribe to Albany County system
+        _omhzSocket.emit("scan", { system: "albanycony" });
+      });
+
+      _omhzSocket.on("new call", function (call) {
+        if (!call) return;
+        // Normalize to our standard format
+        var audioUrl = call.url || "";
+        var tgNum = String(call.talkgroup || "");
+        if (!tgNum) {
+          var m = audioUrl.match(/\/(\d{4,6})\//);
+          if (m) tgNum = m[1];
+        }
+        var normalized = {
+          id: "omhz_rt_" + (call._id || Date.now()),
+          time: call.time || new Date().toISOString(),
+          talkgroup_num: tgNum,
+          talkgroup_tag: call.talkgroup_tag || call.talkgroupTag || "",
+          talkgroup_description: call.talkgroup_description || call.talkgroupDescription || "",
+          audio_url: audioUrl,
+          duration: call.len || call.duration || 0,
+          freq: call.freq || 0,
+          source: "openmhz_realtime"
+        };
+
+        // Add to buffer and merge with existing calls
+        _omhzRealtimeCalls.unshift(normalized);
+        if (_omhzRealtimeCalls.length > 20) _omhzRealtimeCalls.length = 20;
+
+        // If we have existing calls, merge the new one in and re-render
+        if (lastScannerCallsRef.length) {
+          var merged = [normalized].concat(lastScannerCallsRef.filter(function (c) {
+            return c.id !== normalized.id;
+          }));
+          processAndRenderScanner(merged);
+        }
+      });
+
+      _omhzSocket.on("disconnect", function () {
+        _omhzConnected = false;
+        console.log("[Scanner] OpenMHz real-time disconnected");
+      });
+
+      _omhzSocket.on("connect_error", function (err) {
+        console.warn("[Scanner] OpenMHz Socket.IO error:", err.message);
+      });
+    } catch (e) {
+      console.warn("[Scanner] Socket.IO init error:", e);
+    }
+  }
+
   function fetchScannerCalls() {
     (apiClient ? apiClient.getScannerCalls() : fetch(API + "/api/scanner/calls").then(ok))
       .then(function (data) {
-        if (data.calls && data.calls.length > 0) {
-          processAndRenderScanner(data.calls);
+        var calls = (data && data.calls && data.calls.length > 0) ? data.calls : [];
+        var sourcesUsed = data && data.sources_used ? data.sources_used : [];
+
+        // Merge any real-time Socket.IO calls we've received
+        if (_omhzRealtimeCalls.length && calls.length) {
+          var existingIds = {};
+          calls.forEach(function (c) { existingIds[c.id] = true; });
+          _omhzRealtimeCalls.forEach(function (rt) {
+            if (!existingIds[rt.id]) calls.unshift(rt);
+          });
+        }
+
+        if (calls.length > 0) {
+          // Update source indicator
+          var srcEl = document.getElementById("scannerSourceInfo");
+          if (srcEl) srcEl.textContent = sourcesUsed.length > 1
+            ? sourcesUsed.join(" + ") + (_omhzConnected ? " + live" : "")
+            : (sourcesUsed[0] || "openmhz") + (_omhzConnected ? " + live" : "");
+          processAndRenderScanner(calls);
         } else {
           return fetchScannerDirect();
         }
@@ -3117,7 +3215,28 @@
       if (len > 0) html += '<span class="sc-pill">' + len.toFixed(0) + 's</span>';
       if (whisper) html += '<span class="sc-pill sc-pill--whisper">Transcribed</span>';
       else if (aiSum) html += '<span class="sc-pill sc-pill--ai">AI summary</span>';
+      // Source badge
+      var callSource = call.source || "openmhz";
+      if (callSource === "broadcastify") html += '<span class="sc-pill sc-pill--bcfy">Broadcastify</span>';
+      else if (callSource === "openmhz_realtime") html += '<span class="sc-pill sc-pill--live">Live</span>';
+      // Emergency flag from Broadcastify
+      if (call.is_emergency || call.emergency) html += '<span class="sc-pill sc-pill--emergency">EMERGENCY</span>';
+      // RadioReference enrichment indicator
+      if (call.rr_category) html += '<span class="sc-pill sc-pill--rr">' + esc(call.rr_category) + '</span>';
       html += '</div>';
+
+      // Responding units (from Broadcastify)
+      var units = call.responding_units || call.unit_ids;
+      if (units && Array.isArray(units) && units.length) {
+        html += '<div class="sc-card-units">';
+        html += '<span class="material-icons" style="font-size:12px;color:var(--text-3);vertical-align:middle;">groups</span> ';
+        html += units.slice(0, 6).map(function (u) {
+          var uid = typeof u === "object" ? (u.src || u.id || "") : String(u);
+          return '<span class="sc-unit-badge">' + esc(uid) + '</span>';
+        }).join(" ");
+        if (units.length > 6) html += ' <span class="sc-unit-badge">+' + (units.length - 6) + '</span>';
+        html += '</div>';
+      }
 
       // Expandable details
       html += '<details class="sc-card-expand">';

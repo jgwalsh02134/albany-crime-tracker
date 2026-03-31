@@ -1585,6 +1585,41 @@ a:hover { text-decoration: underline; }
 .sc-pill--ems { background: var(--amber-dim); color: var(--property); }
 .sc-pill--ai { background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); color: var(--accent); font-style: italic; }
 .sc-pill--whisper { background: color-mix(in srgb, #4caf50 15%, var(--surface-2)); color: #4caf50; }
+.sc-pill--bcfy { background: color-mix(in srgb, #2196f3 15%, var(--surface-2)); color: #2196f3; }
+.sc-pill--live { background: color-mix(in srgb, #4caf50 15%, var(--surface-2)); color: #4caf50; font-weight: 700; }
+.sc-pill--emergency { background: #E53935; color: #fff; font-weight: 700; animation: emergencyPulse 1.2s ease-in-out infinite; }
+.sc-pill--rr { background: color-mix(in srgb, #9c27b0 12%, var(--surface-2)); color: #9c27b0; }
+@keyframes emergencyPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Responding unit badges */
+.sc-card-units {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-3);
+}
+.sc-unit-badge {
+  display: inline-block;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-2);
+}
+
+/* Source info in scanner note */
+.sc-source-info {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--text-3);
+  margin-left: 4px;
+  font-style: italic;
+}
 
 /* Whisper transcription display */
 .sc-card-transcript {
