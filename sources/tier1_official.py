@@ -53,7 +53,9 @@ def _html_links_as_items(html: str, base_url: str, source_name: str, max_items: 
             continue
         link = urljoin(base_url, href)
         blob = (link + " " + txt).lower()
-        if not any(k in blob for k in ("press", "release", "news", "report", "alert", "incident", "arrest", "safety")):
+        if not any(k in blob for k in ("press", "release", "news", "report", "alert", "incident", "arrest", "safety",
+                                        "guilty", "sentenced", "charged", "indicted", "convicted", "plea", "fraud",
+                                        "conspiracy", "trafficking", "firearms", "narcotics", "drug")):
             continue
         out.append(
             {
@@ -102,7 +104,8 @@ def _as_incident_rows(items: list[dict[str, str]], *, source_name: str, source_u
                     "verification_level": "official",
                     "confidence_score": 0.94,
                     "municipality": "Albany",
-                    "operational_badges": ["tier1", "official", lane, trust_tier],
+                    "operational_badges": ["tier1", "official", lane, trust_tier]
+                                         + (["federal"] if source_type == "federal" else []),
                 },
                 "raw_payload": {
                     "source_class": "official_structured_or_press",
@@ -187,16 +190,38 @@ async def fetch_tier1_sources(limit_per_source: int = 60, *, strict_live_sources
             )
         )
 
-        ndny_rss = await _fetch_rss(client, "https://www.justice.gov/usao-ndny/pr/rss")
+        # ── USAO Northern District of New York (federal) ──────────────────────
+        # Try direct RSS first, fall back to HTML scraping of press release page
+        ndny_items: list[dict[str, str]] = []
+        for rss_url in (
+            "https://www.justice.gov/usao-ndny/pr/rss",
+            "https://www.justice.gov/usao-ndny/press-releases/feed",
+        ):
+            ndny_items = await _fetch_rss(client, rss_url)
+            if ndny_items:
+                break
+        if not ndny_items:
+            # Fallback: scrape the HTML press release listing page
+            ndny_items = await _fetch_html_links(
+                client,
+                "https://www.justice.gov/usao-ndny/pr",
+                "USAO NDNY",
+            )
+        if not ndny_items:
+            # Last resort: Google News site-scoped search for USAO-NDNY press releases
+            ndny_items = await _fetch_rss(
+                client,
+                "https://news.google.com/rss/search?q=site:justice.gov/usao-ndny+when:7d&hl=en-US&gl=US&ceid=US:en",
+            )
         rows.extend(
             _as_incident_rows(
-                ndny_rss[:limit_per_source],
-                source_name="USAO NDNY Press",
+                ndny_items[:limit_per_source],
+                source_name="US Attorney NDNY",
                 source_url="https://www.justice.gov/usao-ndny/pr",
-                source_type="official_alerts",
-                incident_type="federal_prosecution_update",
+                source_type="federal",
+                incident_type="federal_prosecution",
                 trust_tier="tier_1",
-                lane="official_updates",
+                lane="federal",
             )
         )
 

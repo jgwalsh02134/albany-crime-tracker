@@ -1402,7 +1402,8 @@
 
   function _sourceTypeLabel(v) {
     var m = (v || "").toLowerCase();
-    if (m === "official") return "Official";
+    if (m === "official" || m === "official_alerts") return "Official";
+    if (m === "federal") return "Federal";
     if (m === "open_data") return "Official Open Data";
     if (m === "scanner") return "Scanner";
     if (m === "media") return "Media";
@@ -1811,6 +1812,9 @@
     html += '<div class="feed-meta">';
     html += '<span class="feed-meta-pill feed-meta-pill--area"><span class="material-icons feed-meta-icon">location_on</span>' + esc(area) + '</span>';
     html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(sourceName) + '</span>';
+    // Federal badge for DOJ / US Attorney sources
+    var isFederal = sourceType === "federal" || /\b(usao|us attorney|doj|federal|dept.*justice)\b/i.test(sourceName);
+    if (isFederal) html += '<span class="feed-meta-pill feed-meta-pill--federal">Federal</span>';
     html += '<span class="feed-meta-pill feed-meta-pill--verify feed-meta-pill--verify-' + esc(verify) + '">' + esc(verifyLabel) + '</span>';
     if (sevBadge) html += sevBadge;
     html += '</div>';

@@ -583,6 +583,15 @@ RSS_FEEDS_OFFICIAL = {
         "priority": 4,
         "timeout": 8,
     },
+    # ── Federal: USAO Northern District of New York (Google News fallback) ───
+    "usao_ndny_gnews": {
+        "url": "https://news.google.com/rss/search?q=%22Northern+District+of+New+York%22+OR+%22USAO+NDNY%22+OR+site:justice.gov/usao-ndny+albany+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "label": "US Attorney NDNY",
+        "filter": "albany",
+        "force_label": True,
+        "reliability": 0.95,
+        "priority": 5,
+    },
 }
 
 
@@ -3555,6 +3564,7 @@ SOURCE_METHODOLOGY = {
     ],
     "source_types": {
         "official": "Highest trust structured/open-data/government records and agency updates.",
+        "federal": "US Department of Justice / US Attorney press releases and federal prosecution updates.",
         "open_data": "City of Albany structured Socrata/open-data records (highest trust for mapped precision).",
         "scanner": "Early signal only; not an official incident record until corroborated.",
         "media": "Corroboration and enrichment from local reporting.",
