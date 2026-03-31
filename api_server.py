@@ -2733,6 +2733,244 @@ async def _refresh_situation_ai_cache(crime_data: list[dict], patterns: dict[str
 
 
 # =============================================================================
+# NYSP TROOP G BLOTTER PDF SCRAPER
+# https://publicapps.troopers.ny.gov/Media_Reports/
+# =============================================================================
+
+_NYSP_BLOTTER_BASE = "https://publicapps.troopers.ny.gov/media/TroopG/"
+_NYSP_DAY_ABBREVS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+_NYSP_ZONES = [1, 2, 3, 4]
+
+# Albany County municipalities for matching NYSP blotter locations
+_NYSP_ALBANY_LOCALITIES = {
+    "albany", "cohoes", "watervliet", "colonie", "bethlehem", "guilderland",
+    "coeymans", "new scotland", "berne", "knox", "rensselaerville", "westerlo",
+    "green island", "menands", "delmar", "latham", "loudonville", "ravena",
+    "voorheesville", "altamont", "slingerlands", "selkirk", "elsmere",
+    "glenmont", "clarksville", "feura bush", "medusa", "westerlo",
+    "east berne", "newtonville", "westmere", "mckownville",
+}
+
+
+def _nysp_blotter_urls_for_window(days_back: int = 2) -> list[str]:
+    """Build PDF URLs for the last `days_back` days, all zones."""
+    urls = []
+    now = datetime.now(timezone.utc)
+    for d in range(days_back):
+        dt = now - timedelta(days=d)
+        day_name = _NYSP_DAY_ABBREVS[dt.weekday()]
+        for z in _NYSP_ZONES:
+            urls.append(f"{_NYSP_BLOTTER_BASE}Media{day_name}{z}.pdf")
+    return urls
+
+
+def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
+    """Extract incidents from a NYSP Public Information Report PDF."""
+    try:
+        import pdfplumber
+    except ImportError:
+        logger.warning("pdfplumber not installed — skipping NYSP blotter PDF parsing")
+        return []
+
+    items: list[dict] = []
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            full_text = "\n".join(p.extract_text() or "" for p in pdf.pages)
+    except Exception as e:
+        logger.warning("nysp_pdf_parse_error url=%s error=%s", pdf_url, e)
+        return []
+
+    if not full_text.strip():
+        return []
+
+    # Extract header info (troop, zone, date range)
+    troop_zone = ""
+    date_range = ""
+    m_tz = re.search(r"(Troop\s*\w+)[,\s]+Zone\s*(\d+)", full_text, re.IGNORECASE)
+    if m_tz:
+        troop_zone = f"{m_tz.group(1)}, Zone {m_tz.group(2)}"
+    m_dr = re.search(
+        r"(\d{1,2}/\d{1,2}/\d{2,4})\s+\d{1,2}:\d{2}\s*(?:AM|PM)?\s*[-–]\s*(\d{1,2}/\d{1,2}/\d{2,4})\s+\d{1,2}:\d{2}\s*(?:AM|PM)?",
+        full_text,
+        re.IGNORECASE,
+    )
+    if m_dr:
+        date_range = m_dr.group(0).strip()
+
+    # Split into individual incident blocks
+    # NYSP blotters typically separate incidents with patterns like
+    # "Arrest -", "Investigation -", "Accident -", or numbered entries
+    # They also commonly have structured fields: Location, Town, Date, etc.
+    incident_blocks = re.split(
+        r"(?=(?:Arrest|Investigation|Accident|Motor Vehicle|MV Accident|Property|"
+        r"Larceny|Burglary|Criminal|DWI|DUI|Drug|Assault|Robbery|Domestic|"
+        r"Missing|Death|Suspicious|Disturbance|Trespass|Harassment|Menacing|"
+        r"Weapons|Sex Offense|Forgery|Fraud|Identity Theft|Reckless|DWAI)\s*[-–:])",
+        full_text,
+        flags=re.IGNORECASE,
+    )
+
+    for block in incident_blocks:
+        block = block.strip()
+        if len(block) < 30:
+            continue
+
+        # Extract structured fields
+        title_match = re.match(
+            r"(Arrest|Investigation|Accident|Motor Vehicle|MV Accident|DWI|DUI|"
+            r"Drug|Assault|Robbery|Domestic|Larceny|Burglary|Criminal|Missing|"
+            r"Death|Suspicious|Disturbance|Trespass|Harassment|Menacing|Weapons|"
+            r"Sex Offense|Forgery|Fraud|Identity Theft|Reckless|DWAI|Property)"
+            r"\s*[-–:]\s*(.*)",
+            block,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not title_match:
+            continue
+
+        incident_type = title_match.group(1).strip()
+        body = title_match.group(2).strip()
+
+        # Extract location from body
+        loc_match = re.search(
+            r"(?:Location|Town|City|Village|Hamlet|Municipality)[:\s]+([^\n,;]+)",
+            body,
+            re.IGNORECASE,
+        )
+        location = loc_match.group(1).strip() if loc_match else ""
+
+        # Extract date/time from body
+        dt_match = re.search(
+            r"(?:Date|Date/Time|Occurred|On)\s*[:\s]+\s*(\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)",
+            body,
+            re.IGNORECASE,
+        )
+        incident_dt = None
+        if dt_match:
+            raw_dt = dt_match.group(1).strip()
+            for fmt in ("%m/%d/%Y %I:%M %p", "%m/%d/%Y %H:%M", "%m/%d/%y %I:%M %p", "%m/%d/%y %H:%M"):
+                try:
+                    incident_dt = datetime.strptime(raw_dt, fmt).replace(tzinfo=timezone.utc)
+                    break
+                except ValueError:
+                    continue
+
+        # If no explicit date field, use the report date range start
+        if not incident_dt and m_dr:
+            try:
+                for fmt in ("%m/%d/%Y", "%m/%d/%y"):
+                    try:
+                        incident_dt = datetime.strptime(m_dr.group(1), fmt).replace(tzinfo=timezone.utc)
+                        break
+                    except ValueError:
+                        continue
+            except Exception:
+                pass
+        if not incident_dt:
+            incident_dt = datetime.now(timezone.utc)
+
+        # Build title
+        first_line = body.split("\n")[0].strip()[:120]
+        title = f"NYSP {incident_type}: {first_line}" if first_line else f"NYSP {incident_type}"
+
+        # Check if this is Albany County related
+        check_text = (location + " " + body).lower()
+        is_albany = any(loc in check_text for loc in _NYSP_ALBANY_LOCALITIES)
+        # Also check broader Albany County markers
+        if not is_albany:
+            is_albany = "albany" in check_text or "troop g" in check_text
+
+        # Build description from body (first ~300 chars, cleaned)
+        desc_lines = [ln.strip() for ln in body.split("\n") if ln.strip()]
+        description = " ".join(desc_lines)[:400]
+
+        # Determine severity
+        sev = "medium"
+        sev_high = ("assault", "robbery", "weapons", "sex offense", "menacing", "death", "shooting", "stabbing")
+        sev_critical = ("homicide", "murder", "fatal")
+        type_lower = incident_type.lower()
+        if any(s in type_lower or s in description.lower() for s in sev_critical):
+            sev = "critical"
+        elif any(s in type_lower for s in sev_high):
+            sev = "high"
+        elif type_lower in ("dwi", "dui", "dwai", "accident", "motor vehicle", "mv accident"):
+            sev = "low"
+
+        # Determine crime category for map
+        crime_type = "other"
+        if type_lower in ("assault", "robbery", "weapons", "sex offense", "menacing", "domestic", "harassment", "death"):
+            crime_type = "violent"
+        elif type_lower in ("larceny", "burglary", "property", "forgery", "fraud", "identity theft", "trespass", "criminal"):
+            crime_type = "property"
+
+        # Determine municipality
+        municipality = "Albany County"
+        for loc_name in _NYSP_ALBANY_LOCALITIES:
+            if loc_name in check_text:
+                municipality = loc_name.title()
+                break
+
+        item = {
+            "title": title,
+            "description": description,
+            "link": pdf_url,
+            "pubDate": format_datetime(incident_dt),
+            "source": "NYSP Troop G Blotter",
+            "source_type": "official",
+            "source_name": "NYSP Troop G Blotter",
+            "source_priority": 5,  # Higher than regular official (4) — direct blotter
+            "_feed_reliability": 1.0,
+            "verification_level": "official",
+            "verification_label": "Official",
+            "severity": sev,
+            "crime_type": crime_type,
+            "municipality": municipality,
+            "matched_location": location or municipality,
+            "_nysp_troop_zone": troop_zone,
+            "_nysp_date_range": date_range,
+            "_nysp_pdf_url": pdf_url,
+        }
+        items.append(item)
+
+    logger.info("nysp_blotter_parsed url=%s incidents=%d", pdf_url, len(items))
+    return items
+
+
+async def fetch_nysp_blotter_pdfs() -> list[dict]:
+    """Fetch and parse NYSP Troop G blotter PDFs for the last 2 days."""
+    all_items: list[dict] = []
+    urls = _nysp_blotter_urls_for_window(days_back=2)
+    logger.info("nysp_blotter_fetching urls=%d", len(urls))
+
+    async def _fetch_one(url: str) -> list[dict]:
+        try:
+            resp = await fetch_with_retry(
+                http_client,
+                url,
+                timeout=20.0,
+                retries=1,
+            )
+            if resp and resp.status_code == 200:
+                ct = (resp.headers.get("content-type") or "").lower()
+                if "pdf" in ct or url.endswith(".pdf"):
+                    return _parse_nysp_blotter_pdf(resp.content, url)
+            elif resp and resp.status_code == 404:
+                pass  # Expected — not all day/zone combos exist
+            else:
+                logger.debug("nysp_blotter_non200 url=%s status=%s", url, resp.status_code if resp else "none")
+        except Exception as e:
+            logger.debug("nysp_blotter_fetch_error url=%s error=%s", url, e)
+        return []
+
+    results = await asyncio.gather(*[_fetch_one(u) for u in urls])
+    for batch in results:
+        all_items.extend(batch)
+
+    logger.info("nysp_blotter_total_items=%d", len(all_items))
+    return all_items
+
+
+# =============================================================================
 # OFFICIAL SOURCES FETCHER
 # =============================================================================
 async def fetch_official_sources() -> list:
@@ -2864,6 +3102,7 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
         # fetch_nitter_official_x_rss_posts(),
         fetch_scanner_directory_items(),
         fetch_tier1_sources(limit_per_source=80, strict_live_sources=strict_live_sources),
+        fetch_nysp_blotter_pdfs(),
         return_exceptions=True,
     )
     for batch in _extra_batches:
@@ -3738,6 +3977,21 @@ async def incidents_debug():
         "diagnostics": _LAST_INCIDENT_PIPELINE.get("diagnostics", {}),
         "debug": _LAST_INCIDENT_PIPELINE.get("debug_lists", {}),
     }
+
+
+@app.get("/api/nysp-blotter/debug")
+async def nysp_blotter_debug():
+    """Debug: fetch NYSP Troop G blotter PDFs and return parsed incidents."""
+    try:
+        items = await fetch_nysp_blotter_pdfs()
+        return {
+            "status": "ok",
+            "count": len(items),
+            "urls_tried": _nysp_blotter_urls_for_window(days_back=2),
+            "items": items[:50],  # Cap at 50 for readability
+        }
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 
 @app.get("/api/trends")
