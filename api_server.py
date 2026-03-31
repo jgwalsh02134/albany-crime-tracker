@@ -3052,6 +3052,7 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
 @app.get("/api/config")
 async def get_public_config():
     """Return non-secret public configuration needed by the frontend."""
+    print("SERVER MAP KEY PREFIX:", (settings.google_maps_api_key or "")[:12])
     return {
         "google_maps_api_key": settings.google_maps_api_key or "",
     }

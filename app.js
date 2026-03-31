@@ -927,6 +927,7 @@
   function _loadGoogleMaps(callback) {
     if (window.google && window.google.maps) { callback(); return; }
     fetch(API + "/api/config").then(ok).then(function (cfg) {
+      console.log("BROWSER MAP KEY PREFIX:", cfg && cfg.google_maps_api_key ? cfg.google_maps_api_key.slice(0, 12) : "(empty)");
       var key = cfg && cfg.google_maps_api_key;
       if (!key) { console.warn("No Google Maps API key"); return; }
       var s = document.createElement("script");
