@@ -1584,6 +1584,73 @@ a:hover { text-decoration: underline; }
 .sc-pill--fire { background: var(--red-dim); color: var(--violent); }
 .sc-pill--ems { background: var(--amber-dim); color: var(--property); }
 .sc-pill--ai { background: color-mix(in srgb, var(--accent) 15%, var(--surface-2)); color: var(--accent); font-style: italic; }
+.sc-pill--whisper { background: color-mix(in srgb, #4caf50 15%, var(--surface-2)); color: #4caf50; }
+
+/* Whisper transcription display */
+.sc-card-transcript {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--accent);
+}
+.sc-card-summary--secondary {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+/* Alert banners for critical/high keyword matches */
+.sc-alert-banner {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 4px 10px;
+  margin: -10px -12px 8px -12px;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sc-alert-banner--critical {
+  background: #E53935;
+  color: #fff;
+}
+.sc-alert-banner--high {
+  background: #FB8C00;
+  color: #fff;
+}
+.sc-alert-keyword {
+  display: inline-block;
+  background: rgba(255,255,255,0.25);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  margin-left: 2px;
+}
+
+/* Alert card borders */
+.sc-card--alert-critical {
+  border: 2px solid #E53935 !important;
+  box-shadow: 0 0 12px rgba(229, 57, 53, 0.2) !important;
+}
+.sc-card--alert-high {
+  border: 2px solid #FB8C00 !important;
+  box-shadow: 0 0 12px rgba(251, 140, 0, 0.15) !important;
+}
+
+/* Nav alert flash */
+.nav-btn--alert {
+  animation: navAlertPulse 0.8s ease-in-out 4;
+}
+@keyframes navAlertPulse {
+  0%, 100% { color: var(--text-3); }
+  50% { color: #E53935; }
+}
 
 .sc-card-expand {
   margin-top: 6px;

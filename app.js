@@ -2830,6 +2830,7 @@
     lastScannerCallsRef = calls.slice();
     renderScannerCalls(calls);
     requestScannerAiSummaries(calls);
+    requestWhisperTranscription(calls);
   }
 
   function requestScannerAiSummaries(calls) {
@@ -2871,6 +2872,78 @@
   function getAiSummaryForCall(call) {
     var id = call.id || call._id || String(call.talkgroup_num || "") + "_" + String(call.time || "");
     return _scannerAiCache[id] || null;
+  }
+
+  // ── WHISPER TRANSCRIPTION ─────────────────────────────────────
+
+  var _whisperCache = {};     // call id -> { text, keywords, alert_level }
+  var _whisperPending = false;
+
+  function requestWhisperTranscription(calls) {
+    if (_whisperPending) return;
+    var candidates = [];
+    for (var i = 0; i < Math.min(calls.length, 10); i++) {
+      var c = calls[i];
+      var audioUrl = c.url || c.audio_url || "";
+      if (!audioUrl) continue;
+      var id = c.id || c._id || audioUrl;
+      if (_whisperCache[id]) continue;
+
+      var dept = resolveScannerDept(c);
+      var dur = c.duration || c.len || 0;
+
+      // Auto-transcribe: high-priority police dispatch calls >= 5s
+      if (dept.priority === "high" && dept.cat === "police" && dur >= 5) {
+        candidates.push(c);
+      }
+    }
+    if (!candidates.length) return;
+    _whisperPending = true;
+
+    fetch(API + "/api/scanner/transcribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ calls: candidates.slice(0, 3) })
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        _whisperPending = false;
+        if (!data || data.status !== "ok" || !data.transcriptions) return;
+        var hasAlerts = false;
+        data.transcriptions.forEach(function (t, idx) {
+          if (t.status !== "ok") return;
+          var c = candidates[idx];
+          if (!c) return;
+          var id = c.id || c._id || (c.url || c.audio_url || "");
+          _whisperCache[id] = {
+            text: t.text || "",
+            keywords: t.keywords || [],
+            alert_level: t.alert_level || "none"
+          };
+          if (t.alert_level === "critical" || t.alert_level === "high") hasAlerts = true;
+        });
+        // Re-render scanner cards to show transcriptions
+        if (lastScannerCallsRef.length) renderScannerCalls(lastScannerCallsRef);
+        // Flash the scanner nav if critical alerts detected
+        if (hasAlerts) _flashScannerAlert();
+      })
+      .catch(function () { _whisperPending = false; });
+  }
+
+  function getWhisperForCall(call) {
+    var id = call.id || call._id || (call.url || call.audio_url || "");
+    return _whisperCache[id] || null;
+  }
+
+  function _flashScannerAlert() {
+    var navBtn = document.querySelector('.nav-btn[onclick*="scanner"], .nav-btn[data-view="scanner"]');
+    if (!navBtn) {
+      // Try desktop tabs
+      navBtn = document.querySelector('.desktop-tab[onclick*="scanner"], .desktop-tab[data-view="scanner"]');
+    }
+    if (!navBtn) return;
+    navBtn.classList.add("nav-btn--alert");
+    setTimeout(function () { navBtn.classList.remove("nav-btn--alert"); }, 8000);
   }
 
   // Keywords that make ANY scanner call worthy of the Live feed regardless of TG priority
@@ -2992,7 +3065,24 @@
       var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
       var isSelected = idx === _scannerSelectedIdx;
 
-      html += '<div class="sc-card sc-card--' + esc(cat) + (isSelected ? ' sc-card--active' : '') + '" data-sc-idx="' + idx + '">';
+      // Check for Whisper transcription
+      var whisper = getWhisperForCall(call);
+      var alertClass = "";
+      if (whisper && whisper.alert_level === "critical") alertClass = " sc-card--alert-critical";
+      else if (whisper && whisper.alert_level === "high") alertClass = " sc-card--alert-high";
+
+      html += '<div class="sc-card sc-card--' + esc(cat) + (isSelected ? ' sc-card--active' : '') + alertClass + '" data-sc-idx="' + idx + '">';
+
+      // Alert banner if critical/high keywords detected
+      if (whisper && (whisper.alert_level === "critical" || whisper.alert_level === "high")) {
+        html += '<div class="sc-alert-banner sc-alert-banner--' + esc(whisper.alert_level) + '">';
+        html += '<span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:4px;">' +
+          (whisper.alert_level === "critical" ? "warning" : "priority_high") + '</span>';
+        html += whisper.keywords.slice(0, 3).map(function (kw) {
+          return '<span class="sc-alert-keyword">' + esc(kw) + '</span>';
+        }).join(" ");
+        html += '</div>';
+      }
 
       // Row 1: agency + play + time
       html += '<div class="sc-card-top">';
@@ -3007,15 +3097,26 @@
       html += '<span class="sc-card-time">' + esc(ta || "\u2014") + '</span>';
       html += '</div>';
 
-      // Row 2: summary
-      html += '<div class="sc-card-summary">' + esc(summary) + '</div>';
+      // Row 2: Whisper transcription (if available) or AI summary or template summary
+      if (whisper && whisper.text) {
+        html += '<div class="sc-card-transcript">';
+        html += '<span class="material-icons" style="font-size:13px;color:var(--text-3);vertical-align:middle;margin-right:4px;">mic</span>';
+        html += esc(whisper.text);
+        html += '</div>';
+        if (summary && summary !== (catLabel + " activity")) {
+          html += '<div class="sc-card-summary sc-card-summary--secondary">' + esc(summary) + '</div>';
+        }
+      } else {
+        html += '<div class="sc-card-summary">' + esc(summary) + '</div>';
+      }
 
-      // Row 3: meta pills — discipline + municipality + duration (no confidence)
+      // Row 3: meta pills
       html += '<div class="sc-card-pills">';
       html += '<span class="sc-pill sc-pill--' + esc(cat) + '">' + esc(catLabel) + '</span>';
       if (dept.location) html += '<span class="sc-pill">' + esc(dept.location) + '</span>';
       if (len > 0) html += '<span class="sc-pill">' + len.toFixed(0) + 's</span>';
-      if (aiSum) html += '<span class="sc-pill sc-pill--ai">AI summary</span>';
+      if (whisper) html += '<span class="sc-pill sc-pill--whisper">Transcribed</span>';
+      else if (aiSum) html += '<span class="sc-pill sc-pill--ai">AI summary</span>';
       html += '</div>';
 
       // Expandable details

@@ -4413,6 +4413,195 @@ async def scanner_summarize(request: Request):
         return {"status": "error", "message": str(exc)}
 
 
+# ── Whisper transcription for scanner audio ──────────────────────────────
+
+# Critical keywords to flag in transcriptions (police codes, emergency terms)
+SCANNER_ALERT_KEYWORDS = [
+    # Violent
+    "shooting", "shot", "shots fired", "gunshot", "gun", "firearm", "weapon",
+    "stabbing", "stabbed", "knife", "assault", "fight", "domestic",
+    # Pursuit / tactical
+    "pursuit", "chase", "fleeing", "foot chase", "vehicle pursuit",
+    "standoff", "barricade", "swat", "hostage", "armed",
+    # Critical
+    "officer down", "officer involved", "ois", "10-13", "signal 99",
+    "robbery", "robbery in progress", "burglary in progress",
+    "missing", "abduction", "amber alert",
+    "homicide", "doa", "deceased", "fatality",
+    # Fire / EMS critical
+    "structure fire", "working fire", "entrapment", "rescue",
+    "cardiac arrest", "unresponsive", "overdose", "od",
+    "mass casualty", "mci", "hazmat",
+    # General urgency
+    "emergency", "urgent", "expedite", "code 3", "priority",
+]
+
+# In-memory transcription cache: audio_url -> {text, keywords, alert_level, timestamp}
+_whisper_cache: dict[str, dict] = {}
+_whisper_lock = asyncio.Lock()
+
+# Rate limiting: max concurrent transcriptions
+_whisper_semaphore = asyncio.Semaphore(3)
+
+
+def _scan_for_keywords(text: str) -> list[str]:
+    """Find critical keywords in transcription text."""
+    lower = text.lower()
+    found = []
+    for kw in SCANNER_ALERT_KEYWORDS:
+        if kw in lower:
+            found.append(kw)
+    return found
+
+
+def _alert_level(keywords: list[str]) -> str:
+    """Determine alert level from matched keywords."""
+    if not keywords:
+        return "none"
+    critical = {
+        "shooting", "shots fired", "shot", "officer down", "officer involved",
+        "ois", "10-13", "signal 99", "homicide", "hostage", "armed",
+        "mass casualty", "mci", "amber alert", "abduction",
+    }
+    high = {
+        "gun", "firearm", "weapon", "stabbing", "stabbed", "pursuit",
+        "chase", "standoff", "barricade", "swat", "robbery",
+        "structure fire", "working fire", "entrapment", "cardiac arrest",
+        "overdose", "unresponsive",
+    }
+    for kw in keywords:
+        if kw in critical:
+            return "critical"
+    for kw in keywords:
+        if kw in high:
+            return "high"
+    return "medium"
+
+
+@app.post("/api/scanner/transcribe")
+async def scanner_transcribe(request: Request):
+    """Transcribe scanner audio using OpenAI Whisper and flag critical keywords."""
+    openai_key = settings.openai_api_key
+    if not openai_key:
+        return {"status": "error", "message": "OPENAI_API_KEY not configured"}
+
+    try:
+        body = await request.json()
+    except Exception:
+        return {"status": "error", "message": "invalid request body"}
+
+    calls = body.get("calls") if isinstance(body, dict) else None
+    if not isinstance(calls, list) or not calls:
+        return {"status": "error", "message": "no calls provided"}
+
+    # Process up to 5 calls per request
+    batch = calls[:5]
+    results = []
+
+    for c in batch:
+        audio_url = c.get("audio_url") or c.get("url") or ""
+        call_id = c.get("id") or audio_url
+
+        if not audio_url:
+            results.append({"id": call_id, "status": "skip", "reason": "no_audio_url"})
+            continue
+
+        # Check cache first
+        if audio_url in _whisper_cache:
+            cached = _whisper_cache[audio_url]
+            results.append({
+                "id": call_id,
+                "status": "ok",
+                "source": "cache",
+                "text": cached["text"],
+                "keywords": cached["keywords"],
+                "alert_level": cached["alert_level"],
+            })
+            continue
+
+        # Transcribe with rate limiting
+        async with _whisper_semaphore:
+            try:
+                # Download audio file
+                audio_resp = await http_client.get(audio_url, timeout=10.0)
+                if audio_resp.status_code != 200:
+                    results.append({"id": call_id, "status": "error", "reason": "audio_download_failed"})
+                    continue
+
+                audio_bytes = audio_resp.content
+                if len(audio_bytes) > 25 * 1024 * 1024:  # 25MB Whisper limit
+                    results.append({"id": call_id, "status": "error", "reason": "file_too_large"})
+                    continue
+
+                # Determine file extension from URL
+                ext = ".m4a"
+                if ".mp3" in audio_url:
+                    ext = ".mp3"
+                elif ".wav" in audio_url:
+                    ext = ".wav"
+
+                # Send to Whisper API
+                import io
+                files = {
+                    "file": (f"scanner_call{ext}", io.BytesIO(audio_bytes), "audio/mp4"),
+                    "model": (None, "whisper-1"),
+                    "language": (None, "en"),
+                    "prompt": (None, "Albany County police fire EMS dispatch radio. 10-codes, signal codes, street names, locations in Albany NY area."),
+                }
+                whisper_resp = await http_client.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {openai_key}"},
+                    files=files,
+                    timeout=30.0,
+                )
+
+                if whisper_resp.status_code != 200:
+                    results.append({
+                        "id": call_id,
+                        "status": "error",
+                        "reason": f"whisper_http_{whisper_resp.status_code}",
+                    })
+                    continue
+
+                transcript_data = whisper_resp.json()
+                text = transcript_data.get("text", "").strip()
+
+                # Scan for critical keywords
+                keywords = _scan_for_keywords(text)
+                level = _alert_level(keywords)
+
+                # Cache the result
+                _whisper_cache[audio_url] = {
+                    "text": text,
+                    "keywords": keywords,
+                    "alert_level": level,
+                    "timestamp": time.time(),
+                }
+
+                # Evict old cache entries (keep last 200)
+                if len(_whisper_cache) > 200:
+                    oldest_keys = sorted(
+                        _whisper_cache, key=lambda k: _whisper_cache[k]["timestamp"]
+                    )[:50]
+                    for k in oldest_keys:
+                        _whisper_cache.pop(k, None)
+
+                results.append({
+                    "id": call_id,
+                    "status": "ok",
+                    "source": "whisper",
+                    "text": text,
+                    "keywords": keywords,
+                    "alert_level": level,
+                })
+
+            except Exception as exc:
+                logger.warning("whisper_transcribe_error: %s", exc)
+                results.append({"id": call_id, "status": "error", "reason": str(exc)})
+
+    return {"status": "ok", "transcriptions": results}
+
+
 @app.get("/api/scanner/talkgroups")
 async def get_scanner_talkgroups():
     """Enriched P25 talkgroup metadata merged with le_directory.json agencies."""
