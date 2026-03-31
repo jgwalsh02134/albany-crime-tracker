@@ -26,34 +26,78 @@
 </head>
 <body>
 
-  <!-- ===== HEADER ===== -->
+  <!-- ===== HEADER (two-tier sticky) ===== -->
   <header class="header">
-    <div class="header-left">
-      <img class="logo-icon" src="ACT-SHIELD.svg" alt="Albany County Crime Tracker logo" width="36" height="36">
-      <div class="header-title">
-        <span class="header-name">Albany County</span>
-        <span class="header-sub">Crime Tracker</span>
+    <div class="header-row">
+      <div class="header-left">
+        <img class="logo-icon" src="ACT-SHIELD.svg" alt="Albany County Crime Tracker logo" width="32" height="32">
+        <div class="header-title">
+          <span class="header-name">Albany County</span>
+          <span class="header-sub">Crime Tracker</span>
+        </div>
+        <div class="live-indicator" id="liveIndicator">
+          <span class="live-dot" id="liveDot"></span>
+          <span class="live-text" id="topbarStatus">Live</span>
+        </div>
       </div>
-    </div>
-    <div class="header-center">
-      <span class="header-date" id="headerDate"></span>
-      <span class="header-sep">|</span>
-      <span class="header-time" id="headerTime"></span>
-      <svg class="header-moon" id="headerMoon" width="14" height="14" viewBox="0 0 100 100" aria-hidden="true"><title id="moonTitle">Moon phase</title><circle cx="50" cy="50" r="48" fill="#c8c8c8" stroke="var(--text-3)" stroke-width="2"/><path id="moonShadow" d="" fill="#1a1a2e"/></svg>
-    </div>
-    <div class="header-right">
-      <div class="live-indicator" id="liveIndicator">
-        <span class="live-dot" id="liveDot"></span>
-        <span class="live-text" id="topbarStatus">Live</span>
+      <div class="header-center">
+        <span class="header-date" id="headerDate"></span>
+        <span class="header-sep">|</span>
+        <span class="header-time" id="headerTime"></span>
+        <svg class="header-moon" id="headerMoon" width="14" height="14" viewBox="0 0 100 100" aria-hidden="true"><title id="moonTitle">Moon phase</title><circle cx="50" cy="50" r="48" fill="#c8c8c8" stroke="var(--text-3)" stroke-width="2"/><path id="moonShadow" d="" fill="#1a1a2e"/></svg>
       </div>
-      <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle light/dark mode">
-        <span class="material-icons">dark_mode</span>
-      </button>
-      <button class="icon-btn" id="menuToggle" title="Open menu" aria-label="Open menu" aria-expanded="false" aria-controls="overflowMenu">
-        <span class="material-icons">menu</span>
-      </button>
+      <div class="header-right">
+        <button class="icon-btn" id="filterToggle" title="Filter feed" aria-label="Filter incidents">
+          <span class="material-icons">tune</span>
+        </button>
+        <button class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle light/dark mode">
+          <span class="material-icons">dark_mode</span>
+        </button>
+        <button class="icon-btn" id="menuToggle" title="Open menu" aria-label="Open menu" aria-expanded="false" aria-controls="overflowMenu">
+          <span class="material-icons">menu</span>
+        </button>
+      </div>
     </div>
   </header>
+
+  <!-- ===== FILTER BOTTOM SHEET ===== -->
+  <div class="filter-sheet-backdrop" id="filterSheetBackdrop"></div>
+  <div class="filter-sheet" id="filterSheet" aria-label="Filter incidents">
+    <div class="filter-sheet-handle"></div>
+    <h3 class="filter-sheet-title">Filter Incidents</h3>
+    <div class="filter-sheet-section">
+      <h4 class="filter-sheet-label">Severity</h4>
+      <div class="filter-sheet-options" id="filterSeverityOptions">
+        <label class="filter-sheet-check"><input type="checkbox" value="critical" checked> Critical</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="high" checked> High</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="medium" checked> Medium</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="low" checked> Low</label>
+      </div>
+    </div>
+    <div class="filter-sheet-section">
+      <h4 class="filter-sheet-label">Municipality</h4>
+      <div class="filter-sheet-options" id="filterMuniOptions">
+        <label class="filter-sheet-check"><input type="checkbox" value="Albany" checked> Albany</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Colonie" checked> Colonie</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Bethlehem" checked> Bethlehem</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Guilderland" checked> Guilderland</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Cohoes" checked> Cohoes</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Watervliet" checked> Watervliet</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Green Island" checked> Green Island</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Menands" checked> Menands</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Coeymans" checked> Coeymans</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="New Scotland" checked> New Scotland</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Berne" checked> Berne</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Knox" checked> Knox</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Westerlo" checked> Westerlo</label>
+        <label class="filter-sheet-check"><input type="checkbox" value="Rensselaerville" checked> Rensselaerville</label>
+      </div>
+    </div>
+    <div class="filter-sheet-actions">
+      <button type="button" class="filter-sheet-btn filter-sheet-btn--reset" id="filterReset">Reset All</button>
+      <button type="button" class="filter-sheet-btn filter-sheet-btn--apply" id="filterApply">Apply</button>
+    </div>
+  </div>
 
   <div class="overflow-menu" id="overflowMenu" hidden>
     <button type="button" class="overflow-link" data-overflow-target="trends">View trends</button>
@@ -77,15 +121,27 @@
     <!-- === HOME VIEW (default) === -->
     <section class="view active" id="viewFeed">
 
-      <div class="home-mode-bar" role="tablist" aria-label="Home mode">
-        <button class="home-mode-btn active" data-home-mode="live" role="tab" aria-selected="true">Live</button>
-        <button class="home-mode-btn" data-home-mode="news" role="tab" aria-selected="false">News</button>
+      <!-- Sticky sub-header: Live|News tabs + quick-filter chips -->
+      <div class="home-sub-header" id="homeSubHeader">
+        <div class="home-mode-bar" role="tablist" aria-label="Home mode">
+          <button class="home-mode-btn active" data-home-mode="live" role="tab" aria-selected="true">Live</button>
+          <button class="home-mode-btn" data-home-mode="news" role="tab" aria-selected="false">News</button>
+        </div>
+        <div class="filter-chips" id="filterChips" role="list" aria-label="Quick filters">
+          <button class="filter-chip active" data-filter="all" role="listitem">All</button>
+          <button class="filter-chip" data-filter="high" role="listitem">High Severity</button>
+          <button class="filter-chip" data-filter="albany" role="listitem">Albany</button>
+          <button class="filter-chip" data-filter="colonie" role="listitem">Colonie</button>
+          <button class="filter-chip" data-filter="bethlehem" role="listitem">Bethlehem</button>
+          <button class="filter-chip" data-filter="guilderland" role="listitem">Guilderland</button>
+          <button class="filter-chip" data-filter="cohoes" role="listitem">Cohoes</button>
+          <button class="filter-chip" data-filter="watervliet" role="listitem">Watervliet</button>
+        </div>
       </div>
 
       <!-- ── LIVE FEED (unified chronological) ── -->
       <div class="home-mode-panel active" id="homePanelLive">
         <div class="home-scroll">
-          <div class="feed-freshness" id="feedFreshness" aria-live="polite"></div>
           <div class="feed-list" id="incidentListUnified">
             <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
             <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>

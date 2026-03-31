@@ -437,6 +437,9 @@
     initTheme();
     initNav();
     initHomeModeTabs();
+    initFilterSheet();
+    initFilterChips();
+    initPullToRefresh();
     initDirSearch();
     initDirFilters();
     loadScannerAliases();
@@ -689,6 +692,98 @@
   // ── HOME LIVE / NEWS MODE TABS ────────────────────────────────
   var _homeMode = "live";
   var _newsLoaded = false;
+
+  // ── FILTER SHEET ───────────────────────────────────────────────
+  var _filterSheetOpen = false;
+  function openFilterSheet() {
+    var sheet = document.getElementById("filterSheet");
+    var backdrop = document.getElementById("filterSheetBackdrop");
+    if (sheet) sheet.classList.add("open");
+    if (backdrop) backdrop.classList.add("open");
+    _filterSheetOpen = true;
+  }
+  function closeFilterSheet() {
+    var sheet = document.getElementById("filterSheet");
+    var backdrop = document.getElementById("filterSheetBackdrop");
+    if (sheet) sheet.classList.remove("open");
+    if (backdrop) backdrop.classList.remove("open");
+    _filterSheetOpen = false;
+  }
+  function initFilterSheet() {
+    var btn = document.getElementById("filterToggle");
+    var backdrop = document.getElementById("filterSheetBackdrop");
+    var applyBtn = document.getElementById("filterApply");
+    var resetBtn = document.getElementById("filterReset");
+    if (btn) btn.addEventListener("click", function () {
+      _filterSheetOpen ? closeFilterSheet() : openFilterSheet();
+    });
+    if (backdrop) backdrop.addEventListener("click", closeFilterSheet);
+    if (applyBtn) applyBtn.addEventListener("click", function () {
+      closeFilterSheet();
+      renderUnifiedFeed(allIncidentData);
+    });
+    if (resetBtn) resetBtn.addEventListener("click", function () {
+      document.querySelectorAll("#filterSheet input[type=checkbox]").forEach(function (cb) { cb.checked = true; });
+    });
+  }
+
+  // Get active filter state from the sheet
+  function getSheetFilters() {
+    var sevs = [];
+    document.querySelectorAll("#filterSeverityOptions input:checked").forEach(function (cb) {
+      sevs.push(cb.value);
+    });
+    var munis = [];
+    document.querySelectorAll("#filterMuniOptions input:checked").forEach(function (cb) {
+      munis.push(cb.value.toLowerCase());
+    });
+    return { severities: sevs, municipalities: munis };
+  }
+
+  // ── QUICK FILTER CHIPS ────────────────────────────────────────
+  var _activeChipFilter = "all";
+  function initFilterChips() {
+    var chips = document.querySelectorAll(".filter-chip[data-filter]");
+    chips.forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        _activeChipFilter = chip.getAttribute("data-filter") || "all";
+        chips.forEach(function (c) { c.classList.toggle("active", c === chip); });
+        renderUnifiedFeed(allIncidentData);
+      });
+    });
+  }
+
+  // ── PULL-TO-REFRESH ───────────────────────────────────────────
+  function initPullToRefresh() {
+    var scrollEls = document.querySelectorAll(".home-scroll");
+    scrollEls.forEach(function (scrollEl) {
+      var startY = 0;
+      var pulling = false;
+      scrollEl.addEventListener("touchstart", function (e) {
+        if (scrollEl.scrollTop === 0) {
+          startY = e.touches[0].clientY;
+          pulling = true;
+        }
+      }, { passive: true });
+      scrollEl.addEventListener("touchmove", function (e) {
+        if (!pulling) return;
+        var dy = e.touches[0].clientY - startY;
+        if (dy > 80 && scrollEl.scrollTop === 0) {
+          pulling = false;
+          // Visual feedback
+          scrollEl.style.transition = "transform 0.2s";
+          scrollEl.style.transform = "translateY(4px)";
+          setTimeout(function () {
+            scrollEl.style.transform = "";
+            scrollEl.style.transition = "";
+          }, 300);
+          // Refresh data
+          fetchIncidents();
+        }
+      }, { passive: true });
+      scrollEl.addEventListener("touchend", function () { pulling = false; }, { passive: true });
+    });
+  }
 
   function initHomeModeTabs() {
     var btns = document.querySelectorAll("[data-home-mode]");
@@ -1893,11 +1988,16 @@
       }
     }
 
-    // Time freshness
+    // Time freshness + decay
     var ageH = itemAgeHours(item);
     var timeClass = "feed-time";
-    if (ageH !== null && ageH <= 1) timeClass += " feed-time--fresh";
-    else if (ageH !== null && ageH > 12) timeClass += " feed-time--stale";
+    var timeDot = "";
+    if (ageH !== null && ageH <= 1) {
+      timeClass += " feed-time--fresh";
+      timeDot = '<span class="feed-time-dot"></span>';
+    } else if (ageH !== null && ageH > 12) {
+      timeClass += " feed-time--stale";
+    }
 
     // LIVE badge — only for genuinely active, major, fresh events
     var incStatus = ((item.incident && item.incident.status) || "").toLowerCase();
@@ -1909,29 +2009,22 @@
     if (sev === "critical") cls += " feed-item--sev-critical";
     else if (sev === "high") cls += " feed-item--sev-high";
     if (sev === "low" && (verify || "").toLowerCase() === "inferred") cls += " feed-item--quiet";
-
-    // Severity badge
-    var sevBadge = "";
-    if (sev === "critical") sevBadge = '<span class="feed-sev feed-sev--critical">Critical</span>';
-    else if (sev === "high") sevBadge = '<span class="feed-sev feed-sev--high">High</span>';
-    else if (sev === "medium") sevBadge = '<span class="feed-sev feed-sev--medium">Medium</span>';
+    // Time decay: >12h cards get reduced opacity
+    if (ageH !== null && ageH > 12) cls += " feed-item--aged";
 
     var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer" id="feed-card-' + escAttr(item.id || "") + '">';
 
-    // Left indicator strip
+    // Left indicator strip (color-coded by severity via border, not text pill)
     html += '<div class="feed-indicator"><span class="feed-dot ' + esc(type) + '"></span></div>';
 
     html += '<div class="feed-body">';
-    // Top row: title + time
-    html += '<div class="feed-head-row">';
+    // Headline (no time here — moved to meta row)
     html += '<div class="feed-title">' + esc(title) + '</div>';
-    html += '<span class="' + timeClass + '">' + esc(ta || "") + '</span>';
-    html += '</div>';
 
-    // Summary
+    // Summary (truncated to 2 lines via CSS)
     if (summary) html += '<div class="feed-summary-line">' + esc(summary) + '</div>';
 
-    // Meta row: area + source + severity + verification
+    // Meta row: area + source + live badge + time (right-aligned)
     html += '<div class="feed-meta">';
     html += '<span class="feed-meta-pill feed-meta-pill--area"><span class="material-icons feed-meta-icon">location_on</span>' + esc(area) + '</span>';
     html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(sourceName) + '</span>';
@@ -1939,8 +2032,8 @@
     var isFederal = sourceType === "federal" || /\b(usao|us attorney|doj|federal|dept.*justice)\b/i.test(sourceName);
     if (isFederal) html += '<span class="feed-meta-pill feed-meta-pill--federal">Federal</span>';
     if (liveBadge) html += liveBadge;
-    html += '<span class="feed-meta-pill feed-meta-pill--verify feed-meta-pill--verify-' + esc(verify) + '">' + esc(verifyLabel) + '</span>';
-    if (sevBadge) html += sevBadge;
+    // Timestamp at far right
+    html += '<span class="' + timeClass + '">' + timeDot + esc(ta || "") + '</span>';
     html += '</div>';
 
     html += '</div></a>';
@@ -1966,17 +2059,45 @@
   }
 
   function feedItemMatches(item) {
-    if (!feedSearchQuery) return true;
-    var needle = (feedSearchQuery || "").toLowerCase();
-    var blob = [
-      item && item.title,
-      item && item.summary,
-      item && item.description,
-      item && item.source,
-      item && item.municipality,
-      item && item.matched_location
-    ].join(" ").toLowerCase();
-    return blob.indexOf(needle) !== -1;
+    // Text search (legacy — search bar removed but query still used if set programmatically)
+    if (feedSearchQuery) {
+      var needle = (feedSearchQuery || "").toLowerCase();
+      var blob = [
+        item && item.title,
+        item && item.summary,
+        item && item.description,
+        item && item.source,
+        item && item.municipality,
+        item && item.matched_location
+      ].join(" ").toLowerCase();
+      if (blob.indexOf(needle) === -1) return false;
+    }
+
+    // Quick-filter chip
+    if (_activeChipFilter && _activeChipFilter !== "all") {
+      if (_activeChipFilter === "high") {
+        var sev = ((item && item.severity) || "").toLowerCase();
+        if (sev !== "critical" && sev !== "high") return false;
+      } else {
+        // Municipality chip
+        var muni = ((item && (item.municipality || item.matched_location)) || "").toLowerCase();
+        if (muni.indexOf(_activeChipFilter) === -1) return false;
+      }
+    }
+
+    // Sheet filters (severity + municipality checkboxes)
+    var sf = getSheetFilters();
+    if (sf.severities.length < 4) { // not all checked
+      var itemSev = ((item && item.severity) || "low").toLowerCase();
+      if (sf.severities.indexOf(itemSev) === -1) return false;
+    }
+    if (sf.municipalities.length > 0 && sf.municipalities.length < 14) { // not all checked
+      var itemMuni = ((item && (item.municipality || item.matched_location)) || "albany county").toLowerCase();
+      var muniMatch = sf.municipalities.some(function (m) { return itemMuni.indexOf(m) !== -1; });
+      if (!muniMatch) return false;
+    }
+
+    return true;
   }
 
   function feedSortRankSeverity(item) {
