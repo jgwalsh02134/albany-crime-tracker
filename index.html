@@ -37,8 +37,9 @@
     </div>
     <div class="header-center">
       <span class="header-date" id="headerDate"></span>
+      <span class="header-sep">|</span>
       <span class="header-time" id="headerTime"></span>
-      <span class="header-moon" id="headerMoon" title="Moon phase"></span>
+      <svg class="header-moon" id="headerMoon" width="14" height="14" viewBox="0 0 100 100" aria-hidden="true"><title id="moonTitle">Moon phase</title><circle cx="50" cy="50" r="48" fill="#c8c8c8" stroke="var(--text-3)" stroke-width="2"/><path id="moonShadow" d="" fill="#1a1a2e"/></svg>
     </div>
     <div class="header-right">
       <div class="live-indicator" id="liveIndicator">
@@ -85,11 +86,6 @@
       <div class="home-mode-panel active" id="homePanelLive">
         <div class="home-scroll">
           <div class="feed-freshness" id="feedFreshness" aria-live="polite"></div>
-          <div class="feed-search-bar" id="feedSearchBar">
-            <span class="material-icons feed-search-icon">search</span>
-            <input type="search" id="feedSearchInput" class="feed-search-input" placeholder="Search incidents…" aria-label="Search incidents">
-          </div>
-          <div class="feed-search-results" id="feedSearchResults" hidden></div>
           <div class="feed-list" id="incidentListUnified">
             <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
             <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
