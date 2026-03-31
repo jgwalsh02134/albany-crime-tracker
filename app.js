@@ -384,6 +384,8 @@
     }, REFRESH_MS);
 
     setInterval(fetchScannerCalls, SCANNER_REFRESH_MS);
+    setTimeout(fetchStreamAlerts, 5000);
+    setInterval(fetchStreamAlerts, 15000);  // Poll stream alerts every 15s
 
     // Freshness indicator: update "Last updated X min ago" every 15s
     setInterval(updateFreshnessIndicator, 15000);
@@ -2889,6 +2891,59 @@
         }
         fetchScannerDirect();
       });
+  }
+
+  // ── Broadcastify stream alerts (live transcription pipeline) ─────
+  var _lastStreamAlertTs = 0;
+
+  function fetchStreamAlerts() {
+    fetch(API + "/api/scanner/stream-alerts?limit=10").then(ok)
+      .then(function (data) {
+        if (!data || data.status !== "ok") return;
+        var alerts = data.alerts || [];
+        var section = document.getElementById("streamAlertsSection");
+        var list = document.getElementById("streamAlertsList");
+        var countEl = document.getElementById("streamAlertCount");
+        if (!section || !list) return;
+
+        if (!alerts.length) { section.style.display = "none"; return; }
+        section.style.display = "block";
+        if (countEl) countEl.textContent = alerts.length + " alert" + (alerts.length === 1 ? "" : "s");
+
+        var html = "";
+        alerts.forEach(function (a) {
+          var level = a.alert_level || "none";
+          var alertCls = level === "critical" ? "sc-stream-card--critical"
+            : level === "high" ? "sc-stream-card--high" : "sc-stream-card--medium";
+          var ta = a.timestamp ? timeAgo(new Date(a.timestamp * 1000)) : "";
+
+          html += '<div class="sc-stream-card ' + alertCls + '">';
+          html += '<div class="sc-stream-card-head">';
+          html += '<span class="sc-stream-feed">' + esc(a.feed_name || "Stream") + '</span>';
+          html += '<span class="sc-stream-time">' + esc(ta) + '</span>';
+          html += '</div>';
+          html += '<div class="sc-stream-text">' + esc(a.text || "") + '</div>';
+          if (a.keywords && a.keywords.length) {
+            html += '<div class="sc-stream-keywords">';
+            a.keywords.forEach(function (kw) {
+              html += '<span class="sc-alert-keyword">' + esc(kw) + '</span>';
+            });
+            html += '</div>';
+          }
+          html += '</div>';
+
+          // Flash scanner nav if critical and newer than last check
+          if ((level === "critical" || level === "high") && a.timestamp > _lastStreamAlertTs) {
+            _flashScannerAlert();
+          }
+        });
+
+        if (alerts.length && alerts[0].timestamp > _lastStreamAlertTs) {
+          _lastStreamAlertTs = alerts[0].timestamp;
+        }
+        list.innerHTML = html;
+      })
+      .catch(function () { /* silently fail — stream may not be running */ });
   }
 
   function fetchScannerDirect() {

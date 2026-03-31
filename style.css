@@ -1612,6 +1612,67 @@ a:hover { text-decoration: underline; }
   color: var(--text-2);
 }
 
+/* Stream alerts section */
+.sc-stream-alerts {
+  margin: 0 12px 12px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.sc-stream-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, #E53935 8%, var(--surface));
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 13px;
+}
+.sc-stream-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.sc-stream-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.sc-stream-card {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--border);
+}
+.sc-stream-card--critical { border-left-color: #E53935; background: color-mix(in srgb, #E53935 5%, var(--surface)); }
+.sc-stream-card--high { border-left-color: #FB8C00; background: color-mix(in srgb, #FB8C00 4%, var(--surface)); }
+.sc-stream-card--medium { border-left-color: #1E88E5; }
+.sc-stream-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.sc-stream-feed {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.sc-stream-time {
+  font-size: 10px;
+  color: var(--text-3);
+}
+.sc-stream-text {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+}
+.sc-stream-keywords {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 /* Source info in scanner note */
 .sc-source-info {
   display: inline-block;

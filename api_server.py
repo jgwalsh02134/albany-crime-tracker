@@ -12,11 +12,15 @@ from __future__ import annotations
 """
 
 import asyncio
+import io
 import json
 import json as _json
 import logging
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import time
 import unicodedata
 from difflib import SequenceMatcher
@@ -1180,7 +1184,10 @@ async def lifespan(_app):
             logger.info("database_initialized")
         except Exception as exc:
             logger.warning("database_init_failed error=%s", exc)
+    # Start background stream monitor (Broadcastify → Whisper → keyword alerts)
+    await start_stream_monitor()
     yield
+    await stop_stream_monitor()
     if http_client is not None:
         await http_client.aclose()
         http_client = None
@@ -4833,6 +4840,243 @@ async def scanner_transcribe(request: Request):
                 results.append({"id": call_id, "status": "error", "reason": str(exc)})
 
     return {"status": "ok", "transcriptions": results}
+
+
+# ── Broadcastify Live Stream Monitor ─────────────────────────────────────
+# Captures audio chunks from Broadcastify CDN streams, transcribes with
+# Whisper, and scans for critical keywords in real time.
+
+# Configurable feeds — Albany County area
+BROADCASTIFY_FEEDS = [
+    {"id": "3626", "name": "Albany City & Colonie Police/Fire/EMS", "priority": "high"},
+    {"id": "1440", "name": "Albany City Fire", "priority": "medium"},
+    {"id": "37206", "name": "Albany County Volunteer Fire", "priority": "medium"},
+    {"id": "21216", "name": "NYS Thruway - Albany Division", "priority": "low"},
+]
+
+# Stream alerts buffer — most recent keyword-flagged transcriptions
+_stream_alerts: list[dict] = []
+_stream_alerts_lock = asyncio.Lock()
+_STREAM_ALERTS_MAX = 50
+
+# Background task handle
+_stream_monitor_task: Optional[asyncio.Task] = None
+
+
+async def _capture_audio_chunk(stream_url: str, duration_secs: int = 30) -> Optional[bytes]:
+    """Capture an audio chunk from a live stream using ffmpeg."""
+    if not shutil.which("ffmpeg"):
+        logger.warning("ffmpeg not found — stream monitor disabled")
+        return None
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-y",                      # overwrite
+            "-t", str(duration_secs),  # capture duration
+            "-i", stream_url,          # input stream
+            "-acodec", "pcm_s16le",    # raw PCM
+            "-ar", "16000",            # 16kHz for Whisper
+            "-ac", "1",                # mono
+            "-f", "wav",               # WAV output
+            "pipe:1",                  # stdout
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=duration_secs + 15)
+        if proc.returncode != 0:
+            err_msg = stderr.decode("utf-8", errors="replace")[-200:] if stderr else "unknown"
+            logger.warning("ffmpeg error (feed): %s", err_msg)
+            return None
+        if len(stdout) < 1000:  # too small = silence or error
+            return None
+        return stdout
+    except asyncio.TimeoutError:
+        logger.warning("ffmpeg capture timed out")
+        return None
+    except Exception as e:
+        logger.warning("Audio capture error: %s", e)
+        return None
+
+
+async def _transcribe_audio_bytes(audio_wav: bytes) -> Optional[str]:
+    """Send raw WAV audio to Whisper API for transcription."""
+    openai_key = settings.openai_api_key
+    if not openai_key or not audio_wav:
+        return None
+
+    try:
+        files = {
+            "file": ("stream_chunk.wav", io.BytesIO(audio_wav), "audio/wav"),
+            "model": (None, "whisper-1"),
+            "language": (None, "en"),
+            "prompt": (None, "Albany County NY police fire EMS dispatch radio. "
+                       "10-codes, signal codes, street names, locations. "
+                       "Common: Central Avenue, Washington Avenue, State Street, "
+                       "New Scotland, Western Avenue, Delaware Avenue, Lark Street."),
+        }
+        resp = await http_client.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {openai_key}"},
+            files=files,
+            timeout=30.0,
+        )
+        if resp.status_code != 200:
+            return None
+        return resp.json().get("text", "").strip()
+    except Exception as e:
+        logger.warning("Whisper stream transcription error: %s", e)
+        return None
+
+
+async def _monitor_single_feed(feed: dict):
+    """Monitor a single Broadcastify feed continuously."""
+    feed_id = feed["id"]
+    feed_name = feed["name"]
+    feed_priority = feed["priority"]
+
+    # Try both CDN URL patterns
+    stream_urls = [
+        f"https://broadcastify.cdnstream1.com/{feed_id}",
+        f"https://audio.broadcastify.com/{feed_id}.mp3",
+    ]
+
+    # Capture duration based on priority
+    chunk_secs = 25 if feed_priority == "high" else 40
+    # Pause between captures
+    pause_secs = 5 if feed_priority == "high" else 15
+
+    working_url = None
+    fail_count = 0
+
+    while True:
+        try:
+            # Try URLs until one works
+            urls_to_try = [working_url] if working_url else stream_urls
+            audio = None
+            for url in urls_to_try:
+                if not url:
+                    continue
+                audio = await _capture_audio_chunk(url, chunk_secs)
+                if audio:
+                    working_url = url
+                    fail_count = 0
+                    break
+
+            if not audio:
+                fail_count += 1
+                if fail_count > 5:
+                    # Back off significantly after repeated failures
+                    logger.info("Feed %s: backing off after %d failures", feed_id, fail_count)
+                    await asyncio.sleep(120)
+                    working_url = None  # Reset to try both URLs again
+                    fail_count = 0
+                else:
+                    await asyncio.sleep(30)
+                continue
+
+            # Transcribe the audio chunk
+            text = await _transcribe_audio_bytes(audio)
+            if not text or len(text.strip()) < 5:
+                await asyncio.sleep(pause_secs)
+                continue
+
+            # Scan for keywords
+            keywords = _scan_for_keywords(text)
+            level = _alert_level(keywords)
+
+            # Store if significant (any keywords found, or high-priority feed)
+            if keywords or feed_priority == "high":
+                alert = {
+                    "feed_id": feed_id,
+                    "feed_name": feed_name,
+                    "text": text,
+                    "keywords": keywords,
+                    "alert_level": level,
+                    "timestamp": time.time(),
+                    "iso_time": datetime.now(timezone.utc).isoformat(),
+                }
+                async with _stream_alerts_lock:
+                    _stream_alerts.insert(0, alert)
+                    # Trim to max size
+                    while len(_stream_alerts) > _STREAM_ALERTS_MAX:
+                        _stream_alerts.pop()
+
+                if level in ("critical", "high"):
+                    logger.info(
+                        "STREAM ALERT [%s] %s: %s | keywords: %s",
+                        level.upper(), feed_name, text[:100], ", ".join(keywords)
+                    )
+
+            await asyncio.sleep(pause_secs)
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning("Stream monitor error (feed %s): %s", feed_id, e)
+            await asyncio.sleep(30)
+
+
+async def start_stream_monitor():
+    """Start background stream monitoring for all configured feeds."""
+    global _stream_monitor_task
+    if not settings.openai_api_key:
+        logger.info("Stream monitor disabled — no OPENAI_API_KEY")
+        return
+    if not shutil.which("ffmpeg"):
+        logger.info("Stream monitor disabled — ffmpeg not installed")
+        return
+
+    # Only monitor high and medium priority feeds to save API costs
+    feeds_to_monitor = [f for f in BROADCASTIFY_FEEDS if f["priority"] in ("high", "medium")]
+    if not feeds_to_monitor:
+        return
+
+    logger.info("Starting stream monitor for %d feeds", len(feeds_to_monitor))
+    tasks = [asyncio.create_task(_monitor_single_feed(f)) for f in feeds_to_monitor]
+    # Wrap all feed tasks in a single gatherer
+    _stream_monitor_task = asyncio.create_task(
+        asyncio.gather(*tasks, return_exceptions=True)
+    )
+
+
+async def stop_stream_monitor():
+    """Stop all stream monitoring tasks."""
+    global _stream_monitor_task
+    if _stream_monitor_task:
+        _stream_monitor_task.cancel()
+        try:
+            await _stream_monitor_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        _stream_monitor_task = None
+
+
+@app.get("/api/scanner/stream-alerts")
+async def get_stream_alerts(limit: int = 20):
+    """Return recent keyword-flagged stream transcriptions."""
+    async with _stream_alerts_lock:
+        alerts = _stream_alerts[:min(limit, _STREAM_ALERTS_MAX)]
+    return {
+        "status": "ok",
+        "count": len(alerts),
+        "feeds_monitored": [f["name"] for f in BROADCASTIFY_FEEDS if f["priority"] in ("high", "medium")],
+        "alerts": alerts,
+    }
+
+
+@app.get("/api/scanner/stream-status")
+async def get_stream_status():
+    """Return stream monitor status."""
+    running = _stream_monitor_task is not None and not _stream_monitor_task.done()
+    return {
+        "status": "ok",
+        "monitor_running": running,
+        "feeds": BROADCASTIFY_FEEDS,
+        "ffmpeg_available": shutil.which("ffmpeg") is not None,
+        "whisper_configured": bool(settings.openai_api_key),
+        "alert_count": len(_stream_alerts),
+    }
 
 
 @app.get("/api/scanner/talkgroups")
