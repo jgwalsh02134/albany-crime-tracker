@@ -31,7 +31,7 @@
   var mapReady = false;
   var chatHistory = [];
   var activeView = "feed";
-  var activeFeedTab = "verified";       // verified | developing | official
+  var activeFeedTab = "all";            // unified chronological feed
   var lastLiveActiveItems = [];
   var lastLiveRecentItems = [];
   var lastCrimeCounts = {};
@@ -1806,16 +1806,22 @@
       }
     }
 
-    var cls = "feed-item feed-item--" + type;
-    if (sev === "critical") cls += " feed-item--sev-critical";
-    else if (sev === "high") cls += " feed-item--sev-high";
-    if (sev === "low" && (verify || "").toLowerCase() === "inferred") cls += " feed-item--quiet";
-
-    // Time freshness class
+    // Time freshness
     var ageH = itemAgeHours(item);
     var timeClass = "feed-time";
     if (ageH !== null && ageH <= 1) timeClass += " feed-time--fresh";
     else if (ageH !== null && ageH > 12) timeClass += " feed-time--stale";
+
+    // LIVE badge — only for genuinely active, major, fresh events
+    var incStatus = ((item.incident && item.incident.status) || "").toLowerCase();
+    var isLive = ageH !== null && ageH <= 2 && (sev === "critical" || sev === "high" || incStatus === "active");
+    var liveBadge = isLive ? '<span class="feed-live-badge"><span class="feed-live-dot"></span>LIVE</span>' : "";
+
+    var cls = "feed-item feed-item--" + type;
+    if (isLive) cls += " feed-item--live";
+    if (sev === "critical") cls += " feed-item--sev-critical";
+    else if (sev === "high") cls += " feed-item--sev-high";
+    if (sev === "low" && (verify || "").toLowerCase() === "inferred") cls += " feed-item--quiet";
 
     // Severity badge
     var sevBadge = "";
@@ -1845,6 +1851,7 @@
     // Federal badge for DOJ / US Attorney sources
     var isFederal = sourceType === "federal" || /\b(usao|us attorney|doj|federal|dept.*justice)\b/i.test(sourceName);
     if (isFederal) html += '<span class="feed-meta-pill feed-meta-pill--federal">Federal</span>';
+    if (liveBadge) html += liveBadge;
     html += '<span class="feed-meta-pill feed-meta-pill--verify feed-meta-pill--verify-' + esc(verify) + '">' + esc(verifyLabel) + '</span>';
     if (sevBadge) html += sevBadge;
     html += '</div>';
@@ -1957,33 +1964,10 @@
       return tb - ta;
     });
 
-    // Separate LIVE (ongoing major events) from the rest
-    var liveItems = [];
-    var restItems = [];
-    items.forEach(function (item) {
-      var sev = ((item.severity || (item.incident && item.incident.severity)) || "").toLowerCase();
-      var status = ((item.incident && item.incident.status) || "").toLowerCase();
-      var ageH = itemAgeHours(item);
-      var isFresh = ageH !== null && ageH <= 2;
-      var isMajor = sev === "critical" || sev === "high" || status === "active";
-      if (isFresh && isMajor) liveItems.push(item);
-      else restItems.push(item);
-    });
-
+    // Single chronological list — no section headers.
+    // Visual hierarchy lives in the cards themselves (severity, source, time, live badge).
     var html = "";
-
-    // LIVE section — ongoing major events/activity
-    if (liveItems.length) {
-      html += '<div class="feed-section-header feed-section-header--live"><span class="feed-live-dot"></span>Live</div>';
-      liveItems.forEach(function (item) { html += buildIncidentCard(item); });
-    }
-
-    // Recent section — everything else
-    if (restItems.length) {
-      html += '<div class="feed-section-header">Recent</div>';
-      restItems.forEach(function (item) { html += buildIncidentCard(item); });
-    }
-
+    items.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
   }
 
