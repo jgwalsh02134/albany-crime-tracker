@@ -1957,24 +1957,33 @@
       return tb - ta;
     });
 
-    // Time-bucket section headers
-    var now = Date.now();
-    var html = "";
-    var lastBucket = "";
+    // Separate LIVE (ongoing major events) from the rest
+    var liveItems = [];
+    var restItems = [];
     items.forEach(function (item) {
+      var sev = ((item.severity || (item.incident && item.incident.severity)) || "").toLowerCase();
+      var status = ((item.incident && item.incident.status) || "").toLowerCase();
       var ageH = itemAgeHours(item);
-      var bucket;
-      if (ageH !== null && ageH <= 1) bucket = "Last hour";
-      else if (ageH !== null && ageH <= 6) bucket = "Earlier today";
-      else if (ageH !== null && ageH <= 24) bucket = "Today";
-      else bucket = "Recent";
-
-      if (bucket !== lastBucket) {
-        html += '<div class="feed-section-header">' + esc(bucket) + '</div>';
-        lastBucket = bucket;
-      }
-      html += buildIncidentCard(item);
+      var isFresh = ageH !== null && ageH <= 2;
+      var isMajor = sev === "critical" || sev === "high" || status === "active";
+      if (isFresh && isMajor) liveItems.push(item);
+      else restItems.push(item);
     });
+
+    var html = "";
+
+    // LIVE section — ongoing major events/activity
+    if (liveItems.length) {
+      html += '<div class="feed-section-header feed-section-header--live"><span class="feed-live-dot"></span>Live</div>';
+      liveItems.forEach(function (item) { html += buildIncidentCard(item); });
+    }
+
+    // Recent section — everything else
+    if (restItems.length) {
+      html += '<div class="feed-section-header">Recent</div>';
+      restItems.forEach(function (item) { html += buildIncidentCard(item); });
+    }
+
     list.innerHTML = html;
   }
 

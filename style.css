@@ -409,7 +409,7 @@ a:hover { text-decoration: underline; }
   display: none;
 }
 
-/* ── Unified feed time-section headers ──────────────────────── */
+/* ── Unified feed section headers ───────────────────────────── */
 .feed-section-header {
   font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
   font-size: 13px;
@@ -419,9 +419,28 @@ a:hover { text-decoration: underline; }
   letter-spacing: 0.04em;
   padding: 16px 0 6px;
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .feed-section-header:first-child {
   padding-top: 8px;
+}
+/* LIVE header — red accent with pulsing dot */
+.feed-section-header--live {
+  color: #E53935;
+  font-weight: 700;
+}
+.feed-live-dot {
+  width: 8px; height: 8px;
+  background: #E53935;
+  border-radius: 50%;
+  display: inline-block;
+  animation: liveDotPulse 1.5s ease-in-out infinite;
+}
+@keyframes liveDotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
 }
 
 .feed-controls {
