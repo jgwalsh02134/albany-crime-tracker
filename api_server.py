@@ -5161,36 +5161,77 @@ def _build_scanner_talkgroups_payload() -> dict[str, Any]:
     se = data.get("scannerEcosystem") or {}
     sys_info = se.get("system") or {}
 
+    # ── Comprehensive Albany/Schenectady Counties P25 Talkgroup Registry ────
+    # Source: Broadcastify Calls system 8553 — verified 2026-03-31
+    # Format: (tg_id, agency_id, channel_label, display_name, location, category, priority)
+    #
+    # POLICE DISPATCH — highest priority
     _rows: list[tuple[str, Optional[str], str, str, str, str, str]] = [
-        ("15202", "albany-county-sheriff", "Law Dispatch", "Albany County Law Dispatch", "County-wide", "police", "high"),
-        ("10702", None, "", "Albany County Fire Dispatch", "County-wide", "fire", "high"),
-        ("11702", None, "", "County Fire Tac", "County-wide", "fire", "medium"),
-        ("10003", "albany-county-sheriff", "Dispatch", "Albany County Sheriff", "County-wide", "police", "high"),
-        ("13102", "albany-pd", "Dispatch", "Albany PD Dispatch", "City of Albany", "police", "high"),
-        ("13202", "albany-pd", "Ops", "Albany PD Ops", "City of Albany", "police", "high"),
-        ("11003", None, "", "Albany County EMS", "County-wide", "ems", "high"),
-        ("10921", None, "", "Albany County Interop", "County-wide", "police", "medium"),
-        ("10922", None, "", "Multi-Agency Tac", "County-wide", "police", "medium"),
-        ("10923", None, "", "Emergency Ops", "County-wide", "police", "high"),
-        ("10925", None, "", "Albany County OEM", "County-wide", "police", "medium"),
-        ("18301", "albany-county-sheriff", "Law Ops", "Albany County Law Ops", "County-wide", "police", "high"),
-        ("18884", "nysp-troop-g", "Tac", "NYSP Troop G / Capitol", "Capital Region", "police", "high"),
-        ("10354", None, "", "Metro Law Tac", "Capital Region", "police", "medium"),
-        ("10401", "colonie-pd", "Dispatch", "Colonie PD Dispatch", "Latham · Colonie", "police", "high"),
-        ("10402", "colonie-pd", "Tac", "Colonie PD Tac", "Colonie", "police", "medium"),
-        ("10501", "guilderland-pd", "Dispatch", "Guilderland PD", "Guilderland", "police", "medium"),
-        ("10502", "bethlehem-pd", "Dispatch", "Bethlehem PD", "Bethlehem · Delmar", "police", "medium"),
-        ("10601", "cohoes-pd", "Dispatch", "Cohoes PD", "Cohoes", "police", "medium"),
-        ("10602", "watervliet-pd", "Dispatch", "Watervliet PD", "Watervliet", "police", "medium"),
-        ("8211", "colonie-pd", "Dispatch", "Colonie PD Dispatch", "Latham · Colonie", "police", "high"),
-        ("8212", "colonie-pd", "Tac", "Colonie PD Tac", "Colonie", "police", "medium"),
-        ("8215", "bethlehem-pd", "Dispatch", "Bethlehem PD", "Bethlehem · Delmar", "police", "medium"),
-        ("8216", "guilderland-pd", "Dispatch", "Guilderland PD", "Guilderland", "police", "medium"),
-        ("8206", "albany-county-sheriff", "Dispatch", "Albany County Sheriff", "County-wide", "police", "high"),
-        ("8239", "albany-pd", "Fire Dispatch", "Albany Fire Dispatch", "City of Albany", "fire", "high"),
-        ("8243", None, "", "Colonie Fire Dispatch", "Colonie", "fire", "high"),
-        ("8259", None, "", "Albany County EMS", "County-wide", "ems", "high"),
-        ("8260", None, "", "Albany EMS Dispatch", "City of Albany", "ems", "high"),
+        # ── Albany City Law Enforcement ─────────────────────────────────────────
+        ("18301", "albany-pd",             "Police 1",       "APD Dispatch",                "City of Albany",           "police", "high"),
+        # ── Albany County Law Enforcement ───────────────────────────────────────
+        ("10003", "albany-county-sheriff",  "County Law 1",  "AlbCo Law 1",                "Albany County",            "police", "high"),
+        ("11003", "albany-county-sheriff",  "County Law 2",  "AlbCo Law 2",                "Albany County",            "police", "high"),
+        # ── Municipal Police ───────────────────────────────────────────────────
+        ("10921", "bethlehem-pd",           "Police",         "Bethlehem PD",                "Bethlehem · Delmar",      "police", "high"),
+        ("10961", "guilderland-pd",         "Police Dispatch","Guilderland PD",              "Guilderland",             "police", "high"),
+        # ── SUNY Albany PD ────────────────────────────────────────────────────
+        ("18303", None,                     "Police Dispatch","SUNY PD Dispatch",            "SUNY Albany",             "police", "high"),
+        # ── NYSP Capitol ──────────────────────────────────────────────────────
+        ("18884", "nysp-troop-g",           "Capitol 1",     "NYSP Capitol 1",              "Capital Region",          "police", "high"),
+        # ── Security ──────────────────────────────────────────────────────────
+        ("13102", None,                     "Public Safety",  "UHA Public Safety",           "University Heights",      "police", "medium"),
+        ("13301", None,                     "Security",       "Port of Albany Security",     "Port of Albany",          "police", "medium"),
+        ("18201", None,                     "Security",       "Capitol Security",            "Empire State Plaza",      "police", "medium"),
+        ("18305", None,                     "Security",       "SUNY Security",               "SUNY Albany",             "police", "medium"),
+        ("18510", None,                     "Security",       "NYS Library/Museum Security", "Empire State Plaza",      "police", "low"),
+        ("18514", None,                     "Security",       "NYS DOE Security",            "Empire State Plaza",      "police", "low"),
+        ("18601", None,                     "Security 1",     "Court of Appeals Security",   "Court of Appeals",        "police", "low"),
+        # ── FIRE DISPATCH ─────────────────────────────────────────────────────
+        ("10702", None,                     "County Fire 1",  "AlbCo Fire 1",               "Albany County",            "fire",   "high"),
+        ("11702", None,                     "County Fire 2",  "AlbCo Fire 2",               "Albany County",            "fire",   "high"),
+        ("10927", None,                     "Fire Control",   "Bethlehem FD",                "Bethlehem",               "fire",   "high"),
+        ("10967", None,                     "Fire Dispatch",  "Guilderland FD",              "Guilderland",             "fire",   "high"),
+        ("13202", None,                     "Fire 1",         "AFD Fire 1",                  "City of Albany",          "fire",   "high"),
+        ("15102", "colonie-pd",             "Fire Dispatch",  "Colonie FD Dispatch",         "Colonie",                 "fire",   "high"),
+        ("15141", None,                     "Airport ARFF",   "Albany Airport ARFF",         "Albany Airport",          "fire",   "medium"),
+        # ── AFD Fire Station Alerts ───────────────────────────────────────────
+        ("13211", None,                     "Midtown Alert",  "AFD Midtown Alert",           "City of Albany",          "fire",   "medium"),
+        ("13212", None,                     "Arbor Hill Alert","AFD Arbor Hill Alert",       "City of Albany",          "fire",   "medium"),
+        ("13213", None,                     "Pine Bush Alert","AFD Pine Bush Alert",         "City of Albany",          "fire",   "medium"),
+        ("13214", None,                     "South End Alert","AFD South End Alert",         "City of Albany",          "fire",   "medium"),
+        ("13216", None,                     "Delaware Alert", "AFD Delaware Alert",          "City of Albany",          "fire",   "medium"),
+        ("13217", None,                     "Brevator Alert", "AFD Brevator Alert",          "City of Albany",          "fire",   "medium"),
+        # ── FIRE TAC / OPERATIONS ────────────────────────────────────────────
+        ("10729", None,                     "Fire Ops 9",     "AlbCo FD Ops 9",             "Albany County",            "fire",   "medium"),
+        ("10928", None,                     "Fire 1",         "Bethlehem FD 1",              "Bethlehem",               "fire",   "medium"),
+        ("10929", None,                     "Fire 2",         "Bethlehem FD 2",              "Bethlehem",               "fire",   "low"),
+        ("10968", None,                     "Fire Ops 1",     "Guilderland FD Ops 1",        "Guilderland",             "fire",   "medium"),
+        ("11721", None,                     "Fire Ops 1",     "AlbCo FD Ops 1",             "Albany County",            "fire",   "medium"),
+        ("13203", None,                     "Fire 2",         "AFD Fire 2",                  "City of Albany",          "fire",   "medium"),
+        ("13204", None,                     "Fire 3",         "AFD Fire 3",                  "City of Albany",          "fire",   "low"),
+        ("15103", "colonie-pd",             "Fire Ops 1",     "Colonie FD Ops 1",            "Colonie",                 "fire",   "medium"),
+        ("15104", "colonie-pd",             "Fire Ops 2",     "Colonie FD Ops 2",            "Colonie",                 "fire",   "low"),
+        ("15108", "colonie-pd",             "Fire SpOps",     "Colonie FD Special Ops",      "Colonie",                 "fire",   "medium"),
+        # ── FIRE TALK ────────────────────────────────────────────────────────
+        ("13221", None,                     "Training",       "AFD Training",                "City of Albany",          "fire",   "low"),
+        ("15107", "colonie-pd",             "Fire Police",    "Colonie Fire Police",         "Colonie",                 "fire",   "low"),
+        # ── EMS DISPATCH ─────────────────────────────────────────────────────
+        ("10925", None,                     "EMS Dispatch",   "Bethlehem EMS",               "Bethlehem",               "ems",    "high"),
+        ("10965", None,                     "EMS Dispatch",   "Guilderland EMS",             "Guilderland",             "ems",    "high"),
+        # ── SCHOOLS ──────────────────────────────────────────────────────────
+        ("10974", None,                     "School Buses",   "Guilderland CSD Buses",       "Guilderland",             "other",  "low"),
+        ("15701", None,                     "School Buses",   "South Colonie CSD Buses",     "Colonie",                 "other",  "low"),
+        ("15703", None,                     "School Ops",     "Colonie Central HS Ops",      "Colonie",                 "other",  "low"),
+        ("15801", None,                     "School Buses",   "North Colonie CSD Buses",     "Colonie",                 "other",  "low"),
+        # ── UTILITIES / TRANSPORTATION / MAINTENANCE ─────────────────────────
+        ("15512", None,                     "Water",          "Latham Water District",       "Latham",                  "other",  "low"),
+        ("15508", None,                     "Water",          "Colonie Pure Waters",         "Colonie",                 "other",  "low"),
+        ("15602", None,                     "Highway",        "Menands Highway",             "Menands",                 "other",  "low"),
+        ("10803", None,                     "Highway",        "Coeymans Highway Dept",       "Coeymans",               "other",  "low"),
+        ("13801", None,                     "DGS Streets",    "Albany City DGS Streets",     "City of Albany",          "other",  "low"),
+        ("10042", "albany-county-sheriff",  "Maintenance",    "ACSO Maintenance",            "Albany County",           "other",  "low"),
+        ("15504", "colonie-pd",             "Animal Control", "Colonie Animal Control",      "Colonie",                 "other",  "low"),
     ]
 
     talkgroups: dict[str, dict[str, Any]] = {}
