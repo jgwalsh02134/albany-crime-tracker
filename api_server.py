@@ -447,6 +447,34 @@ RSS_FEEDS_GNEWS = {
         "reliability": 0.78,
         "priority": 2,
     },
+    "gnews_green_island": {
+        "url": "https://news.google.com/rss/search?q=%22Green+Island%22+NY+(crime+OR+arrest+OR+police+OR+fire)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Green Island",
+        "filter": "strict",
+        "reliability": 0.74,
+        "priority": 2,
+    },
+    "gnews_menands": {
+        "url": "https://news.google.com/rss/search?q=Menands+NY+(crime+OR+arrest+OR+police+OR+fire)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Menands",
+        "filter": "strict",
+        "reliability": 0.74,
+        "priority": 2,
+    },
+    "gnews_voorheesville": {
+        "url": "https://news.google.com/rss/search?q=(Voorheesville+OR+%22New+Salem%22)+NY+(crime+OR+arrest+OR+police+OR+fire)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Voorheesville",
+        "filter": "strict",
+        "reliability": 0.74,
+        "priority": 2,
+    },
+    "gnews_westerlo_berne_knox": {
+        "url": "https://news.google.com/rss/search?q=(Westerlo+OR+Berne+OR+Knox+OR+Rensselaerville)+%22Albany+County%22+(crime+OR+arrest+OR+police+OR+fire)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Hilltowns",
+        "filter": "strict",
+        "reliability": 0.70,
+        "priority": 1,
+    },
     # ── Legacy broad-suburb search kept for overlap coverage ──────────────────
     "gnews_albany_suburbs": {
         "url": "https://news.google.com/rss/search?q=(colonie+OR+bethlehem+OR+guilderland+OR+cohoes+OR+watervliet)+%22new+york%22+(crime+OR+police+OR+arrest)+when:1d&hl=en-US&gl=US&ceid=US:en",
@@ -459,7 +487,7 @@ RSS_FEEDS_GNEWS = {
     "gnews_capital_region_breaking": {
         "url": (
             "https://news.google.com/rss/search?q="
-            "(%22Albany+County%22+OR+%22City+of+Albany%22+OR+Colonie+OR+Latham)"
+            "(%22Albany+County%22+OR+%22City+of+Albany%22+OR+Colonie+OR+Latham+OR+Cohoes+OR+Watervliet+OR+Delmar)"
             "+(crash+OR+fire+OR+shooting+OR+stabbing+OR+pursuit+OR+closure+OR+missing+OR+alert)"
             "+when:1d&hl=en-US&gl=US&ceid=US:en"
         ),
@@ -1108,10 +1136,51 @@ ALBANY_LOCATIONS = {
     "elsmere": (42.6080, -73.8010),
     "glenmont": (42.5710, -73.7870),
     "roessleville": (42.7030, -73.8060),
-    # Hamlets added in v6
-    "westmere": (42.6953, -73.8694),     # Hamlet in Guilderland, along Western Ave
-    "knox": (42.6880, -74.0800),          # Town of Knox, Albany County
-    "berne": (42.6100, -74.1750),         # Town of Berne, Albany County
+    # ── Town of Colonie hamlets/CDPs ──
+    "boght corners": (42.7780, -73.7600),
+    "lisha kill": (42.7400, -73.8400),
+    "newtonville": (42.7560, -73.8170),
+    "verdoy": (42.7380, -73.7760),
+    "schuyler heights": (42.7260, -73.7300),
+    "west albany": (42.6960, -73.7960),
+    # ── Town of Bethlehem hamlets ──
+    "north bethlehem": (42.6280, -73.8100),
+    "south bethlehem": (42.5300, -73.7930),
+    # ── Town of Guilderland hamlets ──
+    "westmere": (42.6953, -73.8694),
+    "mckownville": (42.6750, -73.8320),
+    "meadowdale": (42.6800, -73.9350),
+    "guilderland center": (42.6880, -73.9560),
+    "dunnsville": (42.7050, -73.9700),
+    "fort hunter": (42.7150, -73.9800),
+    "hartmans corners": (42.6700, -73.9450),
+    "parkers corners": (42.6950, -73.9250),
+    # ── Town of Coeymans hamlets ──
+    "alcove": (42.4500, -73.9050),
+    "coeymans hollow": (42.4550, -73.8570),
+    "aquetuck": (42.4700, -73.7800),
+    # ── Town of New Scotland hamlets ──
+    "new salem": (42.6070, -73.9660),
+    "onesquethaw": (42.5530, -73.9170),
+    "unionville": (42.5700, -73.9470),
+    # ── Town of Berne hamlets ──
+    "berne": (42.6100, -74.1750),
+    "east berne": (42.6180, -74.0950),
+    "reidsville": (42.5900, -74.1400),
+    "south berne": (42.5780, -74.1600),
+    # ── Town of Knox ──
+    "knox": (42.6880, -74.0800),
+    # ── Town of Rensselaerville hamlets ──
+    "rensselaerville": (42.5100, -74.1500),
+    "medusa": (42.4700, -74.1100),
+    "preston hollow": (42.4830, -74.1670),
+    "potter hollow": (42.4950, -74.1820),
+    # ── Town of Westerlo hamlets ──
+    "dormansville": (42.4970, -74.0700),
+    "lambs corner": (42.5150, -74.0450),
+    "south westerlo": (42.4800, -74.0200),
+    "newry": (42.5200, -74.0100),
+    # ── Other ──
     "karner": (42.7160, -73.8860),
     "morris street": (42.6420, -73.7530),
     "washington avenue": (42.6590, -73.7660),
@@ -1158,15 +1227,38 @@ NEIGHBORHOODS = {
     "West Hill": ["west hill", "central ave", "central avenue", "quail street"],
     "Center Square": ["center square", "lark street", "dove street", "hamilton street", "madison ave", "madison avenue"],
     "North Albany": ["north albany", "hudson avenue"],
-    "Colonie": ["colonie", "latham", "loudonville", "wolf road", "roessleville", "karner", "colonie center"],
-    "Bethlehem": ["bethlehem", "delmar", "slingerlands", "selkirk", "glenmont", "elsmere"],
+    # ── Cities ────────────────────────────────────────────────────────
     "Cohoes": ["cohoes"],
     "Watervliet": ["watervliet"],
-    "Guilderland": ["guilderland", "crossgates", "crossgates mall", "fuller road", "altamont"],
+    # ── Towns & their hamlets/CDPs ────────────────────────────────────
+    "Colonie": [
+        "colonie", "latham", "loudonville", "wolf road", "roessleville", "karner",
+        "colonie center", "boght corners", "lisha kill", "mannsville", "maplewood",
+        "maywood", "newtonville", "schuyler heights", "stanford heights", "verdoy",
+        "west albany",
+    ],
+    "Bethlehem": [
+        "bethlehem", "delmar", "elsmere", "glenmont", "north bethlehem", "selkirk",
+        "slingerlands", "south bethlehem",
+    ],
+    "Guilderland": [
+        "guilderland", "guilderland center", "altamont", "crossgates",
+        "crossgates mall", "fuller road", "westmere", "mckownville",
+        "meadowdale", "dunnsville", "fort hunter", "fullers",
+        "hartmans corners", "parkers corners",
+    ],
+    "Coeymans": ["coeymans", "ravena", "alcove", "aquetuck", "coeymans hollow", "roah hook"],
+    "New Scotland": [
+        "new scotland", "voorheesville", "clarksville", "feura bush",
+        "new salem", "onesquethaw", "unionville",
+    ],
+    "Berne": ["berne", "east berne", "reidsville", "south berne"],
+    "Knox": ["knox"],
+    "Rensselaerville": ["rensselaerville", "medusa", "preston hollow", "potter hollow"],
+    "Westerlo": ["westerlo", "dormansville", "lambs corner", "newry", "south westerlo"],
     "Green Island": ["green island"],
     "Menands": ["menands"],
-    "Ravena/Coeymans": ["ravena", "coeymans", "selkirk"],
-    "New Scotland": ["new scotland", "voorheesville", "feura bush", "clarksville", "westerlo"],
+    # ── Institutions ──────────────────────────────────────────────────
     "SUNY Albany": ["suny albany", "university at albany"],
 }
 
