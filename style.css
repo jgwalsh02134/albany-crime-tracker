@@ -168,7 +168,9 @@ a:hover { text-decoration: underline; }
 .header-center {
   flex: 1;
   display: flex;
+  align-items: center;
   justify-content: center;
+  gap: 6px;
   min-width: 0;
 }
 .header-date {
@@ -176,6 +178,18 @@ a:hover { text-decoration: underline; }
   font-weight: 500;
   color: var(--text-3);
   white-space: nowrap;
+}
+.header-time {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2, #b0b0b0);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.header-moon {
+  font-size: 14px;
+  line-height: 1;
+  cursor: default;
 }
 @media (max-width: 420px) {
   .header-date { display: none; }
@@ -3855,12 +3869,15 @@ a.home-story-card:active {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 8px 12px;
   margin: 0 12px 8px;
   background: var(--card-bg, #161822);
   border: 1px solid var(--border, #262836);
   border-radius: 10px;
   transition: border-color 0.2s;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .feed-search-bar:focus-within {
   border-color: var(--accent, #6c5ce7);

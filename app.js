@@ -347,14 +347,54 @@
 
   // ── INIT ──────────────────────────────────────────────────────
   document.addEventListener("DOMContentLoaded", function () {
-    // Set today's date in the header
+    // Header date, live clock, and moon phase
     (function () {
-      var el = document.getElementById("headerDate");
-      if (el) {
-        el.textContent = new Date().toLocaleDateString("en-US", {
-          weekday: "short", month: "short", day: "numeric", year: "numeric"
-        });
+      var dateEl = document.getElementById("headerDate");
+      var timeEl = document.getElementById("headerTime");
+      var moonEl = document.getElementById("headerMoon");
+
+      function updateHeader() {
+        var now = new Date();
+        if (dateEl) {
+          dateEl.textContent = now.toLocaleDateString("en-US", {
+            weekday: "short", month: "short", day: "numeric"
+          });
+        }
+        if (timeEl) {
+          timeEl.textContent = now.toLocaleTimeString("en-US", {
+            hour: "numeric", minute: "2-digit"
+          });
+        }
+        if (moonEl) {
+          var phase = getMoonPhase(now);
+          moonEl.textContent = phase.icon;
+          moonEl.title = phase.name;
+        }
       }
+
+      // Moon phase calculation (simplified synodic month algorithm)
+      function getMoonPhase(date) {
+        // Known new moon: Jan 6, 2000 18:14 UTC
+        var knownNew = new Date(Date.UTC(2000, 0, 6, 18, 14, 0));
+        var synodic = 29.53058770576;
+        var daysSince = (date.getTime() - knownNew.getTime()) / 86400000;
+        var phase = ((daysSince % synodic) + synodic) % synodic;
+        var idx = Math.round(phase / synodic * 8) % 8;
+        var phases = [
+          { icon: "\uD83C\uDF11", name: "New Moon" },
+          { icon: "\uD83C\uDF12", name: "Waxing Crescent" },
+          { icon: "\uD83C\uDF13", name: "First Quarter" },
+          { icon: "\uD83C\uDF14", name: "Waxing Gibbous" },
+          { icon: "\uD83C\uDF15", name: "Full Moon" },
+          { icon: "\uD83C\uDF16", name: "Waning Gibbous" },
+          { icon: "\uD83C\uDF17", name: "Last Quarter" },
+          { icon: "\uD83C\uDF18", name: "Waning Crescent" }
+        ];
+        return phases[idx];
+      }
+
+      updateHeader();
+      setInterval(updateHeader, 30000); // Update every 30s
     })();
 
     initTheme();
@@ -723,6 +763,16 @@
 
   // ── NAVIGATION ────────────────────────────────────────────────
   function initNav() {
+    // Logo / header-left → tap returns to Home
+    var headerLeft = document.querySelector(".header-left");
+    if (headerLeft) {
+      headerLeft.style.cursor = "pointer";
+      headerLeft.addEventListener("click", function () {
+        closeMoreSheet();
+        switchView("feed");
+      });
+    }
+
     // Tab bar items (mobile)
     var tabItems = document.querySelectorAll(".tab-bar-item[data-view]");
     tabItems.forEach(function (btn) {
