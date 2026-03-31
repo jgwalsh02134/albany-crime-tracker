@@ -180,7 +180,6 @@ a:hover { text-decoration: underline; }
   font-size: 10px; font-weight: 600; color: var(--text-2, #b0b0b0);
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
-.header-moon { flex-shrink: 0; opacity: 0.85; }
 @media (max-width: 420px) {
   .header-date, .header-sep { display: none; }
 }

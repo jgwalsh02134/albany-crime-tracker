@@ -347,12 +347,10 @@
 
   // ── INIT ──────────────────────────────────────────────────────
   document.addEventListener("DOMContentLoaded", function () {
-    // Header date, live clock (with seconds), and SVG moon phase
+    // Header date + live clock with seconds
     (function () {
       var dateEl = document.getElementById("headerDate");
       var timeEl = document.getElementById("headerTime");
-      var moonShadow = document.getElementById("moonShadow");
-      var moonTitle = document.getElementById("moonTitle");
 
       function updateDateTime() {
         var now = new Date();
@@ -368,70 +366,8 @@
         }
       }
 
-      // Moon phase: compute illumination fraction and render SVG shadow
-      function getMoonPhaseAngle(date) {
-        var knownNew = new Date(Date.UTC(2000, 0, 6, 18, 14, 0));
-        var synodic = 29.53058770576;
-        var daysSince = (date.getTime() - knownNew.getTime()) / 86400000;
-        return (((daysSince % synodic) + synodic) % synodic) / synodic; // 0..1
-      }
-
-      function phaseName(frac) {
-        if (frac < 0.025 || frac >= 0.975) return "New Moon";
-        if (frac < 0.225) return "Waxing Crescent";
-        if (frac < 0.275) return "First Quarter";
-        if (frac < 0.475) return "Waxing Gibbous";
-        if (frac < 0.525) return "Full Moon";
-        if (frac < 0.725) return "Waning Gibbous";
-        if (frac < 0.775) return "Last Quarter";
-        return "Waning Crescent";
-      }
-
-      // Build an SVG path for the shadow half of the moon
-      // frac: 0 = new (all dark), 0.5 = full (no shadow), 1 = new again
-      function moonShadowPath(frac) {
-        var cx = 50, cy = 50, r = 48;
-        // Map frac to illumination: 0→0%, 0.25→50%, 0.5→100%, 0.75→50%, 1→0%
-        var illum = frac <= 0.5 ? frac * 2 : (1 - frac) * 2; // 0..1
-        // Terminator x-offset from center: -r (new) to 0 (quarter) to +r (full)
-        var tx = (illum * 2 - 1) * r; // range -r..+r
-        // Waxing (frac < 0.5): shadow on left, terminator sweeps right
-        // Waning (frac >= 0.5): shadow on right, terminator sweeps left
-        var waxing = frac < 0.5;
-        // Build path: arc on lit side, terminator ellipse
-        // Shadow covers from one edge to the terminator
-        var top = cy - r;
-        var bot = cy + r;
-        if (illum >= 0.98) return ""; // full moon, no shadow
-        if (illum <= 0.02) {
-          // new moon — full circle shadow
-          return "M" + cx + "," + top + " A" + r + "," + r + " 0 1,0 " + cx + "," + bot +
-                 " A" + r + "," + r + " 0 1,0 " + cx + "," + top + "Z";
-        }
-        // Terminator is an ellipse with rx = abs(tx)
-        var sweep1, sweep2;
-        if (waxing) {
-          // Shadow on the left: from top, big arc left to bottom, terminator back to top
-          sweep1 = "A" + r + "," + r + " 0 0,0 " + cx + "," + bot; // left arc
-          sweep2 = "A" + Math.abs(tx) + "," + r + " 0 0," + (tx > 0 ? "0" : "1") + " " + cx + "," + top;
-        } else {
-          // Shadow on the right: from top, big arc right to bottom, terminator back
-          sweep1 = "A" + r + "," + r + " 0 0,1 " + cx + "," + bot; // right arc
-          sweep2 = "A" + Math.abs(tx) + "," + r + " 0 0," + (tx > 0 ? "1" : "0") + " " + cx + "," + top;
-        }
-        return "M" + cx + "," + top + " " + sweep1 + " " + sweep2 + "Z";
-      }
-
-      function updateMoon() {
-        var frac = getMoonPhaseAngle(new Date());
-        if (moonShadow) moonShadow.setAttribute("d", moonShadowPath(frac));
-        if (moonTitle) moonTitle.textContent = phaseName(frac);
-      }
-
       updateDateTime();
-      updateMoon();
-      setInterval(updateDateTime, 1000); // Every second for seconds display
-      setInterval(updateMoon, 3600000);  // Moon changes slowly — hourly
+      setInterval(updateDateTime, 1000);
     })();
 
     initTheme();
