@@ -79,7 +79,7 @@
         <button class="home-mode-btn" data-home-mode="news" role="tab" aria-selected="false">News</button>
       </div>
 
-      <!-- ── LIVE MODE (default) ── -->
+      <!-- ── LIVE FEED (unified chronological) ── -->
       <div class="home-mode-panel active" id="homePanelLive">
         <div class="home-scroll">
           <div class="feed-freshness" id="feedFreshness" aria-live="polite"></div>
@@ -88,26 +88,10 @@
             <input type="search" id="feedSearchInput" class="feed-search-input" placeholder="Search incidents…" aria-label="Search incidents">
           </div>
           <div class="feed-search-results" id="feedSearchResults" hidden></div>
-          <div class="feed-subtabs" id="feedSubtabs" role="tablist" aria-label="Feed lanes">
-            <button class="feed-subtab active" data-feedtab="verified">Verified</button>
-            <button class="feed-subtab" data-feedtab="developing">Developing</button>
-            <button class="feed-subtab" data-feedtab="official">Official</button>
-          </div>
-          <div class="feed-tab-content active" id="feedTabVerified">
-            <div class="feed-list" id="incidentListVerified">
-              <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-              <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
-            </div>
-          </div>
-          <div class="feed-tab-content" id="feedTabDeveloping">
-            <div class="feed-list" id="incidentListDeveloping">
-              <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
-            </div>
-          </div>
-          <div class="feed-tab-content" id="feedTabOfficial">
-            <div class="feed-list" id="incidentListOfficial">
-              <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
-            </div>
+          <div class="feed-list" id="incidentListUnified">
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
+            <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
           </div>
         </div>
       </div>

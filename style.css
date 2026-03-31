@@ -404,12 +404,24 @@ a:hover { text-decoration: underline; }
 }
 
 
+/* Legacy subtabs — hidden; unified feed uses section headers */
 .feed-subtabs {
-  display: flex;
-  gap: 4px;
-  padding: 4px 0 6px;
-  flex-shrink: 0;
-  overflow-x: auto;
+  display: none;
+}
+
+/* ── Unified feed time-section headers ──────────────────────── */
+.feed-section-header {
+  font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 16px 0 6px;
+  margin: 0;
+}
+.feed-section-header:first-child {
+  padding-top: 8px;
 }
 
 .feed-controls {

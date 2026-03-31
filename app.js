@@ -415,62 +415,19 @@
   function refreshHeaderPrimaryCount() {
     var chipLbl = document.querySelector(".stat-chip--live .stat-lbl");
     var sub = document.getElementById("statLiveSub");
-    var v = lastCrimeCounts.visible_feed_count;
-    var a = lastCrimeCounts.live_now_count;
-    var confN = lastFeedTotals.confirmed;
-    var tracked = lastCrimeCounts.stats_total_incidents;
-    if (activeFeedTab === "verified") {
-      if (chipLbl) chipLbl.textContent = "Verified";
-      if (typeof v === "number") setNum("statTotal", v);
-      if (sub) {
-        if (typeof v !== "number" || v === 0) sub.textContent = "";
-        else {
-          var rsec = Math.max(0, v - (typeof a === "number" ? a : 0));
-          sub.textContent =
-            (typeof a === "number" ? a : 0) +
-            " verified now" +
-            (rsec ? " · " + rsec + " additional" : "");
-        }
-      }
-    } else if (activeFeedTab === "developing") {
-      if (chipLbl) chipLbl.textContent = "Developing";
-      if (typeof confN === "number") setNum("statTotal", confN);
-      if (sub) sub.textContent = "Early signals and corroboration";
-    } else if (activeFeedTab === "official") {
-      if (chipLbl) chipLbl.textContent = "Official";
-      if (typeof tracked === "number") setNum("statTotal", tracked);
-      if (sub) sub.textContent = "Agency/open-data updates";
-    } else {
-      if (chipLbl) chipLbl.textContent = "Trends";
-      if (typeof tracked === "number") setNum("statTotal", tracked);
-      if (sub) sub.textContent = "Map trust + trend snapshot";
+    var total = lastCrimeCounts.visible_feed_count;
+    if (chipLbl) chipLbl.textContent = "Incidents";
+    if (typeof total === "number") setNum("statTotal", total);
+    if (sub) {
+      if (typeof total !== "number" || total === 0) sub.textContent = "";
+      else sub.textContent = total + " tracked in this window";
     }
   }
 
-  // ── FEED SUB-TABS (Live / Confirmed / Context) ────────────────
+  // ── FEED (unified — no subtabs) ────────────────────────────────
   function initFeedTabs() {
-    var tabs = document.querySelectorAll(".feed-subtab");
-    tabs.forEach(function (tab) {
-      tab.addEventListener("click", function () {
-        var target = tab.getAttribute("data-feedtab");
-        if (target === activeFeedTab) return;
-        activeFeedTab = target;
-
-        tabs.forEach(function (t) { t.classList.toggle("active", t.getAttribute("data-feedtab") === target); });
-        document.querySelectorAll(".feed-tab-content").forEach(function (panel) {
-          panel.classList.toggle("active", panel.id === "feedTab" + capitalize(target));
-        });
-
-        refreshHeaderPrimaryCount();
-
-        if (target === "trendsmap") {
-          var card = document.getElementById("monthlySummaryCard");
-          if (card && card.querySelector(".skeleton-card")) {
-            fetchMonthlySummary();
-          }
-        }
-      });
-    });
+    // Legacy subtabs removed — unified chronological feed.
+    // Keep function for backward compat; nothing to bind.
   }
 
   function initFeedControls() {
@@ -1480,7 +1437,7 @@
 
   /** Live feed container (supports older HTML that used incidentListNow). */
   function getLiveFeedListEl() {
-    return document.getElementById("incidentListVerified") || document.getElementById("incidentListNow");
+    return document.getElementById("incidentListUnified") || document.getElementById("incidentListVerified") || document.getElementById("incidentListNow");
   }
 
   function _verificationLabel(v) {
@@ -1606,20 +1563,12 @@
         // Exclude scanner-only items from feed — they belong in the Scanner tab
         var feedData = data.filter(function (x) { return x.feed_tab !== "scanner_only"; });
         lastCrimeCounts.visible_feed_count = feedData.length;
-        lastCrimeCounts.live_now_count = feedData.filter(function (x) { return x.feed_tab === "verified"; }).length;
+        lastCrimeCounts.live_now_count = feedData.length;
         lastCrimeCounts.stats_total_incidents = feedData.length;
-        lastFeedTotals.confirmed = feedData.filter(function (x) { return x.feed_tab === "developing"; }).length;
-
-        var verifiedItems = feedData.filter(function (x) { return x.feed_tab === "verified"; });
-        var developingItems = feedData.filter(function (x) { return x.feed_tab === "developing"; });
-        var officialItems = feedData.filter(function (x) { return x.feed_tab === "official"; });
-        lastLiveActiveItems = verifiedItems;
+        lastLiveActiveItems = feedData;
         lastLiveRecentItems = [];
 
-        renderLiveFeed(verifiedItems, []);
-        renderConfirmedFeed(developingItems);
-        renderContextFeed(officialItems);
-        autoSelectBestLane(verifiedItems, developingItems, officialItems);
+        renderUnifiedFeed(feedData);
         refreshHeaderPrimaryCount();
         markTopbarLiveIfStillConnecting();
         markFeedFreshNow();
@@ -1633,12 +1582,8 @@
             if (!legacy || legacy.status !== "ok") throw new Error("legacy_incidents_invalid");
             var data = Array.isArray(legacy.data) ? legacy.data : [];
             allIncidentData = data;
-            var verifiedItems = data.filter(function (x) { return x.feed_tab === "verified" || x.feed_tab === "live" || x.feed_tab === "now"; });
-            var developingItems = data.filter(function (x) { return x.feed_tab === "developing" || x.feed_tab === "confirmed"; });
-            var officialItems = data.filter(function (x) { return x.feed_tab === "official"; });
-            renderLiveFeed(verifiedItems, []);
-            renderConfirmedFeed(developingItems);
-            renderContextFeed(officialItems);
+            var feedData = data.filter(function (x) { return x.feed_tab !== "scanner_only"; });
+            renderUnifiedFeed(feedData);
             markTopbarLiveIfStillConnecting();
             markFeedFreshNow();
           })
@@ -1646,17 +1591,13 @@
             console.error("Legacy incidents fallback error:", fallbackErr);
             markTopbarLiveIfStillConnecting();
             var liveL = getLiveFeedListEl();
-            var confL = document.getElementById("incidentListDeveloping");
-            var ctxL = document.getElementById("incidentListOfficial");
             var errorHtml = '<div class="feed-error-state">' +
               '<span class="material-icons">cloud_off</span>' +
               '<p>Could not load incidents right now.</p>' +
               '<p style="font-size:11px;opacity:0.7">Check your connection or try again shortly.</p>' +
               '<button class="feed-error-retry" onclick="location.reload()">Retry</button>' +
               '</div>';
-            [liveL, confL, ctxL].forEach(function (el) {
-              if (el && !el.querySelector(".feed-item")) el.innerHTML = errorHtml;
-            });
+            if (liveL && !liveL.querySelector(".feed-item")) liveL.innerHTML = errorHtml;
           });
       });
   }
@@ -1704,21 +1645,17 @@
         });
         container.innerHTML = html;
         container.hidden = false;
-        // Hide the regular feed tabs while searching
-        var tabs = document.getElementById("feedSubtabs");
-        var panels = document.querySelectorAll(".feed-tab-content");
-        if (tabs) tabs.style.display = "none";
-        panels.forEach(function (p) { p.style.display = "none"; });
+        // Hide the regular feed list while searching
+        var feedList = document.getElementById("incidentListUnified");
+        if (feedList) feedList.style.display = "none";
       })
       .catch(function () {});
   }
   function hideSearchResults() {
     var container = document.getElementById("feedSearchResults");
     if (container) { container.innerHTML = ""; container.hidden = true; }
-    var tabs = document.getElementById("feedSubtabs");
-    var panels = document.querySelectorAll(".feed-tab-content");
-    if (tabs) tabs.style.display = "";
-    panels.forEach(function (p) { p.style.display = ""; });
+    var feedList = document.getElementById("incidentListUnified");
+    if (feedList) feedList.style.display = "";
   }
 
   function officialHandleFromSource(src) {
@@ -2001,59 +1938,49 @@
     return filtered;
   }
 
-  function renderLiveFeed(activeItems, recentItems) {
+  // ── Unified feed renderer ─────────────────────────────────────
+  // Single chronological list with time-based section headers.
+  // Visual hierarchy is built into each card (severity, source pills, freshness).
+  function renderUnifiedFeed(allItems) {
     var list = getLiveFeedListEl();
     if (!list) return;
-    activeItems = applyFeedUiFilters(activeItems || []);
-    if (!activeItems.length) {
-      list.innerHTML = '<div class="empty-state">No verified incidents in this window. Check other tabs.</div>';
+    var items = applyFeedUiFilters(allItems || []);
+    if (!items.length) {
+      list.innerHTML = '<div class="empty-state"><span class="material-icons" style="font-size:32px;opacity:0.4">shield</span><p>No incidents in this window.</p></div>';
       return;
     }
-    var html = "";
-    activeItems.forEach(function (item) { html += buildIncidentCard(item); });
-    list.innerHTML = html;
-  }
 
-  function renderConfirmedFeed(confirmedItems) {
-    var list = document.getElementById("incidentListDeveloping");
-    if (!list) return;
-    confirmedItems = applyFeedUiFilters(confirmedItems || []);
-    if (!confirmedItems || confirmedItems.length === 0) {
-      list.innerHTML =
-        '<div class="empty-state">No developing incidents right now.</div>';
-      return;
-    }
-    var html = '<div class="feed-live-stale-note" role="note">Developing incidents are still being confirmed. Treat them as early reports, not final records.</div>';
-    confirmedItems.forEach(function (item) { html += buildIncidentCard(item); });
-    list.innerHTML = html;
-  }
-
-  function renderContextFeed(contextItems) {
-    var list = document.getElementById("incidentListOfficial");
-    if (!list) return;
-    contextItems = applyFeedUiFilters(contextItems || []);
-
-    if (!contextItems || contextItems.length === 0) {
-      list.innerHTML = '<div class="empty-state">No official updates in this window.</div>';
-      return;
-    }
-    var html = "";
-    contextItems.forEach(function (item) { html += buildIncidentCard(item); });
-    list.innerHTML = html;
-  }
-
-  function autoSelectBestLane(verifiedItems, developingItems, officialItems) {
-    if (verifiedItems && verifiedItems.length > 0) return;
-    var best = "verified";
-    if (developingItems && developingItems.length > 0) best = "developing";
-    else if (officialItems && officialItems.length > 0) best = "official";
-    if (best === "verified") return;
-    activeFeedTab = best;
-    var tabs = document.querySelectorAll(".feed-subtab");
-    tabs.forEach(function (t) { t.classList.toggle("active", t.getAttribute("data-feedtab") === best); });
-    document.querySelectorAll(".feed-tab-content").forEach(function (panel) {
-      panel.classList.toggle("active", panel.id === "feedTab" + capitalize(best));
+    // Sort newest first
+    items.sort(function (a, b) {
+      var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+      var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+      return tb - ta;
     });
+
+    // Time-bucket section headers
+    var now = Date.now();
+    var html = "";
+    var lastBucket = "";
+    items.forEach(function (item) {
+      var ageH = itemAgeHours(item);
+      var bucket;
+      if (ageH !== null && ageH <= 1) bucket = "Last hour";
+      else if (ageH !== null && ageH <= 6) bucket = "Earlier today";
+      else if (ageH !== null && ageH <= 24) bucket = "Today";
+      else bucket = "Recent";
+
+      if (bucket !== lastBucket) {
+        html += '<div class="feed-section-header">' + esc(bucket) + '</div>';
+        lastBucket = bucket;
+      }
+      html += buildIncidentCard(item);
+    });
+    list.innerHTML = html;
+  }
+
+  // Backward compat wrappers — all feed rendering goes through unified
+  function renderLiveFeed(activeItems, recentItems) {
+    renderUnifiedFeed((activeItems || []).concat(recentItems || []));
   }
 
   function renderTrendsMapLane(items) {
@@ -2079,22 +2006,9 @@
 
   function renderIncidentList(data) {
     if (!data) return;
-    // Exclude scanner-only items from all feed views — they belong in the Scanner tab
+    // Exclude scanner-only items from feed — they belong in the Scanner tab
     var feedData = data.filter(function (x) { return x.feed_tab !== "scanner_only"; });
-    var liveA = feedData.filter(function (x) {
-      var s = x.live_section || (x.incident && x.incident.live_section);
-      return s === "active_now" || x.feed_tab === "now";
-    });
-    var liveR = feedData.filter(function (x) {
-      var s = x.live_section || (x.incident && x.incident.live_section);
-      return s === "recent_local";
-    });
-    if (!liveA.length && !liveR.length) {
-      liveA = feedData.filter(function (x) { return x.feed_tab === "verified" || x.feed_tab === "live"; });
-    }
-    renderLiveFeed(liveA, liveR);
-    renderConfirmedFeed(feedData.filter(function (x) { return x.feed_tab === "developing" || x.feed_tab === "confirmed"; }));
-    renderContextFeed(feedData.filter(function (x) { return x.feed_tab === "official"; }));
+    renderUnifiedFeed(feedData);
     renderTrendsMapLane(feedData);
   }
 
