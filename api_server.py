@@ -4755,6 +4755,147 @@ async def _fetch_broadcastify_calls() -> list[dict]:
         return []
 
 
+# ── Broadcastify Calls Playlist fetcher ──────────────────────────────────
+# Uses the playlist console's internal API to get recent calls for the
+# Albany County scanner playlist.
+# Playlist URL: https://www.broadcastify.com/calls/playlists/?uuid=<UUID>&view=console
+
+_BCFY_PLAYLIST_CACHE: list[dict] = []
+_BCFY_PLAYLIST_CACHE_TS: float = 0.0
+_BCFY_PLAYLIST_CACHE_TTL: float = 30.0  # seconds — console polls every 3s, we relax to 30
+
+
+async def _fetch_broadcastify_playlist_calls() -> list[dict]:
+    """Fetch recent calls from the Broadcastify Calls playlist console API."""
+    global _BCFY_PLAYLIST_CACHE, _BCFY_PLAYLIST_CACHE_TS
+
+    uuid = settings.broadcastify_playlist_uuid
+    if not uuid:
+        return []
+
+    # Short-lived cache to avoid hammering
+    if _BCFY_PLAYLIST_CACHE and (time.time() - _BCFY_PLAYLIST_CACHE_TS) < _BCFY_PLAYLIST_CACHE_TTL:
+        return _BCFY_PLAYLIST_CACHE
+
+    calls: list[dict] = []
+
+    # The Broadcastify Calls console view fetches live calls via these
+    # known internal endpoints.  We try them in order:
+    #   1) /calls/apis/livecall-manager/  (newer playlist-aware endpoint)
+    #   2) /calls/apis/livecall/          (legacy per-system endpoint)
+    endpoints = [
+        f"https://www.broadcastify.com/calls/apis/livecall-manager/?uuid={uuid}",
+        f"https://www.broadcastify.com/calls/apis/livecall/?uuid={uuid}&type=json&n=50",
+    ]
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; ACT-Scanner/1.0)",
+        "Accept": "application/json, text/html, */*",
+        "Referer": f"https://www.broadcastify.com/calls/playlists/?uuid={uuid}&view=console",
+    }
+
+    for url in endpoints:
+        try:
+            resp = await http_client.get(url, headers=headers, timeout=12.0)
+            if resp.status_code != 200:
+                logger.debug("bcfy_playlist_non200 url=%s status=%s", url, resp.status_code)
+                continue
+
+            content_type = (resp.headers.get("content-type") or "").lower()
+            data = None
+
+            # Try JSON parse
+            if "json" in content_type or resp.text.strip().startswith(("{", "[")):
+                try:
+                    data = resp.json()
+                except Exception:
+                    pass
+
+            if data is None:
+                # Try to extract JSON from HTML (some endpoints embed it)
+                import re as _re
+                json_match = _re.search(r'(?:calls|data)\s*[:=]\s*(\[[\s\S]*?\]);', resp.text)
+                if json_match:
+                    try:
+                        data = json.loads(json_match.group(1))
+                    except Exception:
+                        pass
+
+            if not data:
+                continue
+
+            raw_calls = data if isinstance(data, list) else data.get("calls", data.get("data", []))
+            if not isinstance(raw_calls, list):
+                continue
+
+            for call in raw_calls[:60]:
+                if not isinstance(call, dict):
+                    continue
+                # Normalise field names — Broadcastify uses varying key names
+                tg = str(
+                    call.get("talkgroupID", "")
+                    or call.get("talkgroup", "")
+                    or call.get("tg", "")
+                    or ""
+                )
+                ts = (
+                    call.get("startTime", "")
+                    or call.get("start_time", "")
+                    or call.get("time", "")
+                    or call.get("ts", "")
+                    or ""
+                )
+                audio = (
+                    call.get("audioUrl", "")
+                    or call.get("audio_url", "")
+                    or call.get("url", "")
+                    or call.get("filename", "")
+                    or ""
+                )
+                # Build audio URL from filename if needed
+                if audio and not audio.startswith("http"):
+                    audio = f"https://calls.broadcastify.com/{audio}"
+
+                calls.append({
+                    "id": f"bcfy_pl_{call.get('id', call.get('callId', tg + '_' + str(ts)))}",
+                    "time": ts,
+                    "talkgroup_num": tg,
+                    "talkgroup_tag": (
+                        call.get("talkgroupAlpha", "")
+                        or call.get("talkgroup_tag", "")
+                        or call.get("tgAlpha", "")
+                        or call.get("tag", "")
+                        or ""
+                    ),
+                    "talkgroup_description": (
+                        call.get("talkgroupDescription", "")
+                        or call.get("talkgroup_description", "")
+                        or call.get("tgDescr", "")
+                        or ""
+                    ),
+                    "audio_url": audio,
+                    "duration": call.get("duration", 0) or call.get("len", 0) or call.get("callDuration", 0),
+                    "freq": call.get("freq", 0) or call.get("frequency", 0),
+                    "source": "broadcastify_playlist",
+                    "enc": call.get("enc", 0),
+                    "emergency": call.get("emergency", 0),
+                    "unit_ids": call.get("srcList", []) or call.get("sources", []),
+                    "_playlist_uuid": uuid,
+                })
+
+            if calls:
+                logger.info("bcfy_playlist_fetched url=%s calls=%d", url, len(calls))
+                break  # Success — don't try next endpoint
+
+        except Exception as e:
+            logger.debug("bcfy_playlist_error url=%s error=%s", url, e)
+            continue
+
+    _BCFY_PLAYLIST_CACHE = calls
+    _BCFY_PLAYLIST_CACHE_TS = time.time()
+    return calls
+
+
 async def _fetch_radioreference_talkgroups() -> dict[str, dict]:
     """Fetch talkgroup metadata from RadioReference SOAP API (requires premium)."""
     global _rr_talkgroup_cache, _rr_talkgroup_ts
@@ -4869,8 +5010,10 @@ def _dedupe_calls(all_calls: list[dict]) -> list[dict]:
             ts = 0
         key = f"{tg}_{int(ts // 30)}"
         if key in seen:
-            # Prefer Broadcastify (more metadata) over OpenMHz
-            if call.get("source") == "broadcastify" and seen[key].get("source") == "openmhz":
+            # Prefer Broadcastify sources (more metadata) over OpenMHz
+            src = call.get("source", "")
+            prev_src = seen[key].get("source", "")
+            if src in ("broadcastify", "broadcastify_playlist") and prev_src == "openmhz":
                 # Replace with Broadcastify version
                 for i, d in enumerate(deduped):
                     if d is seen[key]:
@@ -4893,10 +5036,11 @@ async def get_scanner_calls():
     # Fetch from all available sources concurrently
     openmhz_task = _fetch_openmhz_calls()
     broadcastify_task = _fetch_broadcastify_calls()
+    bcfy_playlist_task = _fetch_broadcastify_playlist_calls()
     rr_task = _fetch_radioreference_talkgroups()
 
-    openmhz_calls, bcfy_calls, rr_talkgroups = await asyncio.gather(
-        openmhz_task, broadcastify_task, rr_task,
+    openmhz_calls, bcfy_calls, bcfy_playlist_calls, rr_talkgroups = await asyncio.gather(
+        openmhz_task, broadcastify_task, bcfy_playlist_task, rr_task,
         return_exceptions=True,
     )
 
@@ -4907,6 +5051,9 @@ async def get_scanner_calls():
     if isinstance(bcfy_calls, Exception):
         logger.warning("Broadcastify exception: %s", bcfy_calls)
         bcfy_calls = []
+    if isinstance(bcfy_playlist_calls, Exception):
+        logger.warning("Broadcastify playlist exception: %s", bcfy_playlist_calls)
+        bcfy_playlist_calls = []
     if isinstance(rr_talkgroups, Exception):
         logger.warning("RadioReference exception: %s", rr_talkgroups)
         rr_talkgroups = {}
@@ -4916,11 +5063,13 @@ async def get_scanner_calls():
         sources_used.append("openmhz")
     if bcfy_calls:
         sources_used.append("broadcastify")
+    if bcfy_playlist_calls:
+        sources_used.append("broadcastify_playlist")
     if rr_talkgroups:
         sources_used.append("radioreference")
 
     # Merge all calls, sorted by time (newest first)
-    all_calls = list(openmhz_calls) + list(bcfy_calls)
+    all_calls = list(openmhz_calls) + list(bcfy_calls) + list(bcfy_playlist_calls)
     all_calls.sort(key=lambda c: c.get("time", ""), reverse=True)
 
     # Deduplicate across sources

@@ -59,6 +59,7 @@ class Settings:
     ny_511_api_key: str
     broadcastify_api_key: str
     broadcastify_system_id: str
+    broadcastify_playlist_uuid: str
     radioreference_api_key: str
     radioreference_username: str
     radioreference_password: str
@@ -102,6 +103,10 @@ def get_settings() -> Settings:
         ny_511_api_key=(os.getenv("511_NY_API_KEY") or "").strip(),
         broadcastify_api_key=(os.getenv("BROADCASTIFY_API_KEY") or "").strip(),
         broadcastify_system_id=os.getenv("BROADCASTIFY_SYSTEM_ID", "8553"),
+        broadcastify_playlist_uuid=os.getenv(
+            "BROADCASTIFY_PLAYLIST_UUID",
+            "473ed64f-7a6d-11ef-9e04-0e98d5b32039",
+        ),
         radioreference_api_key=(os.getenv("RADIOREFERENCE_API_KEY") or "").strip(),
         radioreference_username=(os.getenv("RADIOREFERENCE_USERNAME") or "").strip(),
         radioreference_password=(os.getenv("RADIOREFERENCE_PASSWORD") or "").strip(),
