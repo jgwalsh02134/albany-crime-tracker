@@ -248,12 +248,15 @@ a:hover { text-decoration: underline; }
   padding: 12px 16px calc(16px + var(--safe-bottom));
   z-index: 901;
   transform: translateY(100%);
-  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  visibility: hidden;
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s 0.3s;
   max-height: 75vh;
   overflow-y: auto;
 }
 .filter-sheet.open {
   transform: translateY(0);
+  visibility: visible;
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), visibility 0s 0s;
 }
 .filter-sheet-handle {
   width: 36px; height: 4px;
@@ -1208,31 +1211,7 @@ a:hover { text-decoration: underline; }
 .feed-meta .feed-time {
   margin-left: auto;
 }
-.feed-meta-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 6px;
-  border-radius: 999px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-3);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.feed-meta-pill--source { color: var(--accent); }
-.feed-meta-pill--federal {
-  color: #fff;
-  background: #1a3a6b;
-  border-color: #1a3a6b;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  font-size: 8px;
-}
-.feed-meta-pill--verify { color: var(--text-2); }
-.feed-meta-pill--coord-approx { border-style: dashed; }
-.feed-meta-pill--coord-missing { opacity: 0.6; }
+/* feed-meta-pill base defined below (~line 3638) */
 .feed-hood { font-weight: 600; color: var(--text-2); }
 .feed-age { font-weight: 600; color: var(--text-2); }
 .feed-age--fresh {
@@ -3652,49 +3631,7 @@ a:hover { text-decoration: underline; }
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 25%, transparent);
 }
-.feed-meta-pill--verify {
-  color: var(--text-2);
-  text-transform: capitalize;
-}
-.feed-meta-pill--verify-official {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
-  background: var(--blue-dim);
-}
-.feed-meta-pill--verify-multi_source {
-  color: var(--live-dot);
-  border-color: color-mix(in srgb, var(--live-dot) 30%, transparent);
-  background: var(--green-dim);
-}
-
-/* Severity badges */
-.feed-sev {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.feed-sev--critical {
-  background: var(--red-dim);
-  color: var(--violent);
-  border: 1px solid color-mix(in srgb, var(--violent) 40%, transparent);
-}
-.feed-sev--high {
-  background: var(--amber-dim);
-  color: var(--property);
-  border: 1px solid color-mix(in srgb, var(--property) 35%, transparent);
-}
-.feed-sev--medium {
-  background: var(--surface-3);
-  color: var(--text-2);
-  border: 1px solid var(--border);
-}
-
-/* Severity card borders */
+/* Severity card borders (color communicated via indicator strip, not text pill) */
 .feed-item--sev-critical {
   box-shadow: var(--shadow-card), inset 0 0 0 1px color-mix(in srgb, var(--violent) 20%, transparent);
 }
