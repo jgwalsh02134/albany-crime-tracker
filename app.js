@@ -1417,6 +1417,9 @@
   function _feedTabFromRecord(r) {
     var st = (r.source_type || "").toLowerCase();
     var v = (r.verification_level || "").toLowerCase();
+    var sn = (r.source_name || "").toLowerCase();
+    // Scanner items belong in the Scanner tab, not the crime feed
+    if (st === "scanner" || v === "scanner" || sn.indexOf("scanner") !== -1) return "scanner_only";
     if (st === "open_data") return "verified";
     if (st === "official" || v === "official") return "official";
     if (v === "multi_source") return "verified";
@@ -1503,14 +1506,16 @@
         var records = Array.isArray(r.incidents) ? r.incidents : [];
         var data = records.map(_toFeedItemFromIncident);
         allIncidentData = data;
-        lastCrimeCounts.visible_feed_count = data.length;
-        lastCrimeCounts.live_now_count = data.filter(function (x) { return x.feed_tab === "verified"; }).length;
-        lastCrimeCounts.stats_total_incidents = data.length;
-        lastFeedTotals.confirmed = data.filter(function (x) { return x.feed_tab === "developing"; }).length;
+        // Exclude scanner-only items from feed — they belong in the Scanner tab
+        var feedData = data.filter(function (x) { return x.feed_tab !== "scanner_only"; });
+        lastCrimeCounts.visible_feed_count = feedData.length;
+        lastCrimeCounts.live_now_count = feedData.filter(function (x) { return x.feed_tab === "verified"; }).length;
+        lastCrimeCounts.stats_total_incidents = feedData.length;
+        lastFeedTotals.confirmed = feedData.filter(function (x) { return x.feed_tab === "developing"; }).length;
 
-        var verifiedItems = data.filter(function (x) { return x.feed_tab === "verified"; });
-        var developingItems = data.filter(function (x) { return x.feed_tab === "developing"; });
-        var officialItems = data.filter(function (x) { return x.feed_tab === "official"; });
+        var verifiedItems = feedData.filter(function (x) { return x.feed_tab === "verified"; });
+        var developingItems = feedData.filter(function (x) { return x.feed_tab === "developing"; });
+        var officialItems = feedData.filter(function (x) { return x.feed_tab === "official"; });
         lastLiveActiveItems = verifiedItems;
         lastLiveRecentItems = [];
 
@@ -1974,21 +1979,23 @@
 
   function renderIncidentList(data) {
     if (!data) return;
-    var liveA = data.filter(function (x) {
+    // Exclude scanner-only items from all feed views — they belong in the Scanner tab
+    var feedData = data.filter(function (x) { return x.feed_tab !== "scanner_only"; });
+    var liveA = feedData.filter(function (x) {
       var s = x.live_section || (x.incident && x.incident.live_section);
       return s === "active_now" || x.feed_tab === "now";
     });
-    var liveR = data.filter(function (x) {
+    var liveR = feedData.filter(function (x) {
       var s = x.live_section || (x.incident && x.incident.live_section);
       return s === "recent_local";
     });
     if (!liveA.length && !liveR.length) {
-      liveA = data.filter(function (x) { return x.feed_tab === "verified" || x.feed_tab === "live"; });
+      liveA = feedData.filter(function (x) { return x.feed_tab === "verified" || x.feed_tab === "live"; });
     }
     renderLiveFeed(liveA, liveR);
-    renderConfirmedFeed(data.filter(function (x) { return x.feed_tab === "developing" || x.feed_tab === "confirmed"; }));
-    renderContextFeed(data.filter(function (x) { return x.feed_tab === "official"; }));
-    renderTrendsMapLane(data);
+    renderConfirmedFeed(feedData.filter(function (x) { return x.feed_tab === "developing" || x.feed_tab === "confirmed"; }));
+    renderContextFeed(feedData.filter(function (x) { return x.feed_tab === "official"; }));
+    renderTrendsMapLane(feedData);
   }
 
   // ── DAILY BRIEFING ────────────────────────────────────────────
@@ -2821,13 +2828,7 @@
 
   function processAndRenderScanner(calls) {
     lastScannerCallsRef = calls.slice();
-    var intelFpBefore = getScannerIntelFingerprint();
-    extractScannerIntel(calls);
-    var intelFpAfter = getScannerIntelFingerprint();
     renderScannerCalls(calls);
-    if (allIncidentData.length > 0 && intelFpBefore !== intelFpAfter) {
-      renderLiveFeed(lastLiveActiveItems, lastLiveRecentItems);
-    }
     requestScannerAiSummaries(calls);
   }
 
