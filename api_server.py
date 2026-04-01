@@ -3994,6 +3994,42 @@ async def nysp_blotter_debug():
         return {"status": "error", "error": str(e)}
 
 
+@app.get("/api/broadcastify/debug")
+async def broadcastify_debug():
+    """Debug: show Broadcastify config, attempt playlist + API fetch, report results."""
+    has_key = bool(settings.broadcastify_api_key)
+    uuid = settings.broadcastify_playlist_uuid
+    sys_id = settings.broadcastify_system_id or "8553"
+
+    results = {"status": "ok", "config": {
+        "has_api_key": has_key,
+        "api_key_prefix": settings.broadcastify_api_key[:8] + "..." if has_key else "(not set)",
+        "system_id": sys_id,
+        "playlist_uuid": uuid,
+        "playlist_url": f"https://www.broadcastify.com/calls/playlists/?uuid={uuid}&view=console" if uuid else "(not set)",
+    }}
+
+    try:
+        # Test the node API
+        api_calls = await _fetch_broadcastify_calls()
+        results["api_node_calls"] = len(api_calls)
+        if api_calls:
+            results["api_sample"] = api_calls[:3]
+    except Exception as e:
+        results["api_error"] = str(e)
+
+    try:
+        # Test the playlist fetcher
+        pl_calls = await _fetch_broadcastify_playlist_calls()
+        results["playlist_calls"] = len(pl_calls)
+        if pl_calls:
+            results["playlist_sample"] = pl_calls[:3]
+    except Exception as e:
+        results["playlist_error"] = str(e)
+
+    return results
+
+
 @app.get("/api/trends")
 async def get_trends():
     cached = get_cached("dcjs_trends")
@@ -4716,6 +4752,7 @@ async def _fetch_broadcastify_calls() -> list[dict]:
     api_key = settings.broadcastify_api_key
     system_id = settings.broadcastify_system_id or "8553"
     if not api_key:
+        logger.debug("broadcastify_calls_skipped — no BROADCASTIFY_API_KEY set")
         return []
 
     try:
@@ -4756,140 +4793,179 @@ async def _fetch_broadcastify_calls() -> list[dict]:
 
 
 # ── Broadcastify Calls Playlist fetcher ──────────────────────────────────
-# Uses the playlist console's internal API to get recent calls for the
-# Albany County scanner playlist.
-# Playlist URL: https://www.broadcastify.com/calls/playlists/?uuid=<UUID>&view=console
+# Playlist: https://www.broadcastify.com/calls/playlists/?uuid=<UUID>&view=console
+# The console is a JS app with no public JSON API for playlists.
+# Strategy: scrape the playlist page HTML for embedded call data / JS state,
+# then fall back to the Calls API using system IDs that the playlist covers.
 
 _BCFY_PLAYLIST_CACHE: list[dict] = []
 _BCFY_PLAYLIST_CACHE_TS: float = 0.0
-_BCFY_PLAYLIST_CACHE_TTL: float = 30.0  # seconds — console polls every 3s, we relax to 30
+_BCFY_PLAYLIST_CACHE_TTL: float = 45.0  # seconds
+
+# System IDs covered by the Albany County playlist
+# 8553 = Albany County P25 system (primary)
+_BCFY_PLAYLIST_SYSTEM_IDS = ["8553"]
+
+
+def _normalize_bcfy_call(call: dict, source_tag: str = "broadcastify_playlist") -> dict:
+    """Normalize a Broadcastify call dict into our standard format."""
+    tg = str(call.get("talkgroupID", "") or call.get("talkgroup", "") or call.get("tg", "") or "")
+    ts = call.get("startTime", "") or call.get("start_time", "") or call.get("time", "") or call.get("ts", "") or ""
+    audio = call.get("audioUrl", "") or call.get("audio_url", "") or call.get("url", "") or call.get("filename", "") or ""
+    if audio and not audio.startswith("http"):
+        audio = f"https://calls.broadcastify.com/{audio}"
+    return {
+        "id": f"bcfy_pl_{call.get('id', call.get('callId', tg + '_' + str(ts)))}",
+        "time": ts,
+        "talkgroup_num": tg,
+        "talkgroup_tag": call.get("talkgroupAlpha", "") or call.get("talkgroup_tag", "") or call.get("tgAlpha", "") or "",
+        "talkgroup_description": call.get("talkgroupDescription", "") or call.get("talkgroup_description", "") or call.get("tgDescr", "") or "",
+        "audio_url": audio,
+        "duration": call.get("duration", 0) or call.get("len", 0) or call.get("callDuration", 0),
+        "freq": call.get("freq", 0) or call.get("frequency", 0),
+        "source": source_tag,
+        "enc": call.get("enc", 0),
+        "emergency": call.get("emergency", 0),
+        "unit_ids": call.get("srcList", []) or call.get("sources", []),
+        "_playlist_uuid": settings.broadcastify_playlist_uuid,
+    }
 
 
 async def _fetch_broadcastify_playlist_calls() -> list[dict]:
-    """Fetch recent calls from the Broadcastify Calls playlist console API."""
+    """
+    Fetch recent calls for the Albany County Broadcastify Calls playlist.
+
+    Approach (in priority order):
+      1) Scrape the playlist console page for any embedded JSON/JS call data
+      2) Hit the Calls API for each system ID the playlist covers
+      3) Try the public calls listing page for the system
+    """
     global _BCFY_PLAYLIST_CACHE, _BCFY_PLAYLIST_CACHE_TS
 
     uuid = settings.broadcastify_playlist_uuid
     if not uuid:
         return []
 
-    # Short-lived cache to avoid hammering
+    # Short-lived cache
     if _BCFY_PLAYLIST_CACHE and (time.time() - _BCFY_PLAYLIST_CACHE_TS) < _BCFY_PLAYLIST_CACHE_TTL:
         return _BCFY_PLAYLIST_CACHE
 
     calls: list[dict] = []
 
-    # The Broadcastify Calls console view fetches live calls via these
-    # known internal endpoints.  We try them in order:
-    #   1) /calls/apis/livecall-manager/  (newer playlist-aware endpoint)
-    #   2) /calls/apis/livecall/          (legacy per-system endpoint)
-    endpoints = [
-        f"https://www.broadcastify.com/calls/apis/livecall-manager/?uuid={uuid}",
-        f"https://www.broadcastify.com/calls/apis/livecall/?uuid={uuid}&type=json&n=50",
-    ]
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; ACT-Scanner/1.0)",
-        "Accept": "application/json, text/html, */*",
-        "Referer": f"https://www.broadcastify.com/calls/playlists/?uuid={uuid}&view=console",
-    }
-
-    for url in endpoints:
-        try:
-            resp = await http_client.get(url, headers=headers, timeout=12.0)
-            if resp.status_code != 200:
-                logger.debug("bcfy_playlist_non200 url=%s status=%s", url, resp.status_code)
-                continue
-
-            content_type = (resp.headers.get("content-type") or "").lower()
-            data = None
-
-            # Try JSON parse
-            if "json" in content_type or resp.text.strip().startswith(("{", "[")):
-                try:
-                    data = resp.json()
-                except Exception:
-                    pass
-
-            if data is None:
-                # Try to extract JSON from HTML (some endpoints embed it)
-                import re as _re
-                json_match = _re.search(r'(?:calls|data)\s*[:=]\s*(\[[\s\S]*?\]);', resp.text)
-                if json_match:
+    # ── Strategy 1: Scrape the playlist console page for embedded data ────
+    try:
+        console_url = f"https://www.broadcastify.com/calls/playlists/?uuid={uuid}&view=console"
+        resp = await http_client.get(
+            console_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            },
+            timeout=15.0,
+            follow_redirects=True,
+        )
+        if resp.status_code == 200:
+            html = resp.text
+            # Look for embedded JSON data (Broadcastify often injects call data into the page)
+            for pattern in [
+                r'(?:initialCalls|callData|recentCalls|calls)\s*[:=]\s*(\[[\s\S]*?\])\s*[;,]',
+                r'data-calls=["\'](\[[\s\S]*?\])["\']',
+                r'"calls"\s*:\s*(\[[\s\S]*?\])',
+            ]:
+                match = re.search(pattern, html)
+                if match:
                     try:
-                        data = json.loads(json_match.group(1))
-                    except Exception:
-                        pass
+                        raw = json.loads(match.group(1))
+                        if isinstance(raw, list) and len(raw) > 0:
+                            for c in raw[:60]:
+                                if isinstance(c, dict):
+                                    calls.append(_normalize_bcfy_call(c))
+                            logger.info("bcfy_playlist_scraped_html calls=%d", len(calls))
+                            break
+                    except (json.JSONDecodeError, Exception):
+                        continue
 
-            if not data:
-                continue
+            # Also extract system IDs referenced in the page for Strategy 2
+            sys_matches = re.findall(r'systemId["\s:=]+["\']?(\d{3,6})["\']?', html)
+            if sys_matches:
+                for sid in sys_matches:
+                    if sid not in _BCFY_PLAYLIST_SYSTEM_IDS:
+                        _BCFY_PLAYLIST_SYSTEM_IDS.append(sid)
+                logger.debug("bcfy_playlist_systems_from_html systems=%s", _BCFY_PLAYLIST_SYSTEM_IDS)
+        else:
+            logger.debug("bcfy_playlist_console_non200 status=%d", resp.status_code)
+    except Exception as e:
+        logger.debug("bcfy_playlist_console_error error=%s", e)
 
-            raw_calls = data if isinstance(data, list) else data.get("calls", data.get("data", []))
-            if not isinstance(raw_calls, list):
-                continue
+    # ── Strategy 2: Use the Calls API for each system ID ──────────────────
+    if not calls:
+        api_key = settings.broadcastify_api_key
+        if api_key:
+            for sys_id in _BCFY_PLAYLIST_SYSTEM_IDS:
+                try:
+                    resp = await http_client.get(
+                        f"https://api.broadcastify.com/calls/node/{sys_id}",
+                        params={"apiKey": api_key, "type": "json", "num": 50},
+                        timeout=12.0,
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        raw = data if isinstance(data, list) else data.get("calls", [])
+                        for c in raw[:50]:
+                            if isinstance(c, dict):
+                                calls.append(_normalize_bcfy_call(c))
+                        if calls:
+                            logger.info("bcfy_playlist_api_fetched sys=%s calls=%d", sys_id, len(calls))
+                    else:
+                        logger.debug("bcfy_playlist_api_non200 sys=%s status=%d", sys_id, resp.status_code)
+                except Exception as e:
+                    logger.debug("bcfy_playlist_api_error sys=%s error=%s", sys_id, e)
+        else:
+            logger.info("bcfy_playlist_no_api_key — set BROADCASTIFY_API_KEY for call data")
 
-            for call in raw_calls[:60]:
-                if not isinstance(call, dict):
-                    continue
-                # Normalise field names — Broadcastify uses varying key names
-                tg = str(
-                    call.get("talkgroupID", "")
-                    or call.get("talkgroup", "")
-                    or call.get("tg", "")
-                    or ""
+    # ── Strategy 3: Scrape the public system calls page ───────────────────
+    if not calls:
+        for sys_id in _BCFY_PLAYLIST_SYSTEM_IDS:
+            try:
+                sys_url = f"https://www.broadcastify.com/calls/node/{sys_id}"
+                resp = await http_client.get(
+                    sys_url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                        "Accept": "text/html,*/*",
+                    },
+                    timeout=12.0,
+                    follow_redirects=True,
                 )
-                ts = (
-                    call.get("startTime", "")
-                    or call.get("start_time", "")
-                    or call.get("time", "")
-                    or call.get("ts", "")
-                    or ""
-                )
-                audio = (
-                    call.get("audioUrl", "")
-                    or call.get("audio_url", "")
-                    or call.get("url", "")
-                    or call.get("filename", "")
-                    or ""
-                )
-                # Build audio URL from filename if needed
-                if audio and not audio.startswith("http"):
-                    audio = f"https://calls.broadcastify.com/{audio}"
+                if resp.status_code == 200:
+                    # Look for call data in the public page
+                    for pattern in [
+                        r'(?:calls|recentCalls|callData)\s*[:=]\s*(\[[\s\S]*?\])\s*[;,]',
+                        r'"calls"\s*:\s*(\[[\s\S]*?\])',
+                    ]:
+                        match = re.search(pattern, resp.text)
+                        if match:
+                            try:
+                                raw = json.loads(match.group(1))
+                                if isinstance(raw, list):
+                                    for c in raw[:50]:
+                                        if isinstance(c, dict):
+                                            calls.append(_normalize_bcfy_call(c))
+                                    if calls:
+                                        logger.info("bcfy_playlist_page_scraped sys=%s calls=%d", sys_id, len(calls))
+                                    break
+                            except Exception:
+                                continue
+            except Exception as e:
+                logger.debug("bcfy_playlist_page_error sys=%s error=%s", sys_id, e)
 
-                calls.append({
-                    "id": f"bcfy_pl_{call.get('id', call.get('callId', tg + '_' + str(ts)))}",
-                    "time": ts,
-                    "talkgroup_num": tg,
-                    "talkgroup_tag": (
-                        call.get("talkgroupAlpha", "")
-                        or call.get("talkgroup_tag", "")
-                        or call.get("tgAlpha", "")
-                        or call.get("tag", "")
-                        or ""
-                    ),
-                    "talkgroup_description": (
-                        call.get("talkgroupDescription", "")
-                        or call.get("talkgroup_description", "")
-                        or call.get("tgDescr", "")
-                        or ""
-                    ),
-                    "audio_url": audio,
-                    "duration": call.get("duration", 0) or call.get("len", 0) or call.get("callDuration", 0),
-                    "freq": call.get("freq", 0) or call.get("frequency", 0),
-                    "source": "broadcastify_playlist",
-                    "enc": call.get("enc", 0),
-                    "emergency": call.get("emergency", 0),
-                    "unit_ids": call.get("srcList", []) or call.get("sources", []),
-                    "_playlist_uuid": uuid,
-                })
-
-            if calls:
-                logger.info("bcfy_playlist_fetched url=%s calls=%d", url, len(calls))
-                break  # Success — don't try next endpoint
-
-        except Exception as e:
-            logger.debug("bcfy_playlist_error url=%s error=%s", url, e)
-            continue
+    if not calls:
+        logger.info(
+            "bcfy_playlist_empty — no calls retrieved. "
+            "Ensure BROADCASTIFY_API_KEY is set or the playlist console page is scrapable. "
+            "Playlist UUID=%s, systems=%s",
+            uuid, _BCFY_PLAYLIST_SYSTEM_IDS,
+        )
 
     _BCFY_PLAYLIST_CACHE = calls
     _BCFY_PLAYLIST_CACHE_TS = time.time()
