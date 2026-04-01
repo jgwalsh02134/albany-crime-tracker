@@ -157,27 +157,32 @@ def _all_fingerprint_hashes(record: IncidentRecord, raw_payload: dict[str, Any])
     return hashes
 
 
+def _safe_str(value: str, max_len: int) -> str:
+    s = str(value or "")
+    return s[:max_len] if len(s) > max_len else s
+
+
 def _to_orm(record: IncidentRecord, raw_payload: dict[str, Any]) -> IncidentORM:
     return IncidentORM(
-        id=record.id,
-        external_id=record.external_ref or record.id,
+        id=str(record.id or ""),
+        external_id=str(record.external_ref or record.id or ""),
         source_fingerprint=_stable_fingerprint(record, raw_payload),
-        title=record.title,
-        description=record.description,
-        incident_type=record.incident_type,
-        severity=record.severity,
-        status=record.status,
-        source_type=record.source_type,
-        source_name=record.source_name,
-        source_url=record.source_url,
+        title=str(record.title or ""),
+        description=str(record.description or ""),
+        incident_type=_safe_str(record.incident_type, 120),
+        severity=_safe_str(record.severity, 32),
+        status=_safe_str(record.status, 32),
+        source_type=_safe_str(record.source_type, 64),
+        source_name=str(record.source_name or ""),
+        source_url=str(record.source_url or ""),
         occurred_at=record.occurred_at,
         published_at=record.published_at,
-        municipality=record.municipality,
-        address_text=record.address_text,
+        municipality=_safe_str(record.municipality, 200),
+        address_text=str(record.address_text or ""),
         latitude=record.latitude,
         longitude=record.longitude,
         confidence_score=record.confidence_score,
-        verification_level=record.verification_level,
+        verification_level=_safe_str(record.verification_level, 64),
         tags=record.tags,
         raw_payload=raw_payload,
     )
@@ -392,8 +397,12 @@ async def upsert_incidents(records: list[IncidentRecord], raw_payloads: list[dic
             "backend": "postgres",
         }
         return dict(_LAST_UPSERT_STATS)
-    except Exception:
-        logger.warning("incident upsert fallback_to_memory")
+    except Exception as exc:
+        logger.warning(
+            "incident_upsert_db_error fallback_to_memory error=%s type=%s",
+            str(exc)[:500],
+            type(exc).__name__,
+        )
         inserted = 0
         skipped = 0
         for idx, record in enumerate(records):
