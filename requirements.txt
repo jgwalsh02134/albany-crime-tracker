@@ -7,3 +7,4 @@ asyncpg
 redis
 greenlet
 pdfplumber
+openai

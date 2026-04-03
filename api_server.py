@@ -55,6 +55,7 @@ from app.services.incident_repository import incident_trends
 from app.services.incident_repository import incident_store_backend
 from app.services.incident_repository import query_incidents
 from app.services.incident_repository import summarize_incidents
+from app.services.scanner_analysis import analyze_scanner_transcript
 from app.services.incident_transformers import article_to_incident
 from app.services.geocoding import geocode_article_mapbox, geocode_cache_stats
 from app.services.source_registry import load_source_registry
@@ -5308,6 +5309,70 @@ def _alert_level(keywords: list[str]) -> str:
     return "medium"
 
 
+def _merge_scanner_keywords(base_keywords: list[str], analysis: Optional[dict[str, Any]]) -> list[str]:
+    merged: list[str] = []
+    for kw in list(base_keywords or []) + list((analysis or {}).get("keywords") or []):
+        kw_s = str(kw or "").strip()
+        if kw_s and kw_s not in merged:
+            merged.append(kw_s)
+    return merged
+
+
+def _max_scanner_alert_level(base_level: str, analysis: Optional[dict[str, Any]]) -> str:
+    rank = {"none": 0, "medium": 1, "high": 2, "critical": 3}
+    analysis_level = str((analysis or {}).get("alert_level") or "none").strip().lower()
+    if analysis_level not in rank:
+        analysis_level = "none"
+    current_level = str(base_level or "none").strip().lower()
+    if current_level not in rank:
+        current_level = "none"
+    return analysis_level if rank[analysis_level] > rank[current_level] else current_level
+
+
+def _scanner_call_channel_name(call: dict[str, Any]) -> str:
+    return str(
+        call.get("talkgroup_tag")
+        or call.get("talkgroup_description")
+        or call.get("talkgroup_num")
+        or call.get("feed_name")
+        or "scanner"
+    ).strip()
+
+
+def _scanner_call_source_name(call: dict[str, Any]) -> str:
+    return str(call.get("source") or call.get("feed_name") or "scanner").strip()
+
+
+def _scanner_call_timestamp(call: dict[str, Any]) -> str:
+    return str(call.get("time") or call.get("startTime") or datetime.now(timezone.utc).isoformat()).strip()
+
+
+def _scanner_call_municipality_hint(call: dict[str, Any]) -> str:
+    return str(call.get("municipality") or call.get("matched_location") or "Albany County").strip()
+
+
+def _scanner_call_local_reference_context(call: dict[str, Any]) -> str:
+    bits = [
+        f"talkgroup_num={call.get('talkgroup_num') or call.get('talkgroupID') or ''}",
+        f"talkgroup_tag={call.get('talkgroup_tag') or ''}",
+        f"talkgroup_description={call.get('talkgroup_description') or ''}",
+        f"frequency_hz={call.get('freq') or 0}",
+        f"duration_seconds={call.get('duration') or call.get('len') or 0}",
+        f"source={call.get('source') or ''}",
+        f"matched_location={call.get('matched_location') or ''}",
+        f"municipality={call.get('municipality') or ''}",
+    ]
+    unit_ids = call.get("unit_ids")
+    if isinstance(unit_ids, list) and unit_ids:
+        bits.append("unit_ids=" + ",".join(str(x) for x in unit_ids[:12] if str(x).strip()))
+    if call.get("emergency"):
+        bits.append("emergency_flag=1")
+    if call.get("enc"):
+        bits.append("encrypted_flag=1")
+    bits.append("jurisdiction=Albany County, New York")
+    return " | ".join(bit for bit in bits if bit and not bit.endswith("="))
+
+
 @app.post("/api/scanner/transcribe")
 async def scanner_transcribe(request: Request):
     """Transcribe scanner audio using OpenAI Whisper and flag critical keywords."""
@@ -5346,6 +5411,7 @@ async def scanner_transcribe(request: Request):
                 "text": cached["text"],
                 "keywords": cached["keywords"],
                 "alert_level": cached["alert_level"],
+                "analysis": cached.get("analysis"),
             })
             continue
 
@@ -5399,12 +5465,23 @@ async def scanner_transcribe(request: Request):
                 # Scan for critical keywords
                 keywords = _scan_for_keywords(text)
                 level = _alert_level(keywords)
+                analysis = await analyze_scanner_transcript(
+                    transcript=text,
+                    channel_name=_scanner_call_channel_name(c),
+                    source_name=_scanner_call_source_name(c),
+                    timestamp=_scanner_call_timestamp(c),
+                    municipality_hint=_scanner_call_municipality_hint(c),
+                    local_reference_context=_scanner_call_local_reference_context(c),
+                )
+                keywords = _merge_scanner_keywords(keywords, analysis)
+                level = _max_scanner_alert_level(level, analysis)
 
                 # Cache the result
                 _whisper_cache[audio_url] = {
                     "text": text,
                     "keywords": keywords,
                     "alert_level": level,
+                    "analysis": analysis,
                     "timestamp": time.time(),
                 }
 
@@ -5423,6 +5500,7 @@ async def scanner_transcribe(request: Request):
                     "text": text,
                     "keywords": keywords,
                     "alert_level": level,
+                    "analysis": analysis,
                 })
 
             except Exception as exc:
@@ -5574,6 +5652,19 @@ async def _monitor_single_feed(feed: dict):
             # Scan for keywords
             keywords = _scan_for_keywords(text)
             level = _alert_level(keywords)
+            analysis = await analyze_scanner_transcript(
+                transcript=text,
+                channel_name=feed_name,
+                source_name="broadcastify_stream_monitor",
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                municipality_hint="Albany County",
+                local_reference_context=(
+                    f"feed_id={feed_id} | feed_name={feed_name} | feed_priority={feed_priority} "
+                    "| jurisdiction=Albany County, New York | source=broadcastify live stream"
+                ),
+            )
+            keywords = _merge_scanner_keywords(keywords, analysis)
+            level = _max_scanner_alert_level(level, analysis)
 
             # Store if significant (any keywords found, or high-priority feed)
             if keywords or feed_priority == "high":
@@ -5583,6 +5674,7 @@ async def _monitor_single_feed(feed: dict):
                     "text": text,
                     "keywords": keywords,
                     "alert_level": level,
+                    "analysis": analysis,
                     "timestamp": time.time(),
                     "iso_time": datetime.now(timezone.utc).isoformat(),
                 }
