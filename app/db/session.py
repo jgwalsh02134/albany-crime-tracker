@@ -19,6 +19,98 @@ logger = logging.getLogger(__name__)
 _engines_by_loop: dict[int, AsyncEngine] = {}
 _session_factories_by_loop: dict[int, async_sessionmaker[AsyncSession]] = {}
 _last_db_error: str = ""
+_INCIDENTS_SCHEMA_HARDENING_SQL = """
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = current_schema()
+          AND table_name = 'incidents'
+    ) THEN
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'id'
+              AND data_type <> 'text'
+        ) THEN
+            ALTER TABLE incidents ALTER COLUMN id TYPE TEXT;
+        END IF;
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'external_id'
+              AND data_type <> 'text'
+        ) THEN
+            ALTER TABLE incidents ALTER COLUMN external_id TYPE TEXT;
+        END IF;
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'title'
+              AND data_type <> 'text'
+        ) THEN
+            ALTER TABLE incidents ALTER COLUMN title TYPE TEXT;
+        END IF;
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'description'
+              AND data_type <> 'text'
+        ) THEN
+            ALTER TABLE incidents ALTER COLUMN description TYPE TEXT;
+        END IF;
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'source_name'
+              AND data_type <> 'text'
+        ) THEN
+            ALTER TABLE incidents ALTER COLUMN source_name TYPE TEXT;
+        END IF;
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'source_url'
+              AND data_type <> 'text'
+        ) THEN
+            ALTER TABLE incidents ALTER COLUMN source_url TYPE TEXT;
+        END IF;
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'municipality'
+              AND data_type <> 'text'
+        ) THEN
+            ALTER TABLE incidents ALTER COLUMN municipality TYPE TEXT;
+        END IF;
+        IF EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'address_text'
+              AND data_type <> 'text'
+        ) THEN
+            ALTER TABLE incidents ALTER COLUMN address_text TYPE TEXT;
+        END IF;
+    END IF;
+END $$;
+"""
 
 
 def _normalize_database_url(url: str) -> str:
@@ -144,6 +236,7 @@ async def init_database() -> bool:
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(text(_INCIDENTS_SCHEMA_HARDENING_SQL))
         _last_db_error = ""
         return True
     except Exception as exc:

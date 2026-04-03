@@ -2764,6 +2764,10 @@ def _nysp_blotter_urls_for_window(days_back: int = 2) -> list[str]:
     return urls
 
 
+def _clean_nysp_blotter_text(text: str) -> str:
+    return (text or "").replace("\x00", "").strip()
+
+
 def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
     """Extract incidents from a NYSP Public Information Report PDF."""
     try:
@@ -2775,12 +2779,17 @@ def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
     items: list[dict] = []
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            full_text = "\n".join(p.extract_text() or "" for p in pdf.pages)
+            full_text = "\n".join(
+                cleaned
+                for cleaned in (_clean_nysp_blotter_text(p.extract_text() or "") for p in pdf.pages)
+                if cleaned
+            )
     except Exception as e:
         logger.warning("nysp_pdf_parse_error url=%s error=%s", pdf_url, e)
         return []
 
-    if not full_text.strip():
+    full_text = _clean_nysp_blotter_text(full_text)
+    if not full_text:
         return []
 
     # Extract header info (troop, zone, date range)
@@ -2829,7 +2838,7 @@ def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
             continue
 
         incident_type = title_match.group(1).strip()
-        body = title_match.group(2).strip()
+        body = _clean_nysp_blotter_text(title_match.group(2))
 
         # Extract location from body
         loc_match = re.search(
@@ -2837,7 +2846,7 @@ def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
             body,
             re.IGNORECASE,
         )
-        location = loc_match.group(1).strip() if loc_match else ""
+        location = _clean_nysp_blotter_text(loc_match.group(1)) if loc_match else ""
 
         # Extract date/time from body
         dt_match = re.search(
@@ -2870,7 +2879,7 @@ def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
             incident_dt = datetime.now(timezone.utc)
 
         # Build title
-        first_line = body.split("\n")[0].strip()[:120]
+        first_line = _clean_nysp_blotter_text(body.split("\n")[0])[:120]
         title = f"NYSP {incident_type}: {first_line}" if first_line else f"NYSP {incident_type}"
 
         # Check if this is Albany County related
@@ -2882,7 +2891,7 @@ def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
 
         # Build description from body (first ~300 chars, cleaned)
         desc_lines = [ln.strip() for ln in body.split("\n") if ln.strip()]
-        description = " ".join(desc_lines)[:400]
+        description = _clean_nysp_blotter_text(" ".join(desc_lines))[:400]
 
         # Determine severity
         sev = "medium"

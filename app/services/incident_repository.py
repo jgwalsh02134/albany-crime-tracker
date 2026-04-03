@@ -163,6 +163,16 @@ def _safe_str(value: str, max_len: int) -> str:
     return s[:max_len] if len(s) > max_len else s
 
 
+def _record_log_context(record: IncidentRecord, raw_payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "record_id": str(record.id or "")[:160],
+        "source_name": str(record.source_name or "")[:160],
+        "source_type": str(record.source_type or "")[:80],
+        "title": str(record.title or "")[:200],
+        "source_url": str(record.source_url or raw_payload.get("link") or "")[:240],
+    }
+
+
 def _to_orm(record: IncidentRecord, raw_payload: dict[str, Any]) -> IncidentORM:
     return IncidentORM(
         id=str(record.id or ""),
@@ -374,22 +384,39 @@ async def upsert_incidents(records: list[IncidentRecord], raw_payloads: list[dic
             for idx, record in enumerate(records):
                 raw_payload = raw_payloads[idx] if idx < len(raw_payloads) else {}
                 record, raw_payload, _ = sanitize_incident_inputs(record, raw_payload)
-                fps = _all_fingerprint_hashes(record, raw_payload)
-                fp = fps[0]
-                existing = await _find_existing_row(session, record, raw_payload, fps)
-                if existing is None:
-                    session.add(_to_orm(record, raw_payload))
-                    inserted += 1
-                    continue
+                try:
+                    async with session.begin_nested():
+                        fps = _all_fingerprint_hashes(record, raw_payload)
+                        existing = await _find_existing_row(session, record, raw_payload, fps)
+                        if existing is None:
+                            session.add(_to_orm(record, raw_payload))
+                            await session.flush()
+                            inserted += 1
+                            continue
 
-                if _near_duplicate(existing, record, raw_payload):
+                        if _near_duplicate(existing, record, raw_payload):
+                            skipped += 1
+                            continue
+                        if _apply_updates(existing, record):
+                            existing.raw_payload = raw_payload
+                            await session.flush()
+                            updated += 1
+                        else:
+                            skipped += 1
+                except Exception as exc:
+                    ctx = _record_log_context(record, raw_payload)
+                    logger.warning(
+                        "incident_upsert_record_error record_id=%s source_name=%s source_type=%s title=%s source_url=%s error=%s type=%s",
+                        ctx["record_id"],
+                        ctx["source_name"],
+                        ctx["source_type"],
+                        ctx["title"],
+                        ctx["source_url"],
+                        str(exc)[:500],
+                        type(exc).__name__,
+                    )
                     skipped += 1
                     continue
-                if _apply_updates(existing, record):
-                    existing.raw_payload = raw_payload
-                    updated += 1
-                else:
-                    skipped += 1
 
             await session.commit()
         _LAST_UPSERT_STATS = {

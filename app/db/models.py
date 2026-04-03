@@ -47,7 +47,7 @@ class IncidentORM(Base):
     source_url: Mapped[str] = mapped_column(Text, default="")
     occurred_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    municipality: Mapped[str] = mapped_column(String(200), default="")
+    municipality: Mapped[str] = mapped_column(Text, default="")
     address_text: Mapped[str] = mapped_column(Text, default="")
     latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
