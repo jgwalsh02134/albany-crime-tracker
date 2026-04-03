@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.db.models import IncidentORM
 from app.db.session import get_session_factory
 from app.models.incident import IncidentRecord
+from app.services.postgres_text_sanitize import sanitize_incident_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -340,6 +341,7 @@ async def upsert_incidents(records: list[IncidentRecord], raw_payloads: list[dic
     if session_factory is None:
         for idx, record in enumerate(records):
             raw_payload = raw_payloads[idx] if idx < len(raw_payloads) else {}
+            record, raw_payload, _ = sanitize_incident_inputs(record, raw_payload)
             fp = _stable_fingerprint(record, raw_payload)
             existing = _MEMORY_INCIDENTS.get(fp)
             if existing:
@@ -371,6 +373,7 @@ async def upsert_incidents(records: list[IncidentRecord], raw_payloads: list[dic
         async with session_factory() as session:
             for idx, record in enumerate(records):
                 raw_payload = raw_payloads[idx] if idx < len(raw_payloads) else {}
+                record, raw_payload, _ = sanitize_incident_inputs(record, raw_payload)
                 fps = _all_fingerprint_hashes(record, raw_payload)
                 fp = fps[0]
                 existing = await _find_existing_row(session, record, raw_payload, fps)
@@ -407,6 +410,7 @@ async def upsert_incidents(records: list[IncidentRecord], raw_payloads: list[dic
         skipped = 0
         for idx, record in enumerate(records):
             raw_payload = raw_payloads[idx] if idx < len(raw_payloads) else {}
+            record, raw_payload, _ = sanitize_incident_inputs(record, raw_payload)
             fp = _stable_fingerprint(record, raw_payload)
             existing = _MEMORY_INCIDENTS.get(fp)
             if existing:
