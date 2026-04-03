@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 
-DEFAULT_STREAM_URL = "http://relay.broadcastify.com:80/placeholder"
+DEFAULT_STREAM_URL = "https://audio.broadcastify.com/3626.mp3"
 DEFAULT_SEGMENT_SECONDS = 30
 DEFAULT_RETRY_SECONDS = 5
 
