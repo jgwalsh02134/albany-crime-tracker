@@ -317,7 +317,6 @@ NYS Comptroller's Office — Investigations Division,NYS Comptroller's Office �
 NYS Dept. of Taxation and Finance — Criminal Investigations Division,NYS Dept. of Taxation and Finance — Criminal Investigations Division,state,official_updates,tier_1,https://www.tax.ny.gov/,,,https://twitter.com/NYSTaxDept,no,yes,true,no,no,validated_not_implemented
 NYS Division of Criminal Justice Services,NYS Division of Criminal Justice Services,state,official_updates,tier_1,https://www.criminaljustice.ny.gov/,,,https://twitter.com/NYSDCJS,no,yes,true,no,no,validated_not_implemented
 NYS Office of the Attorney General — Criminal Justice Division,NYS Office of the Attorney General — Criminal Justice Division,state,official_updates,tier_1,https://ag.ny.gov/,,,https://www.facebook.com/newyorkstateag,no,yes,true,no,no,validated_not_implemented
-511NY Developers Docs,511NY Developers Docs,traffic,trends_context,tier_3,https://511ny.org/developers/doc,,,,no,yes,true,no,no,validated_not_implemented
 Discovered https://511ny.org/List/Alerts,511ny.org,traffic,trends_context,tier_3,https://511ny.org/List/Alerts,,,,no,yes,true,no,no,validated_not_implemented
 CBS6 Albany / WRGB,CBS6 Albany / WRGB,tv_news,verified_incidents,tier_2,https://cbs6albany.com/,,,https://twitter.com/CBS6Albany,no,yes,true,no,no,validated_not_implemented
 CBS6 News RSS,CBS6 News RSS,tv_news,verified_incidents,tier_2,https://cbs6albany.com/news.rss,https://cbs6albany.com/news.rss,,,no,yes,true,no,no,validated_not_implemented
@@ -364,13 +363,17 @@ NYSP Facebook,NYSP Facebook,official_social,developing_incidents,tier_3,https://
 Broadcastify Feed 3626,Broadcastify Feed 3626,scanner,developing_incidents,tier_3,https://www.broadcastify.com/listen/feed/3626,https://www.broadcastify.com/listen/feed/3626,,,no,yes,true,yes,no,duplicate_url
 Discovered http://www.broadcastify.com/listen/feed/3626,www.broadcastify.com,scanner,developing_incidents,tier_3,http://www.broadcastify.com/listen/feed/3626,http://www.broadcastify.com/listen/feed/3626,,,no,yes,true,yes,no,duplicate_url
 New York State Police — Troop G,New York State Police — Troop G,state,official_updates,tier_1,https://troopers.ny.gov/location/troop-g,,,https://www.facebook.com/nyspolice,no,yes,true,yes,yes,duplicate_social
+511NY Developers Docs,511NY Developers Docs,traffic,trends_context,tier_3,https://511ny.org/developers/doc,,,,no,yes,true,yes,no,duplicate_url
+511NY Full API,511NY Full API,traffic,official_updates,tier_1,https://511ny.org/developers/doc,,https://511ny.org/api/GetEvents,,yes,yes,true,yes,no,duplicate_url
 Discovered https://www.news10.com/feed/,www.news10.com,tv_news,verified_incidents,tier_2,https://www.news10.com/feed/,https://www.news10.com/feed/,,,no,yes,true,yes,no,duplicate_url
 FOX23 / WXXA,FOX23 / WXXA,tv_news,verified_incidents,tier_2,https://www.news10.com/,,,https://twitter.com/FOX23News,no,yes,true,yes,yes,duplicate_url
 NEWS10 ABC / WTEN,NEWS10 ABC / WTEN,tv_news,verified_incidents,tier_2,https://www.news10.com/,,,https://twitter.com/NEWS10ABC,no,yes,true,yes,yes,duplicate_url
 NEWS10 Feed,NEWS10 Feed,tv_news,verified_incidents,tier_2,https://www.news10.com/feed/,https://www.news10.com/feed/,,,no,yes,true,yes,no,duplicate_url
 WNYT Google News RSS,WNYT Google News RSS,tv_news,verified_incidents,tier_2,https://news.google.com/rss/search?q=site:wnyt.com+Albany+crime+OR+arrest+OR+shooting+OR+fire&hl=en-US&gl=US&ceid=US:en,https://news.google.com/rss/search?q=site:wnyt.com+Albany+crime+OR+arrest+OR+shooting+OR+fire&hl=en-US&gl=US&ceid=US:en,,,yes,yes,true,yes,no,gnews_fallback_duplicate
 USAO NDNY RSS,USAO NDNY RSS,federal,official_updates,tier_1,https://www.justice.gov/usao-ndny/pr/rss,https://www.justice.gov/usao-ndny/pr/rss,,,yes,yes,true,no,no,implemented_live
+IPAWS CAP / NWS Fallback,IPAWS CAP / NWS Fallback,official_alerts,official_updates,tier_1,https://api.weather.gov/alerts/active.atom?area=NY,https://api.weather.gov/alerts/active.atom?area=NY,,,yes,yes,true,no,no,implemented_live
 NYSP Media Reports,NYSP Media Reports,official_press,official_updates,tier_1,https://publicapps.troopers.ny.gov/Media_Reports/,,,,yes,yes,true,no,no,implemented_live
+Albany ArcGIS Municipal Boundaries,Albany ArcGIS Municipal Boundaries,official_structured,official_updates,tier_1,https://services6.arcgis.com/mBzcjj7yrA6fBe9F/arcgis/rest/services/Albany_County_Municipalities/FeatureServer,,https://services6.arcgis.com/mBzcjj7yrA6fBe9F/arcgis/rest/services/Albany_County_Municipalities/FeatureServer/0/query,,yes,yes,true,no,no,implemented_live
 CBS6 Local RSS,CBS6 Local RSS,tv_news,verified_incidents,tier_2,https://cbs6albany.com/news/local.rss,https://cbs6albany.com/news/local.rss,,,yes,yes,true,no,no,implemented_live
 NEWS10 Crime Feed,NEWS10 Crime Feed,tv_news,verified_incidents,tier_2,https://www.news10.com/news/crime/feed/,https://www.news10.com/news/crime/feed/,,,yes,yes,true,no,no,implemented_live
 Albany Medical College / Albany Medical Center — Security,Albany Medical College / Albany Medical Center — Security,campus,trends_context,tier_3,https://www.amc.edu/community/campus-safety/,,,,no,yes,true,no,yes,blocked_or_auth_gated
@@ -399,6 +402,7 @@ Albany Socrata Crimes by Neighborhood,Albany Socrata Crimes by Neighborhood,offi
 Albany Socrata Use of Force by Month,Albany Socrata Use of Force by Month,official_structured,official_updates,tier_1,https://data.albanyny.gov/resource/na5h-ypn4.json,,https://data.albanyny.gov/resource/na5h-ypn4.json,,no,no,false,no,yes,unreachable
 OpenMHz Albany Calls API,OpenMHz Albany Calls API,scanner,developing_incidents,tier_3,https://api.openmhz.com/albanycony/calls/newer,,,,yes,yes,true,no,yes,blocked_or_auth_gated
 OpenMHz Albany System,OpenMHz Albany System,scanner,developing_incidents,tier_3,https://openmhz.com/system/albanycony,,,,no,yes,true,no,yes,blocked_or_auth_gated
+RadioReference WS,RadioReference WS,scanner,developing_incidents,tier_3,https://api.radioreference.com/soap2/,,https://api.radioreference.com/soap2/,,yes,no,false,no,no,not_live
 NYS Commission on Ethics and Lobbying in Government,NYS Commission on Ethics and Lobbying in Government,state,official_updates,tier_1,https://ethics.ny.gov/,,,,no,yes,true,no,yes,blocked_or_auth_gated
 NYS DEC Environmental Conservation Officers & Forest Rangers — Region 4,NYS DEC Environmental Conservation Officers & Forest Rangers — Region 4,state,official_updates,tier_1,https://dec.ny.gov/,,,https://www.facebook.com/NYSDEC/,no,yes,true,no,yes,blocked_or_auth_gated
 NYS Department of Corrections and Community Supervision,NYS Department of Corrections and Community Supervision,state,official_updates,tier_1,https://doccs.ny.gov/,,,https://www.facebook.com/NYSDOCCS,no,yes,true,no,yes,blocked_or_auth_gated

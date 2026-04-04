@@ -40,6 +40,12 @@ Required for full functionality:
 - `DATABASE_URL` (Postgres persistence for `/api/incidents`)
 - `REDIS_URL` (cache + refresh lock; optional but recommended)
 
+Important source-integration credentials already supported:
+
+- `511_NY_API_KEY` (used for 511NY GetEvents + GetCameras fusion)
+- `RADIOREFERENCE_API_KEY`, `RADIOREFERENCE_USERNAME`, `RADIOREFERENCE_PASSWORD` (RadioReference SOAP + Albany/Schenectady P25 wiki-seeded talkgroup map; see `scanner_albany_p25_main` in `source_registry.json`)
+- `BROADCASTIFY_API_KEY`, `BROADCASTIFY_SYSTEM_ID` (optional; merged scanner call list when Calls API is available)
+
 Prepared placeholders for upcoming integrations:
 
 - `MAPBOX_TOKEN`
@@ -74,6 +80,24 @@ Validate critical routes:
 ./venv/bin/python scripts/validate_routes.py
 ```
 
+Manual checks for P25 talkgroup mapping (wiki seed merges even without SOAP credentials; with credentials you should see `rr_row_present` on rows):
+
+```bash
+python3 -c "from sources.advanced_adapters import get_talkgroup_mapper, SCANNER_ALBANY_P25_MAIN; m=get_talkgroup_mapper(); d=m.merge_rr_with_wiki({}); print(SCANNER_ALBANY_P25_MAIN['priority_talkgroups']); print({k:d[k].get('wiki_channel_label') for k in sorted(d) if k in m.priority_ids()})"
+```
+
+RadioReference SOAP auth (premium) smoke test:
+
+```bash
+python3 scripts/test_rr_auth.py
+```
+
+Merged scanner API (OpenMHz + optional Broadcastify + RR-enriched talkgroups):
+
+```bash
+curl -s http://127.0.0.1:8000/api/scanner/calls | python3 -m json.tool | head -n 80
+```
+
 Prime/persist incidents and query Postgres-backed endpoint:
 
 ```bash
@@ -85,6 +109,8 @@ curl -s "http://127.0.0.1:8000/api/incidents?limit=20"
 
 - Keep service start command compatible with current deploys: `python api_server.py`
 - Ensure Railway env vars are set from `.env.example`
+- For Albany/Schenectady P25 scanner intelligence, set the same RadioReference variables as local (no extra app keys). Without them, the app still applies the hard-seeded wiki talkgroup map for priority TGs; SOAP fills in `rr_row_present` metadata when credentials work.
+- Optional: set `511_NY_API_KEY` so priority scanner feed rows can attach a short 511NY snapshot for traffic context in the same refresh cycle.
 - Health checks can use:
   - `/health` (liveness)
   - `/ready` (readiness)

@@ -36,6 +36,11 @@ import httpx
 import incident_intelligence as intel
 from sources.albany_open_data import fetch_albany_open_data
 from sources.albany_open_data import socrata_runtime_status
+from sources.advanced_adapters import SCANNER_ALBANY_P25_MAIN
+from sources.advanced_adapters import TalkgroupMapper
+from sources.advanced_adapters import get_511_adapter
+from sources.advanced_adapters import get_radioreference_ws_adapter
+from sources.advanced_adapters import get_talkgroup_mapper
 from sources.tier1_official import fetch_tier1_sources
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -4715,11 +4720,6 @@ async def get_nibrs_agency_detail(ori: str):
 
 # ── Multi-source scanner: OpenMHz + Broadcastify + RadioReference ──────
 
-# RadioReference talkgroup cache (enriched metadata)
-_rr_talkgroup_cache: dict[str, dict] = {}
-_rr_talkgroup_ts: float = 0.0
-
-
 async def _fetch_openmhz_calls() -> list[dict]:
     """Fetch decoded calls from OpenMHz (free, no auth)."""
     OPENMHZ_SYSTEM = "albanycony"
@@ -4983,104 +4983,13 @@ async def _fetch_broadcastify_playlist_calls() -> list[dict]:
 
 
 async def _fetch_radioreference_talkgroups() -> dict[str, dict]:
-    """Fetch talkgroup metadata from RadioReference SOAP API (requires premium)."""
-    global _rr_talkgroup_cache, _rr_talkgroup_ts
-    # Cache for 1 hour — talkgroup data rarely changes
-    if _rr_talkgroup_cache and (time.time() - _rr_talkgroup_ts) < 3600:
-        return _rr_talkgroup_cache
-
-    api_key = settings.radioreference_api_key
-    username = settings.radioreference_username
-    password = settings.radioreference_password
-    if not api_key or not username or not password:
-        return _rr_talkgroup_cache
-
-    try:
-        # RadioReference SOAP API - getTrsTalkgroups for Albany County system (sid=8553)
-        soap_body = f"""<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-               xmlns:rr="http://api.radioreference.com/soap2/">
-  <soap:Body>
-    <rr:getTrsTalkgroups>
-      <rr:sid>8553</rr:sid>
-      <rr:authInfo>
-        <rr:appKey>{api_key}</rr:appKey>
-        <rr:username>{username}</rr:username>
-        <rr:password>{password}</rr:password>
-        <rr:version>latest</rr:version>
-        <rr:style>doc</rr:style>
-      </rr:authInfo>
-    </rr:getTrsTalkgroups>
-  </soap:Body>
-</soap:Envelope>"""
-
-        resp = await http_client.post(
-            "https://api.radioreference.com/soap2/",
-            content=soap_body,
-            headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": ""},
-            timeout=15.0,
-        )
-        if resp.status_code != 200:
-            logger.warning("RadioReference API returned %d", resp.status_code)
-            return _rr_talkgroup_cache
-
-        # Parse SOAP XML response
-        root = ET.fromstring(resp.text)
-        ns = {"soap": "http://schemas.xmlsoap.org/soap/envelope/"}
-        tg_map = {}
-        # Extract talkgroup elements from SOAP response
-        for tg_elem in root.iter():
-            tag_local = tg_elem.tag.split("}")[-1] if "}" in tg_elem.tag else tg_elem.tag
-            if tag_local in ("talkgroup", "return", "item"):
-                tg_id = ""
-                tg_data = {}
-                for child in tg_elem:
-                    child_tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-                    child_text = (child.text or "").strip()
-                    if child_tag in ("tgDec", "tgId", "dec"):
-                        tg_id = child_text
-                    elif child_tag in ("alpha", "tgAlpha"):
-                        tg_data["alpha"] = child_text
-                    elif child_tag in ("description", "tgDescr"):
-                        tg_data["description"] = child_text
-                    elif child_tag in ("tag", "tgTag"):
-                        tg_data["tag"] = child_text
-                    elif child_tag in ("category", "catName"):
-                        tg_data["category"] = child_text
-                    elif child_tag in ("mode",):
-                        tg_data["mode"] = child_text
-                if tg_id and tg_data:
-                    tg_map[tg_id] = tg_data
-
-        if tg_map:
-            _rr_talkgroup_cache = tg_map
-            _rr_talkgroup_ts = time.time()
-            logger.info("RadioReference: loaded %d talkgroups", len(tg_map))
-
-        return _rr_talkgroup_cache
-    except Exception as e:
-        logger.warning("RadioReference fetch error: %s", e)
-        return _rr_talkgroup_cache
+    """Merged RadioReference SOAP + Albany/Schenectady P25 wiki seed (TalkgroupMapper)."""
+    return await get_talkgroup_mapper().get_merged_talkgroups()
 
 
 def _enrich_call_with_rr(call: dict, rr_talkgroups: dict[str, dict]) -> dict:
     """Enrich a scanner call with RadioReference talkgroup metadata."""
-    tg = call.get("talkgroup_num", "")
-    rr = rr_talkgroups.get(tg)
-    if not rr:
-        return call
-
-    enriched = dict(call)
-    # Fill in missing fields from RadioReference
-    if not enriched.get("talkgroup_tag") and rr.get("alpha"):
-        enriched["talkgroup_tag"] = rr["alpha"]
-    if not enriched.get("talkgroup_description") and rr.get("description"):
-        enriched["talkgroup_description"] = rr["description"]
-    # Add RadioReference-specific metadata
-    enriched["rr_category"] = rr.get("category", "")
-    enriched["rr_tag"] = rr.get("tag", "")
-    enriched["rr_mode"] = rr.get("mode", "")
-    return enriched
+    return get_radioreference_ws_adapter().enrich_call(call, rr_talkgroups)
 
 
 def _dedupe_calls(all_calls: list[dict]) -> list[dict]:
@@ -5112,14 +5021,20 @@ def _dedupe_calls(all_calls: list[dict]) -> list[dict]:
     return deduped
 
 
-@app.get("/api/scanner/calls")
-async def get_scanner_calls():
-    cache_key = "scanner_calls"
-    cached = get_cached(cache_key)
-    if cached:
-        return {"status": "ok", "source": "cache", "calls": cached, "sources_used": cached[0].get("_sources", []) if cached else []}
+def _scanner_call_tgid(call: dict[str, Any]) -> str:
+    raw = call.get("talkgroup_num") if call.get("talkgroup_num") is not None else call.get("talkgroup")
+    if raw is None:
+        return ""
+    s = str(raw).strip()
+    if s.isdigit():
+        s = str(int(s))
+    return s
 
-    # Fetch from all available sources concurrently
+
+async def _merge_scanner_calls_from_sources(
+    *, write_cache: bool = False
+) -> tuple[list[dict[str, Any]], list[str], dict[str, Any]]:
+    """Shared merge path for /api/scanner/calls and live-feed priority P25 rows."""
     openmhz_task = _fetch_openmhz_calls()
     broadcastify_task = _fetch_broadcastify_calls()
     bcfy_playlist_task = _fetch_broadcastify_playlist_calls()
@@ -5130,7 +5045,6 @@ async def get_scanner_calls():
         return_exceptions=True,
     )
 
-    # Handle exceptions gracefully
     if isinstance(openmhz_calls, Exception):
         logger.warning("OpenMHz exception: %s", openmhz_calls)
         openmhz_calls = []
@@ -5140,39 +5054,192 @@ async def get_scanner_calls():
     if isinstance(bcfy_playlist_calls, Exception):
         logger.warning("Broadcastify playlist exception: %s", bcfy_playlist_calls)
         bcfy_playlist_calls = []
+    rr_map: dict[str, Any] = {}
     if isinstance(rr_talkgroups, Exception):
         logger.warning("RadioReference exception: %s", rr_talkgroups)
         rr_talkgroups = {}
+    if isinstance(rr_talkgroups, dict):
+        rr_map = rr_talkgroups
+    if not rr_map:
+        rr_map = get_talkgroup_mapper().merge_rr_with_wiki({})
 
-    sources_used = []
+    sources_used: list[str] = []
     if openmhz_calls:
         sources_used.append("openmhz")
     if bcfy_calls:
         sources_used.append("broadcastify")
     if bcfy_playlist_calls:
         sources_used.append("broadcastify_playlist")
-    if rr_talkgroups:
+    if rr_map:
         sources_used.append("radioreference")
 
-    # Merge all calls, sorted by time (newest first)
     all_calls = list(openmhz_calls) + list(bcfy_calls) + list(bcfy_playlist_calls)
     all_calls.sort(key=lambda c: c.get("time", ""), reverse=True)
-
-    # Deduplicate across sources
     merged = _dedupe_calls(all_calls)
-
-    # Enrich with RadioReference metadata
-    if rr_talkgroups:
-        merged = [_enrich_call_with_rr(c, rr_talkgroups) for c in merged]
-
-    # Mark emergency / high-priority calls from Broadcastify metadata
+    if rr_map:
+        merged = [_enrich_call_with_rr(c, rr_map) for c in merged]
     for call in merged:
         if call.get("emergency"):
             call["is_emergency"] = True
         if call.get("unit_ids"):
             call["responding_units"] = call.get("unit_ids", [])
+    if merged and sources_used:
+        merged[0] = {**merged[0], "_sources": sources_used}
+    if write_cache and merged:
+        set_cached("scanner_calls", merged)
+    return merged, sources_used, rr_map
 
-    set_cached(cache_key, merged)
+
+async def _priority_p25_scanner_signal_articles(
+    merged_calls: list[dict[str, Any]],
+    *,
+    merged_tg_index: Optional[dict[str, Any]] = None,
+) -> list[dict[str, Any]]:
+    """
+    One feed row per priority talkgroup hit (deduped per minute) with provenance + optional 511NY snapshot.
+    """
+    mapper = get_talkgroup_mapper()
+    pri = mapper.priority_ids()
+    tg_index = merged_tg_index if merged_tg_index is not None else await mapper.get_merged_talkgroups()
+    try:
+        fusion_rows = await get_511_adapter().fetch_rows(limit_per_source=10)
+    except Exception as exc:
+        logger.warning("priority_p25_511_fusion_error error=%s", exc)
+        fusion_rows = []
+    fusion_snap = [
+        {
+            "title": r.get("title"),
+            "link": r.get("link"),
+            "municipality": r.get("municipality"),
+        }
+        for r in fusion_rows[:6]
+        if isinstance(r, dict)
+    ]
+
+    articles: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, int, str]] = set()
+    for call in merged_calls:
+        tg = _scanner_call_tgid(call)
+        if not tg or tg not in pri:
+            continue
+        t_raw = str(call.get("time", "") or "")
+        try:
+            ts = datetime.fromisoformat(t_raw.replace("Z", "+00:00")).timestamp() if t_raw else 0.0
+        except Exception:
+            ts = 0.0
+        bkey = (tg, int(ts // 60), str(call.get("source") or ""))
+        if bkey in seen_keys:
+            continue
+        seen_keys.add(bkey)
+
+        row = tg_index.get(tg) or {}
+        label = (
+            str(call.get("wiki_channel_label") or row.get("wiki_channel_label") or row.get("alpha") or f"TG {tg}")
+        )
+        wiki_long = str(row.get("wiki_description") or "")
+        emergency = bool(call.get("emergency") or call.get("is_emergency"))
+        conf = TalkgroupMapper.confidence_01(call, row)
+
+        audio = str(call.get("audio_url") or "").strip()
+        src = str(call.get("source") or "scanner")
+        aid = f"p25_pri_{tg}_{int(ts)}_{src}".replace(" ", "_")[:120]
+        muni = str(row.get("municipality") or row.get("jurisdiction_hint") or "Albany County")
+        title = f"P25 priority · {label} (TG {tg})"
+        if emergency:
+            title = f"Emergency · {title}"
+        desc_parts = [wiki_long] if wiki_long else []
+        desc_parts.append(f"Source: {src}. Scanner audio metadata only — not verified as a published incident.")
+        if audio:
+            desc_parts.append("Audio clip available.")
+        description = " ".join(x for x in desc_parts if x)[:900]
+
+        articles.append(
+            {
+                "id": aid,
+                "guid": aid,
+                "title": title,
+                "summary": description,
+                "description": description,
+                "link": audio or "https://openmhz.com/system/albanycony",
+                "pubDate": t_raw
+                if t_raw
+                else format_datetime(datetime.now(timezone.utc), usegmt=True),
+                "source": "Scanner · Albany/Schenectady P25 (priority TG)",
+                "source_name": "Albany/Schenectady P25 priority talkgroup",
+                "source_url": audio or str(SCANNER_ALBANY_P25_MAIN.get("wiki_reference") or ""),
+                "confidence": conf,
+                "event_type": "scanner_signal",
+                "municipality": muni,
+                "matched_location": muni,
+                "_scanner_call": True,
+                "_scanner_priority_p25": True,
+                "_scanner_critical_live": emergency,
+                "_scanner_recent_live": not emergency,
+                "_scanner_tg": tg,
+                "source_priority": SOURCE_PRIORITY_SCANNER_CRITICAL if emergency else SOURCE_PRIORITY_SCANNER_RECENT,
+                "_feed_reliability": 0.55,
+                "incident": {
+                    "id": aid,
+                    "event_type": "scanner_signal",
+                    "status": "active" if emergency else "recent",
+                    "severity": "high" if emergency else "medium",
+                    "source_type": "scanner",
+                    "source_name": "Albany/Schenectady P25 priority TG",
+                    "source_url": audio or "",
+                    "verification_level": "scanner",
+                    "confidence_score": conf,
+                    "municipality": muni,
+                    "operational_badges": [
+                        "scanner",
+                        "priority_p25",
+                        "radioreference" if row.get("rr_row_present") else "wiki_seed",
+                    ],
+                },
+                "raw_payload": {
+                    "source_class": "scanner_priority_p25",
+                    "trust_tier": "tier_3",
+                    "lane": "developing_incidents",
+                    "ingestion": "scanner_albany_p25_main",
+                    "registry": {
+                        "system_id": SCANNER_ALBANY_P25_MAIN.get("system_id"),
+                        "wacn": SCANNER_ALBANY_P25_MAIN.get("wacn"),
+                        "radioreference_sid": SCANNER_ALBANY_P25_MAIN.get("radioreference_sid"),
+                        "ctid": SCANNER_ALBANY_P25_MAIN.get("ctid"),
+                    },
+                    "provenance": {
+                        "raw_call": {
+                            "source": call.get("source"),
+                            "time": call.get("time"),
+                            "talkgroup_num": call.get("talkgroup_num"),
+                            "audio_url": call.get("audio_url"),
+                            "duration": call.get("duration"),
+                            "emergency": call.get("emergency"),
+                        },
+                        "merged_talkgroup_row": row,
+                        "verification_note": (
+                            "Raw scanner metadata + RR/wiki mapping; not an official record until corroborated."
+                        ),
+                        "511ny_fusion_snapshot": fusion_snap,
+                    },
+                    "raw_vs_verified": {
+                        "has_audio_url": bool(audio),
+                        "rr_metadata": bool(row.get("rr_row_present")),
+                        "wiki_seed": bool(row.get("wiki_seeded")),
+                    },
+                },
+            }
+        )
+    return articles
+
+
+@app.get("/api/scanner/calls")
+async def get_scanner_calls():
+    cache_key = "scanner_calls"
+    cached = get_cached(cache_key)
+    if cached:
+        return {"status": "ok", "source": "cache", "calls": cached, "sources_used": cached[0].get("_sources", []) if cached else []}
+
+    merged, sources_used, _rr_map = await _merge_scanner_calls_from_sources(write_cache=True)
     return {
         "status": "ok",
         "source": "multi" if len(sources_used) > 1 else (sources_used[0] if sources_used else "unavailable"),
@@ -6599,6 +6666,16 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
                 "source_url": "",
             }
         )
+    try:
+        cached_calls = get_cached("scanner_calls")
+        if cached_calls is not None:
+            merged_sig = list(cached_calls)
+            tg_idx = await get_talkgroup_mapper().get_merged_talkgroups()
+        else:
+            merged_sig, _su, tg_idx = await _merge_scanner_calls_from_sources(write_cache=True)
+        out.extend(await _priority_p25_scanner_signal_articles(merged_sig, merged_tg_index=tg_idx))
+    except Exception as exc:
+        logger.warning("priority_p25_directory_extend_error error=%s", exc)
     return out
 
 

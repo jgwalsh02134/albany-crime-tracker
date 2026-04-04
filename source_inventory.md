@@ -1,35 +1,35 @@
 # Source Inventory
 
-- Generated at: `2026-03-30T14:37:17.945050+00:00`
-- Total sources: **411**
-- Active (reachable): **394**
-- Inactive/unreachable: **17**
+- Generated at: `2026-04-03T18:45:06.930232+00:00`
+- Total sources: **436**
+- Active (reachable): **415**
+- Inactive/unreachable: **21**
 
 ## Category Counts
 
-- `community`: 211
-- `scanner`: 37
-- `campus`: 28
-- `digital_only_news`: 20
+- `community`: 222
+- `scanner`: 38
+- `campus`: 30
+- `digital_only_news`: 24
 - `federal`: 18
 - `state`: 16
 - `tv_news`: 16
 - `municipal`: 15
 - `official_social`: 14
+- `newspapers`: 9
 - `official_press`: 7
 - `county`: 6
-- `newspapers`: 5
-- `official_structured`: 5
+- `official_structured`: 6
+- `official_alerts`: 4
 - `radio`: 4
+- `traffic`: 4
 - `courts`: 3
-- `official_alerts`: 3
-- `traffic`: 3
 
 ## Trust Tier Counts
 
-- `tier_3`: 297
-- `tier_1`: 69
-- `tier_2`: 45
+- `tier_3`: 311
+- `tier_1`: 72
+- `tier_2`: 53
 
 ## Notes
 

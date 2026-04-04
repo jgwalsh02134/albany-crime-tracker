@@ -96,6 +96,12 @@ def _tier_for_category(category: str) -> str:
 
 def _ingestion_method_for_url(url: str) -> str:
     u = (url or "").lower()
+    if "api.radioreference.com/soap2" in u:
+        return "soap_api"
+    if "arcgis/rest/services" in u:
+        return "feature_service"
+    if ".atom" in u or "weather.gov/alerts" in u:
+        return "cap_feed"
     if ".rss" in u or "/feed" in u or "/rss" in u or "news.google.com/rss/" in u:
         return "rss_poll"
     if "/resource/" in u or "/api/" in u:
@@ -226,6 +232,217 @@ def _seed_entries() -> list[dict[str, Any]]:
                 "legal_notes": "Use published public endpoints and platform terms.",
             }
         )
+    out.extend(
+        [
+            {
+                "source_id": "511ny_full",
+                "source_name": "511NY Full API",
+                "organization": "511NY Full API",
+                "category": "traffic",
+                "lane": "official_updates",
+                "trust_tier": "tier_1",
+                "canonical_url": "https://511ny.org/developers/doc",
+                "feed_url": "",
+                "api_url": "https://511ny.org/api/GetEvents",
+                "social_urls": [],
+                "geography_scope": "albany_county_capital_region",
+                "coverage_notes": "511NY GetEvents + GetCameras fusion for Albany County traffic incidents.",
+                "auth_type": "key",
+                "env_var_if_needed": "511_NY_API_KEY",
+                "active_status": False,
+                "validation_status": "pending",
+                "last_checked_at": "",
+                "ingestion_method": "json_api",
+                "legal_notes": "Use published public endpoints and platform terms.",
+                "provider": "511ny",
+                "type": "api",
+                "config": {
+                    "events_endpoint": "https://511ny.org/api/GetEvents",
+                    "cameras_endpoint": "https://511ny.org/api/GetCameras",
+                    "api_key_env": "511_NY_API_KEY",
+                },
+            },
+            {
+                "source_id": "radioreference_ws",
+                "source_name": "RadioReference WS",
+                "organization": "RadioReference WS",
+                "category": "scanner",
+                "lane": "developing_incidents",
+                "trust_tier": "tier_3",
+                "canonical_url": "https://api.radioreference.com/soap2/",
+                "feed_url": "",
+                "api_url": "https://api.radioreference.com/soap2/",
+                "social_urls": [],
+                "geography_scope": "albany_county_capital_region",
+                "coverage_notes": "SOAP talkgroup metadata and agency/jurisdiction mapping for Albany County scanner enrichment.",
+                "auth_type": "auth_required",
+                "env_var_if_needed": "RADIOREFERENCE_API_KEY,RADIOREFERENCE_USERNAME,RADIOREFERENCE_PASSWORD",
+                "active_status": False,
+                "validation_status": "pending",
+                "last_checked_at": "",
+                "ingestion_method": "soap_api",
+                "legal_notes": "Use authenticated RadioReference SOAP access per account terms.",
+                "provider": "radioreference",
+                "type": "api",
+                "config": {
+                    "sid": "8553",
+                    "system_id": 695,
+                    "wacn": "BEE00",
+                    "ctid": 1825,
+                    "credentials": [
+                        "RADIOREFERENCE_API_KEY",
+                        "RADIOREFERENCE_USERNAME",
+                        "RADIOREFERENCE_PASSWORD",
+                    ],
+                    "talkgroup_mapping": "runtime_enrichment",
+                },
+            },
+            {
+                "source_id": "scanner_albany_p25_main",
+                "source_name": "Albany/Schenectady P25 (scanner registry)",
+                "organization": "Albany/Schenectady Counties P25",
+                "category": "scanner",
+                "lane": "developing_incidents",
+                "trust_tier": "tier_3",
+                "canonical_url": "https://www.radioreference.com/db/sid/8553",
+                "feed_url": "",
+                "api_url": "https://api.radioreference.com/soap2/",
+                "social_urls": [],
+                "geography_scope": "albany_county_capital_region",
+                "coverage_notes": (
+                    "Curated P25 registry: SysID 695, WACN BEE00, RR sid 8553, CTID 1825; "
+                    "priority law/fire/EMS dispatch TGs with wiki-aligned labels."
+                ),
+                "auth_type": "auth_required",
+                "env_var_if_needed": "RADIOREFERENCE_API_KEY,RADIOREFERENCE_USERNAME,RADIOREFERENCE_PASSWORD",
+                "active_status": False,
+                "validation_status": "pending",
+                "last_checked_at": "",
+                "ingestion_method": "soap_api",
+                "legal_notes": "Scanner metadata only; corroborate with official sources.",
+                "provider": "radioreference",
+                "type": "scanner_registry",
+                "config": {
+                    "source_id": "scanner_albany_p25_main",
+                    "system_id": 695,
+                    "wacn": "BEE00",
+                    "radioreference_sid": "8553",
+                    "ctid": 1825,
+                    "confidence_base": 50,
+                    "priority_talkgroups": [10003, 18301, 10702, 11003, 11702, 10002, 13202],
+                    "priority_talkgroup_meta": {
+                        "10003": {
+                            "wiki_channel_label": "County Law 1",
+                            "wiki_description": (
+                                "Law 1 = Albany County primary law dispatch "
+                                "(county sheriff / wide-area law enforcement dispatch)."
+                            ),
+                        },
+                        "18301": {
+                            "wiki_channel_label": "Police 1",
+                            "wiki_description": (
+                                "City of Albany Police 1 — primary municipal law dispatch for the City of Albany."
+                            ),
+                        },
+                        "10702": {
+                            "wiki_channel_label": "County Fire 1",
+                            "wiki_description": (
+                                "Fire 1 = Albany County Fire 1 — patched county / mutual-aid fire dispatch "
+                                "(primary fire calling)."
+                            ),
+                        },
+                        "11003": {
+                            "wiki_channel_label": "County Law 2",
+                            "wiki_description": (
+                                "Albany County Law 2 — secondary county law / operations "
+                                "(complements County Law 1)."
+                            ),
+                        },
+                        "11702": {
+                            "wiki_channel_label": "County Fire 2",
+                            "wiki_description": (
+                                "Albany County Fire 2 — secondary county fire operations / tactical fire support."
+                            ),
+                        },
+                        "10002": {
+                            "wiki_channel_label": "County Law (secondary)",
+                            "wiki_description": (
+                                "Albany County law secondary / operations channel "
+                                "(TG 10002 on P25 system 695; wiki-aligned)."
+                            ),
+                        },
+                        "13202": {
+                            "wiki_channel_label": "Albany Fire 1",
+                            "wiki_description": (
+                                "City of Albany Fire 1 — primary AFD fire dispatch / fireground "
+                                "(city fire operations)."
+                            ),
+                        },
+                    },
+                    "credentials": [
+                        "RADIOREFERENCE_API_KEY",
+                        "RADIOREFERENCE_USERNAME",
+                        "RADIOREFERENCE_PASSWORD",
+                    ],
+                },
+            },
+            {
+                "source_id": "ipaws_cap",
+                "source_name": "IPAWS CAP / NWS Fallback",
+                "organization": "IPAWS CAP / NWS Fallback",
+                "category": "official_alerts",
+                "lane": "official_updates",
+                "trust_tier": "tier_1",
+                "canonical_url": "https://api.weather.gov/alerts/active.atom?area=NY",
+                "feed_url": "https://api.weather.gov/alerts/active.atom?area=NY",
+                "api_url": "",
+                "social_urls": [],
+                "geography_scope": "albany_county_capital_region",
+                "coverage_notes": "CAP-style public alert ingestion using NWS atom fallback for Albany-relevant alerts.",
+                "auth_type": "none",
+                "env_var_if_needed": "",
+                "active_status": False,
+                "validation_status": "pending",
+                "last_checked_at": "",
+                "ingestion_method": "cap_feed",
+                "legal_notes": "Use public CAP/alert endpoints and official terms.",
+                "provider": "nws",
+                "type": "cap_feed",
+                "config": {
+                    "fallback_feed": "https://api.weather.gov/alerts/active.atom?area=NY",
+                    "confidence": 0.9,
+                },
+            },
+            {
+                "source_id": "albany_arcgis",
+                "source_name": "Albany ArcGIS Municipal Boundaries",
+                "organization": "Albany ArcGIS Municipal Boundaries",
+                "category": "official_structured",
+                "lane": "official_updates",
+                "trust_tier": "tier_1",
+                "canonical_url": "https://services6.arcgis.com/mBzcjj7yrA6fBe9F/arcgis/rest/services/Albany_County_Municipalities/FeatureServer",
+                "feed_url": "",
+                "api_url": "https://services6.arcgis.com/mBzcjj7yrA6fBe9F/arcgis/rest/services/Albany_County_Municipalities/FeatureServer/0/query",
+                "social_urls": [],
+                "geography_scope": "albany_county_capital_region",
+                "coverage_notes": "Albany County municipality boundary lookup for geo-aware enrichment and validation.",
+                "auth_type": "none",
+                "env_var_if_needed": "",
+                "active_status": False,
+                "validation_status": "pending",
+                "last_checked_at": "",
+                "ingestion_method": "feature_service",
+                "legal_notes": "Use public ArcGIS feature service and respect service limits.",
+                "provider": "arcgis",
+                "type": "feature_service",
+                "config": {
+                    "service_url": "https://services6.arcgis.com/mBzcjj7yrA6fBe9F/arcgis/rest/services/Albany_County_Municipalities/FeatureServer",
+                    "query_url": "https://services6.arcgis.com/mBzcjj7yrA6fBe9F/arcgis/rest/services/Albany_County_Municipalities/FeatureServer/0/query",
+                    "field": "MUNI_NAME",
+                },
+            },
+        ]
+    )
     return out
 
 

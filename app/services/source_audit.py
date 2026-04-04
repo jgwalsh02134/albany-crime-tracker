@@ -64,6 +64,11 @@ def _implemented_url_keys() -> set[str]:
             "https://publicapps.troopers.ny.gov/Media_Reports/",
             "https://www.justice.gov/usao-ndny/pr/rss",
             "https://511ny.org/api/GetEvents",
+            "https://511ny.org/api/GetCameras",
+            "https://api.weather.gov/alerts/active.atom?area=NY",
+            "https://api.radioreference.com/soap2/",
+            "https://services6.arcgis.com/mBzcjj7yrA6fBe9F/arcgis/rest/services/Albany_County_Municipalities/FeatureServer",
+            "https://services6.arcgis.com/mBzcjj7yrA6fBe9F/arcgis/rest/services/Albany_County_Municipalities/FeatureServer/0/query",
             "https://api.openmhz.com/albanycony/calls/newer",
             "https://api.openmhz.com/albanycony/calls?num=40",
         }
