@@ -325,6 +325,7 @@ def _seed_entries() -> list[dict[str, Any]]:
                 "config": {
                     "source_id": "scanner_albany_p25_main",
                     "system_id": 695,
+                    "sid": 8553,
                     "wacn": "BEE00",
                     "radioreference_sid": "8553",
                     "ctid": 1825,

@@ -529,6 +529,10 @@ class TalkgroupMapper:
             if w:
                 merged.update(w)
                 merged["wiki_seeded"] = True
+                jur = str(w.get("jurisdiction_hint") or "")
+                if jur and not merged.get("municipality"):
+                    merged["municipality"] = jur
+                    merged["jurisdiction"] = jur
             merged["priority_talkgroup"] = tid in pri
             merged["rr_row_present"] = True
             out[tid] = merged
@@ -548,6 +552,10 @@ class TalkgroupMapper:
             row["wiki_seeded"] = True
             row["rr_row_present"] = False
             row["priority_talkgroup"] = tid in pri
+            jur = str(w.get("jurisdiction_hint") or "")
+            if jur:
+                row["municipality"] = jur
+                row["jurisdiction"] = jur
             out[tid] = row
 
         for tid, row in out.items():

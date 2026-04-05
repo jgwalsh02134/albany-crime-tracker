@@ -2,7 +2,8 @@
   "_meta": "Albany County P25 Phase II talkgroup alias registry for ACT scanner intelligence",
   "talkgroups": {
     "15202": {"agency":"Albany County Sheriff","dept":"Law Dispatch","municipality":"County-wide","discipline":"police","channel":"Law Dispatch","priority":"high"},
-    "10003": {"agency":"Albany County Sheriff","dept":"Sheriff Ops","municipality":"County-wide","discipline":"police","channel":"Sheriff Ops","priority":"high"},
+    "10002": {"agency":"Albany County Sheriff","dept":"County Law (secondary)","municipality":"County-wide","discipline":"police","channel":"County Law (secondary)","priority":"high"},
+    "10003": {"agency":"Albany County Sheriff","dept":"County Law 1","municipality":"County-wide","discipline":"police","channel":"County Law 1","priority":"high"},
     "18301": {"agency":"Albany County Sheriff","dept":"Law Ops","municipality":"County-wide","discipline":"police","channel":"Law Ops","priority":"high"},
     "10702": {"agency":"Albany County Fire","dept":"Fire Dispatch","municipality":"County-wide","discipline":"fire","channel":"Fire Dispatch","priority":"high"},
     "11702": {"agency":"Albany County Fire","dept":"Fire Tac","municipality":"County-wide","discipline":"fire","channel":"Fire Tac","priority":"medium"},

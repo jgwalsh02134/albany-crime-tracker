@@ -6514,18 +6514,37 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
     except Exception:
         tg_map = {}
 
+    mapper = get_talkgroup_mapper()
+    mapper_index: dict[str, dict[str, Any]] = {}
+    try:
+        mapper_index = await mapper.get_merged_talkgroups()
+    except Exception:
+        mapper_index = mapper.merge_rr_with_wiki({})
+    pri_ids = mapper.priority_ids()
+
     def _lookup_tg_row(call: dict) -> tuple[Optional[dict], str]:
         raw = call.get("talkgroup_num") if call.get("talkgroup_num") is not None else call.get("talkgroup")
         tid = str(raw).strip() if raw is not None else ""
         if not tid:
             return None, ""
-        row = tg_map.get(tid)
-        if row is None and tid.isdigit():
-            row = tg_map.get(str(int(tid)))
-        if row is None and tid.isdigit():
+        norm = str(int(tid)) if tid.isdigit() else tid
+        row = tg_map.get(tid) or tg_map.get(norm)
+        if row is None:
             stripped = tid.lstrip("0") or "0"
             row = tg_map.get(stripped)
-        return row, tid
+        return row, norm
+
+    def _mapper_row(tid: str) -> dict[str, Any]:
+        return mapper_index.get(tid) or {}
+
+    def _build_provenance(tid: str, m_row: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "source": "scanner",
+            "system": "albany_p25",
+            "talkgroup_id": tid,
+            "priority": tid in pri_ids,
+            "mapping_source": "soap" if m_row.get("rr_row_present") else "wiki",
+        }
 
     agencies_by_id = {a.get("id"): a for a in (data.get("agencies") or []) if a.get("id")}
     se = data.get("scannerEcosystem") or {}
@@ -6572,9 +6591,26 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
                     if not is_critical and age_h > SCANNER_OPENMHZ_RECENT_HOURS:
                         continue
                     row, tid_s = _lookup_tg_row(call)
-                    dept = (row or {}).get("department") or tg_tag
-                    loc = (row or {}).get("location") or ""
-                    dept_loc = f"{dept} — {loc}" if loc else dept
+                    m_row = _mapper_row(tid_s)
+                    agency_name = (
+                        m_row.get("agency")
+                        or (row or {}).get("department")
+                        or tg_tag
+                    )
+                    muni = (
+                        m_row.get("municipality")
+                        or m_row.get("jurisdiction_hint")
+                        or (row or {}).get("location")
+                        or ""
+                    )
+                    discipline = m_row.get("discipline") or m_row.get("discipline_hint") or ""
+                    channel_label = (
+                        m_row.get("wiki_channel_label")
+                        or m_row.get("alpha")
+                        or tg_tag
+                    )
+                    dept_loc = f"{agency_name} — {muni}" if muni else agency_name
+                    is_priority = tid_s in pri_ids
                     desc_bits = [cov] if cov else []
                     if call.get("freq"):
                         hz = call.get("freq")
@@ -6590,30 +6626,56 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
                         except (TypeError, ValueError):
                             pass
                     desc = " · ".join(x for x in desc_bits if x)[:400]
-                    if is_critical:
-                        card_title = f"Critical radio · {dept_loc}: {tg_tag}"
+                    if is_critical or is_priority:
+                        card_title = f"Critical radio · {dept_loc}: {channel_label}"
                         prio = SOURCE_PRIORITY_SCANNER_CRITICAL
                         crit_f, recent_f = True, False
                     else:
-                        card_title = f"Radio · {dept_loc}: {tg_tag}"
+                        card_title = f"Radio · {dept_loc}: {channel_label}"
                         prio = SOURCE_PRIORITY_SCANNER_RECENT
                         crit_f, recent_f = False, True
-                    out.append(
-                        {
+                    conf = TalkgroupMapper.confidence_01(call, m_row) if m_row else 0.50
+                    if is_priority:
+                        conf = min(0.95, conf + 0.05)
+                    tags: list[str] = ["scanner"]
+                    if is_priority:
+                        tags.append("priority_signal")
+                    if discipline:
+                        tags.append(discipline)
+                    article: dict[str, Any] = {
                             "title": card_title,
                             "link": audio_url or f"https://openmhz.com/system/{slug}",
                             "pubDate": _openmhz_time_to_rfc(t_raw),
                             "description": (desc + " · " if desc else "") + crit_blob[:280],
                             "source": f"Scanner · {label}",
                             "source_priority": prio,
+                            "confidence": conf,
+                            "municipality": muni,
                             "_scanner_call": True,
                             "_scanner_critical_live": crit_f,
                             "_scanner_recent_live": recent_f,
                             "_scanner_tg": tid_s or None,
+                            "_scanner_priority_p25": is_priority,
                             "_feed_reliability": 0.88,
                             "source_url": "",
+                    }
+                    if tid_s:
+                        article["raw_payload"] = {
+                            "source_class": "scanner_directory",
+                            "trust_tier": "tier_3",
+                            "lane": "developing_incidents",
+                            "ingestion": "scanner_albany_p25_main" if m_row else "openmhz_directory",
+                            "provenance": _build_provenance(tid_s, m_row),
                         }
-                    )
+                    if tags:
+                        article["incident"] = {
+                            "source_type": "scanner",
+                            "verification_level": "scanner",
+                            "confidence_score": conf,
+                            "municipality": muni,
+                            "operational_badges": tags,
+                        }
+                    out.append(article)
             except Exception as e:
                 print(f"OpenMHz directory [{label}]: {e}")
         elif prov == "broadcastify":
