@@ -29,6 +29,32 @@ def _auth() -> tuple[str, str]:
     return (s.superfeedr_login, s.superfeedr_token)
 
 
+def _redact_subscriptions(body: Any) -> Any:
+    """Remove secret values from Superfeedr subscription list responses."""
+    if isinstance(body, list):
+        return [_redact_subscriptions(item) for item in body]
+    if isinstance(body, dict):
+        out = {}
+        for k, v in body.items():
+            if k == "secret":
+                out[k] = "****" if v else ""
+            elif k == "subscription" and isinstance(v, dict):
+                out[k] = _redact_subscriptions(v)
+            else:
+                out[k] = _redact_subscriptions(v) if isinstance(v, (dict, list)) else v
+        return out
+    return body
+
+
+def _redact_secret_from_text(text: str) -> str:
+    """Mask any hub.secret values that may appear in raw Superfeedr responses."""
+    s = get_settings()
+    secret = s.superfeedr_secret
+    if secret and secret in text:
+        text = text.replace(secret, "****")
+    return text
+
+
 async def subscribe(
     feed_url: str,
     callback_url: str,
@@ -62,7 +88,7 @@ async def subscribe(
         "callback_url": callback_url,
     }
     if resp.status_code not in (200, 202, 204):
-        result["body"] = resp.text[:500]
+        result["body"] = _redact_secret_from_text(resp.text[:500])
     _subscription_log.append({
         "action": "subscribe",
         "feed_url": feed_url,
@@ -129,13 +155,13 @@ async def list_subscriptions(page: int = 1) -> dict[str, Any]:
         return {
             "ok": False,
             "status_code": resp.status_code,
-            "body": resp.text[:500],
+            "body": _redact_secret_from_text(resp.text[:500]),
         }
     try:
         body = resp.json()
     except Exception:
-        body = resp.text[:1000]
-    return {"ok": True, "status_code": 200, "subscriptions": body}
+        body = _redact_secret_from_text(resp.text[:1000])
+    return {"ok": True, "status_code": 200, "subscriptions": _redact_subscriptions(body)}
 
 
 def verify_signature(body: bytes, signature: str, secret: str) -> bool:
