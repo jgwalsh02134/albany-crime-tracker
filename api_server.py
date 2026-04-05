@@ -6916,7 +6916,7 @@ async def dev_albany_open_data(request: Request):
 # SUPERFEEDR WEBHOOK + ADMIN
 # =============================================================================
 
-@app.post("/api/webhooks/superfeedr")
+@app.post("/api/superfeedr/webhook")
 async def superfeedr_webhook(request: Request):
     """Receive Superfeedr push notifications and feed into ACT pipeline."""
     body_bytes = await request.body()
@@ -6970,7 +6970,7 @@ async def superfeedr_subscribe_endpoint(request: Request):
     callback_base = s.superfeedr_callback_base_url
     if not callback_base:
         raise HTTPException(status_code=500, detail="SUPERFEEDR_CALLBACK_BASE_URL not set")
-    callback = f"{callback_base}/api/webhooks/superfeedr"
+    callback = f"{callback_base}/api/superfeedr/webhook"
     result = await superfeedr_svc.subscribe(
         feed_url, callback, secret=s.superfeedr_secret,
     )
@@ -6987,7 +6987,7 @@ async def superfeedr_unsubscribe_endpoint(request: Request):
     callback_base = s.superfeedr_callback_base_url
     if not callback_base:
         raise HTTPException(status_code=500, detail="SUPERFEEDR_CALLBACK_BASE_URL not set")
-    callback = f"{callback_base}/api/webhooks/superfeedr"
+    callback = f"{callback_base}/api/superfeedr/webhook"
     result = await superfeedr_svc.unsubscribe(feed_url, callback)
     return result
 

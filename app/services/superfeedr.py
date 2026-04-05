@@ -291,7 +291,7 @@ async def subscribe_seed_feeds() -> list[dict[str, Any]]:
     callback_base = s.superfeedr_callback_base_url
     if not callback_base:
         return [{"ok": False, "error": "SUPERFEEDR_CALLBACK_BASE_URL not set"}]
-    callback = f"{callback_base}/api/webhooks/superfeedr"
+    callback = f"{callback_base}/api/superfeedr/webhook"
     secret = s.superfeedr_secret
     results: list[dict[str, Any]] = []
     for feed in SEED_FEEDS:
