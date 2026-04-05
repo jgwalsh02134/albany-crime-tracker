@@ -45,7 +45,7 @@ from sources.advanced_adapters import radioreference_runtime_status
 from sources.tier1_official import fetch_tier1_sources
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from app.api.health import router as health_router
 from app.core.config import get_settings
@@ -6915,6 +6915,15 @@ async def dev_albany_open_data(request: Request):
 # =============================================================================
 # SUPERFEEDR WEBHOOK + ADMIN
 # =============================================================================
+
+@app.get("/api/superfeedr/webhook")
+async def superfeedr_webhook_verify(request: Request):
+    """Handle PubSubHubbub verification and browser probes."""
+    challenge = request.query_params.get("hub.challenge")
+    if challenge:
+        return PlainTextResponse(challenge)
+    return {"status": "ok", "method": "POST", "detail": "Superfeedr webhook endpoint"}
+
 
 @app.post("/api/superfeedr/webhook")
 async def superfeedr_webhook(request: Request):
