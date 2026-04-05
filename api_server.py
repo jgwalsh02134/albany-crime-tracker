@@ -2796,9 +2796,27 @@ _NYSP_ALBANY_LOCALITIES = {
     "coeymans", "new scotland", "berne", "knox", "rensselaerville", "westerlo",
     "green island", "menands", "delmar", "latham", "loudonville", "ravena",
     "voorheesville", "altamont", "slingerlands", "selkirk", "elsmere",
-    "glenmont", "clarksville", "feura bush", "medusa", "westerlo",
+    "glenmont", "clarksville", "feura bush", "medusa",
     "east berne", "newtonville", "westmere", "mckownville",
 }
+
+_NYSP_LIGATURE_BYTE = "\x00"
+
+_NYSP_HEADER_RE = re.compile(
+    r"New\s+York\s+State\s+Police\s+Public\s+Information\s+Report"
+    r".*?TAX\s+(?:[-–]\s*)?Tax\s+Law\s*",
+    re.IGNORECASE | re.DOTALL,
+)
+_NYSP_FILEPATH_RE = re.compile(r"file:///\S+\s*\d+/\d+")
+_NYSP_CREATION_RE = re.compile(
+    r"Creation\s+Date:.*?Page\s+\d+\s+of\s+\d+",
+    re.IGNORECASE | re.DOTALL,
+)
+_NYSP_DASHES_RE = re.compile(r"-{10,}")
+_NYSP_BLOCK_SPLIT_RE = re.compile(
+    r"(?=Incident\s+Information:\s*Incident\s+Number:\s*NY)",
+    re.IGNORECASE,
+)
 
 
 def _nysp_blotter_urls_for_window(days_back: int = 2) -> list[str]:
@@ -2813,8 +2831,222 @@ def _nysp_blotter_urls_for_window(days_back: int = 2) -> list[str]:
     return urls
 
 
-def _clean_nysp_blotter_text(text: str) -> str:
-    return (text or "").replace("\x00", "").strip()
+def _clean_nysp_pdf_text(text: str) -> str:
+    """Strip headers, footers, OCR artefacts, and file-path noise from NYSP PDF text."""
+    if not text:
+        return ""
+    text = text.replace(_NYSP_LIGATURE_BYTE, "ti")
+    text = _NYSP_HEADER_RE.sub("", text)
+    text = _NYSP_FILEPATH_RE.sub("", text)
+    text = _NYSP_CREATION_RE.sub("", text)
+    text = _NYSP_DASHES_RE.sub("", text)
+    text = re.sub(r"NYSP Law Categories:\s*", "", text, flags=re.I)
+    text = re.sub(r"Law Title Codes:\s*", "", text, flags=re.I)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _extract_nysp_fields(block: str) -> dict[str, Any]:
+    """Extract structured fields from a single NYSP incident block."""
+    f: dict[str, Any] = {}
+
+    def _get(pattern: str, text: str = block, flags: int = re.I | re.S) -> str:
+        m = re.search(pattern, text, flags)
+        return re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+
+    f["incident_number"] = _get(r"Incident\s+Number:\s*(NY\w+)")
+    f["incident_category"] = _get(
+        r"Incident\s+Category:\s*(.+?)(?=\s*(?:Date/Time|Incident\s+(?:Number|Type|Status|Information))\b|$)"
+    )
+    f["date_time_reported"] = _get(
+        r"Date/Time\s+Reported:\s*(.+?)(?=\s+Station:)"
+    )
+    f["station"] = _get(r"(?<!\bof )Station:\s*(.+?)(?=\n|Location\s+Code:)")
+    f["location_code"] = _get(r"Location\s+Code:\s*(.+?)(?=\s*Incident\s+Status:)")
+    f["incident_status"] = _get(
+        r"Incident\s+Status:\s*(.+?)(?=\n|Defendant|Driver|Arrest\s+Information|Incident\s+Information|$)"
+    )
+
+    f["defendant_name"] = _get(r"Defendant\s*\(\d+\)\s*Name:\s*(.+?)(?=\s+Age:)")
+    f["defendant_age"] = _get(r"Defendant\s*\(\d+\)\s*Name:.*?Age:\s*(\d+)")
+    f["arrestee_status"] = _get(
+        r"Arrestee\s+Status:\s*(.+?)(?=\n|Location\s+of|Bail|$)"
+    )
+
+    f["num_vehicles"] = _get(r"Number\s+of\s+Vehicles:\s*(\d+)")
+    f["num_killed"] = _get(r"Number\s+Killed:\s*(\d+)")
+    f["num_injured"] = _get(r"Number\s+Injured:\s*(\d+)")
+    f["road"] = _get(r"Road/Highway:\s*(.+?)(?=\n|Intersection|$)")
+
+    charges: list[str] = []
+    for cm in re.finditer(
+        r"(?:PL|VTL|ECL|PHL|NAV|ABC|FCA|PRL|TL|AM)\s+\S+\s+\S+\s+\S\s+"
+        r"(Misdemeanor|Felony|Violation|Infraction)\s+(.+?)\s+\d+\s*$",
+        block,
+        re.I | re.M,
+    ):
+        charges.append(f"{cm.group(2).strip()} ({cm.group(1)})")
+    f["charges"] = charges
+    return f
+
+
+def _parse_nysp_datetime(raw: str) -> Optional[datetime]:
+    """Parse NYSP date/time strings in the formats found in blotter PDFs."""
+    if not raw:
+        return None
+    raw = raw.strip()
+    for fmt in (
+        "%B %d, %Y %I:%M %p",
+        "%B %d, %Y %H:%M",
+        "%B %d, %Y %I:%M%p",
+        "%m/%d/%Y %I:%M %p",
+        "%m/%d/%Y %H:%M",
+        "%m/%d/%y %I:%M %p",
+        "%m/%d/%y %H:%M",
+    ):
+        try:
+            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _extract_nysp_municipality(location_code: str) -> str:
+    """Extract municipality name from location codes like 'TOWN - NASSAU - 4255'."""
+    if not location_code:
+        return "Albany County"
+    m = re.match(
+        r"(?:TOWN|CITY|VILLAGE|HAMLET)\s*[-–]\s*(.+?)\s*[-–]\s*\d+",
+        location_code,
+        re.I,
+    )
+    if m:
+        return m.group(1).strip().title()
+    return "Albany County"
+
+
+def _nysp_severity(category: str, status: str, fields: dict) -> str:
+    """Map NYSP incident category + status to ACT severity."""
+    cat = category.lower()
+    st = status.lower()
+    arr_st = (fields.get("arrestee_status") or "").lower()
+    desc_blob = (cat + " " + st + " " + " ".join(str(c) for c in fields.get("charges", []))).lower()
+    closed = "closed" in st or "cleared" in st
+
+    if any(w in desc_blob for w in ("homicide", "murder", "fatal")):
+        return "critical"
+    killed = fields.get("num_killed", "0")
+    if killed and killed != "0":
+        return "critical"
+
+    is_arrest = "arrest" in st or bool(arr_st)
+    has_violent_cat = any(w in cat for w in (
+        "assault", "robbery", "weapons", "sex offense",
+        "menacing", "death", "shooting", "stabbing",
+    ))
+
+    if has_violent_cat and not closed:
+        return "high"
+    if "felony" in desc_blob:
+        return "high"
+    if has_violent_cat and closed:
+        return "medium"
+
+    if is_arrest:
+        return "medium"
+
+    injured = fields.get("num_injured", "0")
+    if injured and injured != "0":
+        return "medium"
+
+    return "low"
+
+
+def _nysp_crime_type(category: str) -> str:
+    """Map NYSP category to ACT crime_type."""
+    cat = category.lower()
+    if any(w in cat for w in (
+        "assault", "robbery", "weapons", "sex offense", "menacing",
+        "domestic", "harassment", "death", "kidnap",
+    )):
+        return "violent"
+    if any(w in cat for w in (
+        "larceny", "burglary", "property", "forgery", "fraud",
+        "identity theft", "trespass", "criminal mischief",
+    )):
+        return "property"
+    if any(w in cat for w in ("dwi", "dui", "dwai", "accident", "vehicle", "road")):
+        return "traffic"
+    if any(w in cat for w in ("drug", "narcotic")):
+        return "drugs"
+    return "other"
+
+
+def _build_nysp_title(category: str, status: str, municipality: str, fields: dict) -> str:
+    """Build a concise, noise-free title for an NYSP blotter incident."""
+    cat = category.lower()
+    st = status.lower()
+    arr_st = (fields.get("arrestee_status") or "").lower()
+    is_arrest = "arrest" in st or bool(arr_st)
+
+    if any(w in cat for w in ("dwi", "dui", "dwai")) and is_arrest:
+        label = "NYSP DWI Arrest"
+    elif is_arrest:
+        label = f"NYSP Arrest: {category}"
+    else:
+        label = f"NYSP: {category}"
+
+    if municipality and municipality != "Albany County":
+        label = f"{label} — {municipality}"
+    return label[:200]
+
+
+def _build_nysp_description(fields: dict) -> str:
+    """Build a clean, structured description from parsed incident fields."""
+    parts: list[str] = []
+
+    cat = fields.get("incident_category", "")
+    if cat:
+        parts.append(cat)
+
+    st = fields.get("incident_status", "")
+    if st:
+        parts.append(f"Status: {st}")
+
+    station = fields.get("station", "")
+    if station:
+        parts.append(f"Station: {station}")
+
+    defendant = fields.get("defendant_name", "")
+    if defendant:
+        age = fields.get("defendant_age", "")
+        age_str = f", age {age}" if age else ""
+        parts.append(f"Defendant: {defendant}{age_str}")
+
+    arr_status = fields.get("arrestee_status", "")
+    if arr_status:
+        parts.append(f"Arrestee status: {arr_status}")
+
+    charges = fields.get("charges", [])
+    if charges:
+        parts.append("Charges: " + "; ".join(charges[:3]))
+
+    nv = fields.get("num_vehicles", "")
+    if nv:
+        detail = f"{nv} vehicle(s)"
+        nk = fields.get("num_killed", "0")
+        ni = fields.get("num_injured", "0")
+        if nk and nk != "0":
+            detail += f", {nk} killed"
+        if ni and ni != "0":
+            detail += f", {ni} injured"
+        parts.append(detail)
+
+    road = fields.get("road", "")
+    if road:
+        parts.append(f"Road: {road}")
+
+    return ". ".join(parts)[:500]
 
 
 def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
@@ -2825,168 +3057,99 @@ def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
         logger.warning("pdfplumber not installed — skipping NYSP blotter PDF parsing")
         return []
 
-    items: list[dict] = []
     try:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-            full_text = "\n".join(
-                cleaned
-                for cleaned in (_clean_nysp_blotter_text(p.extract_text() or "") for p in pdf.pages)
-                if cleaned
-            )
+            raw_pages = [p.extract_text() or "" for p in pdf.pages]
     except Exception as e:
         logger.warning("nysp_pdf_parse_error url=%s error=%s", pdf_url, e)
         return []
 
-    full_text = _clean_nysp_blotter_text(full_text)
+    full_text = _clean_nysp_pdf_text("\n".join(raw_pages))
     if not full_text:
         return []
 
-    # Extract header info (troop, zone, date range)
     troop_zone = ""
-    date_range = ""
-    m_tz = re.search(r"(Troop\s*\w+)[,\s]+Zone\s*(\d+)", full_text, re.IGNORECASE)
+    m_tz = re.search(r"Troop:\s*(\w+)\s+Zone:\s*(\d+)", full_text, re.I)
     if m_tz:
-        troop_zone = f"{m_tz.group(1)}, Zone {m_tz.group(2)}"
+        troop_zone = f"Troop {m_tz.group(1)}, Zone {m_tz.group(2)}"
+
+    date_range = ""
     m_dr = re.search(
-        r"(\d{1,2}/\d{1,2}/\d{2,4})\s+\d{1,2}:\d{2}\s*(?:AM|PM)?\s*[-–]\s*(\d{1,2}/\d{1,2}/\d{2,4})\s+\d{1,2}:\d{2}\s*(?:AM|PM)?",
+        r"(\w+\s+\d{1,2},\s+\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)"
+        r"\s*[-–]\s*"
+        r"(\w+\s+\d{1,2},\s+\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)",
         full_text,
-        re.IGNORECASE,
+        re.I,
     )
+    if not m_dr:
+        m_dr = re.search(
+            r"(\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)"
+            r"\s*[-–]\s*"
+            r"(\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)",
+            full_text,
+            re.I,
+        )
     if m_dr:
         date_range = m_dr.group(0).strip()
 
-    # Split into individual incident blocks
-    # NYSP blotters typically separate incidents with patterns like
-    # "Arrest -", "Investigation -", "Accident -", or numbered entries
-    # They also commonly have structured fields: Location, Town, Date, etc.
-    incident_blocks = re.split(
-        r"(?=(?:Arrest|Investigation|Accident|Motor Vehicle|MV Accident|Property|"
-        r"Larceny|Burglary|Criminal|DWI|DUI|Drug|Assault|Robbery|Domestic|"
-        r"Missing|Death|Suspicious|Disturbance|Trespass|Harassment|Menacing|"
-        r"Weapons|Sex Offense|Forgery|Fraud|Identity Theft|Reckless|DWAI)\s*[-–:])",
-        full_text,
-        flags=re.IGNORECASE,
-    )
+    blocks = _NYSP_BLOCK_SPLIT_RE.split(full_text)
+    items: list[dict] = []
 
-    for block in incident_blocks:
+    for block in blocks:
         block = block.strip()
         if len(block) < 30:
             continue
 
-        # Extract structured fields
-        title_match = re.match(
-            r"(Arrest|Investigation|Accident|Motor Vehicle|MV Accident|DWI|DUI|"
-            r"Drug|Assault|Robbery|Domestic|Larceny|Burglary|Criminal|Missing|"
-            r"Death|Suspicious|Disturbance|Trespass|Harassment|Menacing|Weapons|"
-            r"Sex Offense|Forgery|Fraud|Identity Theft|Reckless|DWAI|Property)"
-            r"\s*[-–:]\s*(.*)",
-            block,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if not title_match:
+        fields = _extract_nysp_fields(block)
+        inc_number = fields.get("incident_number", "")
+        if not inc_number:
             continue
 
-        incident_type = title_match.group(1).strip()
-        body = _clean_nysp_blotter_text(title_match.group(2))
+        category = fields.get("incident_category", "")
+        status = fields.get("incident_status", "")
+        location_code = fields.get("location_code", "")
+        municipality = _extract_nysp_municipality(location_code)
 
-        # Extract location from body
-        loc_match = re.search(
-            r"(?:Location|Town|City|Village|Hamlet|Municipality)[:\s]+([^\n,;]+)",
-            body,
-            re.IGNORECASE,
-        )
-        location = _clean_nysp_blotter_text(loc_match.group(1)) if loc_match else ""
-
-        # Extract date/time from body
-        dt_match = re.search(
-            r"(?:Date|Date/Time|Occurred|On)\s*[:\s]+\s*(\d{1,2}/\d{1,2}/\d{2,4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)",
-            body,
-            re.IGNORECASE,
-        )
-        incident_dt = None
-        if dt_match:
-            raw_dt = dt_match.group(1).strip()
-            for fmt in ("%m/%d/%Y %I:%M %p", "%m/%d/%Y %H:%M", "%m/%d/%y %I:%M %p", "%m/%d/%y %H:%M"):
-                try:
-                    incident_dt = datetime.strptime(raw_dt, fmt).replace(tzinfo=timezone.utc)
-                    break
-                except ValueError:
-                    continue
-
-        # If no explicit date field, use the report date range start
+        incident_dt = _parse_nysp_datetime(fields.get("date_time_reported", ""))
         if not incident_dt and m_dr:
-            try:
-                for fmt in ("%m/%d/%Y", "%m/%d/%y"):
-                    try:
-                        incident_dt = datetime.strptime(m_dr.group(1), fmt).replace(tzinfo=timezone.utc)
-                        break
-                    except ValueError:
-                        continue
-            except Exception:
-                pass
+            incident_dt = _parse_nysp_datetime(m_dr.group(1))
         if not incident_dt:
             incident_dt = datetime.now(timezone.utc)
 
-        # Build title
-        first_line = _clean_nysp_blotter_text(body.split("\n")[0])[:120]
-        title = f"NYSP {incident_type}: {first_line}" if first_line else f"NYSP {incident_type}"
-
-        # Check if this is Albany County related
-        check_text = (location + " " + body).lower()
+        check_text = f"{location_code} {municipality} {fields.get('station', '')}".lower()
         is_albany = any(loc in check_text for loc in _NYSP_ALBANY_LOCALITIES)
-        # Also check broader Albany County markers
         if not is_albany:
-            is_albany = "albany" in check_text or "troop g" in check_text
+            is_albany = "albany" in check_text or "troop g" in troop_zone.lower()
 
-        # Build description from body (first ~300 chars, cleaned)
-        desc_lines = [ln.strip() for ln in body.split("\n") if ln.strip()]
-        description = _clean_nysp_blotter_text(" ".join(desc_lines))[:400]
-
-        # Determine severity
-        sev = "medium"
-        sev_high = ("assault", "robbery", "weapons", "sex offense", "menacing", "death", "shooting", "stabbing")
-        sev_critical = ("homicide", "murder", "fatal")
-        type_lower = incident_type.lower()
-        if any(s in type_lower or s in description.lower() for s in sev_critical):
-            sev = "critical"
-        elif any(s in type_lower for s in sev_high):
-            sev = "high"
-        elif type_lower in ("dwi", "dui", "dwai", "accident", "motor vehicle", "mv accident"):
-            sev = "low"
-
-        # Determine crime category for map
-        crime_type = "other"
-        if type_lower in ("assault", "robbery", "weapons", "sex offense", "menacing", "domestic", "harassment", "death"):
-            crime_type = "violent"
-        elif type_lower in ("larceny", "burglary", "property", "forgery", "fraud", "identity theft", "trespass", "criminal"):
-            crime_type = "property"
-
-        # Determine municipality
-        municipality = "Albany County"
-        for loc_name in _NYSP_ALBANY_LOCALITIES:
-            if loc_name in check_text:
-                municipality = loc_name.title()
-                break
+        title = _build_nysp_title(category, status, municipality, fields)
+        description = _build_nysp_description(fields)
+        sev = _nysp_severity(category, status, fields)
+        crime_type = _nysp_crime_type(category)
 
         item = {
             "title": title,
             "description": description,
             "link": pdf_url,
             "pubDate": format_datetime(incident_dt),
+            "guid": f"nysp-{inc_number}",
             "source": "NYSP Troop G Blotter",
             "source_type": "official",
             "source_name": "NYSP Troop G Blotter",
-            "source_priority": 5,  # Higher than regular official (4) — direct blotter
+            "source_priority": 5,
             "_feed_reliability": 1.0,
             "verification_level": "official",
             "verification_label": "Official",
             "severity": sev,
             "crime_type": crime_type,
             "municipality": municipality,
-            "matched_location": location or municipality,
+            "matched_location": municipality,
             "_nysp_troop_zone": troop_zone,
             "_nysp_date_range": date_range,
             "_nysp_pdf_url": pdf_url,
+            "_nysp_incident_number": inc_number,
+            "_nysp_incident_category": category,
+            "_nysp_station": fields.get("station", ""),
+            "_nysp_incident_status": status,
         }
         items.append(item)
 
