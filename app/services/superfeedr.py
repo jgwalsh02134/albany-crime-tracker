@@ -280,6 +280,36 @@ SEED_FEEDS: list[dict[str, str]] = [
         "url": "https://www.albanyny.gov/RSSFeed.aspx?ModID=71&CID=All-0",
         "label": "City of Albany Official",
     },
+    {
+        "key": "spectrum_capregion_pubsafety",
+        "url": "https://spectrumlocalnews.com/services/contentfeed.nys|capital-region|public-safety.landing.rss",
+        "label": "Spectrum Capital Region Public Safety",
+    },
+    {
+        "key": "spectrum_capregion_news",
+        "url": "https://spectrumlocalnews.com/services/contentfeed.nys|capital-region|news.landing.rss",
+        "label": "Spectrum Capital Region News",
+    },
+    {
+        "key": "fbi_albany",
+        "url": "https://www.fbi.gov/contact-us/field-offices/albany/RSS",
+        "label": "FBI Albany Field Office",
+    },
+    {
+        "key": "albanyny_pubsafety_committee",
+        "url": "https://www.albanyny.gov/RSSFeed.aspx?ModID=65&CID=Public-Safety-Committee-17",
+        "label": "City of Albany Public Safety Committee",
+    },
+    {
+        "key": "albanyny_cprb",
+        "url": "https://www.albanyny.gov/RSSFeed.aspx?ModID=65&CID=Community-Police-Review-Board-29",
+        "label": "City of Albany Community Police Review Board",
+    },
+    {
+        "key": "dailygazette_crime",
+        "url": "https://www.dailygazette.com/search/?f=rss&t=article&c=news/crime",
+        "label": "Daily Gazette Crime",
+    },
 ]
 
 
