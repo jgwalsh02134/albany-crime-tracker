@@ -62,7 +62,7 @@ def article_to_incident(article: dict[str, Any]) -> IncidentRecord:
         confidence_score=float(article.get("confidence") or incident.get("confidence_score") or 0.0),
         verification_level=verification,  # type: ignore[arg-type]
         tags=sorted(set(t for t in tags if t)),
-        # TODO: populate when Postgres/PostGIS storage is introduced.
+        provenance=article.get("provenance") or article.get("_provenance") or {},
         geom_wkt=None,
         external_ref=str(article.get("external_ref") or article.get("external_id") or article.get("guid") or ""),
     )

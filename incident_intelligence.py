@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from email.utils import format_datetime, parsedate_to_datetime
 from typing import Any, Optional
 
+from app.models.incident import append_provenance_step
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -353,6 +355,29 @@ def normalize_from_enriched(raw: dict) -> dict:
         "_strict_live_ok": bool(raw.get("_strict_live_ok")),
         "_federal_national_hit": bool(raw.get("_federal_national_hit")),
     }
+
+    prov = raw.get("provenance")
+    if isinstance(prov, dict):
+        prov = dict(prov)
+        append_provenance_step(
+            prov,
+            step="normalize",
+            module="incident_intelligence",
+            function="normalize_from_enriched",
+        )
+        geo_q = "exact" if (lat_f is not None and lng_f is not None) else "missing"
+        loc_sig = "strict_albany" if local_rel >= 0.85 else (
+            "capital_region" if local_rel >= 0.5 else "state_or_national"
+        )
+        prov["confidence"] = {
+            "score": float(raw.get("confidence") or 0.55),
+            "rationale": f"{vlevel} source, local_relevance={round(local_rel, 2)}",
+            "geocode_quality": geo_q,
+            "verification_level": vlevel,
+            "locality_signal": loc_sig,
+        }
+        incident["_provenance"] = prov
+
     return incident
 
 
@@ -570,6 +595,37 @@ def _merge_cluster(cluster: list[dict]) -> dict:
     et, st = infer_event_type_and_subtype(mblob)
     merged["event_type"] = et
     merged["sub_type"] = st
+
+    primary_prov = base.get("_provenance")
+    if isinstance(primary_prov, dict):
+        primary_prov = dict(primary_prov)
+        merge_method = "keyword_jaccard"
+        for x in cluster[1:]:
+            la1, lo1 = x.get("latitude"), x.get("longitude")
+            la2, lo2 = base.get("latitude"), base.get("longitude")
+            if la1 and lo1 and la2 and lo2:
+                merge_method = "haversine"
+                break
+            sa = (x.get("street_or_area") or "").strip()
+            sb = (base.get("street_or_area") or "").strip()
+            if sa and sb and sa.lower() == sb.lower():
+                merge_method = "street_match"
+                break
+        primary_prov["fusion"] = {
+            "fused": len(cluster) > 1,
+            "source_ids": [x.get("id", "") for x in cluster],
+            "source_count": len(cluster),
+            "primary_source_id": base.get("id", ""),
+            "merge_method": merge_method if len(cluster) > 1 else "",
+        }
+        append_provenance_step(
+            primary_prov,
+            step="fuse",
+            module="incident_intelligence",
+            function="_merge_cluster",
+        )
+        merged["_provenance"] = primary_prov
+
     return merged
 
 
@@ -987,6 +1043,9 @@ def incident_to_api_row(inc: dict, *, live_section: str = "") -> dict:
         inc.get("status") == STATUS_ACTIVE or inc.get("live_frame") in (LIVE_FRAME_LIVE_NOW, LIVE_FRAME_DEVELOPING)
     )
     row["live_score"] = float(inc.get("live_score") or inc.get("public_safety_score") or 0)
+    prov = inc.get("_provenance")
+    if isinstance(prov, dict):
+        row["provenance"] = prov
     return row
 
 

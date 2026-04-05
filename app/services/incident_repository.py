@@ -196,6 +196,7 @@ def _to_orm(record: IncidentRecord, raw_payload: dict[str, Any]) -> IncidentORM:
         verification_level=_safe_str(record.verification_level, 64),
         tags=record.tags,
         raw_payload=raw_payload,
+        provenance=record.provenance or {},
     )
 
 
@@ -222,6 +223,7 @@ def _to_public_dict(record: IncidentRecord, raw_payload: dict[str, Any], *, crea
         "verification_level": record.verification_level,
         "tags": record.tags or [],
         "raw_payload": raw_payload or {},
+        "provenance": record.provenance or {},
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
     }
@@ -282,6 +284,8 @@ def _apply_updates(existing: IncidentORM, record: IncidentRecord) -> bool:
     if not (existing_source_type == "open_data" and incoming_source_type != "open_data"):
         _set("verification_level", record.verification_level)
     _set("tags", record.tags)
+    if record.provenance:
+        _set("provenance", record.provenance)
     return changed
 
 
@@ -803,6 +807,7 @@ async def query_incidents(
                     "verification_level": r.verification_level,
                     "tags": r.tags or [],
                     "raw_payload": r.raw_payload or {},
+                    "provenance": r.provenance or {},
                     "created_at": r.created_at.isoformat() if r.created_at else None,
                     "updated_at": r.updated_at.isoformat() if r.updated_at else None,
                 }

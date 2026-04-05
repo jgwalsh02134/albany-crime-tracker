@@ -108,6 +108,15 @@ BEGIN
         ) THEN
             ALTER TABLE incidents ALTER COLUMN address_text TYPE TEXT;
         END IF;
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'provenance'
+        ) THEN
+            ALTER TABLE incidents ADD COLUMN provenance JSONB DEFAULT '{}';
+        END IF;
     END IF;
 END $$;
 """

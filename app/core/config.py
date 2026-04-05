@@ -64,6 +64,12 @@ class Settings:
     radioreference_username: str
     radioreference_password: str
 
+    # Superfeedr push layer
+    superfeedr_login: str
+    superfeedr_token: str
+    superfeedr_secret: str
+    superfeedr_callback_base_url: str
+
     # HTTP controls
     external_timeout_seconds: float
     external_retry_attempts: int
@@ -110,6 +116,10 @@ def get_settings() -> Settings:
         radioreference_api_key=(os.getenv("RADIOREFERENCE_API_KEY") or "").strip(),
         radioreference_username=(os.getenv("RADIOREFERENCE_USERNAME") or "").strip(),
         radioreference_password=(os.getenv("RADIOREFERENCE_PASSWORD") or "").strip(),
+        superfeedr_login=(os.getenv("SUPERFEEDR_LOGIN") or "").strip(),
+        superfeedr_token=(os.getenv("SUPERFEEDR_TOKEN") or "").strip(),
+        superfeedr_secret=(os.getenv("SUPERFEEDR_SECRET") or "").strip(),
+        superfeedr_callback_base_url=(os.getenv("SUPERFEEDR_CALLBACK_BASE_URL") or "").strip().rstrip("/"),
         external_timeout_seconds=_as_float(os.getenv("EXTERNAL_TIMEOUT_SECONDS"), default=20.0),
         external_retry_attempts=max(1, int(os.getenv("EXTERNAL_RETRY_ATTEMPTS", "3"))),
         enable_ai_chat=_as_bool(os.getenv("FEATURE_AI_CHAT"), default=True),

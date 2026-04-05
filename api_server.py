@@ -41,6 +41,7 @@ from sources.advanced_adapters import TalkgroupMapper
 from sources.advanced_adapters import get_511_adapter
 from sources.advanced_adapters import get_radioreference_ws_adapter
 from sources.advanced_adapters import get_talkgroup_mapper
+from sources.advanced_adapters import radioreference_runtime_status
 from sources.tier1_official import fetch_tier1_sources
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,7 +56,9 @@ from app.db.session import has_database
 from app.db.session import init_database
 from app.services.cache import DEFAULT_TTLS, create_cache_backend, create_refresh_guard
 from app.services.http_client import fetch_with_retry
+from app.models.incident import build_provenance as _build_incident_provenance
 from app.services.incident_persistence import persist_articles_as_incidents
+import app.services.superfeedr as superfeedr_svc
 from app.services.incident_repository import incident_trends
 from app.services.incident_repository import incident_store_backend
 from app.services.incident_repository import query_incidents
@@ -503,6 +506,46 @@ RSS_FEEDS_GNEWS = {
         "priority": 2,
     },
 }
+
+_gnews_blocked_until: float = 0.0
+_gnews_block_logged_at: float = 0.0
+_GNEWS_BLOCK_TTL = 1800
+
+
+def _check_gnews_blocked(url: str, resp_status: int = 0) -> bool:
+    """Return True if Google News feeds should be skipped.
+
+    When *resp_status* is a block indicator (403/429/503), mark Google News
+    as blocked for ``_GNEWS_BLOCK_TTL`` seconds and log once.
+    """
+    global _gnews_blocked_until, _gnews_block_logged_at
+    if "news.google.com" not in (url or ""):
+        return False
+    now = time.time()
+    if resp_status in (403, 429, 503):
+        _gnews_blocked_until = now + _GNEWS_BLOCK_TTL
+        if (now - _gnews_block_logged_at) > _GNEWS_BLOCK_TTL:
+            logger.warning(
+                "gnews_blocked: Google News RSS returning %s — suppressing gnews feeds for %ds",
+                resp_status,
+                _GNEWS_BLOCK_TTL,
+            )
+            _gnews_block_logged_at = now
+        return True
+    return now < _gnews_blocked_until
+
+
+def gnews_runtime_status() -> dict[str, Any]:
+    now = time.time()
+    blocked = now < _gnews_blocked_until
+    remaining = max(0, int(_gnews_blocked_until - now)) if blocked else 0
+    return {
+        "blocked": blocked,
+        "block_ttl_seconds": _GNEWS_BLOCK_TTL,
+        "block_remaining_seconds": remaining,
+        "status": "blocked" if blocked else "available",
+    }
+
 
 # =============================================================================
 # OFFICIAL POLICE SOURCES — Priority 4 (highest) — X/Twitter + Blotters
@@ -3007,33 +3050,39 @@ async def fetch_official_sources() -> list:
     """
     results = []
     async def _fetch(key, cfg):
+        url = cfg["url"]
+        is_gnews = "news.google.com" in url
+        if is_gnews and _check_gnews_blocked(url):
+            return []
         try:
             timeout = cfg.get("timeout", 15)
             resp = await fetch_with_retry(
                 http_client,
-                cfg["url"],
+                url,
                 timeout=float(timeout),
-                retries=settings.external_retry_attempts,
+                retries=1 if is_gnews else settings.external_retry_attempts,
             )
             if resp and resp.status_code == 200:
                 parsed = parse_rss(resp.text, default_source=cfg.get("label"))
                 for a in parsed:
                     a["_feed_reliability"] = cfg.get("reliability", 0.97)
                     a["source_priority"] = 4
-                    # Force the official label so it shows "Official @..." in the feed
                     if cfg.get("force_label"):
                         a["source"] = cfg["label"]
                 filter_mode = cfg.get("filter")
                 if filter_mode in ("strict", "albany"):
-                    pass  # strict Albany County NY gate runs once after merge (fetch_all_feeds)
+                    pass
                 elif filter_mode == "crime":
                     parsed = [a for a in parsed if any(
                         kw in (a.get("title","") + " " + a.get("description","")).lower()
                         for kw in CRIME_KEYWORDS
                     )]
                 return parsed
+            if is_gnews and resp and resp.status_code in (403, 429, 503):
+                _check_gnews_blocked(url, resp.status_code)
         except Exception as e:
-            logger.warning("official_feed_error key=%s error=%s", key, e)
+            if not (is_gnews and _check_gnews_blocked(url)):
+                logger.warning("official_feed_error key=%s error=%s", key, e)
         return []
 
     tasks = [_fetch(k, v) for k, v in RSS_FEEDS_OFFICIAL.items()]
@@ -3051,26 +3100,41 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
     articles = []
 
     async def fetch_one(key, cfg):
+        url = cfg["url"]
+        is_gnews = "news.google.com" in url
+        if is_gnews and _check_gnews_blocked(url):
+            return []
         try:
             resp = await fetch_with_retry(
                 http_client,
-                cfg["url"],
+                url,
                 timeout=settings.external_timeout_seconds,
-                retries=settings.external_retry_attempts,
+                retries=1 if is_gnews else settings.external_retry_attempts,
             )
             if resp and resp.status_code == 200:
                 parsed = parse_rss(resp.text, default_source=cfg.get("label"))
 
-                # Attach feed-level reliability and priority to articles
                 feed_reliability = cfg.get("reliability", 0.70)
                 feed_priority = cfg.get("priority", 1)
+                _rss_source_class = "rss_gnews" if is_gnews else "rss_local_news"
                 for a in parsed:
                     if not a.get("_feed_reliability"):
                         a["_feed_reliability"] = feed_reliability
                     a["source_priority"] = max(a.get("source_priority", 0), feed_priority)
-                    # Official sources: force our label so badge shows in the UI
                     if cfg.get("force_label") and cfg.get("label"):
                         a["source"] = cfg["label"]
+                    if "provenance" not in a:
+                        a["provenance"] = _build_incident_provenance(
+                            source_class=_rss_source_class,
+                            source_id=key,
+                            trust_tier=cfg.get("trust_tier", "tier_3"),
+                            lane=cfg.get("lane", "developing_incidents"),
+                            ingestion_method="rss_poll",
+                            feed_url=url,
+                            captured_at=datetime.now(timezone.utc).isoformat(),
+                            content_type="rss_item",
+                            capture_method="rss_poll",
+                        )
                 if cfg.get("tag_511"):
                     for a in parsed:
                         a["_511_incident"] = True
@@ -3078,23 +3142,23 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
                     for a in parsed:
                         a["_ny_alert"] = True
 
-                # Apply location filter
                 filter_mode = cfg.get("filter")
                 if filter_mode in ("strict", "albany"):
-                    pass  # strict Albany County NY gate runs once after merge (below)
+                    pass
                 elif filter_mode == "crime":
-                    # "crime" mode: location guaranteed (official PD X accounts);
-                    # keep only posts that mention at least one crime keyword
                     def has_crime_kw(a):
                         t = (a.get("title","") + " " + a.get("description","")).lower()
                         return any(kw in t for kw in CRIME_KEYWORDS)
                     parsed = [a for a in parsed if has_crime_kw(a)]
                 elif filter_mode is None:
-                    pass  # strict geo + false positives in post-merge is_albany_related()
+                    pass
 
                 return parsed
+            if is_gnews and resp and resp.status_code in (403, 429, 503):
+                _check_gnews_blocked(url, resp.status_code)
         except Exception as e:
-            logger.warning("feed_fetch_error key=%s error=%s", key, e)
+            if not (is_gnews and _check_gnews_blocked(url)):
+                logger.warning("feed_fetch_error key=%s error=%s", key, e)
         return []
 
     all_feeds = {
@@ -3724,6 +3788,32 @@ async def get_incidents(
         "incidents": items,
     }
     return payload
+
+
+@app.get("/api/incidents/{incident_id}/provenance")
+async def get_incident_provenance(incident_id: str):
+    items = await query_incidents(limit=1, q=incident_id, sort_by="newest")
+    match = None
+    for it in items:
+        if it.get("id") == incident_id:
+            match = it
+            break
+    if not match:
+        items = await query_incidents(limit=50, sort_by="newest")
+        for it in items:
+            if it.get("id") == incident_id:
+                match = it
+                break
+    if not match:
+        return {"status": "not_found", "incident_id": incident_id, "provenance": {}}
+    prov = match.get("provenance") or {}
+    return {
+        "status": "ok",
+        "incident_id": incident_id,
+        "title": match.get("title", ""),
+        "source_type": match.get("source_type", ""),
+        "provenance": prov,
+    }
 
 
 @app.get("/api/incidents/map")
@@ -4481,6 +4571,10 @@ async def get_sources():
         "audit_summary": audit_counts(audited),
         "methodology": methodology,
         "planned_hooks": SOURCE_EXPANSION_HOOKS,
+        "upstream_status": {
+            "radioreference": radioreference_runtime_status(),
+            "google_news": gnews_runtime_status(),
+        },
     }
 
 
@@ -5227,6 +5321,20 @@ async def _priority_p25_scanner_signal_articles(
                         "wiki_seed": bool(row.get("wiki_seeded")),
                     },
                 },
+                "provenance": _build_incident_provenance(
+                    source_class="scanner_priority_p25",
+                    source_id="scanner_albany_p25_main",
+                    trust_tier="tier_3",
+                    lane="developing_incidents",
+                    ingestion_method="openmhz_api",
+                    feed_url=audio or "https://openmhz.com/system/albanycony",
+                    captured_at=t_raw or datetime.now(timezone.utc).isoformat(),
+                    raw_fields_hash=hashlib.sha256(
+                        f"{tg}:{t_raw}:{audio}".encode("utf-8", errors="ignore")
+                    ).hexdigest()[:16],
+                    content_type="scanner_call",
+                    capture_method="soap" if row.get("rr_row_present") else "wiki",
+                ),
             }
         )
     return articles
@@ -6667,6 +6775,17 @@ async def fetch_scanner_directory_items() -> list[dict[str, Any]]:
                             "ingestion": "scanner_albany_p25_main" if m_row else "openmhz_directory",
                             "provenance": _build_provenance(tid_s, m_row),
                         }
+                        article["provenance"] = _build_incident_provenance(
+                            source_class="scanner_directory",
+                            source_id="scanner_albany_p25_main" if m_row else "openmhz_directory",
+                            trust_tier="tier_3",
+                            lane="developing_incidents",
+                            ingestion_method="openmhz_api",
+                            feed_url=audio_url or f"https://openmhz.com/system/{slug}",
+                            captured_at=t_raw or datetime.now(timezone.utc).isoformat(),
+                            content_type="scanner_call",
+                            capture_method="soap" if m_row.get("rr_row_present") else "wiki",
+                        )
                     if tags:
                         article["incident"] = {
                             "source_type": "scanner",
@@ -6791,6 +6910,97 @@ async def dev_albany_open_data(request: Request):
     except Exception as e:
         print(f"/api/dev/albany-open-data error: {e}")
         return []
+
+
+# =============================================================================
+# SUPERFEEDR WEBHOOK + ADMIN
+# =============================================================================
+
+@app.post("/api/webhooks/superfeedr")
+async def superfeedr_webhook(request: Request):
+    """Receive Superfeedr push notifications and feed into ACT pipeline."""
+    body_bytes = await request.body()
+    secret = get_settings().superfeedr_secret
+    if secret:
+        sig = request.headers.get("X-Hub-Signature", "")
+        if not superfeedr_svc.verify_signature(body_bytes, sig, secret):
+            logger.warning("superfeedr_webhook_signature_mismatch")
+            raise HTTPException(status_code=403, detail="signature mismatch")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        logger.warning("superfeedr_webhook_invalid_json")
+        return {"ok": True, "articles": 0}
+
+    articles = superfeedr_svc.parse_notification(payload)
+    if not articles:
+        superfeedr_svc.record_notification(0, 0)
+        return {"ok": True, "articles": 0}
+
+    try:
+        stats = await persist_articles_as_incidents(articles)
+        persisted = stats.get("inserted", 0) + stats.get("updated", 0)
+    except Exception as exc:
+        logger.warning("superfeedr_webhook_persistence_error: %s", exc)
+        superfeedr_svc.record_error()
+        persisted = 0
+
+    superfeedr_svc.record_notification(len(articles), persisted)
+    logger.info(
+        "superfeedr_webhook_processed articles=%s persisted=%s",
+        len(articles),
+        persisted,
+    )
+    return {"ok": True, "articles": len(articles), "persisted": persisted}
+
+
+@app.get("/api/dev/superfeedr/status")
+async def superfeedr_status():
+    return {"status": "ok", **superfeedr_svc.runtime_status()}
+
+
+@app.post("/api/dev/superfeedr/subscribe")
+async def superfeedr_subscribe_endpoint(request: Request):
+    body = await request.json()
+    feed_url = str(body.get("feed_url") or "").strip()
+    if not feed_url:
+        raise HTTPException(status_code=400, detail="feed_url required")
+    s = get_settings()
+    callback_base = s.superfeedr_callback_base_url
+    if not callback_base:
+        raise HTTPException(status_code=500, detail="SUPERFEEDR_CALLBACK_BASE_URL not set")
+    callback = f"{callback_base}/api/webhooks/superfeedr"
+    result = await superfeedr_svc.subscribe(
+        feed_url, callback, secret=s.superfeedr_secret,
+    )
+    return result
+
+
+@app.post("/api/dev/superfeedr/unsubscribe")
+async def superfeedr_unsubscribe_endpoint(request: Request):
+    body = await request.json()
+    feed_url = str(body.get("feed_url") or "").strip()
+    if not feed_url:
+        raise HTTPException(status_code=400, detail="feed_url required")
+    s = get_settings()
+    callback_base = s.superfeedr_callback_base_url
+    if not callback_base:
+        raise HTTPException(status_code=500, detail="SUPERFEEDR_CALLBACK_BASE_URL not set")
+    callback = f"{callback_base}/api/webhooks/superfeedr"
+    result = await superfeedr_svc.unsubscribe(feed_url, callback)
+    return result
+
+
+@app.get("/api/dev/superfeedr/subscriptions")
+async def superfeedr_list_subscriptions(page: int = 1):
+    return await superfeedr_svc.list_subscriptions(page=page)
+
+
+@app.post("/api/dev/superfeedr/seed")
+async def superfeedr_seed_subscriptions():
+    results = await superfeedr_svc.subscribe_seed_feeds()
+    return {"status": "ok", "results": results}
 
 
 # =============================================================================

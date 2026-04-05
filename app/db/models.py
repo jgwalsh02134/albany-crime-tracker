@@ -58,6 +58,10 @@ class IncidentORM(Base):
         JSON().with_variant(JSONB, "postgresql"),
         default=dict,
     )
+    provenance: Mapped[dict[str, Any]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        default=dict,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

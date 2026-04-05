@@ -11,6 +11,7 @@ from typing import Tuple
 
 import httpx
 from app.core.config import get_settings
+from app.models.incident import build_provenance
 from app.services.http_client import fetch_with_retry
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,39 @@ MAX_RETRIES = settings.external_retry_attempts
 _cache: dict[tuple[int, int], dict[str, Any]] = {}
 _warned_missing_token = False
 _SOCRATA_STATE: dict[str, dict[str, Any]] = {}
+_portal_probe: dict[str, Any] = {"reachable": False, "checked_at": 0.0, "error": ""}
+_PORTAL_PROBE_TTL_LIVE = 300
+_PORTAL_PROBE_TTL_DEAD = 1800
+
+_uof_discovery: dict[str, Any] = {"result": None, "checked_at": 0.0, "status": "not_attempted"}
+_UOF_DISCOVERY_TTL = 7200
+
+
+async def _probe_portal(client: httpx.AsyncClient) -> bool:
+    """Single fast probe to check if the Socrata domain resolves.
+
+    Caches the result for ``_PORTAL_PROBE_TTL`` seconds so we never
+    burn per-dataset retries against a decommissioned portal.
+    """
+    global _portal_probe
+    now = time.time()
+    ttl = _PORTAL_PROBE_TTL_LIVE if _portal_probe["reachable"] else _PORTAL_PROBE_TTL_DEAD
+    if (now - _portal_probe["checked_at"]) < ttl:
+        return bool(_portal_probe["reachable"])
+    try:
+        resp = await client.head(f"https://{SOCRATA_DOMAIN}/", timeout=4.0)
+        reachable = resp.status_code < 500
+    except Exception as exc:
+        reachable = False
+        _portal_probe["error"] = str(exc)[:200]
+    _portal_probe["reachable"] = reachable
+    _portal_probe["checked_at"] = now
+    if not reachable:
+        logger.info(
+            "socrata_portal_unreachable domain=%s — using fallback data",
+            SOCRATA_DOMAIN,
+        )
+    return reachable
 
 
 def _cache_get(limit: int, offset: int) -> Optional[list[dict[str, Any]]]:
@@ -292,17 +326,34 @@ def _to_incident_article(row: dict[str, Any], dataset: dict[str, Any]) -> dict[s
             **row,
             "socrata_dataset_id": dataset_id,
             "socrata_dataset_name": dataset_name,
-                "socrata_source_status": socrata_source_status,
+            "socrata_source_status": socrata_source_status,
             "location_accuracy": "verified",
             "source_class": "official_structured_open_data",
             "socrata_fallback_snapshot": bool(row.get("_fallback_snapshot")),
         },
+        "provenance": build_provenance(
+            source_class="official_structured_open_data",
+            source_id=f"albany-socrata-{kind}",
+            trust_tier="tier_1",
+            lane="official_updates",
+            ingestion_method="json_api",
+            feed_url=source_url,
+            captured_at=datetime.now(timezone.utc).isoformat(),
+            raw_fields_hash=hashlib.sha256(str(row).encode("utf-8", errors="ignore")).hexdigest()[:16],
+            content_type="json_api_row",
+            capture_method="socrata_soda_api" if not row.get("_fallback_snapshot") else "fallback_snapshot",
+        ),
         "source_priority": 5,
         "source_reliability": 1.0,
     }
 
 
 async def _discover_use_of_force_dataset(client: httpx.AsyncClient, headers: dict[str, str]) -> Optional[dict[str, Any]]:
+    global _uof_discovery
+    now = time.time()
+    if (now - _uof_discovery["checked_at"]) < _UOF_DISCOVERY_TTL:
+        return _uof_discovery["result"]
+
     params = {
         "domains": SOCRATA_DOMAIN,
         "search_context": SOCRATA_DOMAIN,
@@ -314,21 +365,45 @@ async def _discover_use_of_force_dataset(client: httpx.AsyncClient, headers: dic
         CATALOG_URL,
         params=params,
         headers=headers,
-        retries=MAX_RETRIES,
+        retries=1,
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
     if not resp or resp.status_code != 200:
+        status = f"catalog_http_{resp.status_code}" if resp else "catalog_unreachable"
+        logger.debug(
+            "socrata_uof_discovery_unavailable status=%s — dataset is optional",
+            status,
+        )
+        _uof_discovery = {"result": None, "checked_at": now, "status": status}
+        _update_dataset_state(
+            "use_of_force_discovery",
+            dataset_name=USE_OF_FORCE_DISCOVERY["name"],
+            source_status="unavailable",
+            record_count_last_fetch=0,
+            last_error=status,
+        )
         return None
     body = resp.json()
     results = body.get("results") if isinstance(body, dict) else None
     if not isinstance(results, list) or not results:
+        _uof_discovery = {"result": None, "checked_at": now, "status": "no_results"}
+        _update_dataset_state(
+            "use_of_force_discovery",
+            dataset_name=USE_OF_FORCE_DISCOVERY["name"],
+            source_status="unavailable",
+            record_count_last_fetch=0,
+            last_error="no_results",
+        )
         return None
     view = ((results[0] or {}).get("resource") or {})
     rid = str(view.get("id") or "").strip()
     name = str(view.get("name") or USE_OF_FORCE_DISCOVERY["name"]).strip() or USE_OF_FORCE_DISCOVERY["name"]
     if not rid:
+        _uof_discovery = {"result": None, "checked_at": now, "status": "no_dataset_id"}
         return None
-    return {"id": rid, "name": name, "kind": "use_of_force"}
+    found = {"id": rid, "name": name, "kind": "use_of_force"}
+    _uof_discovery = {"result": found, "checked_at": now, "status": "discovered"}
+    return found
 
 
 async def fetch_albany_open_data(
@@ -360,12 +435,35 @@ async def fetch_albany_open_data(
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS, follow_redirects=True) as client:
         try:
             datasets = list(SOCRATA_DATASET_DEFS)
-            discovered = await _discover_use_of_force_dataset(client, headers=headers)
-            if discovered:
-                datasets.append(discovered)
             all_rows: list[dict[str, Any]] = []
             live_dataset_ids: set[str] = set()
+
+            portal_reachable = await _probe_portal(client)
+            if portal_reachable:
+                discovered = await _discover_use_of_force_dataset(client, headers=headers)
+                if discovered:
+                    datasets.append(discovered)
+            else:
+                _update_dataset_state(
+                    "use_of_force_discovery",
+                    dataset_name=USE_OF_FORCE_DISCOVERY["name"],
+                    source_status="unavailable",
+                    record_count_last_fetch=0,
+                    last_error="portal_unreachable",
+                )
+
             for ds in datasets:
+                if not portal_reachable:
+                    ds_id = str(ds.get("id") or "").strip()
+                    if ds_id:
+                        _update_dataset_state(
+                            ds_id,
+                            dataset_name=str(ds.get("name") or ds_id),
+                            source_status="unavailable",
+                            record_count_last_fetch=0,
+                            last_error="portal_unreachable",
+                        )
+                    continue
                 ds_id = str(ds.get("id") or "").strip()
                 if not ds_id:
                     continue
@@ -420,7 +518,11 @@ async def fetch_albany_open_data(
                     if isinstance(row, dict):
                         all_rows.append(_to_incident_article(row, ds))
             if not all_rows and allow_fallback:
-                logger.warning("albany_open_data_live_empty: using degraded fallback snapshot")
+                logger.warning(
+                    "socrata_fallback_active: %s %s — serving static snapshot data",
+                    SOCRATA_DOMAIN,
+                    "portal unreachable" if not portal_reachable else "live datasets empty",
+                )
                 for row in FALLBACK_SNAPSHOT_ROWS[offset : offset + limit]:
                     ds = {
                         "id": row.get("dataset_id"),
@@ -474,7 +576,18 @@ def socrata_runtime_status() -> dict[str, Any]:
     _init_socrata_state()
     primary_ids = {str(ds.get("id") or "") for ds in SOCRATA_DATASET_DEFS}
     datasets = [dict(v) for k, v in sorted(_SOCRATA_STATE.items(), key=lambda kv: kv[0]) if k in primary_ids]
+    portal_ok = bool(_portal_probe.get("reachable"))
+    uof_state = _SOCRATA_STATE.get("use_of_force_discovery")
     return {
         "configured": bool(settings.socrata_app_token),
+        "portal_domain": SOCRATA_DOMAIN,
+        "portal_reachable": portal_ok,
+        "portal_status": "live" if portal_ok else "unreachable",
         "datasets": datasets,
+        "use_of_force_discovery": {
+            "status": _uof_discovery.get("status", "not_attempted"),
+            "dataset_name": USE_OF_FORCE_DISCOVERY["name"],
+            "optional": True,
+            "state": dict(uof_state) if uof_state else None,
+        },
     }

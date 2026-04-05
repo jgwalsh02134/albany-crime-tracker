@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime
 from datetime import timezone
@@ -11,6 +12,7 @@ from urllib.parse import urljoin
 import httpx
 
 from app.core.config import get_settings
+from app.models.incident import build_provenance
 from app.services.http_client import fetch_with_retry
 from sources.advanced_adapters import get_511_adapter
 from sources.advanced_adapters import get_ipaws_adapter
@@ -115,6 +117,20 @@ def _as_incident_rows(items: list[dict[str, str]], *, source_name: str, source_u
                     "lane": lane,
                     "ingestion": "tier1_official",
                 },
+                "provenance": build_provenance(
+                    source_class="official_structured_or_press",
+                    source_id=source_name.lower().replace(" ", "-")[:60],
+                    trust_tier=trust_tier,
+                    lane=lane,
+                    ingestion_method="rss_poll",
+                    feed_url=source_url,
+                    captured_at=datetime.now(timezone.utc).isoformat(),
+                    raw_fields_hash=hashlib.sha256(
+                        (title + link).encode("utf-8", errors="ignore")
+                    ).hexdigest()[:16],
+                    content_type="rss_item",
+                    capture_method="tier1_rss_scrape",
+                ),
             }
         )
     return rows

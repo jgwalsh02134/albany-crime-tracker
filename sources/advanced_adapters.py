@@ -17,6 +17,7 @@ from typing import Optional
 import httpx
 
 from app.core.config import get_settings
+from app.models.incident import build_provenance
 from app.services.http_client import fetch_with_retry
 
 logger = logging.getLogger(__name__)
@@ -278,6 +279,30 @@ def _discipline_from_blob(blob: str) -> str:
     return "other"
 
 
+_rr_degraded_warned_at: float = 0.0
+_rr_soap_blocked_until: float = 0.0
+_RR_SOAP_COOLDOWN = 600
+
+
+def _log_rr_degraded(msg: str, *args: Any) -> None:
+    """Rate-limited RadioReference degradation warning — at most once per 10 minutes."""
+    global _rr_degraded_warned_at
+    now = time.time()
+    if (now - _rr_degraded_warned_at) < 600:
+        return
+    _rr_degraded_warned_at = now
+    logger.warning(msg, *args)
+
+
+def _mark_rr_soap_blocked() -> None:
+    global _rr_soap_blocked_until
+    _rr_soap_blocked_until = time.time() + _RR_SOAP_COOLDOWN
+
+
+def _is_rr_soap_blocked() -> bool:
+    return time.time() < _rr_soap_blocked_until
+
+
 class ArcGISAdapter:
     def __init__(self) -> None:
         self._cache: dict[tuple[float, float], dict[str, Any]] = {}
@@ -382,6 +407,8 @@ class RadioReferenceWSAdapter:
             return dict(self._cache)
         if self._cache and (time.time() - self._cache_ts) < 3600:
             return dict(self._cache)
+        if _is_rr_soap_blocked():
+            return dict(self._cache)
 
         soap_body = f"""<?xml version="1.0" encoding="UTF-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
@@ -408,13 +435,15 @@ class RadioReferenceWSAdapter:
                     method="POST",
                     content=soap_body,
                     headers={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": ""},
-                    retries=settings.external_retry_attempts,
+                    retries=1,
                     timeout=min(settings.external_timeout_seconds, 15.0),
                 )
                 if not resp or resp.status_code != 200:
-                    logger.warning(
-                        "radioreference_ws_fetch_failed status=%s",
+                    _mark_rr_soap_blocked()
+                    _log_rr_degraded(
+                        "radioreference_ws_degraded status=%s — scanner enrichment using wiki/cache fallback (cooldown %ds)",
                         resp.status_code if resp else "none",
+                        _RR_SOAP_COOLDOWN,
                     )
                     return dict(self._cache)
                 root = ET.fromstring(resp.text)
@@ -447,7 +476,8 @@ class RadioReferenceWSAdapter:
                     self._cache_ts = time.time()
                     logger.info("radioreference_ws_loaded talkgroups=%s", len(mapped))
             except Exception as exc:
-                logger.warning("radioreference_ws_error: %s", exc)
+                _mark_rr_soap_blocked()
+                _log_rr_degraded("radioreference_ws_error: %s — using wiki/cache fallback (cooldown %ds)", exc, _RR_SOAP_COOLDOWN)
         return dict(self._cache)
 
     def enrich_call(
@@ -563,7 +593,10 @@ class TalkgroupMapper:
         return out
 
     async def get_merged_talkgroups(self, sid: str = RADIOREFERENCE_SYSTEM_ID) -> dict[str, dict[str, Any]]:
-        rr = await self._adapter.fetch_talkgroups(sid=sid)
+        try:
+            rr = await self._adapter.fetch_talkgroups(sid=sid)
+        except Exception:
+            rr = {}
         return self.merge_rr_with_wiki(rr)
 
     @staticmethod
@@ -767,6 +800,17 @@ class NY511Adapter:
                             ],
                             "event": {k: str(v)[:300] for k, v in event.items() if v is not None},
                         },
+                        "provenance": build_provenance(
+                            source_class="official_structured_or_press",
+                            source_id="511ny-events",
+                            trust_tier="tier_1",
+                            lane="official_updates",
+                            ingestion_method="json_api",
+                            feed_url=NY511_EVENTS_URL,
+                            captured_at=datetime.now(timezone.utc).isoformat(),
+                            content_type="json_api_row",
+                            capture_method="511ny_full_api",
+                        ),
                         "source_priority": 5,
                         "source_reliability": 1.0,
                     }
@@ -863,6 +907,17 @@ class IPAWSAdapter:
                             "entry_title": title,
                             "entry_summary": summary,
                         },
+                        "provenance": build_provenance(
+                            source_class="official_cap_feed",
+                            source_id="ipaws-cap-nws",
+                            trust_tier="tier_1",
+                            lane="official_updates",
+                            ingestion_method="atom_feed",
+                            feed_url=NWS_CAP_FALLBACK_URL,
+                            captured_at=datetime.now(timezone.utc).isoformat(),
+                            content_type="cap_alert",
+                            capture_method="ipaws_cap_atom",
+                        ),
                         "source_priority": 5,
                         "source_reliability": 0.90,
                     }
@@ -897,3 +952,16 @@ def get_511_adapter() -> NY511Adapter:
 
 def get_ipaws_adapter() -> IPAWSAdapter:
     return _IPAWS_ADAPTER
+
+
+def radioreference_runtime_status() -> dict[str, Any]:
+    adapter = _RADIOREFERENCE_WS_ADAPTER
+    blocked = _is_rr_soap_blocked()
+    has_cache = bool(adapter._cache)
+    return {
+        "soap_blocked": blocked,
+        "soap_cooldown_seconds": _RR_SOAP_COOLDOWN,
+        "cache_populated": has_cache,
+        "cache_talkgroup_count": len(adapter._cache),
+        "status": "degraded_soap_blocked" if blocked else ("live" if has_cache else "wiki_fallback_only"),
+    }
