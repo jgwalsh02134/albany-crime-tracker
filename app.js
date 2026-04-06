@@ -2220,13 +2220,20 @@
     return filtered;
   }
 
+  // Home live feed must never re-show scanner-tab-only rows. fetchIncidents() filters
+  // these out, but filter chips / sheet re-render used allIncidentData (unfiltered),
+  // which brought scanner directory / conventional-frequency cards back into the list.
+  function _homeFeedExcludeScannerOnly(items) {
+    return (items || []).filter(function (x) { return x.feed_tab !== "scanner_only"; });
+  }
+
   // ── Unified feed renderer ─────────────────────────────────────
   // Single chronological list with time-based section headers.
   // Visual hierarchy is built into each card (severity, source pills, freshness).
   function renderUnifiedFeed(allItems) {
     var list = getLiveFeedListEl();
     if (!list) return;
-    var items = applyFeedUiFilters(allItems || []);
+    var items = applyFeedUiFilters(_homeFeedExcludeScannerOnly(allItems));
     if (!items.length) {
       list.innerHTML = '<div class="empty-state"><span class="material-icons" style="font-size:32px;opacity:0.4">shield</span><p>No incidents in this window.</p></div>';
       return;
