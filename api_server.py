@@ -1535,6 +1535,14 @@ OUT_OF_AREA_GEO_MARKERS = (
     "international fugitive",
     "u.s. border",
     "border wall",
+    # Georgia / other-state stories that collide with NY locality tokens
+    "gbi investigating",
+    "georgia bureau of investigation",
+    "georgia bureau",
+    "ocilla",
+    "put the guns down",
+    "delmar, md",
+    "delmar md",
 )
 
 # Phrases that prove Albany County / City of Albany NY (multi-word first in scan)
@@ -1635,10 +1643,10 @@ def _directory_locality_signals() -> frozenset[str]:
 
 
 def _strict_blob(article: dict) -> str:
+    # Do not include article["source"] — force_labels (e.g. fake "Official · …") must not prove locality.
     parts = [
         article.get("title", "") or "",
         article.get("description", "") or "",
-        article.get("source", "") or "",
         article.get("link", "") or "",
         article.get("source_url", "") or "",
         article.get("x_post_url", "") or "",
@@ -1769,6 +1777,12 @@ def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
             return False, f"non_local_source:{nls[:40]}"
 
     anchor = _strong_albany_county_anchor(blob)
+
+    # Weak locality:* anchors (e.g. "delmar" alone) must not override clear out-of-area copy.
+    if anchor and anchor.startswith("locality:"):
+        for m in OUT_OF_AREA_GEO_MARKERS:
+            if m in blob:
+                return False, f"out_of_area:{m[:40]}"
 
     if not anchor:
         for m in OUT_OF_AREA_GEO_MARKERS:
@@ -3275,12 +3289,22 @@ async def fetch_official_sources() -> list:
                 retries=1 if is_gnews else settings.external_retry_attempts,
             )
             if resp and resp.status_code == 200:
-                parsed = parse_rss(resp.text, default_source=cfg.get("label"))
+                parsed = parse_rss(
+                    resp.text,
+                    default_source=(None if is_gnews else cfg.get("label")),
+                )
                 for a in parsed:
-                    a["_feed_reliability"] = cfg.get("reliability", 0.97)
-                    a["source_priority"] = 4
-                    if cfg.get("force_label"):
+                    rel = float(cfg.get("reliability", 0.97))
+                    prio = 4
+                    if is_gnews:
+                        rel = min(rel, 0.78)
+                        prio = min(prio, 2)
+                    a["_feed_reliability"] = rel
+                    a["source_priority"] = prio
+                    if cfg.get("force_label") and cfg.get("label") and not is_gnews:
                         a["source"] = cfg["label"]
+                    elif is_gnews and cfg.get("label"):
+                        a["_query_label"] = cfg["label"]
                 filter_mode = cfg.get("filter")
                 if filter_mode in ("strict", "albany"):
                     pass
@@ -3324,17 +3348,25 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
                 retries=1 if is_gnews else settings.external_retry_attempts,
             )
             if resp and resp.status_code == 200:
-                parsed = parse_rss(resp.text, default_source=cfg.get("label"))
+                parsed = parse_rss(
+                    resp.text,
+                    default_source=(None if is_gnews else cfg.get("label")),
+                )
 
-                feed_reliability = cfg.get("reliability", 0.70)
-                feed_priority = cfg.get("priority", 1)
+                feed_reliability = float(cfg.get("reliability", 0.70))
+                feed_priority = int(cfg.get("priority", 1))
+                if is_gnews:
+                    feed_reliability = min(feed_reliability, 0.78)
+                    feed_priority = min(feed_priority, 2)
                 _rss_source_class = "rss_gnews" if is_gnews else "rss_local_news"
                 for a in parsed:
                     if not a.get("_feed_reliability"):
                         a["_feed_reliability"] = feed_reliability
                     a["source_priority"] = max(a.get("source_priority", 0), feed_priority)
-                    if cfg.get("force_label") and cfg.get("label"):
+                    if cfg.get("force_label") and cfg.get("label") and not is_gnews:
                         a["source"] = cfg["label"]
+                    elif is_gnews and cfg.get("label"):
+                        a["_query_label"] = cfg["label"]
                     if "provenance" not in a:
                         a["provenance"] = _build_incident_provenance(
                             source_class=_rss_source_class,
