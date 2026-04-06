@@ -37,6 +37,11 @@ from api_server import (
     _nysp_severity,
     _nysp_crime_type,
     _NYSP_BLOCK_SPLIT_RE,
+    _ALBANY_COUNTY_MUNIS_NORM,
+    _normalize_muni,
+    _is_nysp_blotter_article,
+    _nysp_muni_from_title,
+    evaluate_strict_albany_county,
 )
 
 
@@ -197,6 +202,122 @@ def test_description_building():
 
 
 # ---------------------------------------------------------------------------
+# Geo-filter: NYSP municipality-based acceptance
+# ---------------------------------------------------------------------------
+
+def test_normalize_muni():
+    _report("norm_plain", _normalize_muni("Colonie") == "colonie")
+    _report("norm_city_of", _normalize_muni("City of Albany") == "albany")
+    _report("norm_town_of", _normalize_muni("Town of Bethlehem") == "bethlehem")
+    _report("norm_village_of", _normalize_muni("Village of Green Island") == "green island")
+    _report("norm_whitespace", _normalize_muni("  Cohoes  ") == "cohoes")
+    _report("norm_albany_county", _normalize_muni("Albany County") == "albany county")
+
+
+def test_is_nysp_blotter_article():
+    _report("blotter_yes_pdf",
+            _is_nysp_blotter_article({"_nysp_pdf_url": "http://x.pdf"}))
+    _report("blotter_yes_inc",
+            _is_nysp_blotter_article({"_nysp_incident_number": "NY123"}))
+    _report("blotter_no",
+            not _is_nysp_blotter_article({"source": "WNYT"}))
+
+
+def test_nysp_muni_from_title():
+    _report("title_emdash",
+            _nysp_muni_from_title("NYSP Arrest: Domestic \u2014 Colonie") == "Colonie")
+    _report("title_dash",
+            _nysp_muni_from_title("NYSP: Welfare check - Bethlehem") == "Bethlehem")
+    _report("title_none",
+            _nysp_muni_from_title("NYSP: Property Damage Auto Accident") == "")
+
+
+def test_geofilter_nysp_accept_albany_munis():
+    """NYSP blotter articles with Albany County municipalities must pass."""
+    accept_munis = ["Albany", "Colonie", "Bethlehem", "Guilderland", "Cohoes",
+                    "Watervliet", "Green Island", "Menands", "Albany County"]
+    for muni in accept_munis:
+        art = {
+            "title": f"NYSP: Test \u2014 {muni}",
+            "source": "NYSP Troop G Blotter",
+            "description": "Test incident",
+            "link": "https://publicapps.troopers.ny.gov/media/TroopG/MediaMon1.pdf",
+            "municipality": muni,
+            "_nysp_pdf_url": "https://publicapps.troopers.ny.gov/media/TroopG/MediaMon1.pdf",
+            "_nysp_incident_number": "NY0001",
+        }
+        ok, reason = evaluate_strict_albany_county(art)
+        _report(f"accept_{muni.lower().replace(' ', '_')}",
+                ok and reason == "nysp_albany_municipality_accept",
+                f"muni={muni!r} ok={ok} reason={reason}")
+
+
+def test_geofilter_nysp_reject_non_albany():
+    """NYSP blotter articles with non-Albany municipalities must be rejected."""
+    reject_munis = ["Halfmoon", "Wilton", "Clifton Park", "Lake George", "Malta",
+                    "Queensbury", "Brunswick", "Schodack"]
+    for muni in reject_munis:
+        art = {
+            "title": f"NYSP: Test \u2014 {muni}",
+            "source": "NYSP Troop G Blotter",
+            "description": "Test incident",
+            "link": "https://publicapps.troopers.ny.gov/media/TroopG/MediaMon1.pdf",
+            "municipality": muni,
+            "_nysp_pdf_url": "https://publicapps.troopers.ny.gov/media/TroopG/MediaMon1.pdf",
+            "_nysp_incident_number": "NY0002",
+        }
+        ok, reason = evaluate_strict_albany_county(art)
+        _report(f"reject_{muni.lower().replace(' ', '_')}",
+                not ok and reason == "no_albany_county_locality_evidence",
+                f"muni={muni!r} ok={ok} reason={reason}")
+
+
+def test_geofilter_nysp_title_fallback():
+    """When municipality field is missing, extract from title suffix."""
+    art = {
+        "title": "NYSP Arrest: DWI \u2014 Guilderland",
+        "source": "NYSP Troop G Blotter",
+        "description": "Test",
+        "link": "",
+        "municipality": "",
+        "_nysp_pdf_url": "http://x.pdf",
+    }
+    ok, reason = evaluate_strict_albany_county(art)
+    _report("title_fallback_accept", ok and reason == "nysp_albany_municipality_accept",
+            f"ok={ok} reason={reason}")
+
+
+def test_geofilter_nysp_prefix_strip():
+    """Prefixes like 'City of' / 'Town of' should be stripped during normalization."""
+    art = {
+        "title": "NYSP: Test",
+        "source": "NYSP Troop G Blotter",
+        "description": "Test",
+        "link": "",
+        "municipality": "Town of Colonie",
+        "_nysp_pdf_url": "http://x.pdf",
+    }
+    ok, reason = evaluate_strict_albany_county(art)
+    _report("prefix_strip_accept", ok and reason == "nysp_albany_municipality_accept",
+            f"ok={ok} reason={reason}")
+
+
+def test_geofilter_non_nysp_unchanged():
+    """Non-NYSP articles should not use the NYSP municipality path."""
+    art = {
+        "title": "Crime in Colonie",
+        "source": "WNYT",
+        "description": "A crime happened in Colonie",
+        "link": "https://wnyt.com/article",
+        "municipality": "Colonie",
+    }
+    ok, reason = evaluate_strict_albany_county(art)
+    _report("non_nysp_uses_standard_filter",
+            reason != "nysp_albany_municipality_accept",
+            f"ok={ok} reason={reason}")
+
+
+# ---------------------------------------------------------------------------
 # Run all tests
 # ---------------------------------------------------------------------------
 
@@ -213,6 +334,14 @@ test_title_building()
 test_severity_mapping()
 test_crime_type_mapping()
 test_description_building()
+test_normalize_muni()
+test_is_nysp_blotter_article()
+test_nysp_muni_from_title()
+test_geofilter_nysp_accept_albany_munis()
+test_geofilter_nysp_reject_non_albany()
+test_geofilter_nysp_title_fallback()
+test_geofilter_nysp_prefix_strip()
+test_geofilter_non_nysp_unchanged()
 
 print(f"\n{passed}/{passed + failed} tests passed")
 if failed:

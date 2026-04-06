@@ -1691,6 +1691,40 @@ def _national_federal_source_hit(article: dict) -> bool:
     return any(m in sl for m in NATIONAL_FEDERAL_SOURCE_MARKERS)
 
 
+_ALBANY_COUNTY_MUNIS_NORM: frozenset = frozenset({
+    "albany", "albany county",
+    "cohoes", "watervliet", "colonie", "bethlehem", "guilderland",
+    "coeymans", "new scotland", "berne", "knox", "rensselaerville", "westerlo",
+    "green island", "menands",
+    "altamont", "ravena", "voorheesville",
+    "delmar", "latham", "loudonville", "slingerlands", "selkirk", "elsmere",
+    "glenmont", "clarksville", "feura bush", "medusa",
+    "east berne", "newtonville", "westmere", "mckownville",
+    "south bethlehem",
+})
+
+
+def _normalize_muni(raw: str) -> str:
+    s = raw.lower().strip()
+    for prefix in ("city of ", "town of ", "village of ", "hamlet of "):
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+    return s.strip(" ,.-")
+
+
+def _is_nysp_blotter_article(article: dict) -> bool:
+    return bool(article.get("_nysp_pdf_url") or article.get("_nysp_incident_number"))
+
+
+def _nysp_muni_from_title(title: str) -> str:
+    """Extract municipality from title suffix: 'NYSP: <incident> — <municipality>'."""
+    for sep in (" \u2014 ", " - "):
+        idx = title.rfind(sep)
+        if idx > 0:
+            return title[idx + len(sep):].strip()
+    return ""
+
+
 def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
     """
     True only when the item is genuinely anchored to Albany County, New York.
@@ -1698,6 +1732,15 @@ def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
     """
     if article.get("_scanner_call") or article.get("_scanner_feed_link"):
         return True, "albany_county_scanner_feed"
+
+    if _is_nysp_blotter_article(article):
+        raw_muni = (article.get("municipality") or "").strip()
+        if not raw_muni:
+            raw_muni = _nysp_muni_from_title(article.get("title") or "")
+        norm = _normalize_muni(raw_muni)
+        if norm and norm in _ALBANY_COUNTY_MUNIS_NORM:
+            return True, "nysp_albany_municipality_accept"
+        return False, "no_albany_county_locality_evidence"
 
     blob = _strict_blob(article)
     if not blob.strip():
