@@ -1948,7 +1948,6 @@ def is_scanner_noise(article: dict) -> bool:
 
 
 def _scanner_call_has_actionable_incident(article: dict) -> bool:
-    # le_directory conventional frequency rows are metadata, not live incidents.
     if article.get("_scanner_conventional"):
         return False
     blob = _article_combined_text(article)
