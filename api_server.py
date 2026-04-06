@@ -61,6 +61,7 @@ from app.services.incident_persistence import persist_articles_as_incidents
 import app.services.superfeedr as superfeedr_svc
 from app.services.incident_repository import incident_trends
 from app.services.incident_repository import incident_store_backend
+from app.services.incident_repository import last_upsert_stats
 from app.services.incident_repository import query_incidents
 from app.services.incident_repository import summarize_incidents
 from app.services.scanner_analysis import analyze_scanner_transcript
@@ -1336,7 +1337,10 @@ async def lifespan(_app):
             logger.warning("database_init_failed error=%s", exc)
     # Start background stream monitor (Broadcastify → Whisper → keyword alerts)
     await start_stream_monitor()
+    # Prime RSS/OpenMHz → crime pipeline → Postgres; Home only calls /api/incidents (read-only).
+    await start_background_crime_ingest()
     yield
+    await stop_background_crime_ingest()
     await stop_stream_monitor()
     if http_client is not None:
         await http_client.aclose()
@@ -3924,6 +3928,67 @@ async def get_crimes(
     )
     set_cached(CRIME_ARTICLES_CACHE_KEY, payload)
     return payload
+
+
+# --- Background crime ingest (Postgres persistence runs inside get_crimes pipeline) ---
+_crime_ingest_bg_task: Optional[asyncio.Task] = None
+
+
+def _background_crime_ingest_interval_s() -> float:
+    """Seconds between full feed refresh + persistence ticks. 0 or negative disables the loop."""
+    raw = os.getenv("BACKGROUND_CRIME_INGEST_SECONDS", "120").strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return 120.0
+
+
+async def _background_crime_ingest_loop(interval_s: float) -> None:
+    await asyncio.sleep(8.0)
+    while True:
+        try:
+            try:
+                # Cached get_crimes() returns early without running persist_articles_as_incidents.
+                await get_crimes(force_refresh=True)
+                st = last_upsert_stats()
+                logger.info(
+                    "background_crime_ingest_tick inserted=%s updated=%s skipped_as_duplicate=%s processed=%s backend=%s",
+                    st.get("inserted", 0),
+                    st.get("updated", 0),
+                    st.get("skipped_as_duplicate", 0),
+                    st.get("processed", 0),
+                    st.get("backend", ""),
+                )
+            except Exception as exc:
+                logger.warning("background_crime_ingest_tick_error error=%s", exc)
+            await asyncio.sleep(interval_s)
+        except asyncio.CancelledError:
+            break
+
+
+async def start_background_crime_ingest() -> None:
+    global _crime_ingest_bg_task
+    interval_s = _background_crime_ingest_interval_s()
+    if interval_s <= 0:
+        logger.info(
+            "background_crime_ingest_disabled BACKGROUND_CRIME_INGEST_SECONDS=%s",
+            os.getenv("BACKGROUND_CRIME_INGEST_SECONDS", ""),
+        )
+        return
+    _crime_ingest_bg_task = asyncio.create_task(_background_crime_ingest_loop(interval_s))
+    logger.info("background_crime_ingest_started interval_s=%s", interval_s)
+
+
+async def stop_background_crime_ingest() -> None:
+    global _crime_ingest_bg_task
+    if _crime_ingest_bg_task is None:
+        return
+    _crime_ingest_bg_task.cancel()
+    try:
+        await _crime_ingest_bg_task
+    except (asyncio.CancelledError, Exception):
+        pass
+    _crime_ingest_bg_task = None
 
 
 def _parse_iso_dt(value: Optional[str]) -> Optional[datetime]:
