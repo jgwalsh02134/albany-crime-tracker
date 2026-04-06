@@ -44,7 +44,7 @@ def article_to_incident(article: dict[str, Any]) -> IncidentRecord:
     if article.get("_scanner_call"):
         tags.append("scanner_call")
     return IncidentRecord(
-        id=str(article.get("id") or incident.get("id") or article.get("external_id") or ""),
+        id=str(article.get("id") or incident.get("id") or article.get("external_id") or article.get("guid") or ""),
         title=str(article.get("title") or incident.get("title") or ""),
         description=str(article.get("summary") or article.get("description") or incident.get("summary") or ""),
         incident_type=str(article.get("event_type") or incident.get("event_type") or "general"),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import uuid
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
@@ -11,6 +12,7 @@ from typing import Optional
 from sqlalchemy import and_
 from sqlalchemy import or_
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.db.models import IncidentORM
 from app.db.session import get_session_factory
@@ -174,9 +176,14 @@ def _record_log_context(record: IncidentRecord, raw_payload: dict[str, Any]) -> 
 
 
 def _to_orm(record: IncidentRecord, raw_payload: dict[str, Any]) -> IncidentORM:
+    rid = str(record.id or "").strip()
+    if not rid:
+        rid = str(record.external_ref or "").strip()
+    if not rid:
+        rid = str(uuid.uuid4())
     return IncidentORM(
-        id=str(record.id or ""),
-        external_id=str(record.external_ref or record.id or ""),
+        id=rid,
+        external_id=str(record.external_ref or rid or ""),
         source_fingerprint=_stable_fingerprint(record, raw_payload),
         title=str(record.title or ""),
         description=str(record.description or ""),
@@ -407,6 +414,25 @@ async def upsert_incidents(records: list[IncidentRecord], raw_payloads: list[dic
                             updated += 1
                         else:
                             skipped += 1
+                except IntegrityError as exc:
+                    ctx = _record_log_context(record, raw_payload)
+                    exc_text = str(exc.orig) if hasattr(exc, "orig") else str(exc)
+                    if "uq_incidents_source_fingerprint" in exc_text:
+                        logger.info(
+                            "incident_upsert_fingerprint_dup source_name=%s title=%s",
+                            ctx["source_name"],
+                            ctx["title"],
+                        )
+                    else:
+                        logger.warning(
+                            "incident_upsert_integrity_error record_id=%s source_name=%s title=%s constraint=%s",
+                            ctx["record_id"],
+                            ctx["source_name"],
+                            ctx["title"],
+                            exc_text[:300],
+                        )
+                    skipped += 1
+                    continue
                 except Exception as exc:
                     ctx = _record_log_context(record, raw_payload)
                     logger.warning(
