@@ -234,8 +234,12 @@ def test_nysp_muni_from_title():
 
 def test_geofilter_nysp_accept_albany_munis():
     """NYSP blotter articles with Albany County municipalities must pass."""
-    accept_munis = ["Albany", "Colonie", "Bethlehem", "Guilderland", "Cohoes",
-                    "Watervliet", "Green Island", "Menands", "Albany County"]
+    accept_munis = [
+        "Albany", "Colonie", "Bethlehem", "Guilderland", "Cohoes",
+        "Watervliet", "Green Island", "Menands", "Albany County",
+        "Coeymans", "Ravena", "Altamont", "Voorheesville",
+        "New Scotland", "Berne", "Knox", "Westerlo",
+    ]
     for muni in accept_munis:
         art = {
             "title": f"NYSP: Test \u2014 {muni}",
@@ -254,8 +258,11 @@ def test_geofilter_nysp_accept_albany_munis():
 
 def test_geofilter_nysp_reject_non_albany():
     """NYSP blotter articles with non-Albany municipalities must be rejected."""
-    reject_munis = ["Halfmoon", "Wilton", "Clifton Park", "Lake George", "Malta",
-                    "Queensbury", "Brunswick", "Schodack"]
+    reject_munis = [
+        "Nassau", "Brunswick", "Rensselaer", "Saratoga Springs",
+        "Halfmoon", "Wilton", "Clifton Park", "Malta",
+        "Queensbury", "Schodack", "Lake George",
+    ]
     for muni in reject_munis:
         art = {
             "title": f"NYSP: Test \u2014 {muni}",
@@ -272,19 +279,48 @@ def test_geofilter_nysp_reject_non_albany():
                 f"muni={muni!r} ok={ok} reason={reason}")
 
 
-def test_geofilter_nysp_title_fallback():
-    """When municipality field is missing, extract from title suffix."""
-    art = {
-        "title": "NYSP Arrest: DWI \u2014 Guilderland",
-        "source": "NYSP Troop G Blotter",
-        "description": "Test",
-        "link": "",
-        "municipality": "",
-        "_nysp_pdf_url": "http://x.pdf",
-    }
-    ok, reason = evaluate_strict_albany_county(art)
-    _report("title_fallback_accept", ok and reason == "nysp_albany_municipality_accept",
-            f"ok={ok} reason={reason}")
+def test_geofilter_nysp_title_fallback_accept():
+    """When municipality field is missing, extract from title suffix — accept Albany munis."""
+    title_accept = [
+        "Albany", "Colonie", "Bethlehem", "Guilderland", "Cohoes",
+        "Watervliet", "Green Island", "Menands", "Coeymans",
+        "New Scotland", "Berne", "Knox", "Westerlo",
+        "Ravena", "Altamont", "Voorheesville",
+    ]
+    for muni in title_accept:
+        art = {
+            "title": f"NYSP Arrest: Domestic \u2014 {muni}",
+            "source": "NYSP Troop G Blotter",
+            "description": "Test",
+            "link": "",
+            "municipality": "",
+            "_nysp_pdf_url": "http://x.pdf",
+        }
+        ok, reason = evaluate_strict_albany_county(art)
+        _report(f"title_accept_{muni.lower().replace(' ', '_')}",
+                ok and reason == "nysp_albany_municipality_accept",
+                f"muni={muni!r} ok={ok} reason={reason}")
+
+
+def test_geofilter_nysp_title_fallback_reject():
+    """When municipality field is missing, extract from title suffix — reject non-Albany munis."""
+    title_reject = [
+        "Nassau", "Brunswick", "Rensselaer", "Saratoga Springs",
+        "Halfmoon", "Wilton", "Clifton Park", "Malta", "Queensbury",
+    ]
+    for muni in title_reject:
+        art = {
+            "title": f"NYSP: Test \u2014 {muni}",
+            "source": "NYSP Troop G Blotter",
+            "description": "Test",
+            "link": "",
+            "municipality": "",
+            "_nysp_pdf_url": "http://x.pdf",
+        }
+        ok, reason = evaluate_strict_albany_county(art)
+        _report(f"title_reject_{muni.lower().replace(' ', '_')}",
+                not ok and reason == "no_albany_county_locality_evidence",
+                f"muni={muni!r} ok={ok} reason={reason}")
 
 
 def test_geofilter_nysp_prefix_strip():
@@ -339,7 +375,8 @@ test_is_nysp_blotter_article()
 test_nysp_muni_from_title()
 test_geofilter_nysp_accept_albany_munis()
 test_geofilter_nysp_reject_non_albany()
-test_geofilter_nysp_title_fallback()
+test_geofilter_nysp_title_fallback_accept()
+test_geofilter_nysp_title_fallback_reject()
 test_geofilter_nysp_prefix_strip()
 test_geofilter_non_nysp_unchanged()
 
