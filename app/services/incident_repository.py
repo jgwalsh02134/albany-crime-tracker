@@ -938,7 +938,26 @@ async def query_incidents(
 
 
 def incident_store_backend() -> str:
-    return _LAST_QUERY_BACKEND
+    """Report the CURRENT incident store backend.
+
+    Previously returned `_LAST_QUERY_BACKEND`, which is a lazy sentinel that
+    stays at its initial "memory" value until the first successful
+    query_incidents() postgres path runs. That caused /api/sources/health to
+    misreport a healthy Postgres deployment as "memory" whenever the health
+    endpoint was hit before any /api/incidents read — the usual startup
+    order on Railway.
+
+    This implementation introspects the live session factory so the report
+    reflects the actual connection state at call time. The `_LAST_QUERY_BACKEND`
+    global is kept for backwards compatibility with any debug tooling but is
+    no longer the source of truth.
+    """
+    try:
+        if get_session_factory() is not None:
+            return "postgres"
+    except Exception:
+        pass
+    return "memory"
 
 
 def last_upsert_stats() -> dict[str, Any]:
