@@ -759,6 +759,20 @@
       });
   }
 
+  // Build a small 2-letter source-brand chip from a source name (e.g.
+  // "Times Union" → "TU", "WNYT" → "WN"). We do not have real publisher
+  // images in the data model, so this acts as a lightweight, non-invented
+  // visual anchor for News cards.
+  function _sourceInitials(sourceName) {
+    var s = String(sourceName || "").trim();
+    if (!s) return "·";
+    var parts = s.split(/\s+/).filter(Boolean);
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
   function _storyCard(item, cls) {
     var sev = (item.severity || "").toLowerCase();
     var sevCls = sev === "critical" ? " home-story-pill--sev-critical" : sev === "high" ? " home-story-pill--sev-high" : "";
@@ -766,6 +780,10 @@
     var tag = link ? "a" : "div";
     var linkAttrs = link ? ' href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer"' : "";
     var html = '<' + tag + ' class="home-story-card ' + cls + '"' + linkAttrs + '>';
+    // Source letter-avatar acts as the News visual anchor in place of a
+    // publisher image (which the backend does not expose today).
+    var srcName = item.source_name || item.source || "";
+    html += '<div class="home-story-avatar" aria-hidden="true">' + esc(_sourceInitials(srcName)) + '</div>';
     html += '<div class="home-story-body">';
     html += '<div class="home-story-head">';
     html += '<div class="home-story-title">' + esc(item.title || "Untitled") + '</div>';
@@ -2230,12 +2248,78 @@
   // ── Unified feed renderer ─────────────────────────────────────
   // Single chronological list with time-based section headers.
   // Visual hierarchy is built into each card (severity, source pills, freshness).
+  // Collapse near-duplicate Live items (same normalized title + municipality
+  // within a 2-hour window). Prevents the "five versions of the same crash"
+  // problem from dominating the feed. Keeps the freshest copy.
+  function _dedupeLiveItems(items) {
+    var seen = Object.create(null);
+    var out = [];
+    (items || []).forEach(function (item) {
+      var rawTitle = (item.short_title || item.title || "").toLowerCase();
+      // Strip punctuation + collapse whitespace. Drop source-like leading tags
+      // such as "[WNYT]" or "Albany Police say —" that survive ingest.
+      var normTitle = rawTitle
+        .replace(/[\[\](){}"'`\u2018\u2019\u201c\u201d]/g, " ")
+        .replace(/[—\-–:]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 64);
+      var muni = String(item.municipality || item.matched_location || "").toLowerCase();
+      var t = item.pubDate ? new Date(item.pubDate).getTime() : 0;
+      var bucket = t ? Math.floor(t / (2 * 3600 * 1000)) : 0;
+      var key = normTitle + "|" + muni + "|" + bucket;
+      if (!normTitle) { out.push(item); return; }
+      var prev = seen[key];
+      if (!prev) { seen[key] = item; out.push(item); return; }
+      // Keep the fresher copy; merge by replacing prev in-place.
+      var prevT = prev.pubDate ? new Date(prev.pubDate).getTime() : 0;
+      if (t > prevT) {
+        var idx = out.indexOf(prev);
+        if (idx >= 0) out[idx] = item;
+        seen[key] = item;
+      }
+    });
+    return out;
+  }
+
+  // Render an honest freshness banner above the feed: "Newest item: 3 min ago".
+  // If newest is >30 min old we say so plainly rather than hiding it, because
+  // the product is a live tracker — silent lag would undermine trust.
+  function renderLiveFreshness(items) {
+    var el = document.getElementById("liveFreshness");
+    if (!el) return;
+    if (!items || !items.length) { el.hidden = true; el.innerHTML = ""; return; }
+    var newestMs = 0;
+    items.forEach(function (x) {
+      var t = x && x.pubDate ? new Date(x.pubDate).getTime() : 0;
+      if (t > newestMs) newestMs = t;
+    });
+    if (!newestMs) { el.hidden = true; el.innerHTML = ""; return; }
+    var mins = Math.max(0, Math.round((Date.now() - newestMs) / 60000));
+    var tone = "fresh";
+    if (mins >= 60) tone = "stale";
+    else if (mins >= 15) tone = "aging";
+    var ageText = mins < 1 ? "just now" :
+                  mins === 1 ? "1 min ago" :
+                  mins < 60 ? mins + " min ago" :
+                  Math.round(mins / 60) + " hr ago";
+    el.innerHTML =
+      '<span class="live-freshness-dot live-freshness-dot--' + tone + '"></span>' +
+      '<span class="live-freshness-label">Newest incident</span>' +
+      '<span class="live-freshness-value">' + ageText + '</span>' +
+      '<span class="live-freshness-count">' + items.length + ' tracked</span>';
+    el.className = "live-freshness live-freshness--" + tone;
+    el.hidden = false;
+  }
+
   function renderUnifiedFeed(allItems) {
     var list = getLiveFeedListEl();
     if (!list) return;
     var items = applyFeedUiFilters(_homeFeedExcludeScannerOnly(allItems));
+    items = _dedupeLiveItems(items);
     if (!items.length) {
       list.innerHTML = '<div class="empty-state"><span class="material-icons" style="font-size:32px;opacity:0.4">shield</span><p>No incidents in this window.</p></div>';
+      renderLiveFreshness([]);
       return;
     }
 
@@ -2245,6 +2329,8 @@
       var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
       return tb - ta;
     });
+
+    renderLiveFreshness(items);
 
     // Single chronological list — no section headers.
     // Visual hierarchy lives in the cards themselves (severity, source, time, live badge).

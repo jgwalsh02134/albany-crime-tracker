@@ -120,27 +120,23 @@
     <!-- === HOME VIEW (default) === -->
     <section class="view active" id="viewFeed">
 
-      <!-- Sticky sub-header: Live|News tabs + quick-filter chips -->
+      <!-- Sticky sub-header: Live|News tabs only. The municipality chip row
+           used to live here; it was removed because it added a second row of
+           UI between the user and the feed. Severity/municipality filtering
+           is still available via the header's tune icon (filter sheet). -->
       <div class="home-sub-header" id="homeSubHeader">
         <div class="home-mode-bar" role="tablist" aria-label="Home mode">
           <button class="home-mode-btn active" data-home-mode="live" role="tab" aria-selected="true">Live</button>
           <button class="home-mode-btn" data-home-mode="news" role="tab" aria-selected="false">News</button>
-        </div>
-        <div class="filter-chips" id="filterChips" role="list" aria-label="Quick filters">
-          <button class="filter-chip active" data-filter="all" role="listitem">All</button>
-          <button class="filter-chip" data-filter="high" role="listitem">High Severity</button>
-          <button class="filter-chip" data-filter="albany" role="listitem">Albany</button>
-          <button class="filter-chip" data-filter="colonie" role="listitem">Colonie</button>
-          <button class="filter-chip" data-filter="bethlehem" role="listitem">Bethlehem</button>
-          <button class="filter-chip" data-filter="guilderland" role="listitem">Guilderland</button>
-          <button class="filter-chip" data-filter="cohoes" role="listitem">Cohoes</button>
-          <button class="filter-chip" data-filter="watervliet" role="listitem">Watervliet</button>
         </div>
       </div>
 
       <!-- ── LIVE FEED (unified chronological) ── -->
       <div class="home-mode-panel active" id="homePanelLive">
         <div class="home-scroll">
+          <!-- Freshness banner: honestly surfaces "newest item is N min old" so
+               users can trust the Live promise rather than silently hiding lag. -->
+          <div class="live-freshness" id="liveFreshness" hidden></div>
           <div class="feed-list" id="incidentListUnified">
             <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
             <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
