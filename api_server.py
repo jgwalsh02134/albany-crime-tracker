@@ -12,6 +12,7 @@ from __future__ import annotations
 """
 
 import asyncio
+import hmac
 import io
 import json
 import json as _json
@@ -43,7 +44,7 @@ from sources.advanced_adapters import get_radioreference_ws_adapter
 from sources.advanced_adapters import get_talkgroup_mapper
 from sources.advanced_adapters import radioreference_runtime_status
 from sources.tier1_official import fetch_tier1_sources
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -7221,6 +7222,28 @@ async def dev_albany_open_data(request: Request):
 # SUPERFEEDR WEBHOOK + ADMIN
 # =============================================================================
 
+def require_superfeedr_admin(
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+) -> None:
+    """Gate /api/dev/superfeedr/* endpoints behind SUPERFEEDR_ADMIN_TOKEN.
+
+    401 when the token is missing (header absent or empty).
+    403 when a token is provided but does not match the server value.
+    503 when SUPERFEEDR_ADMIN_TOKEN is not configured on the server, so these
+        endpoints cannot be reached in production without explicit setup.
+    """
+    configured = get_settings().superfeedr_admin_token
+    if not configured:
+        raise HTTPException(
+            status_code=503,
+            detail="SUPERFEEDR_ADMIN_TOKEN not configured on server",
+        )
+    if not x_admin_token:
+        raise HTTPException(status_code=401, detail="admin token required")
+    if not hmac.compare_digest(str(x_admin_token), str(configured)):
+        raise HTTPException(status_code=403, detail="invalid admin token")
+
+
 @app.get("/api/superfeedr/webhook")
 async def superfeedr_webhook_verify(request: Request):
     """Handle PubSubHubbub verification and browser probes."""
@@ -7270,12 +7293,14 @@ async def superfeedr_webhook(request: Request):
 
 
 @app.get("/api/dev/superfeedr/status")
-async def superfeedr_status():
+async def superfeedr_status(_: None = Depends(require_superfeedr_admin)):
     return {"status": "ok", **superfeedr_svc.runtime_status()}
 
 
 @app.post("/api/dev/superfeedr/subscribe")
-async def superfeedr_subscribe_endpoint(request: Request):
+async def superfeedr_subscribe_endpoint(
+    request: Request, _: None = Depends(require_superfeedr_admin)
+):
     body = await request.json()
     feed_url = str(body.get("feed_url") or "").strip()
     if not feed_url:
@@ -7292,7 +7317,9 @@ async def superfeedr_subscribe_endpoint(request: Request):
 
 
 @app.post("/api/dev/superfeedr/unsubscribe")
-async def superfeedr_unsubscribe_endpoint(request: Request):
+async def superfeedr_unsubscribe_endpoint(
+    request: Request, _: None = Depends(require_superfeedr_admin)
+):
     body = await request.json()
     feed_url = str(body.get("feed_url") or "").strip()
     if not feed_url:
@@ -7307,14 +7334,52 @@ async def superfeedr_unsubscribe_endpoint(request: Request):
 
 
 @app.get("/api/dev/superfeedr/subscriptions")
-async def superfeedr_list_subscriptions(page: int = 1):
+async def superfeedr_list_subscriptions(
+    page: int = 1, _: None = Depends(require_superfeedr_admin)
+):
     return await superfeedr_svc.list_subscriptions(page=page)
 
 
 @app.post("/api/dev/superfeedr/seed")
-async def superfeedr_seed_subscriptions():
+async def superfeedr_seed_subscriptions(_: None = Depends(require_superfeedr_admin)):
     results = await superfeedr_svc.subscribe_seed_feeds()
     return {"status": "ok", "results": results}
+
+
+@app.get("/api/dev/superfeedr/desired")
+async def superfeedr_desired_subscriptions(_: None = Depends(require_superfeedr_admin)):
+    """Return the registry-derived desired Superfeedr subscriptions."""
+    from app.services.superfeedr_registry import desired_subscriptions
+    desired = desired_subscriptions()
+    return {
+        "status": "ok",
+        "count": len(desired),
+        "feeds": [
+            {
+                "source_id": e.get("source_id"),
+                "source_name": e.get("source_name"),
+                "feed_url": e.get("feed_url"),
+                "trust_tier": e.get("trust_tier"),
+                "lane": e.get("lane"),
+                "category": e.get("category"),
+            }
+            for e in desired
+        ],
+    }
+
+
+@app.get("/api/dev/superfeedr/reconcile")
+async def superfeedr_reconcile_preview(_: None = Depends(require_superfeedr_admin)):
+    """Dry-run reconcile: diff desired vs active Superfeedr subscriptions."""
+    from app.services.superfeedr_registry import reconcile
+    return await reconcile(dry_run=True)
+
+
+@app.post("/api/dev/superfeedr/reconcile")
+async def superfeedr_reconcile_apply(_: None = Depends(require_superfeedr_admin)):
+    """Apply reconcile plan: subscribe missing, unsubscribe extras, fix mismatches."""
+    from app.services.superfeedr_registry import reconcile
+    return await reconcile(dry_run=False)
 
 
 # =============================================================================

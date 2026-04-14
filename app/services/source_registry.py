@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter
-from typing import Any
+from typing import Any, Iterable, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 
 def _registry_path() -> str:
@@ -32,3 +33,190 @@ def source_registry_summary(entries: list[dict[str, Any]]) -> dict[str, Any]:
         "inactive_sources": max(0, len(entries) - active_count),
         "category_counts": dict(sorted(category_counts.items(), key=lambda kv: (-kv[1], kv[0]))),
     }
+
+
+def normalize_feed_url(url: str) -> str:
+    """Canonical form for comparing feed URLs across registry / Superfeedr responses.
+
+    Preserves scheme + host lowercased, keeps path verbatim (RSS paths are often
+    case-sensitive on origin servers), strips fragments, drops common tracking
+    params, and removes trailing slashes on the path.
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+    except Exception:
+        return raw
+    scheme = (parts.scheme or "https").lower()
+    host = (parts.netloc or "").lower()
+    if host.startswith("www."):
+        host_alt = host[4:]
+    else:
+        host_alt = host
+    # Keep stable host normalization: drop leading 'www.' so registry and
+    # Superfeedr-reported feed URLs compare equal.
+    host = host_alt
+    path = parts.path or ""
+    if len(path) > 1 and path.endswith("/"):
+        path = path[:-1]
+    query = parts.query or ""
+    # Drop empty fragments; keep query string as-is (some feeds require params).
+    return urlunsplit((scheme, host, path, query, ""))
+
+
+# Hosts that should never be primary Superfeedr push subscriptions because
+# they aren't true RSS in the push sense, create duplicate coverage, or are
+# scanner / aggregator surfaces that polling handles directly.
+_SUPERFEEDR_DENY_HOSTS: frozenset[str] = frozenset({
+    "broadcastify.com",
+    "www.broadcastify.com",
+    "feedly.com",
+    "www.feedly.com",
+    "reddit.com",
+    "www.reddit.com",
+    "old.reddit.com",
+    "news.google.com",
+})
+
+
+def _host_of(url: str) -> str:
+    try:
+        host = (urlsplit(url).netloc or "").lower()
+    except Exception:
+        return ""
+    # Strip the leading "www." label only — not a char set.
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def is_push_eligible(
+    entry: dict[str, Any],
+    *,
+    allow_feed_urls: Optional[Iterable[str]] = None,
+    deny_feed_urls: Optional[Iterable[str]] = None,
+) -> bool:
+    """Return True if a registry entry should be a primary Superfeedr push feed.
+
+    Rules:
+      - must have a non-empty feed_url
+      - must be active_status == True
+      - validation_status must indicate reachable:200
+      - ingestion_method must be rss_poll (push replaces polling)
+      - host must not be in the deny list (scanner / aggregator / duplicator)
+      - explicit allow/deny overrides by feed_url win over heuristic rules
+    """
+    feed_url = str(entry.get("feed_url") or "").strip()
+    if not feed_url:
+        return False
+    norm = normalize_feed_url(feed_url)
+    deny_norm = {normalize_feed_url(u) for u in (deny_feed_urls or [])}
+    allow_norm = {normalize_feed_url(u) for u in (allow_feed_urls or [])}
+    if norm in deny_norm:
+        return False
+    if norm in allow_norm:
+        return True
+    if not bool(entry.get("active_status")):
+        return False
+    if str(entry.get("validation_status") or "").strip().lower() != "reachable:200":
+        return False
+    if str(entry.get("ingestion_method") or "").strip().lower() != "rss_poll":
+        return False
+    if str(entry.get("auth_type") or "").strip().lower() not in ("", "none"):
+        return False
+    host = _host_of(feed_url)
+    if host in _SUPERFEEDR_DENY_HOSTS:
+        return False
+    return True
+
+
+def select_superfeedr_feeds(
+    entries: list[dict[str, Any]],
+    *,
+    allow_feed_urls: Optional[Iterable[str]] = None,
+    deny_feed_urls: Optional[Iterable[str]] = None,
+) -> list[dict[str, Any]]:
+    """Return the subset of registry entries eligible for Superfeedr push.
+
+    De-duplicates by normalized feed URL, preferring higher trust_tier.
+    """
+    tier_rank = {"tier_1": 3, "tier_2": 2, "tier_3": 1}
+    best: dict[str, dict[str, Any]] = {}
+    for e in entries:
+        if not is_push_eligible(
+            e,
+            allow_feed_urls=allow_feed_urls,
+            deny_feed_urls=deny_feed_urls,
+        ):
+            continue
+        norm = normalize_feed_url(str(e.get("feed_url") or ""))
+        if not norm:
+            continue
+        prev = best.get(norm)
+        if prev is None or tier_rank.get(str(e.get("trust_tier") or ""), 0) > tier_rank.get(
+            str(prev.get("trust_tier") or ""), 0
+        ):
+            best[norm] = e
+    # Stable order: tier first, then source_id alpha
+    return sorted(
+        best.values(),
+        key=lambda x: (
+            -tier_rank.get(str(x.get("trust_tier") or ""), 0),
+            str(x.get("source_id") or ""),
+        ),
+    )
+
+
+def index_by_feed_url(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Build a lookup of normalized feed_url and canonical_url -> registry entry.
+
+    canonical_url is included because Superfeedr sometimes echoes the canonical
+    site URL rather than the feed URL in status.feed / title metadata.
+    Feed URL takes precedence when both map to the same normalized string.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for e in entries:
+        for key in ("canonical_url", "feed_url"):
+            url = str(e.get(key) or "").strip()
+            if not url:
+                continue
+            norm = normalize_feed_url(url)
+            if not norm:
+                continue
+            # feed_url wins if already set by feed_url for a different entry
+            if key == "feed_url" or norm not in out:
+                out[norm] = e
+    return out
+
+
+# Mapping from registry category / trust_tier to the IncidentRecord-level
+# source_type and verification_level the rest of ACT expects.
+def map_registry_to_incident_fields(entry: dict[str, Any]) -> dict[str, str]:
+    category = str(entry.get("category") or "").lower()
+    tier = str(entry.get("trust_tier") or "").lower()
+    lane = str(entry.get("lane") or "").lower()
+
+    if category in ("official_alerts", "official_structured", "municipal", "federal"):
+        source_type = "official_alerts"
+        verification = "official"
+    elif category in ("tv_news", "newspaper", "radio", "community"):
+        source_type = "local_news"
+        verification = "media"
+    elif category == "scanner":
+        source_type = "scanner"
+        verification = "scanner"
+    else:
+        source_type = "local_news" if tier in ("tier_1", "tier_2") else "unknown"
+        verification = "media" if tier in ("tier_1", "tier_2") else "inferred"
+
+    # Tier_1 structured data reports should surface as official.
+    if tier == "tier_1" and category in ("official_structured", "municipal", "federal"):
+        verification = "official"
+    # developing lanes are less confirmed.
+    if lane == "developing_incidents" and verification == "media":
+        # keep as-is; media-reported developing incidents are still media-verified
+        pass
+
+    return {"source_type": source_type, "verification_level": verification, "lane": lane}

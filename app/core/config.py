@@ -69,6 +69,8 @@ class Settings:
     superfeedr_token: str
     superfeedr_secret: str
     superfeedr_callback_base_url: str
+    superfeedr_admin_token: str
+    superfeedr_max_subscriptions: int
 
     # HTTP controls
     external_timeout_seconds: float
@@ -120,6 +122,8 @@ def get_settings() -> Settings:
         superfeedr_token=(os.getenv("SUPERFEEDR_TOKEN") or "").strip(),
         superfeedr_secret=(os.getenv("SUPERFEEDR_SECRET") or "").strip(),
         superfeedr_callback_base_url=(os.getenv("SUPERFEEDR_CALLBACK_BASE_URL") or "").strip().rstrip("/"),
+        superfeedr_admin_token=(os.getenv("SUPERFEEDR_ADMIN_TOKEN") or "").strip(),
+        superfeedr_max_subscriptions=max(0, int(os.getenv("SUPERFEEDR_MAX_SUBSCRIPTIONS", "0") or "0")),
         external_timeout_seconds=_as_float(os.getenv("EXTERNAL_TIMEOUT_SECONDS"), default=20.0),
         external_retry_attempts=max(1, int(os.getenv("EXTERNAL_RETRY_ATTEMPTS", "3"))),
         enable_ai_chat=_as_bool(os.getenv("FEATURE_AI_CHAT"), default=True),

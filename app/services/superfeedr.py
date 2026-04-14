@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 SUPERFEEDR_HUB_URL = "https://push.superfeedr.com"
 
 _subscription_log: list[dict[str, Any]] = []
+_LAST_NOTIFICATION_BY_FEED: dict[str, str] = {}
 
 
 def _configured() -> bool:
@@ -176,14 +177,35 @@ def verify_signature(body: bytes, signature: str, secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-def parse_notification(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Convert a Superfeedr JSON notification into ACT article dicts."""
+def parse_notification(
+    payload: dict[str, Any],
+    *,
+    registry_index: Optional[dict[str, dict[str, Any]]] = None,
+) -> list[dict[str, Any]]:
+    """Convert a Superfeedr JSON notification into ACT article dicts.
+
+    When a registry lookup succeeds for the notification's feed, pushed items
+    inherit real source metadata (source_id, source_name, trust_tier, lane,
+    source_type, verification_level). Unmatched feeds fall through with an
+    explicit 'unmatched' source_class so they are visible instead of silently
+    treated as generic tier_3.
+    """
+    # Late import to avoid circular dependency (superfeedr_registry imports
+    # this module for transport helpers).
+    from app.services import superfeedr_registry
+
     status = payload.get("status") or {}
     feed_url = str(status.get("feed") or "")
     feed_title = str(payload.get("title") or "")
     items = payload.get("items") or []
     articles: list[dict[str, Any]] = []
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    idx = registry_index if registry_index is not None else superfeedr_registry.registry_index()
+    matched_entry = superfeedr_registry.match_entry_for_feed(feed_url, index=idx) if feed_url else None
+    meta = superfeedr_registry.push_metadata_for_entry(matched_entry)
+    if feed_url:
+        superfeedr_registry.record_feed_notification(feed_url, now_iso)
 
     for item in items:
         if not isinstance(item, dict):
@@ -210,12 +232,21 @@ def parse_notification(payload: dict[str, Any]) -> list[dict[str, Any]]:
             pub_date = ""
 
         actor = item.get("actor") or {}
-        source_name = str(actor.get("displayName") or feed_title or "Superfeedr")
+        # Prefer registry source_name so push + poll produce identical dedupe
+        # fingerprints (source_url + source_name).
+        source_name = (
+            meta["source_name"]
+            or str(actor.get("displayName") or "")
+            or feed_title
+            or "Superfeedr"
+        )
         item_id = str(item.get("id") or permalink or title)
 
         raw_hash = hashlib.sha256(
             (item_id + title).encode("utf-8", errors="ignore")
         ).hexdigest()[:16]
+
+        provenance_source_id = meta["source_id"] or f"superfeedr:{feed_url}"
 
         article: dict[str, Any] = {
             "title": title,
@@ -225,13 +256,21 @@ def parse_notification(payload: dict[str, Any]) -> list[dict[str, Any]]:
             "source": source_name,
             "source_url": permalink,
             "guid": item_id,
-            "_feed_reliability": 0.85,
-            "source_priority": 2,
+            "external_ref": item_id,
+            "_feed_reliability": meta["feed_reliability"],
+            "source_priority": meta["source_priority"],
+            # Nest source_type/verification_level so article_to_incident picks
+            # them up on the IncidentRecord.
+            "incident": {
+                "source_type": meta["source_type"],
+                "verification_level": meta["verification_level"],
+                "source_name": source_name,
+            },
             "provenance": build_provenance(
-                source_class="rss_push_superfeedr",
-                source_id=f"superfeedr:{feed_url}",
-                trust_tier="tier_3",
-                lane="developing_incidents",
+                source_class=meta["source_class"],
+                source_id=provenance_source_id,
+                trust_tier=meta["trust_tier"],
+                lane=meta["lane"],
                 ingestion_method="superfeedr_push",
                 feed_url=feed_url,
                 captured_at=now_iso,
@@ -245,6 +284,8 @@ def parse_notification(payload: dict[str, Any]) -> list[dict[str, Any]]:
                 "superfeedr_item_id": item_id,
                 "superfeedr_actor": actor.get("displayName", ""),
                 "superfeedr_categories": item.get("categories") or [],
+                "matched_source_id": meta["source_id"],
+                "matched_registry": bool(meta["matched"]),
             },
         }
         articles.append(article)
@@ -272,12 +313,31 @@ def record_error() -> None:
 
 
 def runtime_status() -> dict[str, Any]:
+    try:
+        from app.services.superfeedr_registry import desired_subscriptions
+        desired = desired_subscriptions()
+        desired_summary = {
+            "count": len(desired),
+            "by_trust_tier": _count_by(desired, "trust_tier"),
+        }
+    except Exception as exc:
+        desired_summary = {"error": str(exc)}
     return {
         "configured": _configured(),
         "hub_url": SUPERFEEDR_HUB_URL,
         "stats": dict(_SUPERFEEDR_STATS),
         "recent_subscription_log": _subscription_log[-10:],
+        "desired_subscriptions": desired_summary,
+        "last_notification_by_feed": dict(_LAST_NOTIFICATION_BY_FEED),
     }
+
+
+def _count_by(entries: list[dict[str, Any]], key: str) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for e in entries:
+        k = str(e.get(key) or "unknown")
+        out[k] = out.get(k, 0) + 1
+    return out
 
 
 SEED_FEEDS: list[dict[str, str]] = [
@@ -340,7 +400,12 @@ SEED_FEEDS: list[dict[str, str]] = [
 
 
 async def subscribe_seed_feeds() -> list[dict[str, Any]]:
-    """Subscribe the seed list of high-value ACT feeds."""
+    """Subscribe ACT's desired push feeds.
+
+    Prefers the registry-driven selection. Falls back to the legacy SEED_FEEDS
+    list only when the registry is empty or returns zero eligible feeds (e.g.
+    during fresh deploys before source_registry.json is loaded).
+    """
     s = get_settings()
     if not _configured():
         return [{"ok": False, "error": "superfeedr not configured"}]
@@ -349,8 +414,27 @@ async def subscribe_seed_feeds() -> list[dict[str, Any]]:
         return [{"ok": False, "error": "SUPERFEEDR_CALLBACK_BASE_URL not set"}]
     callback = f"{callback_base}/api/superfeedr/webhook"
     secret = s.superfeedr_secret
+
+    # Registry-first
+    try:
+        from app.services.superfeedr_registry import desired_subscriptions
+        registry_feeds = [
+            {
+                "key": str(e.get("source_id") or ""),
+                "url": str(e.get("feed_url") or ""),
+                "label": str(e.get("source_name") or ""),
+            }
+            for e in desired_subscriptions()
+            if e.get("feed_url")
+        ]
+    except Exception as exc:
+        logger.warning("superfeedr_seed_registry_load_failed: %s", exc)
+        registry_feeds = []
+
+    feeds = registry_feeds if registry_feeds else SEED_FEEDS
+
     results: list[dict[str, Any]] = []
-    for feed in SEED_FEEDS:
+    for feed in feeds:
         try:
             r = await subscribe(
                 feed["url"],

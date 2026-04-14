@@ -57,15 +57,20 @@ def test_parse_notification_shape():
     a = articles[0]
     assert a["title"] == "Police investigate shooting on Western Ave"
     assert a["link"] == "https://www.news10.com/news/crime/police-investigate-shooting/"
-    assert a["source"] == "News10 ABC"
+    # Registry-driven: source_name comes from registry entry when matched.
+    assert a["source"], "source should be populated"
     assert a["guid"] == "news10-article-12345"
     assert a.get("pubDate"), "pubDate should be set from timestamp"
     assert isinstance(a.get("provenance"), dict), "provenance should be a dict"
     prov = a["provenance"]
-    assert prov["origin"]["source_class"] == "rss_push_superfeedr"
+    assert prov["origin"]["source_class"].startswith("rss_push_superfeedr"), (
+        f"unexpected source_class: {prov['origin']['source_class']}"
+    )
     assert prov["origin"]["ingestion_method"] == "superfeedr_push"
     assert prov["raw_capture"]["capture_method"] == "webhook_push"
     assert "superfeedr_feed_url" in (a.get("raw_payload") or {}), "raw_payload should have feed_url"
+    # Registry match indicator must be present either way.
+    assert "matched_registry" in a["raw_payload"]
 
 
 def test_parse_notification_empty():
