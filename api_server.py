@@ -1340,7 +1340,10 @@ async def lifespan(_app):
     await start_stream_monitor()
     # Prime RSS/OpenMHz → crime pipeline → Postgres; Home only calls /api/incidents (read-only).
     await start_background_crime_ingest()
+    # Optional fast scanner cache warm-refresh; opt-in via SCANNER_INGEST_SECONDS.
+    await start_background_scanner_ingest()
     yield
+    await stop_background_scanner_ingest()
     await stop_background_crime_ingest()
     await stop_stream_monitor()
     if http_client is not None:
@@ -4033,8 +4036,25 @@ async def get_crimes(
     return payload
 
 
-# --- Background crime ingest (Postgres persistence runs inside get_crimes pipeline) ---
+# --- Background ingest loops ----------------------------------------------
+# Two independent loops:
+#   * crime/news loop  — full feed refresh + Postgres persistence via get_crimes()
+#                        cadence: BACKGROUND_CRIME_INGEST_SECONDS (default 120s)
+#   * scanner cache loop — operational scanner cache refresh via
+#                          _merge_scanner_calls_from_sources(write_cache=True)
+#                          cadence: SCANNER_INGEST_SECONDS (default 0 = disabled)
+# Keeping these split lets Railway run scanner-warm refreshes at a faster
+# cadence than the heavier RSS/news pipeline without doubling work on either.
 _crime_ingest_bg_task: Optional[asyncio.Task] = None
+_scanner_ingest_bg_task: Optional[asyncio.Task] = None
+
+_BACKGROUND_INGEST_STATS: dict[str, Any] = {
+    "crime": {"enabled": False, "interval_s": 0.0, "last_tick_at": "", "last_error": ""},
+    "scanner": {
+        "enabled": False, "interval_s": 0.0, "last_tick_at": "",
+        "last_merged_count": 0, "last_error": "",
+    },
+}
 
 
 def _background_crime_ingest_interval_s() -> float:
@@ -4054,6 +4074,10 @@ async def _background_crime_ingest_loop(interval_s: float) -> None:
                 # Cached get_crimes() returns early without running persist_articles_as_incidents.
                 await get_crimes(force_refresh=True)
                 st = last_upsert_stats()
+                _BACKGROUND_INGEST_STATS["crime"]["last_tick_at"] = (
+                    datetime.now(timezone.utc).isoformat()
+                )
+                _BACKGROUND_INGEST_STATS["crime"]["last_error"] = ""
                 logger.info(
                     "background_crime_ingest_tick inserted=%s updated=%s skipped_as_duplicate=%s processed=%s backend=%s",
                     st.get("inserted", 0),
@@ -4063,6 +4087,7 @@ async def _background_crime_ingest_loop(interval_s: float) -> None:
                     st.get("backend", ""),
                 )
             except Exception as exc:
+                _BACKGROUND_INGEST_STATS["crime"]["last_error"] = f"{type(exc).__name__}: {exc}"
                 logger.warning("background_crime_ingest_tick_error error=%s", exc)
             await asyncio.sleep(interval_s)
         except asyncio.CancelledError:
@@ -4072,12 +4097,15 @@ async def _background_crime_ingest_loop(interval_s: float) -> None:
 async def start_background_crime_ingest() -> None:
     global _crime_ingest_bg_task
     interval_s = _background_crime_ingest_interval_s()
+    _BACKGROUND_INGEST_STATS["crime"]["interval_s"] = float(interval_s)
     if interval_s <= 0:
+        _BACKGROUND_INGEST_STATS["crime"]["enabled"] = False
         logger.info(
             "background_crime_ingest_disabled BACKGROUND_CRIME_INGEST_SECONDS=%s",
             os.getenv("BACKGROUND_CRIME_INGEST_SECONDS", ""),
         )
         return
+    _BACKGROUND_INGEST_STATS["crime"]["enabled"] = True
     _crime_ingest_bg_task = asyncio.create_task(_background_crime_ingest_loop(interval_s))
     logger.info("background_crime_ingest_started interval_s=%s", interval_s)
 
@@ -4092,6 +4120,77 @@ async def stop_background_crime_ingest() -> None:
     except (asyncio.CancelledError, Exception):
         pass
     _crime_ingest_bg_task = None
+    _BACKGROUND_INGEST_STATS["crime"]["enabled"] = False
+
+
+def _background_scanner_ingest_interval_s() -> float:
+    """Seconds between scanner cache warm-refresh ticks. 0 or negative disables the loop.
+
+    Kept separate from BACKGROUND_CRIME_INGEST_SECONDS so scanner/operational
+    sources can run at a faster cadence (e.g. 30s) than the full crime/news
+    refresh (default 120s). Defaults to 0 (disabled) so existing deploys
+    retain their current behavior until Railway explicitly sets the var.
+    """
+    raw = os.getenv("SCANNER_INGEST_SECONDS", "0").strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return 0.0
+
+
+async def _background_scanner_ingest_loop(interval_s: float) -> None:
+    # Slight offset from crime loop's 8s startup sleep so first ticks don't
+    # collide on cold start.
+    await asyncio.sleep(4.0)
+    while True:
+        try:
+            try:
+                merged, _sources, _rr = await _merge_scanner_calls_from_sources(write_cache=True)
+                _BACKGROUND_INGEST_STATS["scanner"]["last_tick_at"] = (
+                    datetime.now(timezone.utc).isoformat()
+                )
+                _BACKGROUND_INGEST_STATS["scanner"]["last_merged_count"] = len(merged or [])
+                _BACKGROUND_INGEST_STATS["scanner"]["last_error"] = ""
+                logger.info(
+                    "background_scanner_ingest_tick merged=%s interval_s=%s",
+                    len(merged or []),
+                    interval_s,
+                )
+            except Exception as exc:
+                _BACKGROUND_INGEST_STATS["scanner"]["last_error"] = f"{type(exc).__name__}: {exc}"
+                logger.warning("background_scanner_ingest_tick_error error=%s", exc)
+            await asyncio.sleep(interval_s)
+        except asyncio.CancelledError:
+            break
+
+
+async def start_background_scanner_ingest() -> None:
+    global _scanner_ingest_bg_task
+    interval_s = _background_scanner_ingest_interval_s()
+    _BACKGROUND_INGEST_STATS["scanner"]["interval_s"] = float(interval_s)
+    if interval_s <= 0:
+        _BACKGROUND_INGEST_STATS["scanner"]["enabled"] = False
+        logger.info(
+            "background_scanner_ingest_disabled SCANNER_INGEST_SECONDS=%s",
+            os.getenv("SCANNER_INGEST_SECONDS", ""),
+        )
+        return
+    _BACKGROUND_INGEST_STATS["scanner"]["enabled"] = True
+    _scanner_ingest_bg_task = asyncio.create_task(_background_scanner_ingest_loop(interval_s))
+    logger.info("background_scanner_ingest_started interval_s=%s", interval_s)
+
+
+async def stop_background_scanner_ingest() -> None:
+    global _scanner_ingest_bg_task
+    if _scanner_ingest_bg_task is None:
+        return
+    _scanner_ingest_bg_task.cancel()
+    try:
+        await _scanner_ingest_bg_task
+    except (asyncio.CancelledError, Exception):
+        pass
+    _scanner_ingest_bg_task = None
+    _BACKGROUND_INGEST_STATS["scanner"]["enabled"] = False
 
 
 def _parse_iso_dt(value: Optional[str]) -> Optional[datetime]:
@@ -4948,6 +5047,62 @@ async def get_sources():
         "methodology": methodology,
         "planned_hooks": SOURCE_EXPANSION_HOOKS,
         "upstream_status": {
+            "radioreference": radioreference_runtime_status(),
+            "google_news": gnews_runtime_status(),
+        },
+    }
+
+
+@app.get("/api/sources/health")
+async def get_sources_health():
+    """Lightweight operational-health surface for ACT sources.
+
+    Returns counters + last-tick timestamps for the background ingest loops,
+    plus the live geo filter accept/reject stats already tracked in memory.
+    No auth: read-only, no PII, cheap to compute. Intended for dashboards
+    and quick "is live actually live right now?" spot-checks.
+    """
+    geo = _GEO_FILTER_STATS or {}
+    reasons = dict(geo.get("reasons") or {})
+    top_reasons = sorted(reasons.items(), key=lambda kv: kv[1], reverse=True)[:10]
+
+    # Quarantine counters (DB if available, fall back to 0 on error so the
+    # endpoint never 500s when the DB is transiently down).
+    quarantine_total = 0
+    try:
+        from sqlalchemy import text as _sql_text
+        sf = get_session_factory()
+        if sf is not None:
+            async with sf() as session:
+                r = await session.execute(
+                    _sql_text(
+                        "SELECT COUNT(*) FROM incidents "
+                        "WHERE tags @> to_jsonb(ARRAY['false_local_quarantine']::text[])"
+                    )
+                )
+                quarantine_total = int(r.scalar() or 0)
+    except Exception as exc:
+        logger.warning("sources_health_quarantine_count_error error=%s", exc)
+
+    return {
+        "status": "ok",
+        "as_of": datetime.now(timezone.utc).isoformat(),
+        "geo_filter": {
+            "accepted": int(geo.get("accepted", 0)),
+            "rejected": int(geo.get("rejected", 0)),
+            "top_rejection_reasons": [
+                {"reason": r, "count": int(c)} for r, c in top_reasons
+            ],
+        },
+        "ingest_loops": {
+            "crime": dict(_BACKGROUND_INGEST_STATS.get("crime") or {}),
+            "scanner": dict(_BACKGROUND_INGEST_STATS.get("scanner") or {}),
+        },
+        "incidents": {
+            "quarantined_total": quarantine_total,
+            "store_backend": incident_store_backend(),
+        },
+        "upstream": {
             "radioreference": radioreference_runtime_status(),
             "google_news": gnews_runtime_status(),
         },
@@ -5902,6 +6057,82 @@ def _scanner_call_municipality_hint(call: dict[str, Any]) -> str:
     return str(call.get("municipality") or call.get("matched_location") or "Albany County").strip()
 
 
+_SCANNER_TRANSCRIBE_PROMPT_BASE = (
+    "Albany County NY police fire EMS dispatch radio. "
+    "10-codes, signal codes, street names, locations. "
+    "Common streets: Central, Washington, State, New Scotland, Western, "
+    "Delaware, Lark, Madison, Pearl, Broadway. "
+    "Municipalities: Albany, Colonie, Bethlehem, Guilderland, Cohoes, "
+    "Watervliet, Green Island, Menands, Ravena, Voorheesville, Altamont."
+)
+
+_SCANNER_TRANSCRIBE_PROMPT_POLICE = (
+    _SCANNER_TRANSCRIBE_PROMPT_BASE
+    + " Police dispatch: expect 10-codes, signal 99, officer needed assist, "
+    "BOLO, subject descriptions, plates, traffic stop, pursuit, foot pursuit, "
+    "shots fired, weapon, suspect, felony stop."
+)
+
+_SCANNER_TRANSCRIBE_PROMPT_FIRE = (
+    _SCANNER_TRANSCRIBE_PROMPT_BASE
+    + " Fire dispatch: expect structure fire, working fire, engine, truck, "
+    "ladder, rescue, tones, box alarm, mutual aid, hydrant, smoke showing, "
+    "all clear, command, tanker, chief."
+)
+
+_SCANNER_TRANSCRIBE_PROMPT_EMS = (
+    _SCANNER_TRANSCRIBE_PROMPT_BASE
+    + " EMS dispatch: expect ALS, BLS, medic, ambulance, cardiac arrest, "
+    "stroke alert, STEMI, overdose, unresponsive, CPR, trauma alert, "
+    "transport, receiving hospital, Albany Med, St. Peter's, Ellis."
+)
+
+
+def _scanner_discipline_from_call(call: dict[str, Any]) -> str:
+    """Classify a scanner call as 'police', 'fire', 'ems', or 'unknown'
+    based on talkgroup tag/description. Used only to pick the Whisper
+    prompt — all downstream logic remains neutral.
+    """
+    blob = " ".join(
+        str(v or "").lower() for v in (
+            call.get("talkgroup_tag"),
+            call.get("talkgroup_description"),
+            call.get("tgAlpha"),
+            call.get("tgDescr"),
+            call.get("feed_name"),
+        )
+    )
+    if not blob.strip():
+        return "unknown"
+    # EMS first so "fire/ems" talkgroups don't get misclassified as fire.
+    if any(k in blob for k in ("ems", "medic", "ambulance", "paramedic", "rescue ems")):
+        return "ems"
+    if any(k in blob for k in ("fire", "fd ", "fd-", " fd", "rescue", "engine", "ladder")):
+        return "fire"
+    if any(k in blob for k in (
+        "police", "pd ", "pd-", " pd", "law", "sheriff", "state police",
+        "trooper", "nysp", "patrol",
+    )):
+        return "police"
+    return "unknown"
+
+
+def _scanner_transcribe_prompt(call: dict[str, Any]) -> str:
+    """Select a talkgroup-aware Whisper prompt for the given scanner call.
+
+    Returns the generic base prompt when discipline cannot be determined,
+    so unknown/new talkgroups never regress below the prior behavior.
+    """
+    disc = _scanner_discipline_from_call(call)
+    if disc == "police":
+        return _SCANNER_TRANSCRIBE_PROMPT_POLICE
+    if disc == "fire":
+        return _SCANNER_TRANSCRIBE_PROMPT_FIRE
+    if disc == "ems":
+        return _SCANNER_TRANSCRIBE_PROMPT_EMS
+    return _SCANNER_TRANSCRIBE_PROMPT_BASE
+
+
 def _scanner_call_local_reference_context(call: dict[str, Any]) -> str:
     bits = [
         f"talkgroup_num={call.get('talkgroup_num') or call.get('talkgroupID') or ''}",
@@ -5994,11 +6225,15 @@ async def scanner_transcribe(request: Request):
                 # high-priority rechecks.
                 import io
                 _transcribe_model = (os.getenv("SCANNER_TRANSCRIBE_MODEL") or "whisper-1").strip()
+                # Talkgroup-aware prompt: police/fire/EMS get discipline-tuned
+                # jargon hints. Falls back to generic base prompt for unknown
+                # talkgroups so nothing regresses below prior behavior.
+                _transcribe_prompt = _scanner_transcribe_prompt(c)
                 files = {
                     "file": (f"scanner_call{ext}", io.BytesIO(audio_bytes), "audio/mp4"),
                     "model": (None, _transcribe_model),
                     "language": (None, "en"),
-                    "prompt": (None, "Albany County police fire EMS dispatch radio. 10-codes, signal codes, street names, locations in Albany NY area."),
+                    "prompt": (None, _transcribe_prompt),
                 }
                 whisper_resp = await http_client.post(
                     "https://api.openai.com/v1/audio/transcriptions",
