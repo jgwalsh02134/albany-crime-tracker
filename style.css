@@ -3847,6 +3847,13 @@ a:hover { text-decoration: underline; }
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 25%, transparent);
 }
+/* Corroboration pill: surfaces "+N sources" when multiple feeds covered the
+   same incident and the client-side clusterer rolled them up into one card. */
+.feed-meta-pill--corroborated {
+  color: var(--live-dot);
+  border-color: color-mix(in srgb, var(--live-dot) 30%, transparent);
+  background: color-mix(in srgb, var(--live-dot) 8%, transparent);
+}
 /* Severity card borders (color communicated via indicator strip, not text pill) */
 .feed-item--sev-critical {
   box-shadow: var(--shadow-card), inset 0 0 0 1px color-mix(in srgb, var(--violent) 20%, transparent);

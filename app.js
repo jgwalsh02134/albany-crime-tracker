@@ -2113,6 +2113,17 @@
     html += '<div class="feed-meta">';
     html += '<span class="feed-meta-pill feed-meta-pill--area"><span class="material-icons feed-meta-icon">location_on</span>' + esc(area) + '</span>';
     html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(sourceName) + '</span>';
+    // Linked-sources pill: when _dedupeLiveItems clustered multiple sources
+    // into this card, surface the additional source count so users know this
+    // is corroborated. Tooltip carries the full name list.
+    var linked = Array.isArray(item._linked_sources) ? item._linked_sources : null;
+    if (linked && linked.length > 1) {
+      var others = linked.length - 1;
+      var names = linked.map(function (s) { return s.name || ""; }).filter(Boolean).join(", ");
+      html += '<span class="feed-meta-pill feed-meta-pill--corroborated"'
+            + ' title="' + escAttr(names) + '">'
+            + '+' + others + ' source' + (others === 1 ? "" : "s") + '</span>';
+    }
     // Federal badge for DOJ / US Attorney sources
     var isFederal = sourceType === "federal" || /\b(usao|us attorney|doj|federal|dept.*justice)\b/i.test(sourceName);
     if (isFederal) html += '<span class="feed-meta-pill feed-meta-pill--federal">Federal</span>';
@@ -2248,38 +2259,168 @@
   // ── Unified feed renderer ─────────────────────────────────────
   // Single chronological list with time-based section headers.
   // Visual hierarchy is built into each card (severity, source pills, freshness).
-  // Collapse near-duplicate Live items (same normalized title + municipality
-  // within a 2-hour window). Prevents the "five versions of the same crash"
-  // problem from dominating the feed. Keeps the freshest copy.
+
+  // Stopwords excluded from title-token matching. Short function words
+  // shouldn't be what anchors a match; crime nouns (crash, shooting, fire)
+  // deliberately stay in the token set since they're the real signal.
+  var _LIVE_CLUSTER_STOPWORDS = {
+    "the":1,"a":1,"an":1,"and":1,"or":1,"but":1,"of":1,"in":1,"on":1,"at":1,
+    "to":1,"for":1,"with":1,"by":1,"from":1,"as":1,"is":1,"are":1,"was":1,
+    "were":1,"be":1,"been":1,"has":1,"have":1,"had":1,"it":1,"its":1,
+    "this":1,"that":1,"these":1,"those":1,"into":1,"near":1,"over":1,
+    "after":1,"before":1,"during":1,"says":1,"say":1,"said":1,"told":1,
+    "new":1,"york":1,"ny":1,"county":1,"area":1
+  };
+
+  function _liveClusterTokens(title) {
+    var raw = String(title || "").toLowerCase();
+    // Strip punctuation and decorative dashes so tokens align across sources.
+    raw = raw.replace(/[\[\](){}"'`\u2018\u2019\u201c\u201d]/g, " ")
+             .replace(/[—\-–:,.!?;]/g, " ")
+             .replace(/\s+/g, " ")
+             .trim();
+    var toks = raw.split(" ");
+    var out = {};
+    for (var i = 0; i < toks.length; i++) {
+      var t = toks[i];
+      if (!t || t.length < 4) continue;
+      if (_LIVE_CLUSTER_STOPWORDS[t]) continue;
+      out[t] = 1;
+    }
+    return out;
+  }
+
+  function _liveClusterJaccard(a, b) {
+    var inter = 0, uni = 0;
+    var seen = {};
+    for (var k in a) { seen[k] = 1; if (b[k]) inter++; }
+    for (var k2 in b) { seen[k2] = 1; }
+    for (var k3 in seen) uni++;
+    if (!uni) return 0;
+    return inter / uni;
+  }
+
+  // Overlap coefficient: |A∩B| / min(|A|, |B|). Complements Jaccard —
+  // catches short paraphrased headlines that share most of their meaningful
+  // tokens but have a few unique words each (e.g. "car crash in Coeymans
+  // injures two" vs "Coeymans car crash kills one").
+  function _liveClusterOverlap(a, b) {
+    var inter = 0, sizeA = 0, sizeB = 0;
+    for (var k in a) { sizeA++; if (b[k]) inter++; }
+    for (var k2 in b) { sizeB++; }
+    var m = sizeA < sizeB ? sizeA : sizeB;
+    if (!m) return 0;
+    return inter / m;
+  }
+
+  // Two items describe the same event when all three agree:
+  //   - same municipality (or one side missing — permissive),
+  //   - published within 6 hours of each other,
+  //   - tokenized-title Jaccard >= 0.55, OR one title fully contains the other
+  //     (substring coverage catches "Car crash in Coeymans" vs
+  //     "Car crash in Coeymans kills one").
+  // Anything weaker stays as its own card. No distinct-incident merging.
+  var _LIVE_CLUSTER_JACCARD_MIN = 0.50;
+  // Overlap coefficient — only used when municipality already matches (and
+  // is non-empty on both sides). Prevents short paraphrases of the same
+  // event from slipping past Jaccard when they have similar unique words.
+  var _LIVE_CLUSTER_OVERLAP_MIN = 0.66;
+  var _LIVE_CLUSTER_OVERLAP_MIN_TOKENS = 2;
+  var _LIVE_CLUSTER_MAX_GAP_MS = 6 * 60 * 60 * 1000;
+
+  function _liveClusterSameEvent(a, b) {
+    var muniA = String(a.municipality || a.matched_location || "").toLowerCase().trim();
+    var muniB = String(b.municipality || b.matched_location || "").toLowerCase().trim();
+    if (muniA && muniB && muniA !== muniB) return false;
+
+    var tA = a.pubDate ? new Date(a.pubDate).getTime() : 0;
+    var tB = b.pubDate ? new Date(b.pubDate).getTime() : 0;
+    if (tA && tB && Math.abs(tA - tB) > _LIVE_CLUSTER_MAX_GAP_MS) return false;
+
+    var titleA = String(a.short_title || a.title || "").toLowerCase().trim();
+    var titleB = String(b.short_title || b.title || "").toLowerCase().trim();
+    if (!titleA || !titleB) return false;
+
+    if (titleA === titleB) return true;
+    // Substring coverage: only qualifies when the shorter title is >= 12 chars
+    // so generic prefixes don't sweep up unrelated events.
+    var shorter = titleA.length <= titleB.length ? titleA : titleB;
+    var longer  = titleA.length <= titleB.length ? titleB : titleA;
+    if (shorter.length >= 12 && longer.indexOf(shorter) !== -1) return true;
+
+    if (!a._cluster_tokens) a._cluster_tokens = _liveClusterTokens(titleA);
+    if (!b._cluster_tokens) b._cluster_tokens = _liveClusterTokens(titleB);
+    var jac = _liveClusterJaccard(a._cluster_tokens, b._cluster_tokens);
+    if (jac >= _LIVE_CLUSTER_JACCARD_MIN) return true;
+
+    // Overlap-coefficient fallback, gated on non-empty matching municipality
+    // and a minimum token count so short generic headlines don't sweep.
+    if (muniA && muniB && muniA === muniB) {
+      var ov = _liveClusterOverlap(a._cluster_tokens, b._cluster_tokens);
+      var minTokens = Math.min(
+        Object.keys(a._cluster_tokens).length,
+        Object.keys(b._cluster_tokens).length
+      );
+      if (ov >= _LIVE_CLUSTER_OVERLAP_MIN && minTokens >= _LIVE_CLUSTER_OVERLAP_MIN_TOKENS) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function _liveClusterPushSource(leader, item) {
+    if (!leader._linked_sources) {
+      leader._linked_sources = [{
+        name: leader.source_name || leader.source || "Unknown",
+        url: leader.source_url || leader.link || "",
+      }];
+    }
+    var name = item.source_name || item.source || "Unknown";
+    var url = item.source_url || item.link || "";
+    // De-dupe by URL (preferred) or name.
+    var already = leader._linked_sources.some(function (s) {
+      return (url && s.url === url) || (!url && s.name === name);
+    });
+    if (!already) leader._linked_sources.push({ name: name, url: url });
+  }
+
+  // Cluster near-duplicate Live items into a single leader card with an
+  // attached _linked_sources list. Replaces the earlier title+bucket equality
+  // dedupe that missed paraphrased headlines for the same event.
   function _dedupeLiveItems(items) {
-    var seen = Object.create(null);
-    var out = [];
+    var clusters = [];
     (items || []).forEach(function (item) {
-      var rawTitle = (item.short_title || item.title || "").toLowerCase();
-      // Strip punctuation + collapse whitespace. Drop source-like leading tags
-      // such as "[WNYT]" or "Albany Police say —" that survive ingest.
-      var normTitle = rawTitle
-        .replace(/[\[\](){}"'`\u2018\u2019\u201c\u201d]/g, " ")
-        .replace(/[—\-–:]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 64);
-      var muni = String(item.municipality || item.matched_location || "").toLowerCase();
-      var t = item.pubDate ? new Date(item.pubDate).getTime() : 0;
-      var bucket = t ? Math.floor(t / (2 * 3600 * 1000)) : 0;
-      var key = normTitle + "|" + muni + "|" + bucket;
-      if (!normTitle) { out.push(item); return; }
-      var prev = seen[key];
-      if (!prev) { seen[key] = item; out.push(item); return; }
-      // Keep the fresher copy; merge by replacing prev in-place.
-      var prevT = prev.pubDate ? new Date(prev.pubDate).getTime() : 0;
-      if (t > prevT) {
-        var idx = out.indexOf(prev);
-        if (idx >= 0) out[idx] = item;
-        seen[key] = item;
+      if (!item) return;
+      var matched = null;
+      for (var i = 0; i < clusters.length; i++) {
+        if (_liveClusterSameEvent(clusters[i], item)) { matched = clusters[i]; break; }
+      }
+      if (!matched) {
+        clusters.push(item);
+        return;
+      }
+      var leaderT = matched.pubDate ? new Date(matched.pubDate).getTime() : 0;
+      var itemT   = item.pubDate    ? new Date(item.pubDate).getTime()    : 0;
+      if (itemT > leaderT) {
+        // Promote the fresher report to cluster leader but carry forward the
+        // source list from the previous leader so we never lose provenance.
+        var carry = matched._linked_sources;
+        _liveClusterPushSource(item, matched);
+        if (carry) {
+          carry.forEach(function (s) {
+            var exists = item._linked_sources.some(function (x) {
+              return (s.url && x.url === s.url) || (!s.url && x.name === s.name);
+            });
+            if (!exists) item._linked_sources.push(s);
+          });
+        }
+        var idx = clusters.indexOf(matched);
+        if (idx >= 0) clusters[idx] = item;
+      } else {
+        _liveClusterPushSource(matched, item);
       }
     });
-    return out;
+    return clusters;
   }
 
   // Render an honest freshness banner above the feed: "Newest item: 3 min ago".
