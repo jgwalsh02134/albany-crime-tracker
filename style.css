@@ -16,6 +16,14 @@
   --header-h: 56px;
   --nav-h: 49px; /* Apple HIG: 49pt tab bar height */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Brand foundation tokens — theme-neutral reference values. Semantic tokens
+     (--accent, --brand-alert, etc.) resolve to these per theme below. Do not
+     reference --brand-* directly in component styles; use the semantic names
+     so a future brand refresh only needs to re-map the semantic layer. */
+  --brand-cern-blue: #0033A0;        /* CERN blue, primary */
+  --brand-princeton-orange: #E77500; /* Princeton orange, secondary */
+  --brand-white: #ffffff;
 }
 
 /* ===== DARK THEME (default) — Navy + Gold palette ===== */
@@ -56,6 +64,13 @@
   --elevated: var(--violent);
   --moderate: var(--property);
   --low: var(--live-dot);
+
+  /* Semantic brand tokens. Kept visually identical to current live-badge red
+     today; a future brand pass can re-map these to var(--brand-cern-blue) /
+     var(--brand-princeton-orange) without touching component CSS. */
+  --brand-primary: var(--accent);
+  --brand-secondary: var(--accent-gold);
+  --brand-alert: #E53935;
 
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.45);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.55);
@@ -100,6 +115,11 @@
   --elevated: var(--violent);
   --moderate: var(--property);
   --low: var(--live-dot);
+
+  /* Semantic brand tokens (see dark theme for contract). */
+  --brand-primary: var(--accent);
+  --brand-secondary: var(--accent-gold);
+  --brand-alert: #E53935;
 
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);

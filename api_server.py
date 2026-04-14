@@ -2123,6 +2123,61 @@ def _log_live_feed_gate(code: str, article: dict) -> None:
     print(f"[live-feed] {code} | {t!r}")
 
 
+# Locality reasons from evaluate_strict_albany_county() that we treat as strong
+# positive evidence the story really is Albany County, NY. Anything outside this
+# set means the article only passed on weak signals (bare "albany" + NY hint).
+_STRONG_LOCALITY_ANCHORS = (
+    "albany_county",
+    "albany_ny",
+    "city_of_albany",
+    "tier1:",
+    "locality:",
+    "scanner:",
+    "nixle:",
+    "official_x:",
+    "open_data:",
+    "nws:",
+)
+
+
+def locality_confidence_tier(article: dict) -> tuple[str, str]:
+    """
+    Tier an article's Albany County locality confidence for Live-feed gating.
+
+    Returns (tier, reason) where tier is one of:
+      "strong"   — explicit Albany County / Albany, NY anchor or a tier-1 source.
+                   Safe for the Live "Now" lane.
+      "medium"   — passed strict gate on domain authority or multiple NY signals;
+                   safe for Live but not prioritized.
+      "quarantine" — passed strict gate only on weak evidence AND low source
+                   reliability, AND no geocode. Withheld from Live but still
+                   persisted and surfaced in Confirmed/Context lanes.
+
+    This does NOT re-filter for locality; it only tiers items already accepted
+    by evaluate_strict_albany_county(). The goal is to prevent ambiguous items
+    (bare "albany" token in low-reliability national wire) from appearing as
+    "happening now" without silently dropping them from the dataset.
+    """
+    ok, reason = evaluate_strict_albany_county(article)
+    if not ok:
+        return "rejected", reason or "rejected"
+
+    reason_l = (reason or "").lower()
+    if any(reason_l.startswith(p) or p in reason_l for p in _STRONG_LOCALITY_ANCHORS):
+        if not reason_l.startswith("weak:"):
+            return "strong", reason
+
+    reliability = get_source_reliability(article.get("source", ""))
+    has_geo = bool(article.get("latitude") and article.get("longitude"))
+    blob = ((article.get("title") or "") + " " + (article.get("description") or "")).lower()
+    ny_hits = sum(1 for s in NY_CONFIRMATION_SIGNALS if s in blob)
+
+    if reliability >= 0.85 or has_geo or ny_hits >= 2:
+        return "medium", reason
+
+    return "quarantine", reason
+
+
 def should_include_in_live_feed(article: dict, *, log_rejects: bool = True) -> tuple[bool, str]:
     """
     Single final gate for the Live tab. Requires strict Albany County locality,
@@ -2137,6 +2192,15 @@ def should_include_in_live_feed(article: dict, *, log_rejects: bool = True) -> t
     ok_loc, loc_reason = evaluate_strict_albany_county(article)
     if not ok_loc:
         return _rej(_map_strict_fail_to_live_code(loc_reason))
+
+    # Locality confidence gate: ambiguous items (weak anchor + low reliability +
+    # no geocode) are withheld from the Live lane but still persisted for
+    # Confirmed/Context lanes. Scanner / official / open_data rows are always
+    # "strong" so this does not affect operational Now detection.
+    tier, _tier_reason = locality_confidence_tier(article)
+    article["locality_confidence_tier"] = tier
+    if tier == "quarantine":
+        return _rej("rejected_locality_quarantine")
 
     if _nysp_missing_local_evidence(article):
         return _rej("rejected_non_local")
@@ -3868,8 +3932,14 @@ async def get_crimes(
         row["normalized_incident"] = article_to_incident(row).model_dump(mode="json")
 
     # Persist normalized incidents for map/timeline/source querying.
-    # Fallback to raw feed rows if the filtered crime list is temporarily empty.
-    rows_for_persistence = geocoded if geocoded else all_articles[:250]
+    # Fallback to raw feed rows if the filtered crime list is temporarily empty,
+    # but the fallback MUST still pass the Albany-County locality gate — otherwise
+    # false-local items (Albany, GA; Albany, OR; federal noise) leak into the DB
+    # and surface on the map/timeline without ever touching the strict pipeline.
+    if geocoded:
+        rows_for_persistence = geocoded
+    else:
+        rows_for_persistence = [a for a in all_articles if is_albany_related(a)][:250]
     persistence_stats = await persist_articles_as_incidents(rows_for_persistence)
 
     global _LAST_INCIDENT_PIPELINE
@@ -5917,11 +5987,16 @@ async def scanner_transcribe(request: Request):
                 elif ".wav" in audio_url:
                     ext = ".wav"
 
-                # Send to Whisper API
+                # Send to transcription API.
+                # Default stays whisper-1 for prod safety; Railway can set
+                # SCANNER_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe for faster/
+                # cheaper live transcription, or gpt-4o-transcribe for
+                # high-priority rechecks.
                 import io
+                _transcribe_model = (os.getenv("SCANNER_TRANSCRIBE_MODEL") or "whisper-1").strip()
                 files = {
                     "file": (f"scanner_call{ext}", io.BytesIO(audio_bytes), "audio/mp4"),
-                    "model": (None, "whisper-1"),
+                    "model": (None, _transcribe_model),
                     "language": (None, "en"),
                     "prompt": (None, "Albany County police fire EMS dispatch radio. 10-codes, signal codes, street names, locations in Albany NY area."),
                 }
@@ -6055,9 +6130,10 @@ async def _transcribe_audio_bytes(audio_wav: bytes) -> Optional[str]:
         return None
 
     try:
+        _transcribe_model = (os.getenv("SCANNER_TRANSCRIBE_MODEL") or "whisper-1").strip()
         files = {
             "file": ("stream_chunk.wav", io.BytesIO(audio_wav), "audio/wav"),
-            "model": (None, "whisper-1"),
+            "model": (None, _transcribe_model),
             "language": (None, "en"),
             "prompt": (None, "Albany County NY police fire EMS dispatch radio. "
                        "10-codes, signal codes, street names, locations. "
