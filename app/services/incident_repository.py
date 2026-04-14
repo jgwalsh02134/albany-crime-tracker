@@ -42,6 +42,32 @@ def _is_scanner_conventional_stored_row(raw_payload: Optional[dict[str, Any]]) -
     return False
 
 
+# Tag written by scripts/cleanup_false_local_incidents.py when a persisted row
+# is re-evaluated and fails the current Albany-County locality gate. Rows with
+# this tag must be withheld from /api/incidents, /api/incidents/summary, the
+# map, and any timeline/trend query — they stay in Postgres for audit but
+# never reach user-facing surfaces.
+FALSE_LOCAL_QUARANTINE_TAG = "false_local_quarantine"
+
+
+def _is_false_local_quarantined_row(tags: Any) -> bool:
+    """True if `tags` contains the false-local quarantine marker.
+
+    Accepts list, tuple, set, or JSON-string forms since tags is stored as
+    JSONB but may surface as a list-of-strings after deserialization.
+    """
+    if not tags:
+        return False
+    if isinstance(tags, (list, tuple, set)):
+        for t in tags:
+            if isinstance(t, str) and t.strip().lower() == FALSE_LOCAL_QUARANTINE_TAG:
+                return True
+        return False
+    if isinstance(tags, str):
+        return FALSE_LOCAL_QUARANTINE_TAG in tags.lower()
+    return False
+
+
 _LAST_QUERY_BACKEND = "memory"
 _LAST_UPSERT_STATS: dict[str, Any] = {
     "inserted": 0,
@@ -765,6 +791,8 @@ async def query_incidents(
         def _keep(item: dict[str, Any]) -> bool:
             if _is_scanner_conventional_stored_row(item.get("raw_payload")):
                 return False
+            if _is_false_local_quarantined_row(item.get("tags")):
+                return False
             if municipality and item.get("municipality") != municipality:
                 return False
             if incident_type and item.get("incident_type") != incident_type:
@@ -861,12 +889,18 @@ async def query_incidents(
                 }
                 for r in rows
             ]
-            items = [it for it in items if not _is_scanner_conventional_stored_row(it.get("raw_payload"))]
+            items = [
+                it for it in items
+                if not _is_scanner_conventional_stored_row(it.get("raw_payload"))
+                and not _is_false_local_quarantined_row(it.get("tags"))
+            ]
             if _MEMORY_INCIDENTS:
                 # Include memory fallback writes when DB upserts temporarily fail.
                 merged: dict[str, dict[str, Any]] = {str(it.get("id") or ""): it for it in items}
                 for it in _MEMORY_INCIDENTS.values():
                     if _is_scanner_conventional_stored_row(it.get("raw_payload")):
+                        continue
+                    if _is_false_local_quarantined_row(it.get("tags")):
                         continue
                     key = str(it.get("id") or "")
                     if key and key not in merged:
@@ -894,7 +928,11 @@ async def query_incidents(
             filtered = [x for x in filtered if x.get("latitude") is not None and x.get("longitude") is not None]
         if has_coordinates is False:
             filtered = [x for x in filtered if x.get("latitude") is None or x.get("longitude") is None]
-        filtered = [x for x in filtered if not _is_scanner_conventional_stored_row(x.get("raw_payload"))]
+        filtered = [
+            x for x in filtered
+            if not _is_scanner_conventional_stored_row(x.get("raw_payload"))
+            and not _is_false_local_quarantined_row(x.get("tags"))
+        ]
         filtered = _apply_post_filters(filtered)
         return filtered[offset : offset + limit]
 
@@ -963,6 +1001,8 @@ async def _load_incidents_for_window(start: datetime, end: datetime, *, cap: int
         for r in rows:
             if _is_scanner_conventional_stored_row(r.get("raw_payload")):
                 continue
+            if _is_false_local_quarantined_row(r.get("tags")):
+                continue
             dt = _parse_incident_dt(r)
             if dt is not None and start <= dt < end:
                 out.append(r)
@@ -1006,12 +1046,15 @@ async def _load_incidents_for_window(start: datetime, end: datetime, *, cap: int
                 }
                 for r in rows
                 if not _is_scanner_conventional_stored_row(r.raw_payload or {})
+                and not _is_false_local_quarantined_row(r.tags or [])
             ]
     except Exception:
         rows = list(_MEMORY_INCIDENTS.values())
         out: list[dict[str, Any]] = []
         for r in rows:
             if _is_scanner_conventional_stored_row(r.get("raw_payload")):
+                continue
+            if _is_false_local_quarantined_row(r.get("tags")):
                 continue
             dt = _parse_incident_dt(r)
             if dt is not None and start <= dt < end:
