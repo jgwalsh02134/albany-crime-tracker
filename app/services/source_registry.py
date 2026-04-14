@@ -69,16 +69,104 @@ def normalize_feed_url(url: str) -> str:
 # Hosts that should never be primary Superfeedr push subscriptions because
 # they aren't true RSS in the push sense, create duplicate coverage, or are
 # scanner / aggregator surfaces that polling handles directly.
+#
+# Grouped for clarity. Host matching is suffix-aware so subdomains (e.g.
+# addons.mozilla.org, discover.buysellads.com) inherit the block.
 _SUPERFEEDR_DENY_HOSTS: frozenset[str] = frozenset({
+    # Aggregators / scanners already covered elsewhere
     "broadcastify.com",
-    "www.broadcastify.com",
     "feedly.com",
-    "www.feedly.com",
     "reddit.com",
-    "www.reddit.com",
     "old.reddit.com",
     "news.google.com",
+    # Social profile surfaces (not real feeds, just URLs with "feed" in them)
+    "twitter.com",
+    "x.com",
+    "linkedin.com",
+    "facebook.com",
+    "fb.com",
+    "instagram.com",
+    "youtube.com",
+    "youtu.be",
+    "tiktok.com",
+    "pinterest.com",
+    "bsky.app",
+    "mastodon.social",
+    "threads.net",
+    # Browser extension / app stores (landing pages, not feeds)
+    "addons.mozilla.org",
+    "chromewebstore.google.com",
+    "chrome.google.com",
+    "microsoftedge.microsoft.com",
+    "addons.opera.com",
+    "apps.apple.com",
+    "itunes.apple.com",
+    "play.google.com",
+    # Ad / marketing networks (Feedly marketing ecosystem pollution)
+    "buysellads.com",
+    "discover.buysellads.com",
+    # Off-topic federal / non-incident sources auto-discovered into registry.
+    # These are reachable RSS endpoints but have no ACT public-safety relevance
+    # for Albany County. Keep this list surgical and review when adding.
+    "oig.ssa.gov",
+    "ice.gov",
+    "stopdwi.org",
+    "seeclickfix.com",
+    "albanyhousing.org",
 })
+
+
+# Regex-free feed-path signatures. A URL must satisfy at least one to be
+# considered a real feed (not a product/profile/landing page that merely
+# contains the word "feed" in its path). Verified against every
+# currently-eligible registry entry before being tightened.
+_FEED_PATH_ENDINGS: tuple[str, ...] = (
+    ".rss",
+    ".atom",
+    ".xml",
+    "/rss",
+    "/rss/",
+    "/feed",
+    "/feed/",
+    "rss.aspx",
+    "rssfeed.aspx",
+    "/atom",
+    "/atom/",
+)
+_FEED_QUERY_MARKERS: tuple[str, ...] = (
+    "f=rss",
+    "format=rss",
+    "output=rss",
+    "modid=",
+    "cid=",
+)
+
+
+def _looks_like_feed_url(url: str) -> bool:
+    """True when the URL's path/query matches a real feed signature.
+
+    Rejects pages whose URL merely contains the substring 'feed' or 'rss' for
+    unrelated reasons (e.g. /addon/feedly_mini/, /company/feedly,
+    /about/feedback.htm, /detail/feedly-mini/<extension-id>).
+    """
+    if not url:
+        return False
+    try:
+        parts = urlsplit(url)
+    except Exception:
+        return False
+    path_lower = (parts.path or "").lower().rstrip("/") or "/"
+    # Normalize: test with and without trailing slash to cover /feed vs /feed/.
+    candidates = {path_lower, path_lower + "/"}
+    for suffix in _FEED_PATH_ENDINGS:
+        for cand in candidates:
+            if cand.endswith(suffix):
+                return True
+    query_lower = (parts.query or "").lower()
+    for marker in _FEED_QUERY_MARKERS:
+        if marker in query_lower:
+            return True
+    return False
 
 
 def _host_of(url: str) -> str:
@@ -90,6 +178,21 @@ def _host_of(url: str) -> str:
     if host.startswith("www."):
         host = host[4:]
     return host
+
+
+def _host_matches_deny(host: str, deny_hosts: frozenset[str]) -> bool:
+    """Return True when `host` exactly matches or is a subdomain of any
+    denied host. e.g. addons.mozilla.org matches 'mozilla.org' if listed,
+    and discover.buysellads.com matches 'buysellads.com'."""
+    if not host:
+        return False
+    for denied in deny_hosts:
+        d = denied.lower()
+        if d.startswith("www."):
+            d = d[4:]
+        if host == d or host.endswith("." + d):
+            return True
+    return False
 
 
 def is_push_eligible(
@@ -127,7 +230,11 @@ def is_push_eligible(
     if str(entry.get("auth_type") or "").strip().lower() not in ("", "none"):
         return False
     host = _host_of(feed_url)
-    if host in _SUPERFEEDR_DENY_HOSTS:
+    if _host_matches_deny(host, _SUPERFEEDR_DENY_HOSTS):
+        return False
+    # Reject URLs that merely contain "feed"/"rss" substrings without being
+    # actual feeds (addon/extension pages, social profiles, feedback pages).
+    if not _looks_like_feed_url(feed_url):
         return False
     return True
 

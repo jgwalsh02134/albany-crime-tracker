@@ -372,6 +372,159 @@ def test_push_and_poll_dedupe_when_guids_differ():
     assert push_fps & poll_fps, "expected at least one overlapping fingerprint candidate"
 
 
+def test_junk_feedly_marketing_pages_excluded():
+    """Pages auto-discovered from crawling feedly.com's marketing ecosystem
+    must not be push-eligible even though their URLs contain 'feed'."""
+    junk = [
+        {
+            "source_id": "addon-mozilla",
+            "feed_url": "https://addons.mozilla.org/en-US/firefox/addon/feedly_mini/",
+            "active_status": True,
+            "validation_status": "reachable:200",
+            "ingestion_method": "rss_poll",
+        },
+        {
+            "source_id": "chrome-store",
+            "feed_url": "https://chromewebstore.google.com/detail/feedly-mini/ndhinffkekpekljifjkkkkkhopnjodja",
+            "active_status": True,
+            "validation_status": "reachable:200",
+            "ingestion_method": "rss_poll",
+        },
+        {
+            "source_id": "buysellads",
+            "feed_url": "https://discover.buysellads.com/tech/feedly",
+            "active_status": True,
+            "validation_status": "reachable:200",
+            "ingestion_method": "rss_poll",
+        },
+        {
+            "source_id": "twitter-feedly",
+            "feed_url": "https://twitter.com/feedly",
+            "active_status": True,
+            "validation_status": "reachable:200",
+            "ingestion_method": "rss_poll",
+        },
+        {
+            "source_id": "linkedin-feedly",
+            "feed_url": "https://www.linkedin.com/company/feedly",
+            "active_status": True,
+            "validation_status": "reachable:200",
+            "ingestion_method": "rss_poll",
+        },
+    ]
+    for e in junk:
+        assert is_push_eligible(e) is False, f"expected denied: {e['source_id']}"
+
+
+def test_feedback_page_not_mistaken_for_feed():
+    entry = {
+        "feed_url": "https://www.tax.ny.gov/about/feedback.htm",
+        "active_status": True,
+        "validation_status": "reachable:200",
+        "ingestion_method": "rss_poll",
+    }
+    assert is_push_eligible(entry) is False
+
+
+def test_off_topic_federal_and_community_hosts_denied():
+    for url in [
+        "https://oig.ssa.gov/feed.xml",
+        "https://oig.ssa.gov/rss",
+        "https://www.ice.gov/RSS",
+        "https://stopdwi.org/feed/",
+        "https://seeclickfix.com/albany_2.rss",
+        "http://www.albanyhousing.org/feed",
+    ]:
+        entry = {
+            "feed_url": url,
+            "active_status": True,
+            "validation_status": "reachable:200",
+            "ingestion_method": "rss_poll",
+        }
+        assert is_push_eligible(entry) is False, f"expected denied: {url}"
+
+
+def test_looks_like_feed_url_accepts_all_current_legit_feeds():
+    """Regression guard: every currently-shipping legit feed URL must still
+    be recognized as a feed signature. If this fails, the signature check is
+    too aggressive."""
+    from app.services.source_registry import _looks_like_feed_url
+    legit = [
+        "https://www.albanyny.gov/rss.aspx",
+        "https://www.albanyny.gov/RSSFeed.aspx?ModID=76&CID=All-0",
+        "https://www.justice.gov/usao-ndny/pr/rss",
+        "https://cbs6albany.com/news/local.rss",
+        "https://cbs6albany.com/news.rss",
+        "https://spectrumlocalnews.com/nys/capital-region/rss",
+        "https://www.wamc.org/index.rss",
+        "https://www.wamc.org/news.rss",
+        "https://www.news10.com/news/crime/feed/",
+        "https://www.news10.com/feed/",
+        "https://www.news10.com/news/local-news/feed/",
+        "https://spectrumlocalnews.com/services/contentfeed.nys/capital-region/public-safety.rss",
+        "https://www.townofbethlehem.org/rss.aspx",
+    ]
+    for url in legit:
+        assert _looks_like_feed_url(url) is True, f"legit feed rejected: {url}"
+
+
+def test_looks_like_feed_url_rejects_non_feeds():
+    from app.services.source_registry import _looks_like_feed_url
+    non_feeds = [
+        "https://addons.mozilla.org/en-US/firefox/addon/feedly_mini/",
+        "https://chromewebstore.google.com/detail/feedly-mini/ndhinffke",
+        "https://discover.buysellads.com/tech/feedly",
+        "https://twitter.com/feedly",
+        "https://www.linkedin.com/company/feedly",
+        "https://www.tax.ny.gov/about/feedback.htm",
+        "https://example.com/",
+        "https://example.com/about/team",
+    ]
+    for url in non_feeds:
+        assert _looks_like_feed_url(url) is False, f"non-feed accepted: {url}"
+
+
+def test_deny_host_suffix_matching_handles_subdomains():
+    """_host_matches_deny must treat 'mozilla.org' as covering
+    'addons.mozilla.org' without accidentally matching 'aquamozilla.org'."""
+    from app.services.source_registry import _host_matches_deny
+    denies = frozenset({"mozilla.org", "buysellads.com"})
+    assert _host_matches_deny("addons.mozilla.org", denies) is True
+    assert _host_matches_deny("mozilla.org", denies) is True
+    assert _host_matches_deny("discover.buysellads.com", denies) is True
+    assert _host_matches_deny("aquamozilla.org", denies) is False
+    assert _host_matches_deny("notbuysellads.com", denies) is False
+
+
+def test_desired_set_is_act_relevant_only():
+    """End-to-end: the selector must not include any of the previously
+    observed junk source_ids, and must still include the News10 pilot feed."""
+    from app.services.superfeedr_registry import desired_subscriptions
+    desired = desired_subscriptions()
+    desired_ids = {e.get("source_id") for e in desired}
+    desired_hosts = {normalize_feed_url(str(e.get("feed_url") or "")) for e in desired}
+    forbidden_ids = {
+        "discovered-addons-mozilla-org",
+        "discovered-chromewebstore-google-com-ndhinffkekpekljifjkkkkkhopnjodja",
+        "discovered-discover-buysellads-com-feedly",
+        "discovered-twitter-com-feedly",
+        "discovered-www-linkedin-com-feedly",
+        "discovered-www-tax-ny-gov-feedback-htm",
+        "discovered-oig-ssa-gov-feed-xml",
+        "discovered-oig-ssa-gov-rss",
+        "discovered-www-ice-gov-rss",
+        "discovered-stopdwi-org",
+        "discovered-seeclickfix-com-albany-2-rss",
+        "discovered-www-albanyhousing-org-feed",
+    }
+    leaked = desired_ids & forbidden_ids
+    assert not leaked, f"junk sources leaked into desired set: {sorted(leaked)}"
+    # Pilot feed (News10 crime) must remain in the desired set so the current
+    # one-feed subscription stays healthy after tightening.
+    news10 = normalize_feed_url("https://www.news10.com/news/crime/feed/")
+    assert news10 in desired_hosts, "News10 crime feed missing from desired — pilot would break"
+
+
 def test_host_prefix_strip_does_not_eat_w_literal():
     """Regression: ensure www.-prefix stripping doesn't affect hosts that
     legitimately start with 'w' (wamc.org, wnyt.com)."""
@@ -408,6 +561,13 @@ def main():
         test_reconcile_diff_dry_run_without_configuration,
         test_push_and_poll_produce_matching_fingerprint,
         test_push_and_poll_dedupe_when_guids_differ,
+        test_junk_feedly_marketing_pages_excluded,
+        test_feedback_page_not_mistaken_for_feed,
+        test_off_topic_federal_and_community_hosts_denied,
+        test_looks_like_feed_url_accepts_all_current_legit_feeds,
+        test_looks_like_feed_url_rejects_non_feeds,
+        test_deny_host_suffix_matching_handles_subdomains,
+        test_desired_set_is_act_relevant_only,
         test_host_prefix_strip_does_not_eat_w_literal,
         test_desired_subscriptions_returns_list,
     ]
