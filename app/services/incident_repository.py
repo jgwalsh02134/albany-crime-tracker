@@ -83,52 +83,103 @@ def _norm_text(value: str) -> str:
     return " ".join((value or "").lower().strip().split())
 
 
-# Lightweight operational-keyword set used to qualify scanner rows for the
-# Live tab. Mirrors the keyword vocabulary in
-# api_server._scanner_call_has_actionable_incident, without the circular
-# import. Kept short on purpose — anything off this list does NOT promote a
-# scanner row into Live, even if the article text is suggestive. The strict
-# pipeline already rejects most non-incident scanner chatter upstream.
 _LIVE_ACTIONABLE_KEYWORDS = (
+    # Violent / weapons
     "shooting", "shots fired", "shot ", "stabbing", "stabbed",
-    "pursuit", "chase", "standoff", "barricade", "swat", "hostage",
-    "burglary", "robbery", "assault", "domestic",
-    "structure fire", "working fire", "rescue", "entrapment",
-    "overdose", "cardiac arrest", "unresponsive",
-    "mvc", "mva", "rollover", "crash",
-    "officer down", "officer involved", "ois",
-    "missing", "amber alert", "abduction",
     "homicide", "fatal", "deceased",
-    "alarm", "traffic stop",
+    # Pursuit / tactical
+    "pursuit", "chase", "standoff", "barricade", "swat", "hostage",
+    # Property crimes that imply an active scene
+    "burglary in progress", "robbery in progress",
+    # Fire / rescue
+    "structure fire", "working fire", "rescue", "entrapment",
+    # EMS critical
+    "overdose", "cardiac arrest", "unresponsive",
+    # Vehicle critical
+    "rollover", "fatal crash", "wrong-way",
+    # Officer status
+    "officer down", "officer involved", "ois", "10-13",
+    # Other critical
+    "missing", "amber alert", "abduction", "mass casualty", "mci",
+    # Note: bare "alarm", "traffic stop", "assault", "burglary",
+    # "robbery", "crash", "mvc", "mva", "domestic" intentionally
+    # REMOVED as standalone triggers — they appear in too many
+    # ordinary news articles. High severity or progress-style
+    # phrasing now carries those cases.
 )
 
 _LIVE_ACTIONABLE_HIGH_SEVERITY = frozenset(("critical", "high"))
 
+# Recency windows for the Live "Now" lane. An incident older than its
+# source-class window is not "operational now" regardless of content.
+# The prior implementation had no recency floor, which is why ~100% of
+# the DB qualified in production sampling.
+# Tunables. Tightening these makes the operational sort more selective
+# at the cost of fewer items in Live; loosening admits more news-style
+# coverage. Initial values target ~10-25% actionable on a typical
+# day-old DB while keeping breaking incidents from the last hours
+# clearly at the top.
+_LIVE_RECENCY_HOURS_SCANNER = 12.0
+_LIVE_RECENCY_HOURS_MEDIA = 12.0
+_LIVE_RECENCY_HOURS_OFFICIAL = 24.0
+
+
+def _row_age_hours(item: dict[str, Any]) -> Optional[float]:
+    """Hours since occurred_at (preferred) or published_at. Returns None
+    when neither timestamp parses. Defensive — accepts ISO strings with
+    "Z" suffix or +/- offsets, treats naive datetimes as UTC."""
+    raw = item.get("occurred_at") or item.get("published_at")
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    delta = datetime.now(timezone.utc) - dt
+    return delta.total_seconds() / 3600.0
+
+
+def _has_operational_keyword(item: dict[str, Any], raw_payload: dict[str, Any]) -> bool:
+    blob = " ".join(
+        str(item.get(k) or "") for k in ("title", "description")
+    ).lower()
+    raw_blob = " ".join(
+        str(raw_payload.get(k) or "") for k in ("title", "description", "summary")
+    ).lower()
+    combined = blob + " " + raw_blob
+    return any(kw in combined for kw in _LIVE_ACTIONABLE_KEYWORDS)
+
 
 def _is_actionable_for_live(item: dict[str, Any]) -> bool:
-    """True when this persisted incident row should be eligible for the
-    operational Live lane.
+    """Selective gate for the operational Live lane.
 
-    Decision tree:
-      1. Non-scanner rows (RSS / open_data / official) are always eligible
-         — those have already passed the strict pipeline upstream and
-         carry editorial attribution that's safe to surface.
-      2. Scanner rows must be NON-conventional (le_directory rows etc. stay
-         in the Scanner tab) AND meet at least one of:
-            - raw_payload._scanner_critical_live or _scanner_recent_live
-              flag set by the upstream actionability check,
-            - severity in {critical, high},
-            - title/description contains a keyword from
-              _LIVE_ACTIONABLE_KEYWORDS.
-      3. Anything else stays out of Live (returns False) so chatter stays
-         in the Scanner tab.
+    Recency is mandatory for ALL classes — a row older than its source-
+    class window is never operational, regardless of content. The prior
+    implementation auto-admitted every non-scanner row (production
+    sample showed 200/200 actionable_true) which made the flag useless
+    as a Live ranker.
 
-    The function is pure and defensive — never raises, always returns bool.
+    Source-class semantics (stricter than mere "passed strict pipeline"):
+      * Scanner: NON-conventional, within 12h, AND
+        (upstream-flagged actionable OR high severity OR keyword match).
+      * Official / open_data / multi_source: within 24h. These are
+        authoritative by source class; recency alone is enough.
+      * Media (RSS / local_news / digital_only_news / etc.): within 6h
+        AND one of:
+          - severity in {critical, high}
+          - operational keyword in title/description
+          - corroborated by 2+ sources (multi-outlet coverage of a
+            same-event cluster IS itself an operational signal).
+
+    Pure and defensive — never raises, always returns bool.
     """
     raw_payload = item.get("raw_payload") if isinstance(item.get("raw_payload"), dict) else {}
     source_type = (item.get("source_type") or "").lower()
     verification = (item.get("verification_level") or "").lower()
     source_name = (item.get("source_name") or "").lower()
+    severity = (item.get("severity") or "").lower()
 
     is_scanner = (
         source_type == "scanner"
@@ -137,27 +188,40 @@ def _is_actionable_for_live(item: dict[str, Any]) -> bool:
         or bool(raw_payload.get("_scanner_call"))
     )
 
-    if not is_scanner:
-        return True
+    age_h = _row_age_hours(item)
 
-    # Scanner-row gates.
-    if _is_scanner_conventional_stored_row(raw_payload):
+    if is_scanner:
+        if _is_scanner_conventional_stored_row(raw_payload):
+            return False
+        if age_h is None or age_h > _LIVE_RECENCY_HOURS_SCANNER:
+            return False
+        if raw_payload.get("_scanner_critical_live") or raw_payload.get("_scanner_recent_live"):
+            return True
+        if severity in _LIVE_ACTIONABLE_HIGH_SEVERITY:
+            return True
+        return _has_operational_keyword(item, raw_payload)
+
+    is_official = (
+        source_type in ("official", "open_data")
+        or verification in ("official", "multi_source")
+    )
+    max_age = _LIVE_RECENCY_HOURS_OFFICIAL if is_official else _LIVE_RECENCY_HOURS_MEDIA
+    if age_h is None or age_h > max_age:
         return False
-    if raw_payload.get("_scanner_critical_live") or raw_payload.get("_scanner_recent_live"):
+
+    # Within the recency window. Authoritative classes (official /
+    # open_data / multi_source) qualify on recency alone; media classes
+    # need a content or corroboration signal.
+    if is_official:
         return True
-    severity = (item.get("severity") or "").lower()
     if severity in _LIVE_ACTIONABLE_HIGH_SEVERITY:
         return True
-    blob = " ".join(
-        str(item.get(k) or "")
-        for k in ("title", "description")
-    ).lower()
-    raw_blob = " ".join(
-        str(raw_payload.get(k) or "")
-        for k in ("title", "description", "summary")
-    ).lower()
-    combined = blob + " " + raw_blob
-    return any(kw in combined for kw in _LIVE_ACTIONABLE_KEYWORDS)
+    if _has_operational_keyword(item, raw_payload):
+        return True
+    sources = item.get("sources") if isinstance(item.get("sources"), list) else []
+    if len(sources) >= 2:
+        return True
+    return False
 
 
 def _time_bucket(dt: Optional[datetime], minutes: int) -> str:

@@ -25,7 +25,16 @@ import tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
 
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
 from app.services.incident_repository import _is_actionable_for_live  # noqa: E402
+
+
+def _iso_hours_ago(hours: float) -> str:
+    """ISO-8601 timestamp `hours` hours before now, in UTC. Used to build
+    fixture rows that test the recency gate without relying on wall-clock
+    time the way `datetime.utcnow()` does."""
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
 passed = 0
 failed = 0
@@ -50,75 +59,203 @@ def _read(path: str) -> str:
 # Helper truth table
 # ---------------------------------------------------------------------------
 
-def test_helper_non_scanner_always_actionable() -> None:
-    cases = [
-        {"source_type": "local_news", "severity": "low",
-         "title": "general news brief", "raw_payload": {}},
-        {"source_type": "official", "severity": "medium",
-         "title": "press release", "raw_payload": {}},
-        {"source_type": "open_data", "severity": "low",
-         "title": "stat report", "raw_payload": {}},
-    ]
-    for c in cases:
-        _report(f"non_scanner_actionable_{c['source_type']}",
-                _is_actionable_for_live(c) is True)
+def test_helper_recency_gates_news_class() -> None:
+    """Media rows are operational only within 12h. Older recent-looking
+    rows must NOT be marked actionable just because they pass content
+    gates — the prior 'non-scanner = always True' shortcut was the bug
+    that admitted 200/200 rows in production sampling."""
+    fresh_low = {
+        "source_type": "local_news", "severity": "low",
+        "title": "general news brief", "description": "",
+        "published_at": _iso_hours_ago(2), "raw_payload": {},
+    }
+    _report("news_recent_low_severity_no_keyword_NOT_actionable",
+            _is_actionable_for_live(fresh_low) is False,
+            "low-severity media within window but no signal must NOT auto-pass")
+
+    stale_high = {
+        "source_type": "local_news", "severity": "high",
+        "title": "Shooting on Cedar Ave", "description": "",
+        "published_at": _iso_hours_ago(36), "raw_payload": {},
+    }
+    _report("news_stale_high_severity_NOT_actionable",
+            _is_actionable_for_live(stale_high) is False,
+            "stale row must be excluded regardless of severity")
+
+    fresh_high = {
+        "source_type": "local_news", "severity": "high",
+        "title": "Shooting on Cedar Ave", "description": "",
+        "published_at": _iso_hours_ago(2), "raw_payload": {},
+    }
+    _report("news_recent_high_severity_actionable",
+            _is_actionable_for_live(fresh_high) is True)
+
+    fresh_keyword = {
+        "source_type": "local_news", "severity": "medium",
+        "title": "Structure fire on Pearl Street", "description": "",
+        "published_at": _iso_hours_ago(3), "raw_payload": {},
+    }
+    _report("news_recent_keyword_actionable",
+            _is_actionable_for_live(fresh_keyword) is True)
+
+    no_timestamp = {
+        "source_type": "local_news", "severity": "high",
+        "title": "Shooting on Cedar Ave", "raw_payload": {},
+    }
+    _report("news_missing_timestamp_NOT_actionable",
+            _is_actionable_for_live(no_timestamp) is False,
+            "rows without parseable time can't prove recency")
+
+
+def test_helper_official_class_recency() -> None:
+    """Official / open_data / multi_source within 24h is operational on
+    recency alone (authoritative class). Stale official rows are not."""
+    fresh_official = {
+        "source_type": "official", "severity": "low",
+        "title": "press release", "published_at": _iso_hours_ago(5),
+        "raw_payload": {},
+    }
+    _report("official_recent_actionable",
+            _is_actionable_for_live(fresh_official) is True)
+
+    fresh_open_data = {
+        "source_type": "open_data", "severity": "low",
+        "title": "stat report", "published_at": _iso_hours_ago(8),
+        "raw_payload": {},
+    }
+    _report("open_data_recent_actionable",
+            _is_actionable_for_live(fresh_open_data) is True)
+
+    multi_source_recent = {
+        "source_type": "local_news", "verification_level": "multi_source",
+        "severity": "low", "title": "low-severity multi-source",
+        "published_at": _iso_hours_ago(10), "raw_payload": {},
+    }
+    _report("multi_source_recent_actionable",
+            _is_actionable_for_live(multi_source_recent) is True)
+
+    stale_official = {
+        "source_type": "official", "severity": "low",
+        "title": "press release", "published_at": _iso_hours_ago(48),
+        "raw_payload": {},
+    }
+    _report("official_stale_NOT_actionable",
+            _is_actionable_for_live(stale_official) is False)
+
+
+def test_helper_corroboration_promotes_news() -> None:
+    """Multi-outlet coverage of the same event IS itself an operational
+    signal — backend-persisted sources array length >= 2 promotes a
+    fresh media row even without high severity or keyword."""
+    corroborated = {
+        "source_type": "local_news", "severity": "medium",
+        "title": "Coeymans incident report",
+        "published_at": _iso_hours_ago(2),
+        "sources": [
+            {"name": "Times Union", "url": "https://tu/x"},
+            {"name": "WNYT",        "url": "https://wnyt/y"},
+        ],
+        "raw_payload": {},
+    }
+    _report("news_recent_corroborated_actionable",
+            _is_actionable_for_live(corroborated) is True)
+
+    single_source = {
+        "source_type": "local_news", "severity": "medium",
+        "title": "Coeymans incident report",
+        "published_at": _iso_hours_ago(2),
+        "sources": [{"name": "Times Union", "url": "https://tu/x"}],
+        "raw_payload": {},
+    }
+    _report("news_recent_single_source_NOT_actionable",
+            _is_actionable_for_live(single_source) is False,
+            "single-source recent low-signal media must NOT pass")
 
 
 def test_helper_scanner_conventional_blocked() -> None:
     item = {
         "source_type": "scanner", "severity": "low",
-        "title": "tones", "raw_payload": {"_scanner_conventional": True},
+        "title": "tones", "published_at": _iso_hours_ago(0.5),
+        "raw_payload": {"_scanner_conventional": True},
     }
     _report("scanner_conventional_blocked",
             _is_actionable_for_live(item) is False)
 
 
+def test_helper_scanner_recency_gate() -> None:
+    """Scanner items also have a recency gate (12h). A scanner row with
+    high severity but stale time must be rejected."""
+    stale_scanner = {
+        "source_type": "scanner", "severity": "high",
+        "title": "Shooting on Cedar Ave",
+        "published_at": _iso_hours_ago(20), "raw_payload": {},
+    }
+    _report("scanner_stale_NOT_actionable",
+            _is_actionable_for_live(stale_scanner) is False)
+
+    fresh_scanner = {
+        "source_type": "scanner", "severity": "high",
+        "title": "Shooting on Cedar Ave",
+        "published_at": _iso_hours_ago(1), "raw_payload": {},
+    }
+    _report("scanner_fresh_high_severity_actionable",
+            _is_actionable_for_live(fresh_scanner) is True)
+
+
 def test_helper_scanner_with_critical_live_flag() -> None:
     item = {
         "source_type": "scanner", "severity": "medium",
-        "title": "10-13", "raw_payload": {"_scanner_critical_live": True},
+        "title": "10-13", "published_at": _iso_hours_ago(0.5),
+        "raw_payload": {"_scanner_critical_live": True},
     }
     _report("scanner_critical_live_flag_actionable",
             _is_actionable_for_live(item) is True)
 
     item2 = {
         "source_type": "scanner", "severity": "medium",
-        "title": "stop", "raw_payload": {"_scanner_recent_live": True},
+        "title": "stop", "published_at": _iso_hours_ago(0.5),
+        "raw_payload": {"_scanner_recent_live": True},
     }
     _report("scanner_recent_live_flag_actionable",
             _is_actionable_for_live(item2) is True)
 
 
-def test_helper_scanner_high_severity() -> None:
-    for sev in ("critical", "high"):
-        item = {"source_type": "scanner", "severity": sev,
-                "title": "standoff", "raw_payload": {}}
-        _report(f"scanner_{sev}_severity_actionable",
-                _is_actionable_for_live(item) is True)
-
-
 def test_helper_scanner_keyword_match() -> None:
+    """Tightened keyword set: only operationally meaningful keywords
+    promote scanner rows. 'alarm' and bare 'traffic stop' / 'crash'
+    were intentionally REMOVED in this pass."""
     cases = [
         ("shooting", "Shooting on Cedar Ave"),
         ("structure fire", "Structure fire reported"),
         ("pursuit", "Vehicle pursuit on I-90"),
         ("overdose", "Suspected overdose"),
-        ("mvc", "MVC with entrapment"),
+        ("rollover", "Rollover crash on I-87"),
     ]
     for kw, title in cases:
         item = {"source_type": "scanner", "severity": "medium",
-                "title": title, "raw_payload": {}}
+                "title": title, "published_at": _iso_hours_ago(1),
+                "raw_payload": {}}
         _report(f"scanner_keyword_{kw}_actionable",
                 _is_actionable_for_live(item) is True)
+
+    # Removed keywords no longer auto-promote.
+    for kw, title in [("alarm", "Alarm activation"),
+                      ("traffic stop", "Traffic stop made")]:
+        item = {"source_type": "scanner", "severity": "medium",
+                "title": title, "published_at": _iso_hours_ago(1),
+                "raw_payload": {}}
+        _report(f"scanner_removed_keyword_{kw}_NOT_actionable",
+                _is_actionable_for_live(item) is False)
 
 
 def test_helper_scanner_chatter_blocked() -> None:
     cases = [
         {"source_type": "scanner", "severity": "low",
          "title": "general assist", "description": "non-emergency",
-         "raw_payload": {}},
+         "published_at": _iso_hours_ago(0.5), "raw_payload": {}},
         {"source_type": "scanner", "severity": "low",
-         "title": "radio check", "raw_payload": {}},
+         "title": "radio check", "published_at": _iso_hours_ago(0.5),
+         "raw_payload": {}},
     ]
     for c in cases:
         _report(f"scanner_chatter_blocked_{c.get('title')!r}",
@@ -131,15 +268,18 @@ def test_helper_defensive() -> None:
         try:
             _is_actionable_for_live({
                 "source_type": "scanner", "severity": "high",
-                "title": "shooting", "raw_payload": raw,
+                "title": "shooting", "published_at": _iso_hours_ago(0.5),
+                "raw_payload": raw,
             })
             _report(f"defensive_raw_payload_{type(raw).__name__}_no_raise", True)
         except Exception as exc:
             _report(f"defensive_raw_payload_{type(raw).__name__}_no_raise",
                     False, f"raised {exc}")
-    # Empty item
-    _report("defensive_empty_item",
-            _is_actionable_for_live({}) is True)  # default to non-scanner True
+    # Empty item: no source_type, no timestamp → must be NOT actionable
+    # (recency gate fails). The prior version returned True here which
+    # was a contributor to the production over-admission.
+    _report("defensive_empty_item_NOT_actionable",
+            _is_actionable_for_live({}) is False)
 
 
 # ---------------------------------------------------------------------------
@@ -296,10 +436,12 @@ assert("official_unchanged",
 
 
 def main() -> None:
-    test_helper_non_scanner_always_actionable()
+    test_helper_recency_gates_news_class()
+    test_helper_official_class_recency()
+    test_helper_corroboration_promotes_news()
     test_helper_scanner_conventional_blocked()
+    test_helper_scanner_recency_gate()
     test_helper_scanner_with_critical_live_flag()
-    test_helper_scanner_high_severity()
     test_helper_scanner_keyword_match()
     test_helper_scanner_chatter_blocked()
     test_helper_defensive()
