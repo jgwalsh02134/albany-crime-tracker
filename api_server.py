@@ -6316,26 +6316,172 @@ def _scanner_discipline_from_call(call: dict[str, Any]) -> str:
     return "unknown"
 
 
-def _scanner_transcribe_prompt(call: dict[str, Any]) -> str:
-    """Select a talkgroup-aware Whisper prompt for the given scanner call.
+_SCANNER_DISCIPLINE_HINTS = {
+    "police": (
+        "Police dispatch: 10-codes, signal 99, officer needed assist, "
+        "BOLO, subject descriptions, plates, traffic stop, pursuit, "
+        "foot pursuit, shots fired, weapon, suspect, felony stop."
+    ),
+    "fire": (
+        "Fire dispatch: structure fire, working fire, engine, truck, "
+        "ladder, rescue, tones, box alarm, mutual aid, hydrant, "
+        "smoke showing, all clear, command, tanker, chief."
+    ),
+    "ems": (
+        "EMS dispatch: ALS, BLS, medic, ambulance, cardiac arrest, "
+        "stroke alert, STEMI, overdose, unresponsive, CPR, trauma alert, "
+        "transport, receiving hospital, Albany Med, St. Peter's, Ellis."
+    ),
+}
 
-    Returns the generic base prompt when discipline cannot be determined,
-    so unknown/new talkgroups never regress below the prior behavior.
+# Per-region proper-noun hints. Whisper's `prompt` field biases the model
+# toward listed terms — these augment the base prompt so transcripts of
+# Bethlehem-area calls are more likely to spell "Slingerlands" / "Selkirk"
+# correctly than the generic Albany-City-leaning base prompt would. Only
+# the regions where local proper nouns differ meaningfully from the base
+# need entries here; capital_albany / county_wide rely on the base.
+_REGION_PROMPT_HINTS = {
+    "bethlehem_area": (
+        "Bethlehem area landmarks: Delaware Avenue, Delmar, Elsmere, "
+        "Slingerlands, Selkirk, Glenmont, North Bethlehem."
+    ),
+    "colonie_area": (
+        "Colonie area landmarks: Wolf Road, Latham, Loudonville, "
+        "Newtonville, Westmere, Central Avenue."
+    ),
+    "guilderland_area": (
+        "Guilderland area landmarks: Western Avenue, Western Turnpike, "
+        "Crossgates Mall, Altamont, Voorheesville, McKownville."
+    ),
+    "coeymans_ravena": (
+        "Coeymans / Ravena landmarks: Route 144, Route 9W, "
+        "Coeymans Landing, Selkirk, Mountain Road."
+    ),
+    "cohoes_watervliet_green_island": (
+        "Cohoes / Watervliet / Green Island landmarks: "
+        "Saratoga Street, Mohawk Street, 9th Street, 19th Street, "
+        "George Street, Hudson River, Mohawk River."
+    ),
+    "hilltowns": (
+        "Albany County hilltowns: Berne, Knox, New Scotland, "
+        "Rensselaerville, Westerlo, East Berne, Medusa, Clarksville, "
+        "Feura Bush."
+    ),
+    "capitol": (
+        "State Capitol campus: Empire State Plaza, Capitol building, "
+        "Legislative Office Building, Egg, State Street, Washington Avenue."
+    ),
+    "thruway": (
+        "I-90 NYS Thruway corridor: Exit 22, Exit 23, Exit 24, Exit 25, "
+        "Berkshire Connector, Castleton, mile markers."
+    ),
+}
 
-    When the canonical agency registry resolves the call to a known agency
-    (e.g. "Bethlehem PD" → bethlehem_pd), append the canonical short name
-    so Whisper biases toward correct unit names when transcribing
-    abbreviations and call signs.
+
+def _scanner_channel_for_call(call: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Resolve the registry channel a call belongs to.
+
+    Two paths:
+      1. call.channel_id stamped by /api/scanner/calls (commit c25379c).
+      2. Reverse lookup via talkgroup ID through
+         scanner_channels.channels_for_talkgroup, picking the most
+         specific (single-agency) channel — same preference order as
+         enrich_call_with_channel.
+
+    Defensive — any import/registry failure returns None so the caller
+    falls back to the discipline-classifier path.
     """
-    disc = _scanner_discipline_from_call(call)
-    if disc == "police":
-        base = _SCANNER_TRANSCRIBE_PROMPT_POLICE
-    elif disc == "fire":
-        base = _SCANNER_TRANSCRIBE_PROMPT_FIRE
-    elif disc == "ems":
-        base = _SCANNER_TRANSCRIBE_PROMPT_EMS
-    else:
-        base = _SCANNER_TRANSCRIBE_PROMPT_BASE
+    try:
+        from app.services.scanner_channels import (
+            channel_by_id, channels_for_talkgroup,
+        )
+    except Exception:
+        return None
+
+    cid = (call.get("channel_id") or "").strip().lower()
+    if cid:
+        try:
+            return channel_by_id(cid)
+        except Exception:
+            return None
+
+    for field in ("talkgroup_num", "talkgroupID", "talkgroup", "tg"):
+        v = call.get(field)
+        if v in (None, ""):
+            continue
+        try:
+            matches = channels_for_talkgroup(v)
+        except Exception:
+            return None
+        if not matches:
+            continue
+        # Preference: single-agency, then high-priority, mirroring
+        # _preferred_channel in scanner_channels.
+        single = [c for c in matches if c.get("agency_id")]
+        pool = single if single else matches
+        pool.sort(key=lambda c: (
+            0 if str(c.get("priority") or "") == "high" else
+            1 if str(c.get("priority") or "") == "medium" else 2
+        ))
+        return pool[0] if pool else None
+    return None
+
+
+def _scanner_transcribe_prompt_for_channel(channel: dict[str, Any]) -> str:
+    """Compose a Whisper prompt biased to this channel's disciplines and
+    region. Multi-discipline channels (e.g. albany_city_unified) get all
+    relevant discipline hints concatenated so the model isn't biased
+    toward only one. Region hint appended when the channel's region has
+    a curated landmark list."""
+    disciplines = [d.lower() for d in (channel.get("disciplines") or [])
+                   if isinstance(d, str)]
+    parts = [_SCANNER_TRANSCRIBE_PROMPT_BASE]
+    for d in ("police", "fire", "ems"):  # stable order
+        if d in disciplines and d in _SCANNER_DISCIPLINE_HINTS:
+            parts.append(_SCANNER_DISCIPLINE_HINTS[d])
+    region = str(channel.get("region") or "").strip().lower()
+    if region in _REGION_PROMPT_HINTS:
+        parts.append(_REGION_PROMPT_HINTS[region])
+    label = str(channel.get("label") or "").strip()
+    if label:
+        parts.append(f"Channel: {label}.")
+    return " ".join(parts)
+
+
+def _scanner_transcribe_prompt(call: dict[str, Any]) -> str:
+    """Select the most-targeted Whisper prompt for a scanner call.
+
+    Resolution order (most specific to least):
+      1. Channel-based: when the call resolves to a channel in
+         data/scanner_channels.json, compose discipline + region +
+         channel-label hints.
+      2. Discipline-based: when no channel resolves, fall back to the
+         single-discipline prompts based on talkgroup tag/description
+         classification (legacy behavior preserved exactly).
+      3. Base prompt: when discipline can't be determined.
+
+    Canonical agency name is appended in all cases when the agency
+    registry resolves a record. Defensive — any registry/file failure
+    leaves the base prompt unchanged.
+    """
+    base: Optional[str] = None
+    try:
+        channel = _scanner_channel_for_call(call)
+        if channel:
+            base = _scanner_transcribe_prompt_for_channel(channel)
+    except Exception:
+        base = None
+
+    if base is None:
+        disc = _scanner_discipline_from_call(call)
+        if disc == "police":
+            base = _SCANNER_TRANSCRIBE_PROMPT_POLICE
+        elif disc == "fire":
+            base = _SCANNER_TRANSCRIBE_PROMPT_FIRE
+        elif disc == "ems":
+            base = _SCANNER_TRANSCRIBE_PROMPT_EMS
+        else:
+            base = _SCANNER_TRANSCRIBE_PROMPT_BASE
 
     # Canonical agency hint: defensive — any registry failure leaves the
     # base prompt unchanged.
