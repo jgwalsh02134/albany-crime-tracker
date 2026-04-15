@@ -749,14 +749,55 @@
       .then(ok)
       .then(function (data) {
         if (!data || data.status !== "ok") return;
-        renderMajorStories(data.major_stories || []);
-        renderDevelopingStories(data.developing_stories || []);
+        var major = data.major_stories || [];
+        var developing = data.developing_stories || [];
+        renderMajorStories(major);
+        renderDevelopingStories(developing);
         renderRecaps(data.recap_24h, data.recap_7d, data.recap_30d);
+        renderNewsFreshness(major.concat(developing));
       })
       .catch(function () {
         renderMajorStories([]);
         renderDevelopingStories([]);
+        renderNewsFreshness([]);
       });
+  }
+
+  // News freshness header — same trust principle as Live: tell the user how
+  // current the news section actually is rather than letting them guess.
+  function renderNewsFreshness(stories) {
+    var host = document.getElementById("homePanelNews");
+    if (!host) return;
+    var existing = document.getElementById("newsFreshness");
+    if (!existing) {
+      existing = document.createElement("div");
+      existing.id = "newsFreshness";
+      existing.className = "news-freshness";
+      var scroll = host.querySelector(".home-scroll");
+      if (scroll) scroll.insertBefore(existing, scroll.firstChild);
+      else host.insertBefore(existing, host.firstChild);
+    }
+    if (!stories || !stories.length) { existing.hidden = true; existing.innerHTML = ""; return; }
+    var newestMs = 0;
+    stories.forEach(function (s) {
+      var raw = s && (s.published_at || s.occurred_at || s.pubDate);
+      var t = raw ? new Date(raw).getTime() : 0;
+      if (t > newestMs) newestMs = t;
+    });
+    if (!newestMs) { existing.hidden = true; existing.innerHTML = ""; return; }
+    var mins = Math.max(0, Math.round((Date.now() - newestMs) / 60000));
+    var ageText = mins < 1 ? "just now" :
+                  mins === 1 ? "1 min ago" :
+                  mins < 60 ? mins + " min ago" :
+                  mins < 24 * 60 ? Math.round(mins / 60) + " hr ago" :
+                  Math.round(mins / (60 * 24)) + " day" + (Math.round(mins / (60 * 24)) === 1 ? "" : "s") + " ago";
+    var tone = mins < 60 ? "fresh" : mins < 6 * 60 ? "aging" : "stale";
+    existing.className = "news-freshness news-freshness--" + tone;
+    existing.innerHTML =
+      '<span class="news-freshness-label">Latest story</span>' +
+      '<span class="news-freshness-value">' + ageText + '</span>' +
+      '<span class="news-freshness-count">' + stories.length + ' tracked</span>';
+    existing.hidden = false;
   }
 
   // Build a small 2-letter source-brand chip from a source name (e.g.
@@ -2328,6 +2369,19 @@
   var _LIVE_CLUSTER_OVERLAP_MIN_TOKENS = 2;
   var _LIVE_CLUSTER_MAX_GAP_MS = 6 * 60 * 60 * 1000;
 
+  // Populous Albany County municipalities — strict token similarity required.
+  // Smaller munis use a relaxed "same muni + within 4h + share 2 substantive
+  // tokens" rule because two distinct newsworthy crime events in the same
+  // small town within four hours is rare enough that the precision/recall
+  // tradeoff favors merging. Lowercase, no punctuation.
+  var _LIVE_CLUSTER_POPULOUS_MUNIS = {
+    "albany": 1, "colonie": 1, "bethlehem": 1,
+    "guilderland": 1, "cohoes": 1
+  };
+  var _LIVE_CLUSTER_SMALL_MUNI_GAP_MS = 4 * 60 * 60 * 1000;
+  var _LIVE_CLUSTER_SMALL_MUNI_MIN_TOK_LEN = 5;
+  var _LIVE_CLUSTER_SMALL_MUNI_MIN_SHARED = 2;
+
   function _liveClusterSameEvent(a, b) {
     var muniA = String(a.municipality || a.matched_location || "").toLowerCase().trim();
     var muniB = String(b.municipality || b.matched_location || "").toLowerCase().trim();
@@ -2363,6 +2417,24 @@
       );
       if (ov >= _LIVE_CLUSTER_OVERLAP_MIN && minTokens >= _LIVE_CLUSTER_OVERLAP_MIN_TOKENS) {
         return true;
+      }
+
+      // Small-municipality relaxed path. The Coeymans case showed three
+      // semantically-identical reports with totally different wording —
+      // token similarity could not bridge them. In small towns (population
+      // ~< 15K), two unrelated newsworthy events in a 4-hour window is
+      // genuinely rare, so we accept a weaker title signal: 2+ shared
+      // tokens of length >= 5 (which excludes generic 3-4 char fillers).
+      if (!_LIVE_CLUSTER_POPULOUS_MUNIS[muniA]
+          && tA && tB
+          && Math.abs(tA - tB) <= _LIVE_CLUSTER_SMALL_MUNI_GAP_MS) {
+        var shared = 0;
+        for (var tok in a._cluster_tokens) {
+          if (tok.length >= _LIVE_CLUSTER_SMALL_MUNI_MIN_TOK_LEN && b._cluster_tokens[tok]) {
+            shared++;
+          }
+        }
+        if (shared >= _LIVE_CLUSTER_SMALL_MUNI_MIN_SHARED) return true;
       }
     }
     return false;

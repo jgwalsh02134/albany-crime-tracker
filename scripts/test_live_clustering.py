@@ -153,6 +153,49 @@ var tb = _liveClusterTokens("House fire on Delaware Avenue");
 assert("jaccard_identical_is_1", Math.abs(_liveClusterJaccard(ta, tb) - 1.0) < 1e-9);
 var tc = _liveClusterTokens("Traffic stop leads to arrest");
 assert("jaccard_disjoint_is_0", _liveClusterJaccard(ta, tc) === 0);
+
+// 11. Small-muni relaxed clustering: the Coeymans BB-gun case from real
+// production data. Three genuinely-same-event reports with very different
+// wording must collapse to one card under the small-muni path (same muni
+// "Coeymans", within 4h, ≥2 shared tokens of length >=5).
+var real1 = mk("r1", "Coeymans woman arrested after alleged shooting, exposing herself", "Coeymans", 120, "WRGB");
+var real2 = mk("r2", "Woman charged in Coeymans BB gun threat, lewdness investigation", "Coeymans", 60,  "CBS6 Albany");
+var real3 = mk("r3", "Coeymans woman accused of firing BB gun at neighbors",             "Coeymans", 30,  "News10 ABC Crime");
+var clustered11 = _dedupeLiveItems([real1, real2, real3]);
+assert("small_muni_relaxed_clusters_coeymans_paraphrases",
+  clustered11.length === 1,
+  "got length=" + clustered11.length);
+assert("small_muni_cluster_collects_all_three_sources",
+  clustered11[0] && clustered11[0]._linked_sources && clustered11[0]._linked_sources.length === 3,
+  "sources=" + JSON.stringify(clustered11[0] && clustered11[0]._linked_sources));
+
+// 12. Populous munis DO NOT get the relaxed path. "Albany man shot" vs
+// "Albany woman arrested" share only {albany, arrested?} and must stay
+// separate because they're clearly distinct events in a big city.
+var pop1 = mk("p1", "Albany man charged after Broadway shooting",        "Albany", 120, "TU");
+var pop2 = mk("p2", "Albany woman arrested in Arbor Hill drug case",     "Albany", 60,  "WNYT");
+var clustered12 = _dedupeLiveItems([pop1, pop2]);
+assert("populous_muni_does_not_get_relaxed_clustering",
+  clustered12.length === 2,
+  "got length=" + clustered12.length);
+
+// 13. Small-muni relaxed path respects the 4h gap: distinct events >4h
+// apart in the same small town still stay separate.
+var gap1 = mk("g1", "Coeymans house fire under investigation", "Coeymans", 5 * 60, "TU");
+var gap2 = mk("g2", "Coeymans house crash kills driver",        "Coeymans", 0,     "WNYT");
+var clustered13 = _dedupeLiveItems([gap1, gap2]);
+assert("small_muni_respects_4h_gap_on_relaxed_path",
+  clustered13.length === 2,
+  "got length=" + clustered13.length);
+
+// 14. Small-muni relaxed path requires ≥2 shared length-5+ tokens.
+// Sharing only the muni name is not enough.
+var w1 = mk("w1", "Coeymans crash on Route 144",            "Coeymans", 60, "TU");
+var w2 = mk("w2", "Coeymans store robbed overnight",        "Coeymans", 30, "WNYT");
+var clustered14 = _dedupeLiveItems([w1, w2]);
+assert("small_muni_requires_more_than_muni_name_shared",
+  clustered14.length === 2,
+  "got length=" + clustered14.length);
 """
 
     with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:

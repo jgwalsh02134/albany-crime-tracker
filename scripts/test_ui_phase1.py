@@ -97,6 +97,33 @@ def main() -> None:
     _report("css_major_uses_brand_alert_token",
             "var(--brand-alert" in css)
 
+    # 8. News freshness banner must be wired. Mirrors the Live banner pattern.
+    _report("js_has_renderNewsFreshness", "function renderNewsFreshness" in js)
+    _report("js_fetchHomeNews_calls_news_freshness",
+            "renderNewsFreshness" in js and "fetchHomeNews" in js)
+    _report("css_has_news_freshness", ".news-freshness" in css)
+    _report("css_news_freshness_has_tones",
+            ".news-freshness--stale" in css and ".news-freshness--aging" in css)
+
+    # 9. Mobile spacing: feed card padding must be at the relaxed values,
+    # summary line-height must be >= 1.4, meta font-size must be >= 11px.
+    _report("css_feed_item_padding_relaxed",
+            bool(re.search(r"\.feed-item\s*\{[^}]*padding:\s*12px\s+14px", css)))
+    _report("css_feed_summary_line_height_readable",
+            bool(re.search(r"\.feed-summary-line\s*\{[^}]*line-height:\s*1\.4", css)))
+    _report("css_feed_meta_font_size_readable",
+            bool(re.search(r"\.feed-meta\s*\{[^}]*font-size:\s*11px", css)))
+    _report("css_feed_list_gap_relaxed",
+            bool(re.search(r"\.feed-list\s*\{[^}]*gap:\s*10px", css)))
+
+    # 10. Tiered clustering: populous-muni list must exist and must include
+    # the five biggest Albany County municipalities.
+    _report("js_has_populous_munis",
+            "_LIVE_CLUSTER_POPULOUS_MUNIS" in js)
+    for muni in ("albany", "colonie", "bethlehem", "guilderland", "cohoes"):
+        _report(f"js_populous_munis_contains_{muni}",
+                '"' + muni + '"' in js or "'" + muni + "'" in js)
+
     print(f"\n{passed}/{passed + failed} tests passed")
     if failed:
         sys.exit(1)

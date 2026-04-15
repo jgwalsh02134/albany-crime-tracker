@@ -1375,16 +1375,58 @@ a:hover { text-decoration: underline; }
   color: var(--property);
 }
 
+/* ===== NEWS FRESHNESS BANNER =====
+   Sits above News major stories for the same trust reason as the Live
+   freshness banner — show honestly how current the News surface is. Less
+   urgent tone than Live since news is editorial rather than operational. */
+.news-freshness {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 12px 6px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-2);
+  line-height: 1.2;
+}
+.news-freshness[hidden] { display: none; }
+.news-freshness-label { font-weight: 600; color: var(--text-2); }
+.news-freshness-value {
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.news-freshness-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.news-freshness--stale {
+  color: var(--text-3);
+  border-color: var(--border);
+}
+.news-freshness--aging .news-freshness-value {
+  color: var(--property);
+}
+
 /* ===== FEED LIST ===== */
 .feed-list {
   padding: 8px 0 24px;
   display: flex; flex-direction: column;
-  gap: 8px;
+  /* Bumped from 8px to 10px so cards have visible breathing room on mobile.
+     Cramped spacing was the top complaint after the chip row removal. */
+  gap: 10px;
 }
 
 .feed-item {
   display: flex; gap: 10px;
-  padding: 10px 12px;
+  /* Padding bumped 10/12 → 12/14 for breathing room on mobile.
+     min-height 44px preserves Apple HIG tap target. */
+  padding: 12px 14px;
   background: var(--surface);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-card);
@@ -1410,18 +1452,20 @@ a:hover { text-decoration: underline; }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .feed-summary-line {
-  margin-top: 3px;
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--text-3);
+  margin-top: 4px;
+  font-size: 12px;
+  /* Bumped from text-3 to text-2 for readability on mobile; the previous
+     contrast was below practical legibility on outdoor screens. */
+  line-height: 1.4;
+  color: var(--text-2);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 .feed-meta {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
-  margin-top: 6px; font-size: 10px; color: var(--text-3);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 8px; font-size: 11px; color: var(--text-3);
 }
 /* Time in meta row (moved from head-row) */
 .feed-meta .feed-time {
