@@ -804,6 +804,50 @@
   // "Times Union" → "TU", "WNYT" → "WN"). We do not have real publisher
   // images in the data model, so this acts as a lightweight, non-invented
   // visual anchor for News cards.
+  // Canonical agency_id → compact display name for the Live card meta
+  // row's leading agency pill (v7 redesign). Mirrors the short_name field
+  // in data/agencies.json for the operational entries the registry tags as
+  // is_albany_county_primary plus the most-frequently-resolved state /
+  // railroad agencies. Unknown ids fall back to a presentable form of the
+  // raw id rather than being suppressed, so a future agency added to
+  // data/agencies.json doesn't disappear from the UI just because this
+  // map hasn't been refreshed.
+  var _AGENCY_DISPLAY_NAMES = {
+    apd: "APD",
+    acso: "ACSO",
+    bethlehem_pd: "Bethlehem PD",
+    colonie_pd: "Colonie PD",
+    guilderland_pd: "Guilderland PD",
+    cohoes_pd: "Cohoes PD",
+    watervliet_pd: "Watervliet PD",
+    coeymans_pd: "Coeymans PD",
+    green_island_pd: "Green Island PD",
+    menands_pd: "Menands PD",
+    altamont_pd: "Altamont PD",
+    nysp_troop_g: "NYSP Troop G",
+    nysp_troop_t: "NYSP Troop T",
+    nysp_capitol_x: "NYSP Capitol",
+    nys_park_police: "NYS Park Police",
+    dec_le: "DEC ECO",
+    csx_police: "CSX Police",
+    fbi_albany: "FBI",
+    uapd: "UAPD",
+  };
+
+  function _agencyDisplayName(agencyId) {
+    if (typeof agencyId !== "string") return "";
+    var aid = agencyId.trim().toLowerCase();
+    if (!aid) return "";
+    if (_AGENCY_DISPLAY_NAMES[aid]) return _AGENCY_DISPLAY_NAMES[aid];
+    // Fallback: turn "some_new_pd" into "Some New PD" so unknown
+    // canonical ids stay legible until the map is updated.
+    return aid.split("_").map(function (w) {
+      if (!w) return "";
+      if (w === "pd" || w === "po" || w === "le") return w.toUpperCase();
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    }).join(" ");
+  }
+
   function _sourceInitials(sourceName) {
     var s = String(sourceName || "").trim();
     if (!s) return "·";
@@ -1822,6 +1866,11 @@
       verification_label: _verificationLabel(r.verification_level || ""),
       verification_explanation: r.verification_explanation || "",
       severity: r.severity || "unknown",
+      // Canonical responding agency id, resolved at write time and
+      // backfilled across legacy rows in commit f56a205. Used by the
+      // v7 redesign to lead the Live card meta row with operational
+      // attribution ("APD") rather than just the news outlet.
+      responding_agency_id: r.responding_agency_id || null,
       source_type: r.source_type || "",
       source_type_label: _sourceTypeLabel(r.source_type || ""),
       source_type_explanation: r.source_type_explanation || "",
@@ -2160,14 +2209,23 @@
     // Summary (truncated to 2 lines via CSS)
     if (summary) html += '<div class="feed-summary-line">' + esc(summary) + '</div>';
 
-    // Meta row (v6 redesign): one focal hierarchy. Severity is communicated
-    // by the left indicator strip; the meta row is now JUST area · source ·
-    // optional corroboration · time. The Federal pill and per-card LIVE
-    // badge were removed because the freshness banner above the feed
-    // already conveys liveness, and Federal is rare enough to fold into
-    // the source pill via natural attribution. Time gets monospace
-    // tabular numerals so a column of cards aligns visually.
+    // Meta row (v7 redesign): operational attribution leads.
+    // Order: agency pill (when present) → area → source → corroboration → time.
+    // The agency pill uses var(--brand-primary) so the eye lands on the
+    // RESPONDING AGENCY first (APD / ACSO / Bethlehem PD / etc.) and the
+    // news outlet becomes secondary attribution. When no agency resolves
+    // (media-outlet-only sources like CBS6 / WNYT), the agency pill is
+    // omitted and the row reads area → source → time as before. Severity
+    // remains in the left indicator strip; the freshness banner above the
+    // feed conveys liveness; per-card LIVE / Federal badges stay removed
+    // (v6 cleanup).
     html += '<div class="feed-meta">';
+    var agencyDisplay = _agencyDisplayName(item.responding_agency_id);
+    if (agencyDisplay) {
+      html += '<span class="feed-meta-pill feed-meta-pill--agency"'
+            + ' title="Responding agency">'
+            + esc(agencyDisplay) + '</span>';
+    }
     html += '<span class="feed-meta-pill feed-meta-pill--area"><span class="material-icons feed-meta-icon">location_on</span>' + esc(area) + '</span>';
     html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(sourceName) + '</span>';
     // Linked-sources pill: surfaces "+N sources" when an incident is

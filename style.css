@@ -3891,6 +3891,18 @@ a:hover { text-decoration: underline; }
   color: var(--accent);
   border-color: color-mix(in srgb, var(--accent) 25%, transparent);
 }
+/* Responding-agency pill (v7 redesign). Leads the meta row when an
+   agency_id resolves so operational attribution ("APD") wins over
+   editorial source ("Times Union"). Uses --brand-primary so a future
+   brand pass (CERN blue) auto-propagates without further CSS edits. */
+.feed-meta-pill--agency {
+  color: var(--brand-primary, var(--accent));
+  border-color: color-mix(in srgb, var(--brand-primary, var(--accent)) 35%, transparent);
+  background: color-mix(in srgb, var(--brand-primary, var(--accent)) 8%, transparent);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
 /* Corroboration pill: surfaces "+N sources" when multiple feeds covered the
    same incident and the client-side clusterer rolled them up into one card. */
 .feed-meta-pill--corroborated {
