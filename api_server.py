@@ -1623,7 +1623,10 @@ _DIR_LOCALITY_SIGNALS_CACHE: Optional[frozenset[str]] = None
 
 
 def _directory_locality_signals() -> frozenset[str]:
-    """Extra locality anchors learned from le_directory.json (cities/municipal labels)."""
+    """Extra locality anchors learned from le_directory.json (cities/municipal labels)
+    AND data/agencies.json (canonical Albany-County agency aliases). The agency
+    file is the source of truth for new entities; the legacy le_directory.json
+    layer is preserved for backward compatibility."""
     global _DIR_LOCALITY_SIGNALS_CACHE
     if _DIR_LOCALITY_SIGNALS_CACHE is not None:
         return _DIR_LOCALITY_SIGNALS_CACHE
@@ -1641,6 +1644,24 @@ def _directory_locality_signals() -> frozenset[str]:
             abb = (ag.get("abbreviation") or "").strip().lower()
             if abb and 3 <= len(abb) <= 10:
                 vals.add(abb)
+    except Exception:
+        pass
+    # Pull canonical agency aliases + Albany-County municipality names from
+    # data/agencies.json. Restricted to operational-live-relevant agencies so
+    # disambiguation-only entries (TSA, FPS, IRS-CI etc.) don't broaden
+    # locality acceptance. Defensive try/except so a missing or malformed
+    # agency file never breaks the locality gate at startup.
+    try:
+        from app.services.agency_registry import (
+            operational_live_agency_anchors,
+            albany_county_municipality_set,
+        )
+        for s in operational_live_agency_anchors():
+            if s and len(s) >= 3:
+                vals.add(s)
+        for s in albany_county_municipality_set():
+            if s and len(s) >= 4:
+                vals.add(s)
     except Exception:
         pass
     _DIR_LOCALITY_SIGNALS_CACHE = frozenset(vals)
