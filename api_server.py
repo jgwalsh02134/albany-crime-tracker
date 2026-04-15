@@ -6527,6 +6527,34 @@ def _scanner_call_local_reference_context(call: dict[str, Any]) -> str:
             bits.append(f"canonical_agency_type={ag['agency_type']}")
     except Exception:
         pass
+    # Scanner-channel context from data/scanner_channels.json. Mirrors the
+    # channel-aware Whisper prompt (commit e0a4cef) so the structured
+    # analysis prompt sees the same operational framing: which agency /
+    # region / discipline mix the call came from. Without this, the
+    # downstream OpenAI structured-analysis pass had to re-derive
+    # channel attribution from raw talkgroup text every call. Defensive
+    # try/except — any registry/file failure leaves the line out
+    # rather than blocking analysis.
+    try:
+        chan = _scanner_channel_for_call(call)
+        if chan:
+            cid = str(chan.get("channel_id") or "")
+            label = str(chan.get("label") or "")
+            region = str(chan.get("region") or "")
+            disciplines = [
+                str(d) for d in (chan.get("disciplines") or [])
+                if isinstance(d, str) and d
+            ]
+            if cid:
+                bits.append(f"channel_id={cid}")
+            if label:
+                bits.append(f"channel_label={label}")
+            if disciplines:
+                bits.append(f"channel_disciplines={','.join(disciplines)}")
+            if region:
+                bits.append(f"channel_region={region}")
+    except Exception:
+        pass
     unit_ids = call.get("unit_ids")
     if isinstance(unit_ids, list) and unit_ids:
         bits.append("unit_ids=" + ",".join(str(x) for x in unit_ids[:12] if str(x).strip()))
