@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _AGENCIES_PATH = os.path.join(_REPO_ROOT, "data", "agencies.json")
+_SCANNER_ALIASES_PATH = os.path.join(_REPO_ROOT, "data", "scanner_aliases.json")
 
 
 def _norm(value: str) -> str:
@@ -36,6 +37,78 @@ def load_agencies() -> dict[str, Any]:
 def reset_cache() -> None:
     """Drop the cached parse — used by tests that touch the JSON file."""
     load_agencies.cache_clear()
+    load_scanner_aliases.cache_clear()
+
+
+@lru_cache(maxsize=1)
+def load_scanner_aliases() -> dict[str, Any]:
+    """Return the parsed data/scanner_aliases.json document. Cached after
+    first read. Defensive — returns an empty mapping if the file is missing
+    or malformed so callers never crash on startup."""
+    try:
+        with open(_SCANNER_ALIASES_PATH, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+        if not isinstance(doc, dict):
+            return {"talkgroups": {}}
+        if "talkgroups" not in doc or not isinstance(doc["talkgroups"], dict):
+            doc["talkgroups"] = {}
+        return doc
+    except (OSError, json.JSONDecodeError):
+        return {"talkgroups": {}}
+
+
+def talkgroup_id_to_agency(talkgroup_id: Any) -> Optional[dict[str, Any]]:
+    """Resolve a numeric scanner talkgroup ID (e.g. "13102") to a canonical
+    agency record by joining data/scanner_aliases.json (which maps the
+    talkgroup id → human agency string like "Albany Police") through
+    resolve_agency() (which maps that string → canonical record).
+
+    Returns None when the talkgroup is unknown to scanner_aliases.json or
+    when the agency string does not map to a canonical entry. Both halves
+    are defensive: missing files / bad keys / unknown agencies all fall
+    through to None instead of raising.
+    """
+    if talkgroup_id is None:
+        return None
+    key = str(talkgroup_id).strip()
+    if not key:
+        return None
+    aliases = load_scanner_aliases().get("talkgroups") or {}
+    entry = aliases.get(key)
+    if not isinstance(entry, dict):
+        return None
+    agency_string = str(entry.get("agency") or "").strip()
+    if not agency_string:
+        return None
+    return resolve_agency(agency_string)
+
+
+def talkgroup_mapping_coverage() -> dict[str, int]:
+    """Stats on how completely scanner_aliases.json maps to canonical
+    agencies. Surfaced via /api/sources/health so we can measure the
+    integration quality over time and identify talkgroups that need a
+    new alias entry or a new agency record.
+
+    Keys:
+      total              — count of talkgroups in scanner_aliases.json
+      canonical_resolved — count whose agency string resolves to a record
+      unmapped           — total - canonical_resolved
+    """
+    aliases = load_scanner_aliases().get("talkgroups") or {}
+    total = 0
+    resolved = 0
+    for _tg_id, entry in aliases.items():
+        if not isinstance(entry, dict):
+            continue
+        total += 1
+        agency_string = str(entry.get("agency") or "").strip()
+        if agency_string and resolve_agency(agency_string) is not None:
+            resolved += 1
+    return {
+        "total": total,
+        "canonical_resolved": resolved,
+        "unmapped": total - resolved,
+    }
 
 
 def all_agencies() -> list[dict[str, Any]]:
@@ -187,10 +260,16 @@ _CALL_TALKGROUP_FIELDS = (
 def resolve_agency_from_call(call: dict[str, Any]) -> Optional[dict[str, Any]]:
     """Best-effort agency resolution for a scanner call dict.
 
-    Tries each known talkgroup-tag field in turn, returning the first
-    registry hit. Defensive against non-dict input — returns None instead
-    of raising — so the scanner pipeline never breaks if a call payload
-    is malformed.
+    Two-stage lookup:
+      1. Walk the known talkgroup-tag fields scanner adapters populate
+         (talkgroup_tag, talkgroup_description, etc.) — fastest path,
+         catches RR / OpenMHz / Broadcastify-enriched calls.
+      2. Fall back to the numeric talkgroup ID via scanner_aliases.json,
+         so calls that arrive with only a `talkgroup_num` (no tag) still
+         resolve. Closes the gap for scanner systems that don't surface
+         human-readable tags directly.
+
+    Defensive against non-dict input — returns None instead of raising.
     """
     if not isinstance(call, dict):
         return None
@@ -199,6 +278,14 @@ def resolve_agency_from_call(call: dict[str, Any]) -> Optional[dict[str, Any]]:
         if not v:
             continue
         a = resolve_agency(str(v))
+        if a:
+            return a
+    # Numeric talkgroup ID fallback. Common keys used across adapters.
+    for tg_field in ("talkgroup_num", "talkgroupID", "talkgroup", "tg"):
+        tg = call.get(tg_field)
+        if tg in (None, ""):
+            continue
+        a = talkgroup_id_to_agency(tg)
         if a:
             return a
     return None

@@ -1343,7 +1343,11 @@ async def lifespan(_app):
     await start_background_crime_ingest()
     # Optional fast scanner cache warm-refresh; opt-in via SCANNER_INGEST_SECONDS.
     await start_background_scanner_ingest()
+    # Optional APD-Socrata refresh into incidents table; opt-in via
+    # SOCRATA_INGEST_SECONDS=1800 (30 min) or 3600 (1 hour).
+    await start_background_socrata_ingest()
     yield
+    await stop_background_socrata_ingest()
     await stop_background_scanner_ingest()
     await stop_background_crime_ingest()
     await stop_stream_monitor()
@@ -4069,12 +4073,21 @@ async def get_crimes(
 # cadence than the heavier RSS/news pipeline without doubling work on either.
 _crime_ingest_bg_task: Optional[asyncio.Task] = None
 _scanner_ingest_bg_task: Optional[asyncio.Task] = None
+# Socrata loop: pulls APD open-data datasets (crimes, arrests, calls for
+# service, use of force) into the incidents table on a slow cadence. Daily
+# data, so 30-60 minute ticks are appropriate. Disabled by default; opt in
+# on Railway via SOCRATA_INGEST_SECONDS=1800 (30m) or 3600 (1h).
+_socrata_ingest_bg_task: Optional[asyncio.Task] = None
 
 _BACKGROUND_INGEST_STATS: dict[str, Any] = {
     "crime": {"enabled": False, "interval_s": 0.0, "last_tick_at": "", "last_error": ""},
     "scanner": {
         "enabled": False, "interval_s": 0.0, "last_tick_at": "",
         "last_merged_count": 0, "last_error": "",
+    },
+    "socrata": {
+        "enabled": False, "interval_s": 0.0, "last_tick_at": "",
+        "last_persisted_count": 0, "last_error": "",
     },
 }
 
@@ -4213,6 +4226,85 @@ async def stop_background_scanner_ingest() -> None:
         pass
     _scanner_ingest_bg_task = None
     _BACKGROUND_INGEST_STATS["scanner"]["enabled"] = False
+
+
+def _background_socrata_ingest_interval_s() -> float:
+    """Seconds between APD-Socrata refresh ticks. 0 disables the loop.
+
+    Socrata datasets (crimes, arrests, calls for service, use of force) update
+    daily, so 30 minutes (1800s) or 1 hour (3600s) is the right operational
+    cadence. Defaults to 0 so existing deploys keep current behavior until
+    Railway sets SOCRATA_INGEST_SECONDS explicitly.
+    """
+    raw = os.getenv("SOCRATA_INGEST_SECONDS", "0").strip()
+    try:
+        return float(raw)
+    except ValueError:
+        return 0.0
+
+
+async def _background_socrata_ingest_loop(interval_s: float) -> None:
+    # Long startup offset so we don't compete with the crime/news loop on
+    # cold start and so the Socrata portal probe has time to settle.
+    await asyncio.sleep(20.0)
+    while True:
+        try:
+            try:
+                rows = await fetch_albany_open_data(limit=500, offset=0)
+                rows = rows if isinstance(rows, list) else []
+                # Reuse the standard incident-persistence path so dedupe,
+                # canonical-source normalization, and locality gating all
+                # apply. fetch_albany_open_data() already shapes rows as
+                # incident-articles.
+                if rows:
+                    await persist_articles_as_incidents(rows)
+                _BACKGROUND_INGEST_STATS["socrata"]["last_tick_at"] = (
+                    datetime.now(timezone.utc).isoformat()
+                )
+                _BACKGROUND_INGEST_STATS["socrata"]["last_persisted_count"] = len(rows)
+                _BACKGROUND_INGEST_STATS["socrata"]["last_error"] = ""
+                logger.info(
+                    "background_socrata_ingest_tick rows=%s interval_s=%s",
+                    len(rows),
+                    interval_s,
+                )
+            except Exception as exc:
+                _BACKGROUND_INGEST_STATS["socrata"]["last_error"] = (
+                    f"{type(exc).__name__}: {exc}"
+                )
+                logger.warning("background_socrata_ingest_tick_error error=%s", exc)
+            await asyncio.sleep(interval_s)
+        except asyncio.CancelledError:
+            break
+
+
+async def start_background_socrata_ingest() -> None:
+    global _socrata_ingest_bg_task
+    interval_s = _background_socrata_ingest_interval_s()
+    _BACKGROUND_INGEST_STATS["socrata"]["interval_s"] = float(interval_s)
+    if interval_s <= 0:
+        _BACKGROUND_INGEST_STATS["socrata"]["enabled"] = False
+        logger.info(
+            "background_socrata_ingest_disabled SOCRATA_INGEST_SECONDS=%s",
+            os.getenv("SOCRATA_INGEST_SECONDS", ""),
+        )
+        return
+    _BACKGROUND_INGEST_STATS["socrata"]["enabled"] = True
+    _socrata_ingest_bg_task = asyncio.create_task(_background_socrata_ingest_loop(interval_s))
+    logger.info("background_socrata_ingest_started interval_s=%s", interval_s)
+
+
+async def stop_background_socrata_ingest() -> None:
+    global _socrata_ingest_bg_task
+    if _socrata_ingest_bg_task is None:
+        return
+    _socrata_ingest_bg_task.cancel()
+    try:
+        await _socrata_ingest_bg_task
+    except (asyncio.CancelledError, Exception):
+        pass
+    _socrata_ingest_bg_task = None
+    _BACKGROUND_INGEST_STATS["socrata"]["enabled"] = False
 
 
 def _parse_iso_dt(value: Optional[str]) -> Optional[datetime]:
@@ -5106,6 +5198,18 @@ async def get_sources_health():
     except Exception as exc:
         logger.warning("sources_health_quarantine_count_error error=%s", exc)
 
+    # Scanner talkgroup → canonical-agency mapping coverage. Surfaces how
+    # complete data/scanner_aliases.json is relative to the canonical
+    # agency registry, so we can spot talkgroups that need a new alias or
+    # a new agency record. Defensive try/except: missing data file or
+    # malformed JSON returns zeros instead of 500ing the endpoint.
+    talkgroup_coverage = {"total": 0, "canonical_resolved": 0, "unmapped": 0}
+    try:
+        from app.services.agency_registry import talkgroup_mapping_coverage
+        talkgroup_coverage = talkgroup_mapping_coverage()
+    except Exception as exc:
+        logger.warning("sources_health_talkgroup_coverage_error error=%s", exc)
+
     return {
         "status": "ok",
         "as_of": datetime.now(timezone.utc).isoformat(),
@@ -5119,11 +5223,13 @@ async def get_sources_health():
         "ingest_loops": {
             "crime": dict(_BACKGROUND_INGEST_STATS.get("crime") or {}),
             "scanner": dict(_BACKGROUND_INGEST_STATS.get("scanner") or {}),
+            "socrata": dict(_BACKGROUND_INGEST_STATS.get("socrata") or {}),
         },
         "incidents": {
             "quarantined_total": quarantine_total,
             "store_backend": incident_store_backend(),
         },
+        "scanner_talkgroup_mapping": talkgroup_coverage,
         "upstream": {
             "radioreference": radioreference_runtime_status(),
             "google_news": gnews_runtime_status(),
