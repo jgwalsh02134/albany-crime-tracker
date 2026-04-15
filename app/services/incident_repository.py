@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db.models import IncidentORM
 from app.db.session import get_session_factory
 from app.models.incident import IncidentRecord
+from app.services.agency_registry import canonical_source_for_fingerprint
 from app.services.postgres_text_sanitize import sanitize_incident_inputs
 
 logger = logging.getLogger(__name__)
@@ -101,8 +102,22 @@ def _is_scanner(record: IncidentRecord, raw_payload: dict[str, Any]) -> bool:
 
 
 def _candidate_fingerprints(record: IncidentRecord, raw_payload: dict[str, Any]) -> list[str]:
+    """Build fingerprint-basis strings for an incident.
+
+    For each window-style basis we emit two variants when canonical and raw
+    source spellings differ:
+      * canonical-source first (so _stable_fingerprint picks it for new rows)
+      * raw-source second (so existing rows persisted before this change
+        still match via _all_fingerprint_hashes)
+    This collapses "Albany PD" / "Albany Police" / "City of Albany Police"
+    into a single dedupe identity without a schema migration. Sources that
+    do not resolve to a canonical agency (Times Union, FBI Albany News,
+    etc.) produce one variant only — the canonical helper falls back to
+    normalized text for them, so emit-once is correct.
+    """
     occurred = record.occurred_at or record.published_at
-    source_name = _norm_text(record.source_name)
+    raw_source_name = _norm_text(record.source_name)
+    canon_source_name = canonical_source_for_fingerprint(record.source_name)
     title = _norm_text(record.title)
     municipality = _norm_text(record.municipality)
     incident_type = _norm_text(record.incident_type)
@@ -111,83 +126,69 @@ def _candidate_fingerprints(record: IncidentRecord, raw_payload: dict[str, Any])
     external_ref = _norm_text(record.external_ref or "")
     candidates: list[str] = []
 
+    # Helper: emit canonical variant first, then raw if it differs.
+    def _emit(prefix: str, *parts: str) -> None:
+        canon_basis = prefix + "|".join(parts)
+        candidates.append(canon_basis)
+        if canon_source_name != raw_source_name:
+            raw_parts = tuple(
+                raw_source_name if p == canon_source_name else p for p in parts
+            )
+            candidates.append(prefix + "|".join(raw_parts))
+
     # Strong external identity keys (preferred when stable)
     if external_ref:
-        candidates.append(f"extref:{source_name}|{external_ref}")
+        _emit("extref:", canon_source_name, "", external_ref)  # extra empty kept for stable layout
+        # The two-arg shape above is a layout artifact of _emit; collapse below.
+    # Reset and use direct construction for the strong-identity entries so the
+    # canonical/raw variants share an identical layout with the original code.
+    candidates = []
+    if external_ref:
+        candidates.append(f"extref:{canon_source_name}|{external_ref}")
+        if canon_source_name != raw_source_name:
+            candidates.append(f"extref:{raw_source_name}|{external_ref}")
     if source_url:
-        candidates.append(f"source_url:{source_name}|{source_url}")
+        candidates.append(f"source_url:{canon_source_name}|{source_url}")
+        if canon_source_name != raw_source_name:
+            candidates.append(f"source_url:{raw_source_name}|{source_url}")
 
     # Keep non-fused IDs as signal; fused/scanner ids drift between refreshes.
     if record.id and not _is_fused(record, raw_payload) and not _is_scanner(record, raw_payload):
         candidates.append(f"id:{_norm_text(record.id)}")
 
+    def _src_window(prefix: str, *tail_parts: str) -> None:
+        candidates.append(prefix + "|".join((canon_source_name,) + tail_parts))
+        if canon_source_name != raw_source_name:
+            candidates.append(prefix + "|".join((raw_source_name,) + tail_parts))
+
     if _is_scanner(record, raw_payload):
         # Scanner duplicate control: same source/title/locality in short time window.
-        candidates.append(
-            "scanner_window:"
-            + "|".join(
-                [
-                    source_name,
-                    municipality,
-                    incident_type,
-                    title[:180],
-                    _time_bucket(occurred, 20),
-                ]
-            )
+        _src_window(
+            "scanner_window:",
+            municipality, incident_type, title[:180], _time_bucket(occurred, 20),
         )
         if address_text:
-            candidates.append(
-                "scanner_loc_window:"
-                + "|".join(
-                    [
-                        source_name,
-                        municipality,
-                        address_text[:160],
-                        _time_bucket(occurred, 20),
-                    ]
-                )
+            _src_window(
+                "scanner_loc_window:",
+                municipality, address_text[:160], _time_bucket(occurred, 20),
             )
     elif _is_fused(record, raw_payload):
         # Fused duplicate control: broader clustering over medium windows.
-        candidates.append(
-            "fused_window:"
-            + "|".join(
-                [
-                    source_name,
-                    municipality,
-                    incident_type,
-                    title[:180],
-                    _time_bucket(occurred, 45),
-                ]
-            )
+        _src_window(
+            "fused_window:",
+            municipality, incident_type, title[:180], _time_bucket(occurred, 45),
         )
     else:
         # Generic duplicate control for same title/source/municipality near in time.
-        candidates.append(
-            "near_title_src_muni:"
-            + "|".join(
-                [
-                    source_name,
-                    municipality,
-                    incident_type,
-                    title[:180],
-                    _time_bucket(occurred, 60),
-                ]
-            )
+        _src_window(
+            "near_title_src_muni:",
+            municipality, incident_type, title[:180], _time_bucket(occurred, 60),
         )
 
     # Always keep a low-collision fallback candidate.
-    candidates.append(
-        "fallback:"
-        + "|".join(
-            [
-                source_name,
-                municipality,
-                incident_type,
-                title[:220],
-                _time_bucket(occurred, 120),
-            ]
-        )
+    _src_window(
+        "fallback:",
+        municipality, incident_type, title[:220], _time_bucket(occurred, 120),
     )
     return [c for c in candidates if c]
 
@@ -301,7 +302,11 @@ def _near_duplicate(existing: IncidentORM, record: IncidentRecord, raw_payload: 
     return _diff_minutes(existing_dt, new_dt) <= window_minutes
 
 
-def _apply_updates(existing: IncidentORM, record: IncidentRecord) -> bool:
+def _apply_updates(
+    existing: IncidentORM,
+    record: IncidentRecord,
+    raw_payload: Optional[dict[str, Any]] = None,
+) -> bool:
     changed = False
 
     def _set(attr: str, value: Any) -> None:
@@ -339,6 +344,22 @@ def _apply_updates(existing: IncidentORM, record: IncidentRecord) -> bool:
     _set("tags", record.tags)
     if record.provenance:
         _set("provenance", record.provenance)
+
+    # Forward-migrate the stored source_fingerprint to the canonical hash if
+    # the existing row was persisted with a raw-source-name fingerprint
+    # (pre-canonical-normalization). Without this, an old "Albany PD" row
+    # would never be matched by a future "Albany Police" write because the
+    # raw-source variants differ. Rotating on touch progressively migrates
+    # the table without requiring a one-shot data backfill.
+    try:
+        rp = raw_payload if raw_payload is not None else (getattr(existing, "raw_payload", None) or {})
+        new_canonical_fp = _stable_fingerprint(record, rp)
+        if new_canonical_fp and existing.source_fingerprint != new_canonical_fp:
+            existing.source_fingerprint = new_canonical_fp
+            changed = True
+    except Exception:
+        # _stable_fingerprint is pure but defensive — never block update flow.
+        pass
     return changed
 
 
@@ -454,7 +475,7 @@ async def upsert_incidents(records: list[IncidentRecord], raw_payloads: list[dic
                         if _near_duplicate(existing, record, raw_payload):
                             skipped += 1
                             continue
-                        if _apply_updates(existing, record):
+                        if _apply_updates(existing, record, raw_payload):
                             existing.raw_payload = raw_payload
                             await session.flush()
                             updated += 1

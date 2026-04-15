@@ -204,6 +204,37 @@ def resolve_agency_from_call(call: dict[str, Any]) -> Optional[dict[str, Any]]:
     return None
 
 
+def canonical_source_for_fingerprint(source_name: str) -> str:
+    """Return a stable lowercased canonical token for a source/agency string.
+
+    Used by incident_repository._candidate_fingerprints to normalize
+    duplicate-spelling cases at dedupe time:
+        "Albany PD" -> "apd"
+        "Albany Police" -> "apd"
+        "City of Albany Police Department" -> "apd"
+        "APD" -> "apd"
+    Sources that do not resolve to a canonical agency (Times Union, FBI
+    Albany News, etc.) pass through with simple normalization so their
+    fingerprints remain stable across runs.
+
+    The function is pure and defensive: never raises, always returns a
+    string. Callers can trust it as a 1:1 replacement for _norm_text on
+    the source_name field.
+    """
+    raw = (source_name or "").strip()
+    if not raw:
+        return ""
+    try:
+        a = resolve_agency(raw)
+    except Exception:
+        a = None
+    if a:
+        sn = str(a.get("short_name") or "").strip().lower()
+        if sn:
+            return " ".join(sn.split())
+    return _norm(raw)
+
+
 def call_canonical_agency_summary(call: dict[str, Any]) -> dict[str, str]:
     """Return a small, stringifiable summary of the canonical agency for a
     scanner call. Used by api_server to inject canonical agency identity
