@@ -4235,3 +4235,131 @@ a.home-story-card:active {
 .home-scroll {
   padding-bottom: 16px;
 }
+
+/* =====================================================================
+   V6 REDESIGN PASS — coherent mobile-first retune
+   ----------------------------------------------------------------------
+   This block overrides earlier rules where the redesign needed a single
+   cohesive treatment. Earlier rules are kept intact above so any unused
+   surface (filter sheet, scanner, map) is unchanged.
+
+   Goals:
+     1. Header: 2-zone authoritative bar
+     2. Live status pill: more present, monospace numerals
+     3. Live cards: one focal hierarchy, monospace tabular time
+     4. News: stronger section labels, more breathing room
+     5. Bottom nav: 56px tap targets, sharper active state
+     6. Replace the few hardcoded #E53935 in the live area with
+        var(--brand-alert) so future brand passes only swap tokens.
+   ===================================================================== */
+
+/* ---- Header retune --------------------------------------------------- */
+/* The center date/time strip was deleted from index.html. The right zone
+   now flows naturally next to .header-left without the central spacer
+   stealing room on narrow widths. */
+.header-row { gap: var(--sp-3); }
+.header-left { gap: 10px; flex: 1 1 auto; min-width: 0; }
+.header-title { line-height: 1.2; }
+.header-name { font-size: 15px; letter-spacing: 0.005em; }
+.header-sub  { font-size: 8px;  letter-spacing: 0.14em; }
+.header-right { gap: var(--sp-1); flex-shrink: 0; }
+
+/* Authoritative live status pill — clearer hierarchy at the top of the
+   product. The dot stays on the left; the text reads "Live" by default
+   and is updated by app.js to reflect connection state. */
+.live-indicator {
+  padding: 5px 10px 5px 9px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.live-indicator .live-text { font-weight: 700; color: var(--text-2); }
+.live-dot { width: 7px; height: 7px; }
+
+/* ---- Bottom nav retune ---------------------------------------------- */
+/* Bumped to 56px tap targets (Apple HIG comfort), tightened active
+   state with a top-accent rule the eye picks up from peripheral
+   vision. Icon size unchanged so tapping is forgiving. */
+.tab-bar {
+  /* Earlier rule already sets --nav-h: 49px; the redesign nudges to 56px
+     while preserving safe-area-inset-bottom math. */
+  height: calc(56px + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+}
+.tab-bar-item {
+  min-height: 52px;
+  position: relative;
+  gap: 2px;
+}
+.tab-bar-item.active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 30%;
+  right: 30%;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 0 0 2px 2px;
+}
+.tab-bar-icon { font-size: 22px; }
+.tab-bar-label { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; }
+.tab-bar-item.active .tab-bar-label,
+.tab-bar-item.active .tab-bar-icon { color: var(--accent); }
+
+/* ---- Live freshness banner retune ----------------------------------- */
+/* Tighten typography so the banner reads as one phrase rather than three
+   loose chips. The dot keeps its tone (fresh/aging/stale). */
+.live-freshness {
+  margin: 12px 12px 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+}
+.live-freshness-label { letter-spacing: 0.04em; text-transform: uppercase; font-size: 10px; }
+.live-freshness-value { font-size: 13px; font-variant-numeric: tabular-nums; }
+.live-freshness-count { font-variant-numeric: tabular-nums; }
+
+/* ---- Live incident card retune -------------------------------------- */
+/* Single focal hierarchy: severity stripe → title → summary → meta.
+   Meta row drops the per-card LIVE badge and Federal pill (handled in
+   app.js). Time is monospace tabular so a column of cards aligns. */
+.feed-meta { gap: 6px; align-items: center; }
+.feed-time--mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: 0.01em;
+  font-weight: 600;
+}
+.feed-meta .feed-time { margin-left: auto; }
+
+/* ---- News section labels -------------------------------------------- */
+/* Stronger editorial treatment so Major / Developing / Recaps read as
+   distinct shelves rather than three look-alike lists. */
+.home-section-label {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+  padding: 14px 14px 6px;
+  margin: 0;
+}
+.home-major,
+.home-developing,
+.home-recaps {
+  padding-bottom: 4px;
+}
+
+/* ---- Brand-alert tokenization (live area only) ----------------------
+   Earlier rules used hardcoded #E53935 for the per-card live badge,
+   feed-time-dot, the LIVE section header, and the live-card border
+   accent. Re-mapped to var(--brand-alert) so a future brand pass
+   (CERN blue + Princeton orange) only needs to touch tokens.
+   Map / scanner-specific reds left as-is — they belong to those
+   modules' own redesign passes. */
+.feed-section-header--live { color: var(--brand-alert); }
+.feed-live-dot           { background: var(--brand-alert); }
+.feed-live-badge         { background: var(--brand-alert); color: var(--brand-white, #fff); }
+.feed-item--live         { border-left-color: var(--brand-alert); }
+.feed-time-dot           { background: var(--brand-alert); }

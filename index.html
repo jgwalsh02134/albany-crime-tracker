@@ -26,7 +26,12 @@
 </head>
 <body>
 
-  <!-- ===== HEADER (two-tier sticky) ===== -->
+  <!-- ===== HEADER (mobile-first, 2-zone) =====
+       Left zone: shield + product name + authoritative LIVE status pill.
+       Right zone: filter + theme + menu icons.
+       The center date/time strip was removed in the v6 redesign — it
+       added noise and competed with the live status indicator for the
+       eye. Date/time were rarely the user's reason for opening ACT. -->
   <header class="header">
     <div class="header-row">
       <div class="header-left">
@@ -35,15 +40,12 @@
           <span class="header-name">Albany County</span>
           <span class="header-sub">Crime Tracker</span>
         </div>
+        <!-- Authoritative live status pill — populated by app.js
+             markTopbarLive*() so it always reflects current feed health. -->
         <div class="live-indicator" id="liveIndicator">
           <span class="live-dot" id="liveDot"></span>
           <span class="live-text" id="topbarStatus">Live</span>
         </div>
-      </div>
-      <div class="header-center">
-        <span class="header-date" id="headerDate"></span>
-        <span class="header-sep">|</span>
-        <span class="header-time" id="headerTime"></span>
       </div>
       <div class="header-right">
         <button class="icon-btn" id="filterToggle" title="Filter feed" aria-label="Filter incidents">
@@ -478,9 +480,12 @@
 
   <!-- ===== BOTTOM TAB BAR (Apple HIG) ===== -->
   <nav class="tab-bar" id="bottomNav" role="tablist" aria-label="Main navigation">
-    <button class="tab-bar-item active" data-view="feed" role="tab" aria-selected="true" aria-label="Home">
-      <span class="tab-bar-icon material-icons">home</span>
-      <span class="tab-bar-label">Home</span>
+    <button class="tab-bar-item active" data-view="feed" role="tab" aria-selected="true" aria-label="Live">
+      <!-- Renamed Home → Live in the v6 redesign. Same data-view="feed"
+           routing target so all JS continues to work; only the human label
+           changed to match what users actually open the app for. -->
+      <span class="tab-bar-icon material-icons">bolt</span>
+      <span class="tab-bar-label">Live</span>
     </button>
     <button class="tab-bar-item" data-view="map" role="tab" aria-selected="false" aria-label="Map">
       <span class="tab-bar-icon material-icons">map</span>

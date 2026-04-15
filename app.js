@@ -2150,13 +2150,19 @@
     // Summary (truncated to 2 lines via CSS)
     if (summary) html += '<div class="feed-summary-line">' + esc(summary) + '</div>';
 
-    // Meta row: area + source + live badge + time (right-aligned)
+    // Meta row (v6 redesign): one focal hierarchy. Severity is communicated
+    // by the left indicator strip; the meta row is now JUST area · source ·
+    // optional corroboration · time. The Federal pill and per-card LIVE
+    // badge were removed because the freshness banner above the feed
+    // already conveys liveness, and Federal is rare enough to fold into
+    // the source pill via natural attribution. Time gets monospace
+    // tabular numerals so a column of cards aligns visually.
     html += '<div class="feed-meta">';
     html += '<span class="feed-meta-pill feed-meta-pill--area"><span class="material-icons feed-meta-icon">location_on</span>' + esc(area) + '</span>';
     html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(sourceName) + '</span>';
     // Linked-sources pill: when _dedupeLiveItems clustered multiple sources
-    // into this card, surface the additional source count so users know this
-    // is corroborated. Tooltip carries the full name list.
+    // into this card, surface the additional source count so users know
+    // the incident is corroborated. Tooltip carries the full name list.
     var linked = Array.isArray(item._linked_sources) ? item._linked_sources : null;
     if (linked && linked.length > 1) {
       var others = linked.length - 1;
@@ -2165,12 +2171,8 @@
             + ' title="' + escAttr(names) + '">'
             + '+' + others + ' source' + (others === 1 ? "" : "s") + '</span>';
     }
-    // Federal badge for DOJ / US Attorney sources
-    var isFederal = sourceType === "federal" || /\b(usao|us attorney|doj|federal|dept.*justice)\b/i.test(sourceName);
-    if (isFederal) html += '<span class="feed-meta-pill feed-meta-pill--federal">Federal</span>';
-    if (liveBadge) html += liveBadge;
-    // Timestamp at far right
-    html += '<span class="' + timeClass + '">' + timeDot + esc(ta || "") + '</span>';
+    // Timestamp pinned to the right with monospace tabular numerals.
+    html += '<span class="' + timeClass + ' feed-time--mono">' + timeDot + esc(ta || "") + '</span>';
     html += '</div>';
 
     html += '</div></a>';

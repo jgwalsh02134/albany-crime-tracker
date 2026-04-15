@@ -124,6 +124,59 @@ def main() -> None:
         _report(f"js_populous_munis_contains_{muni}",
                 '"' + muni + '"' in js or "'" + muni + "'" in js)
 
+    # 11. v6 redesign — header is 2-zone (no center date/time strip).
+    _report("html_header_center_removed",
+            'class="header-center"' not in html)
+    _report("html_header_keeps_left_and_right",
+            'class="header-left"' in html and 'class="header-right"' in html)
+    _report("html_header_keeps_live_indicator",
+            'id="liveIndicator"' in html and 'id="topbarStatus"' in html)
+
+    # 12. v6 redesign — Bottom nav: Home renamed to Live, data-view stays "feed".
+    _report("html_bottom_nav_label_is_live",
+            '<span class="tab-bar-label">Live</span>' in html)
+    _report("html_bottom_nav_routing_target_unchanged",
+            '<button class="tab-bar-item active" data-view="feed"' in html)
+    _report("html_bottom_nav_uses_bolt_icon",
+            '<span class="tab-bar-icon material-icons">bolt</span>' in html)
+
+    # 13. v6 redesign — Live card meta row drops the per-card LIVE badge
+    # and Federal pill (the freshness banner above the feed conveys
+    # liveness; Federal is rare and noisy). Time gets a monospace class.
+    _report("js_card_meta_drops_inline_live_badge",
+            "if (liveBadge) html += liveBadge;" not in js)
+    _report("js_card_meta_drops_federal_pill",
+            "feed-meta-pill--federal" not in js)
+    _report("js_card_meta_uses_mono_time_class",
+            "feed-time--mono" in js)
+
+    # 14. v6 redesign — CSS retune block is present and tokenizes the
+    # hardcoded live-area #E53935 into var(--brand-alert) on the four
+    # live-feed surfaces (LIVE section header, feed live dot, feed live
+    # badge, feed item live border, feed time dot).
+    _report("css_has_v6_redesign_block",
+            "V6 REDESIGN PASS" in css)
+    _report("css_live_section_header_uses_brand_alert",
+            bool(re.search(r"\.feed-section-header--live\s*\{[^}]*var\(--brand-alert", css)))
+    _report("css_feed_live_dot_uses_brand_alert",
+            bool(re.search(r"\.feed-live-dot\s*\{[^}]*var\(--brand-alert", css)))
+    _report("css_feed_live_badge_uses_brand_alert",
+            bool(re.search(r"\.feed-live-badge\s*\{[^}]*var\(--brand-alert", css)))
+    _report("css_feed_item_live_uses_brand_alert",
+            bool(re.search(r"\.feed-item--live\s*\{[^}]*var\(--brand-alert", css)))
+    _report("css_feed_time_dot_uses_brand_alert",
+            bool(re.search(r"\.feed-time-dot\s*\{[^}]*var\(--brand-alert", css)))
+
+    # 15. v6 redesign — Bottom nav tap target bumped + active accent line.
+    _report("css_tab_bar_height_56",
+            bool(re.search(r"\.tab-bar\s*\{[^}]*calc\(56px", css)))
+    _report("css_tab_bar_active_accent_line",
+            bool(re.search(r"\.tab-bar-item\.active::before", css)))
+
+    # 16. v6 redesign — News section labels are uppercase + tracked.
+    _report("css_news_section_labels_are_uppercase",
+            bool(re.search(r"\.home-section-label\s*\{[^}]*text-transform:\s*uppercase", css)))
+
     print(f"\n{passed}/{passed + failed} tests passed")
     if failed:
         sys.exit(1)
