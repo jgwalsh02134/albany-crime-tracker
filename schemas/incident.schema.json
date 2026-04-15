@@ -1,0 +1,431 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://albany.watch/schemas/incident.schema.json",
+  "title": "ACT Incident",
+  "description": "Canonical incident record for the Albany County Crime Tracker. Represents a single public safety incident derived from one or more sources.",
+  "type": "object",
+  "required": [
+    "incident_id",
+    "created_at",
+    "updated_at",
+    "title",
+    "severity",
+    "status",
+    "locality",
+    "sources"
+  ],
+  "properties": {
+    "incident_id": {
+      "type": "string",
+      "description": "Stable UUID v4 generated at first ingest. Never recycled.",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "external_ids": {
+      "type": "object",
+      "description": "Source-system identifiers keyed by source_id. Allows deduplication across ingests.",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "examples": [
+        { "apd-socrata-arrests": "7y34-47cz-row-4821", "nysp-blotter": "NY2600087206" }
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp when this record was first created in ACT."
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of last update to this record."
+    },
+    "incident_datetime": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp when the incident occurred. Null if unknown."
+    },
+    "incident_datetime_precision": {
+      "type": "string",
+      "enum": ["exact", "hour", "day", "week", "unknown"],
+      "description": "Precision of incident_datetime field.",
+      "default": "unknown"
+    },
+    "reported_datetime": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp when the incident was reported to authorities."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 255,
+      "description": "Short human-readable incident title. Auto-generated from type and location if not provided."
+    },
+    "description": {
+      "type": ["string", "null"],
+      "description": "Full narrative text of the incident. May be extracted from press release, media article, or scanner transcript."
+    },
+    "incident_type": {
+      "type": "string",
+      "description": "Primary offense or incident classification.",
+      "enum": [
+        "homicide",
+        "shooting",
+        "shots-fired",
+        "stabbing",
+        "assault",
+        "aggravated-assault",
+        "robbery",
+        "burglary",
+        "larceny",
+        "motor-vehicle-theft",
+        "arson",
+        "rape",
+        "sexual-assault",
+        "domestic-violence",
+        "dwi",
+        "drug-arrest",
+        "weapons-arrest",
+        "child-exploitation",
+        "fraud",
+        "identity-theft",
+        "traffic-crash",
+        "traffic-fatality",
+        "missing-person",
+        "fire",
+        "structure-fire",
+        "vehicle-fire",
+        "hazmat",
+        "warrant-arrest",
+        "fugitive-apprehension",
+        "civil-disturbance",
+        "trespassing",
+        "vandalism",
+        "animal-cruelty",
+        "environmental-violation",
+        "federal-indictment",
+        "federal-conviction",
+        "other",
+        "unknown"
+      ]
+    },
+    "incident_type_raw": {
+      "type": ["string", "null"],
+      "description": "Original offense classification string from source system before normalization."
+    },
+    "penal_law_charges": {
+      "type": "array",
+      "description": "Array of NYS Penal Law charge objects when available (from NYSP blotter, Nixle, press releases).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "statute": { "type": "string", "description": "e.g., PL 265.01" },
+          "section": { "type": "string" },
+          "subsection": { "type": ["string", "null"] },
+          "class": {
+            "type": "string",
+            "enum": ["A-felony", "B-felony", "C-felony", "D-felony", "E-felony", "A-misdemeanor", "B-misdemeanor", "violation", "infraction", "unknown"]
+          },
+          "description": { "type": "string", "description": "e.g., Criminal Possession of a Weapon 4th Degree" },
+          "count": { "type": "integer", "minimum": 1, "default": 1 }
+        },
+        "required": ["description"]
+      }
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"],
+      "description": "ACT severity classification. Derived from incident_type and source confidence."
+    },
+    "severity_rationale": {
+      "type": ["string", "null"],
+      "description": "Optional explanation of why this severity was assigned."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "developing", "resolved", "archived", "duplicate"],
+      "description": "Current lifecycle status of the incident record."
+    },
+    "locality": {
+      "type": "object",
+      "required": ["municipality", "county", "confidence"],
+      "description": "Geographic context of the incident.",
+      "properties": {
+        "address_raw": {
+          "type": ["string", "null"],
+          "description": "Raw address string from source before geocoding. Block-level or intersection acceptable."
+        },
+        "street": { "type": ["string", "null"] },
+        "city": { "type": ["string", "null"] },
+        "municipality": {
+          "type": "string",
+          "description": "Canonical municipality name from authority file.",
+          "enum": [
+            "City of Albany",
+            "City of Cohoes",
+            "City of Watervliet",
+            "Town of Berne",
+            "Town of Bethlehem",
+            "Town of Coeymans",
+            "Town of Colonie",
+            "Town of Guilderland",
+            "Town of Knox",
+            "Town of New Scotland",
+            "Town of Rensselaerville",
+            "Town of Westerlo",
+            "Village of Altamont",
+            "Village of Colonie",
+            "Village of Green Island",
+            "Village of Menands",
+            "Village of Ravena",
+            "Village of Voorheesville",
+            "Albany County (unincorporated)",
+            "Unknown"
+          ]
+        },
+        "neighborhood": {
+          "type": ["string", "null"],
+          "description": "Albany City neighborhood name if applicable (from APD patrol zone/beat data or GIS)."
+        },
+        "patrol_zone": {
+          "type": ["string", "null"],
+          "description": "APD patrol zone if applicable."
+        },
+        "beat": {
+          "type": ["string", "null"],
+          "description": "APD beat number if applicable."
+        },
+        "county": {
+          "type": "string",
+          "const": "Albany",
+          "description": "Always Albany for ACT incidents."
+        },
+        "state": {
+          "type": "string",
+          "const": "NY"
+        },
+        "coordinates": {
+          "type": ["object", "null"],
+          "description": "WGS84 coordinates. May be approximate per APD geocoding policy.",
+          "properties": {
+            "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+            "longitude": { "type": "number", "minimum": -180, "maximum": 180 }
+          },
+          "required": ["latitude", "longitude"]
+        },
+        "geocoding_method": {
+          "type": ["string", "null"],
+          "enum": ["apd-socrata", "arcgis-city", "arcgis-county", "nysp-blotter-location-code", "manual", "centroid", null],
+          "description": "How coordinates were determined."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "0.0-1.0 score reflecting confidence that this incident belongs to Albany County and the stated municipality. Factors: source credibility, location specificity, jurisdiction match."
+        },
+        "confidence_factors": {
+          "type": "array",
+          "description": "Signals that contributed to the confidence score.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "apd-agency-confirmed",
+              "acso-agency-confirmed",
+              "nysp-location-code-matched",
+              "nixle-agency-verified",
+              "municipality-in-title",
+              "municipality-in-body",
+              "talkgroup-matched",
+              "geocoded-within-county",
+              "patrol-zone-matched",
+              "source-is-official-government",
+              "cross-source-confirmed",
+              "address-parsed-successfully"
+            ]
+          }
+        }
+      }
+    },
+    "responding_agency": {
+      "type": ["string", "null"],
+      "description": "Primary responding agency ID from the canonical authority file.",
+      "examples": ["albany-city-pd", "albany-county-sheriff", "nysp-troop-g", "colonie-town-pd"]
+    },
+    "additional_agencies": {
+      "type": "array",
+      "description": "Additional agency IDs that responded or were involved.",
+      "items": { "type": "string" }
+    },
+    "arrests": {
+      "type": "array",
+      "description": "Arrest records associated with this incident.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "defendant_name": {
+            "type": ["string", "null"],
+            "description": "Full name of defendant. Only from official sources (press releases, blotters)."
+          },
+          "age": { "type": ["integer", "null"] },
+          "defendant_city": {
+            "type": ["string", "null"],
+            "description": "City of defendant residence from source."
+          },
+          "arrest_datetime": { "type": ["string", "null"], "format": "date-time" },
+          "arraignment_datetime": { "type": ["string", "null"], "format": "date-time" },
+          "arraignment_court": { "type": ["string", "null"] },
+          "arraigning_judge": { "type": ["string", "null"] },
+          "bail_amount": { "type": ["number", "null"] },
+          "bail_status": {
+            "type": ["string", "null"],
+            "enum": ["remanded", "released-on-bail", "released-on-recognizance", "appearance-ticket", "unknown", null]
+          },
+          "arresting_agency_id": { "type": ["string", "null"] },
+          "charges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "class": { "type": ["string", "null"] },
+                "statute": { "type": ["string", "null"] }
+              },
+              "required": ["description"]
+            }
+          }
+        }
+      }
+    },
+    "scanner_data": {
+      "type": ["object", "null"],
+      "description": "Metadata from scanner audio source if applicable.",
+      "properties": {
+        "talkgroup_id": { "type": ["integer", "null"] },
+        "talkgroup_tag": { "type": ["string", "null"] },
+        "broadcastify_feed_id": { "type": ["string", "null"] },
+        "openmhz_call_id": { "type": ["string", "null"] },
+        "transcript": { "type": ["string", "null"], "description": "Raw or cleaned transcript of dispatch audio." },
+        "confidence_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "description": "All source records that contributed to this incident.",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "source_type", "url", "retrieved_at"],
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "description": "Canonical source identifier from the source registry."
+          },
+          "source_type": {
+            "type": "string",
+            "enum": [
+              "official-open-data",
+              "official-press-release",
+              "official-blotter-pdf",
+              "official-website",
+              "official-email-digest",
+              "nixle",
+              "scanner-audio",
+              "scanner-transcript",
+              "media-rss",
+              "media-scrape",
+              "social-facebook",
+              "social-twitter",
+              "court-record",
+              "statistical-report"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Direct URL of the source document or article."
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When this source document was fetched."
+          },
+          "published_at": {
+            "type": ["string", "null"],
+            "format": "date-time",
+            "description": "When the source document was originally published."
+          },
+          "headline": {
+            "type": ["string", "null"],
+            "description": "Article headline or press release title."
+          },
+          "author": { "type": ["string", "null"] },
+          "outlet": {
+            "type": ["string", "null"],
+            "description": "Human-readable outlet name (e.g., CBS6 Albany, Times Union)."
+          },
+          "is_primary": {
+            "type": "boolean",
+            "default": false,
+            "description": "True if this is the authoritative/official source for the incident."
+          },
+          "credibility_tier": {
+            "type": "integer",
+            "enum": [1, 2, 3],
+            "description": "1=official government/LEA source, 2=established local media, 3=supplemental/unverified"
+          }
+        }
+      }
+    },
+    "media_coverage": {
+      "type": "array",
+      "description": "Media articles covering this incident (subset of sources with type media-*).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "outlet": { "type": "string" },
+          "url": { "type": "string", "format": "uri" },
+          "headline": { "type": "string" },
+          "published_at": { "type": ["string", "null"], "format": "date-time" }
+        },
+        "required": ["outlet", "url", "headline"]
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "Free-form tags for filtering and search.",
+      "items": { "type": "string" },
+      "examples": [["gun-violence", "give-initiative", "warrant-arrest", "drug-arrest"]]
+    },
+    "is_give_tracked": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if this incident is a shooting with injury or death in the City of Albany, making it reportable under the NYS GIVE initiative (DCJS monthly greenbook)."
+    },
+    "is_federal": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if this incident involves federal charges (FBI, DEA, ATF, USMS, HSI, USAO NDNY)."
+    },
+    "meta": {
+      "type": "object",
+      "description": "Processing metadata not for display.",
+      "properties": {
+        "ingest_version": { "type": "string" },
+        "source_hash": { "type": ["string", "null"], "description": "Hash of source content at time of ingest for change detection." },
+        "dedup_candidates": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "incident_ids of other records that may be duplicates of this one."
+        },
+        "review_flags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Flags requiring human review (e.g., low-confidence locality, possible duplicate)."
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

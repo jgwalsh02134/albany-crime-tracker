@@ -1,0 +1,335 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://albany.watch/schemas/source.schema.json",
+  "title": "ACT Source Registry Entry",
+  "description": "Canonical source definition for the Albany County Crime Tracker source registry. Each entry describes one data source that ACT ingests.",
+  "type": "object",
+  "required": [
+    "source_id",
+    "canonical_name",
+    "source_category",
+    "source_type",
+    "jurisdiction_level",
+    "is_operational_live",
+    "priority",
+    "endpoints"
+  ],
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "Stable kebab-case identifier. Never changes once assigned.",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "examples": ["apd-socrata-arrests", "nysp-troop-g-blotter", "cbs6-rss", "nixle-guilderland-pd"]
+    },
+    "canonical_name": {
+      "type": "string",
+      "description": "Full human-readable source name.",
+      "examples": ["APD Open Data Portal — Arrests by Neighborhood", "NYSP Troop G Daily Blotter PDFs"]
+    },
+    "short_name": {
+      "type": "string",
+      "description": "Short label for UI display.",
+      "maxLength": 40
+    },
+    "aliases": {
+      "type": "array",
+      "description": "Alternative names or abbreviations used in scanner traffic, press releases, or media that should map to this source.",
+      "items": { "type": "string" }
+    },
+    "source_category": {
+      "type": "string",
+      "enum": [
+        "official-open-data",
+        "official-blotter",
+        "official-press-release",
+        "official-website",
+        "official-email-digest",
+        "nixle",
+        "scanner-audio",
+        "scanner-calls-api",
+        "media-rss",
+        "media-scrape",
+        "social-media",
+        "court-records",
+        "statistical-report",
+        "gis-geocoding"
+      ],
+      "description": "Broad category of source type."
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "socrata-api",
+        "pdf-blotter",
+        "html-scrape",
+        "rss-feed",
+        "email-listserv",
+        "nixle-page-scrape",
+        "broadcastify-stream",
+        "openmhz-api",
+        "facebook-page",
+        "twitter-feed",
+        "arcgis-rest-api",
+        "static-download",
+        "manual"
+      ],
+      "description": "Technical access method."
+    },
+    "owner_agency_id": {
+      "type": ["string", "null"],
+      "description": "agency_id from the canonical agency authority file that owns or produces this source.",
+      "examples": ["albany-city-pd", "nysp-troop-g", "albany-county-sheriff"]
+    },
+    "jurisdiction_level": {
+      "type": "string",
+      "enum": ["municipal-city", "municipal-town", "municipal-village", "county", "state", "state-thruway", "state-park", "state-campus", "federal", "railroad", "multi-agency", "media", "community"]
+    },
+    "municipalities_covered": {
+      "type": "array",
+      "description": "Albany County municipalities whose incidents this source covers.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "City of Albany",
+          "City of Cohoes",
+          "City of Watervliet",
+          "Town of Berne",
+          "Town of Bethlehem",
+          "Town of Coeymans",
+          "Town of Colonie",
+          "Town of Guilderland",
+          "Town of Knox",
+          "Town of New Scotland",
+          "Town of Rensselaerville",
+          "Town of Westerlo",
+          "Village of Altamont",
+          "Village of Colonie",
+          "Village of Green Island",
+          "Village of Menands",
+          "Village of Ravena",
+          "Village of Voorheesville",
+          "Albany County (unincorporated)",
+          "All Albany County"
+        ]
+      }
+    },
+    "county": {
+      "type": "string",
+      "const": "Albany"
+    },
+    "state": {
+      "type": "string",
+      "const": "NY"
+    },
+    "is_albany_county_primary": {
+      "type": "boolean",
+      "description": "True if this source is primarily an Albany County source (vs. regional or statewide)."
+    },
+    "is_operational_live": {
+      "type": "boolean",
+      "description": "True if this source produces real-time or near-real-time incident data (as opposed to statistical/historical)."
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 25,
+      "description": "Implementation priority rank. 1=CRITICAL, 5=HIGH, 10=MEDIUM, 20+=LOW."
+    },
+    "implementation_status": {
+      "type": "string",
+      "enum": ["implemented", "partial", "planned", "blocked", "not-applicable"],
+      "description": "Current integration status in the ACT repo.",
+      "default": "planned"
+    },
+    "implementation_notes": {
+      "type": ["string", "null"],
+      "description": "Notes on current integration state, blockers, or partial implementation details."
+    },
+    "endpoints": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Access endpoints for this source.",
+      "items": {
+        "type": "object",
+        "required": ["url", "endpoint_type"],
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Base URL or URL pattern for this endpoint."
+          },
+          "endpoint_type": {
+            "type": "string",
+            "enum": ["api-json", "api-pdf", "rss", "html-page", "email", "stream", "bulk-download", "pattern"]
+          },
+          "url_pattern": {
+            "type": ["string", "null"],
+            "description": "URL pattern with {variables} if endpoint is parameterized.",
+            "examples": [
+              "https://publicapps.troopers.ny.gov/media/TroopG/Media{day}{shift}.pdf",
+              "https://apd-data.albanyny.gov/resource/{dataset_id}.json"
+            ]
+          },
+          "query_params": {
+            "type": ["object", "null"],
+            "description": "Default query parameters for API endpoints.",
+            "additionalProperties": { "type": "string" }
+          },
+          "auth_required": {
+            "type": "boolean",
+            "default": false
+          },
+          "auth_type": {
+            "type": ["string", "null"],
+            "enum": ["api-key", "oauth", "basic", "subscription", "paid", null]
+          },
+          "notes": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "poll_config": {
+      "type": ["object", "null"],
+      "description": "Polling configuration for scheduled ingestion.",
+      "properties": {
+        "frequency_minutes": {
+          "type": "integer",
+          "description": "How often to poll this source in minutes.",
+          "examples": [15, 60, 1440]
+        },
+        "schedule_cron": {
+          "type": ["string", "null"],
+          "description": "Cron expression if non-uniform schedule (e.g., NYSP blotter twice daily)."
+        },
+        "expected_update_times_utc": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Known publication times in UTC for scheduled sources."
+        },
+        "change_detection_method": {
+          "type": "string",
+          "enum": ["content-hash", "etag", "last-modified", "row-count-diff", "full-diff", "always-fetch"],
+          "description": "How to detect new content without over-fetching."
+        }
+      }
+    },
+    "data_format": {
+      "type": "object",
+      "description": "Description of the data format for the ingest pipeline.",
+      "properties": {
+        "primary_format": {
+          "type": "string",
+          "enum": ["json", "pdf", "html", "rss-xml", "csv", "email-text", "audio-stream", "shapefile"]
+        },
+        "parser_notes": {
+          "type": ["string", "null"],
+          "description": "Notes for the parser implementation."
+        },
+        "field_mappings": {
+          "type": ["object", "null"],
+          "description": "Source field names mapped to ACT incident schema fields.",
+          "additionalProperties": { "type": "string" }
+        },
+        "incident_type_map": {
+          "type": ["object", "null"],
+          "description": "Source-specific incident type values mapped to ACT incident_type enum values.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "credibility_tier": {
+      "type": "integer",
+      "enum": [1, 2, 3],
+      "description": "1=official government or LEA source, 2=established local media, 3=supplemental or community source"
+    },
+    "content_types": {
+      "type": "array",
+      "description": "Types of content this source produces.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "arrests",
+          "crime-reports",
+          "calls-for-service",
+          "press-releases",
+          "court-dispositions",
+          "indictments",
+          "scanner-dispatch",
+          "traffic-crashes",
+          "shooting-data",
+          "sex-offender-registry",
+          "crime-statistics",
+          "media-narrative",
+          "community-alerts",
+          "fire-incidents",
+          "ems-incidents",
+          "gis-boundaries"
+        ]
+      }
+    },
+    "geographic_notes": {
+      "type": ["string", "null"],
+      "description": "Notes on geographic coverage quirks or disambiguation needed for this source."
+    },
+    "dispatch_psap": {
+      "type": ["string", "null"],
+      "description": "PSAP that dispatches this agency, if applicable.",
+      "enum": [
+        "acso-e911",
+        "albany-city-pd-comm",
+        "colonie-pd-comm",
+        "bethlehem-pd-comm",
+        "guilderland-pd-comm",
+        null
+      ]
+    },
+    "p25_talkgroups": {
+      "type": "array",
+      "description": "Albany County P25 talkgroup IDs associated with this agency/source.",
+      "items": { "type": "integer" }
+    },
+    "broadcastify_feed_ids": {
+      "type": "array",
+      "description": "Broadcastify feed IDs that cover this source's jurisdiction.",
+      "items": { "type": "string" }
+    },
+    "nixle_url": {
+      "type": ["string", "null"],
+      "description": "Nixle public message archive URL for this agency.",
+      "format": "uri"
+    },
+    "social_media": {
+      "type": "object",
+      "description": "Social media presence for this source.",
+      "properties": {
+        "facebook": { "type": ["string", "null"], "format": "uri" },
+        "twitter": { "type": ["string", "null"] },
+        "nextdoor": { "type": ["string", "null"], "format": "uri" }
+      }
+    },
+    "contact": {
+      "type": "object",
+      "description": "Contact information for this source.",
+      "properties": {
+        "phone_main": { "type": ["string", "null"] },
+        "phone_nonemergency": { "type": ["string", "null"] },
+        "phone_dispatch": { "type": ["string", "null"] },
+        "email": { "type": ["string", "null"], "format": "email" },
+        "address": { "type": ["string", "null"] }
+      }
+    },
+    "last_successful_ingest": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Timestamp of last successful data retrieval. Runtime field — not stored in static registry."
+    },
+    "health_status": {
+      "type": ["string", "null"],
+      "enum": ["healthy", "degraded", "down", "unknown", null],
+      "description": "Current health status. Runtime field."
+    },
+    "notes": {
+      "type": ["string", "null"],
+      "description": "Free-form notes about this source, quirks, limitations, or future changes."
+    }
+  },
+  "additionalProperties": false
+}
