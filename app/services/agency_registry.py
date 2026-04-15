@@ -140,7 +140,9 @@ def resolve_agency(text: str) -> Optional[dict[str, Any]]:
       1. exact short_name match (case-insensitive),
       2. exact canonical_name match,
       3. alias contains-match (substring of the normalized text),
-      4. None.
+      4. canonical/short name as a substring of the text (catches
+         "Bethlehem PD on scene" → bethlehem_pd),
+      5. None.
     """
     needle = _norm(text)
     if not needle:
@@ -156,4 +158,65 @@ def resolve_agency(text: str) -> Optional[dict[str, Any]]:
             an = _norm(str(alias))
             if an and (an == needle or an in needle):
                 return a
+    for a in all_agencies():
+        sn = _norm(str(a.get("short_name") or ""))
+        if sn and sn in needle:
+            return a
+        cn = _norm(str(a.get("canonical_name") or ""))
+        if cn and cn in needle:
+            return a
     return None
+
+
+# Talkgroup-tag fields scanner adapters set when ingesting calls from
+# RadioReference, Broadcastify, or OpenMHz. Used to derive an agency
+# without re-implementing per-source logic in api_server.
+_CALL_TALKGROUP_FIELDS = (
+    "talkgroup_tag",
+    "talkgroup_description",
+    "tgAlpha",
+    "tgDescr",
+    "talkgroupAlpha",
+    "talkgroupDescription",
+    "feed_name",
+    "channel",
+    "source",
+)
+
+
+def resolve_agency_from_call(call: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Best-effort agency resolution for a scanner call dict.
+
+    Tries each known talkgroup-tag field in turn, returning the first
+    registry hit. Defensive against non-dict input — returns None instead
+    of raising — so the scanner pipeline never breaks if a call payload
+    is malformed.
+    """
+    if not isinstance(call, dict):
+        return None
+    for field in _CALL_TALKGROUP_FIELDS:
+        v = call.get(field)
+        if not v:
+            continue
+        a = resolve_agency(str(v))
+        if a:
+            return a
+    return None
+
+
+def call_canonical_agency_summary(call: dict[str, Any]) -> dict[str, str]:
+    """Return a small, stringifiable summary of the canonical agency for a
+    scanner call. Used by api_server to inject canonical agency identity
+    into Whisper prompts and the structured analysis prompt's
+    local_reference_context. Empty values when no agency resolves so the
+    caller can safely string-concat without conditional logic.
+    """
+    a = resolve_agency_from_call(call)
+    if not a:
+        return {"agency_id": "", "short_name": "", "canonical_name": "", "agency_type": ""}
+    return {
+        "agency_id": str(a.get("agency_id") or ""),
+        "short_name": str(a.get("short_name") or ""),
+        "canonical_name": str(a.get("canonical_name") or ""),
+        "agency_type": str(a.get("agency_type") or ""),
+    }

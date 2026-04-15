@@ -6144,15 +6144,36 @@ def _scanner_transcribe_prompt(call: dict[str, Any]) -> str:
 
     Returns the generic base prompt when discipline cannot be determined,
     so unknown/new talkgroups never regress below the prior behavior.
+
+    When the canonical agency registry resolves the call to a known agency
+    (e.g. "Bethlehem PD" → bethlehem_pd), append the canonical short name
+    so Whisper biases toward correct unit names when transcribing
+    abbreviations and call signs.
     """
     disc = _scanner_discipline_from_call(call)
     if disc == "police":
-        return _SCANNER_TRANSCRIBE_PROMPT_POLICE
-    if disc == "fire":
-        return _SCANNER_TRANSCRIBE_PROMPT_FIRE
-    if disc == "ems":
-        return _SCANNER_TRANSCRIBE_PROMPT_EMS
-    return _SCANNER_TRANSCRIBE_PROMPT_BASE
+        base = _SCANNER_TRANSCRIBE_PROMPT_POLICE
+    elif disc == "fire":
+        base = _SCANNER_TRANSCRIBE_PROMPT_FIRE
+    elif disc == "ems":
+        base = _SCANNER_TRANSCRIBE_PROMPT_EMS
+    else:
+        base = _SCANNER_TRANSCRIBE_PROMPT_BASE
+
+    # Canonical agency hint: defensive — any registry failure leaves the
+    # base prompt unchanged.
+    try:
+        from app.services.agency_registry import call_canonical_agency_summary
+        ag = call_canonical_agency_summary(call)
+        if ag.get("short_name") or ag.get("canonical_name"):
+            hint = f" Agency: {ag.get('canonical_name') or ag.get('short_name')}"
+            if ag.get("short_name") and ag["short_name"].lower() != (ag.get("canonical_name") or "").lower():
+                hint += f" ({ag['short_name']})"
+            hint += "."
+            return base + hint
+    except Exception:
+        pass
+    return base
 
 
 def _scanner_call_local_reference_context(call: dict[str, Any]) -> str:
@@ -6166,6 +6187,23 @@ def _scanner_call_local_reference_context(call: dict[str, Any]) -> str:
         f"matched_location={call.get('matched_location') or ''}",
         f"municipality={call.get('municipality') or ''}",
     ]
+    # Canonical agency identity from data/agencies.json. When the registry
+    # resolves the talkgroup, hand the structured analysis prompt the
+    # canonical short_name + agency_id so the model's output can attribute
+    # incidents consistently across calls instead of guessing each time.
+    try:
+        from app.services.agency_registry import call_canonical_agency_summary
+        ag = call_canonical_agency_summary(call)
+        if ag.get("agency_id"):
+            bits.append(f"canonical_agency_id={ag['agency_id']}")
+        if ag.get("short_name"):
+            bits.append(f"canonical_agency_short_name={ag['short_name']}")
+        if ag.get("canonical_name"):
+            bits.append(f"canonical_agency_name={ag['canonical_name']}")
+        if ag.get("agency_type"):
+            bits.append(f"canonical_agency_type={ag['agency_type']}")
+    except Exception:
+        pass
     unit_ids = call.get("unit_ids")
     if isinstance(unit_ids, list) and unit_ids:
         bits.append("unit_ids=" + ",".join(str(x) for x in unit_ids[:12] if str(x).strip()))
