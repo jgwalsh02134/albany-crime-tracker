@@ -1802,6 +1802,16 @@
       link: r.source_url || "",
       source: r.source_name || "",
       sources: r.source_name ? [r.source_name] : [],
+      // Backend-persisted multi-source provenance (commit da1a435). Element
+      // shape: {name, url, agency_id?, first_seen_at}. Preferred over the
+      // client-side _linked_sources clustering when present so the +N
+      // sources pill reflects durable persisted data instead of recomputed
+      // render-time grouping. Falls through to null when the row was
+      // persisted before the column existed; the renderer falls back to
+      // _linked_sources in that case.
+      linked_sources: Array.isArray(r.sources) && r.sources.length
+        ? r.sources
+        : null,
       latitude: r.latitude,
       longitude: r.longitude,
       municipality: r.municipality || "",
@@ -2160,10 +2170,18 @@
     html += '<div class="feed-meta">';
     html += '<span class="feed-meta-pill feed-meta-pill--area"><span class="material-icons feed-meta-icon">location_on</span>' + esc(area) + '</span>';
     html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(sourceName) + '</span>';
-    // Linked-sources pill: when _dedupeLiveItems clustered multiple sources
-    // into this card, surface the additional source count so users know
-    // the incident is corroborated. Tooltip carries the full name list.
-    var linked = Array.isArray(item._linked_sources) ? item._linked_sources : null;
+    // Linked-sources pill: surfaces "+N sources" when an incident is
+    // corroborated. Source-of-truth preference order:
+    //   1. item.linked_sources — backend-persisted JSONB array
+    //      (commit da1a435). Preferred when present so the pill reflects
+    //      durable data and survives render-time recomputation.
+    //   2. item._linked_sources — client-side _dedupeLiveItems cluster
+    //      output. Fallback for rows persisted before the backend column
+    //      existed, and for any feed surface that did not pass through
+    //      the backend incident projection.
+    var linked = (Array.isArray(item.linked_sources) && item.linked_sources.length)
+      ? item.linked_sources
+      : (Array.isArray(item._linked_sources) ? item._linked_sources : null);
     if (linked && linked.length > 1) {
       var others = linked.length - 1;
       var names = linked.map(function (s) { return s.name || ""; }).filter(Boolean).join(", ");
