@@ -229,6 +229,17 @@
     <section class="view" id="viewScanner">
       <div class="view-scroll">
 
+        <!-- Agency / region channel preset strip. Backed by
+             /api/scanner/channels (commit c25379c). Populated by
+             initScannerChannelChips() on first scanner-tab render; the
+             "All channels" pill is the default and ships in the HTML so
+             the surface is never blank if the channels endpoint is
+             slow or unavailable. -->
+        <div class="sc-channel-row" id="scannerChannelChips" role="tablist" aria-label="Scanner channel">
+          <button type="button" class="sc-channel-chip active"
+                  data-scanner-channel="" role="tab" aria-selected="true">All channels</button>
+        </div>
+
         <div class="sc-filters" id="scannerFilterChips" role="group" aria-label="Filter by service">
           <button type="button" class="sc-filter active" data-scanner-filter="all">All</button>
           <button type="button" class="sc-filter sc-filter--police" data-scanner-filter="police">Police</button>

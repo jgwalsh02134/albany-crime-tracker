@@ -1741,6 +1741,61 @@ a:hover { text-decoration: underline; }
 .legend-dot.other { background: var(--accent); }
 
 /* ===== NEW SCANNER (sc-*) ===== */
+/* Scanner channel preset strip — agency / region rollups from
+   /api/scanner/channels (commit c25379c). Sits above the discipline
+   filter row. Horizontal scroll on mobile so the full registry is
+   reachable without truncating any chip. ACT-owned UI; the legacy
+   outbound OpenMHz / Broadcastify links remain at the bottom of the
+   scanner view as fallback only. */
+.sc-channel-row {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.sc-channel-row::-webkit-scrollbar { display: none; }
+.sc-channel-chip {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.sc-channel-chip:hover { color: var(--text); }
+.sc-channel-chip.active {
+  background: color-mix(in srgb, var(--brand-primary, var(--accent)) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--brand-primary, var(--accent)) 40%, transparent);
+  color: var(--brand-primary, var(--accent));
+}
+/* Per-card channel attribution pill (small, only shown on cards in the
+   "All channels" view so the user can see which channel a call came
+   from without filtering first). Suppressed when the active channel
+   matches the call's channel (would be redundant). */
+.sc-card-channel {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--brand-primary, var(--accent)) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand-primary, var(--accent)) 25%, transparent);
+  color: var(--brand-primary, var(--accent));
+}
+
 .sc-filters {
   display: flex;
   gap: 0;

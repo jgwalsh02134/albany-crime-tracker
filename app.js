@@ -388,6 +388,7 @@
 
     fetchIncidents();
     setTimeout(fetchScannerCalls, 900);
+    setTimeout(initScannerChannelChips, 1100);
     setTimeout(initOpenMhzRealtime, 2000);  // Start real-time after initial fetch
     setTimeout(fetchScannerTalkgroups, 1400);
     setTimeout(fetchSummarySnapshot, 1800);
@@ -3536,9 +3537,92 @@
     }
   }
 
-  function fetchScannerCalls() {
-    (apiClient ? apiClient.getScannerCalls() : fetch(API + "/api/scanner/calls").then(ok))
+  // ── SCANNER CHANNEL PRESETS ─────────────────────────────────
+  // _activeScannerChannel = null means "all channels" (no filter).
+  // When set to a channel_id from /api/scanner/channels, fetchScannerCalls()
+  // appends ?channel=<id> so the backend returns only calls whose
+  // talkgroup belongs to that channel.
+  var _activeScannerChannel = null;
+  var _scannerChannelsCache = null;
+
+  function fetchScannerChannels() {
+    if (_scannerChannelsCache) return Promise.resolve(_scannerChannelsCache);
+    return fetch(API + "/api/scanner/channels").then(ok)
       .then(function (data) {
+        if (!data || data.status !== "ok") return null;
+        _scannerChannelsCache = data;
+        return data;
+      })
+      .catch(function () { return null; });
+  }
+
+  function _scannerChannelLabel(channelId) {
+    if (!_scannerChannelsCache) return "";
+    var found = (_scannerChannelsCache.channels || []).find(function (c) {
+      return c.channel_id === channelId;
+    });
+    return found ? (found.label || "") : "";
+  }
+
+  function initScannerChannelChips() {
+    var host = document.getElementById("scannerChannelChips");
+    if (!host) return;
+    fetchScannerChannels().then(function (data) {
+      if (!data || !Array.isArray(data.channels) || !data.channels.length) return;
+      // Sort: high priority first, then medium, then low. Within a tier,
+      // preserve registry order so channels feel stable across page loads.
+      var rank = { high: 0, medium: 1, low: 2 };
+      var sorted = data.channels.slice().sort(function (a, b) {
+        var ra = rank[a.priority] != null ? rank[a.priority] : 3;
+        var rb = rank[b.priority] != null ? rank[b.priority] : 3;
+        return ra - rb;
+      });
+      var html = '<button type="button" class="sc-channel-chip'
+               + (_activeScannerChannel == null ? " active" : "")
+               + '" data-scanner-channel="" role="tab" aria-selected="'
+               + (_activeScannerChannel == null ? "true" : "false")
+               + '">All channels</button>';
+      sorted.forEach(function (c) {
+        var isActive = (_activeScannerChannel === c.channel_id);
+        html += '<button type="button" class="sc-channel-chip'
+              + (isActive ? " active" : "")
+              + '" data-scanner-channel="' + escAttr(c.channel_id)
+              + '" data-scanner-channel-priority="' + escAttr(c.priority || "")
+              + '" role="tab" aria-selected="' + (isActive ? "true" : "false")
+              + '" title="' + escAttr((c.disciplines || []).join(", ") + " · " + (c.region || ""))
+              + '">' + esc(c.label) + '</button>';
+      });
+      host.innerHTML = html;
+      // Click handler — single delegated listener so we don't re-bind
+      // on every render.
+      if (!host._actChannelBound) {
+        host.addEventListener("click", function (e) {
+          var btn = e.target.closest && e.target.closest("[data-scanner-channel]");
+          if (!btn || !host.contains(btn)) return;
+          var raw = btn.getAttribute("data-scanner-channel") || "";
+          _activeScannerChannel = raw || null;
+          // Re-render chip active states.
+          host.querySelectorAll("[data-scanner-channel]").forEach(function (b) {
+            var active = (b === btn);
+            b.classList.toggle("active", active);
+            b.setAttribute("aria-selected", active ? "true" : "false");
+          });
+          fetchScannerCalls();
+        });
+        host._actChannelBound = true;
+      }
+    });
+  }
+
+  function fetchScannerCalls() {
+    // When a channel is selected, bypass apiClient (which doesn't know
+    // about the new param) and use the raw fetch URL with ?channel=<id>.
+    var url = API + "/api/scanner/calls"
+            + (_activeScannerChannel ? "?channel=" + encodeURIComponent(_activeScannerChannel) : "");
+    var req = (_activeScannerChannel || !apiClient)
+      ? fetch(url).then(ok)
+      : apiClient.getScannerCalls();
+    req.then(function (data) {
         var calls = (data && data.calls && data.calls.length > 0) ? data.calls : [];
         var sourcesUsed = data && data.sources_used ? data.sources_used : [];
 
@@ -3920,6 +4004,15 @@
       html += '<div class="sc-card-agency-col">';
       html += '<span class="sc-card-agency">' + esc(dept.agency || dept.name) + '</span>';
       if (dept.dept && dept.dept !== dept.agency) html += '<span class="sc-card-dept">' + esc(dept.dept) + '</span>';
+      // Channel attribution pill (commit c25379c). Backend stamps
+      // channel_label on every call when its talkgroup matches a
+      // channel in data/scanner_channels.json. We only show it when
+      // the user is NOT already filtered to that channel — otherwise
+      // every card would carry the same redundant pill.
+      if (call.channel_label && _activeScannerChannel !== call.channel_id) {
+        html += '<span class="sc-card-channel" title="Channel">'
+              + esc(call.channel_label) + '</span>';
+      }
       html += '</div>';
       if (audioUrl) {
         html += '<button type="button" class="sc-row-play scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" data-sc-idx="' + idx + '" title="Play">';
