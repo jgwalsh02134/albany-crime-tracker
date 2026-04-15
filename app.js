@@ -1824,8 +1824,15 @@
     var st = (r.source_type || "").toLowerCase();
     var v = (r.verification_level || "").toLowerCase();
     var sn = (r.source_name || "").toLowerCase();
-    // Scanner items belong in the Scanner tab, not the crime feed
-    if (st === "scanner" || v === "scanner" || sn.indexOf("scanner") !== -1) return "scanner_only";
+    var isScanner = (st === "scanner" || v === "scanner" || sn.indexOf("scanner") !== -1);
+    // Operational lift (commit landing this pass): scanner rows that the
+    // backend marks is_actionable_live=true (shooting / pursuit / structure
+    // fire / etc.) belong on Live; only non-actionable scanner chatter stays
+    // in scanner_only. Backend sets the flag in
+    // app/services/incident_repository._is_actionable_for_live; older API
+    // responses missing the field fall through to the prior blanket
+    // exclusion so legacy behavior is preserved.
+    if (isScanner && r.is_actionable_live !== true) return "scanner_only";
     if (st === "open_data") return "verified";
     if (st === "official" || v === "official") return "official";
     if (v === "multi_source") return "verified";
@@ -1871,6 +1878,10 @@
       // v7 redesign to lead the Live card meta row with operational
       // attribution ("APD") rather than just the news outlet.
       responding_agency_id: r.responding_agency_id || null,
+      // Operational-actionability flag stamped by the backend at
+      // projection time. Tells _feedTabFromRecord whether a scanner row
+      // is allowed onto Live or stays in scanner_only.
+      is_actionable_live: r.is_actionable_live === true,
       source_type: r.source_type || "",
       source_type_label: _sourceTypeLabel(r.source_type || ""),
       source_type_explanation: r.source_type_explanation || "",
@@ -1907,15 +1918,18 @@
     var tid = setTimeout(function () {
       ctrl.abort();
     }, CRIMES_FETCH_MS);
+    // Live tab requests sort_by=operational (commit landing this pass) so
+    // the backend ranks actionable incidents first and the timeline
+    // becomes incident-first instead of strictly chronological.
     var params = {
       limit: 180,
-      sort_by: "newest",
+      sort_by: "operational",
       start_date: homeWindowStartIso()
     };
     (apiClient && apiClient.getPersistedIncidents
       ? apiClient.getPersistedIncidents(params)
       : fetch(
-          API + "/api/incidents?limit=180&sort_by=newest&start_date=" + encodeURIComponent(params.start_date),
+          API + "/api/incidents?limit=180&sort_by=operational&start_date=" + encodeURIComponent(params.start_date),
           { signal: ctrl.signal }
         ).then(ok))
       .finally(function () {

@@ -83,6 +83,83 @@ def _norm_text(value: str) -> str:
     return " ".join((value or "").lower().strip().split())
 
 
+# Lightweight operational-keyword set used to qualify scanner rows for the
+# Live tab. Mirrors the keyword vocabulary in
+# api_server._scanner_call_has_actionable_incident, without the circular
+# import. Kept short on purpose — anything off this list does NOT promote a
+# scanner row into Live, even if the article text is suggestive. The strict
+# pipeline already rejects most non-incident scanner chatter upstream.
+_LIVE_ACTIONABLE_KEYWORDS = (
+    "shooting", "shots fired", "shot ", "stabbing", "stabbed",
+    "pursuit", "chase", "standoff", "barricade", "swat", "hostage",
+    "burglary", "robbery", "assault", "domestic",
+    "structure fire", "working fire", "rescue", "entrapment",
+    "overdose", "cardiac arrest", "unresponsive",
+    "mvc", "mva", "rollover", "crash",
+    "officer down", "officer involved", "ois",
+    "missing", "amber alert", "abduction",
+    "homicide", "fatal", "deceased",
+    "alarm", "traffic stop",
+)
+
+_LIVE_ACTIONABLE_HIGH_SEVERITY = frozenset(("critical", "high"))
+
+
+def _is_actionable_for_live(item: dict[str, Any]) -> bool:
+    """True when this persisted incident row should be eligible for the
+    operational Live lane.
+
+    Decision tree:
+      1. Non-scanner rows (RSS / open_data / official) are always eligible
+         — those have already passed the strict pipeline upstream and
+         carry editorial attribution that's safe to surface.
+      2. Scanner rows must be NON-conventional (le_directory rows etc. stay
+         in the Scanner tab) AND meet at least one of:
+            - raw_payload._scanner_critical_live or _scanner_recent_live
+              flag set by the upstream actionability check,
+            - severity in {critical, high},
+            - title/description contains a keyword from
+              _LIVE_ACTIONABLE_KEYWORDS.
+      3. Anything else stays out of Live (returns False) so chatter stays
+         in the Scanner tab.
+
+    The function is pure and defensive — never raises, always returns bool.
+    """
+    raw_payload = item.get("raw_payload") if isinstance(item.get("raw_payload"), dict) else {}
+    source_type = (item.get("source_type") or "").lower()
+    verification = (item.get("verification_level") or "").lower()
+    source_name = (item.get("source_name") or "").lower()
+
+    is_scanner = (
+        source_type == "scanner"
+        or verification == "scanner"
+        or "scanner" in source_name
+        or bool(raw_payload.get("_scanner_call"))
+    )
+
+    if not is_scanner:
+        return True
+
+    # Scanner-row gates.
+    if _is_scanner_conventional_stored_row(raw_payload):
+        return False
+    if raw_payload.get("_scanner_critical_live") or raw_payload.get("_scanner_recent_live"):
+        return True
+    severity = (item.get("severity") or "").lower()
+    if severity in _LIVE_ACTIONABLE_HIGH_SEVERITY:
+        return True
+    blob = " ".join(
+        str(item.get(k) or "")
+        for k in ("title", "description")
+    ).lower()
+    raw_blob = " ".join(
+        str(raw_payload.get(k) or "")
+        for k in ("title", "description", "summary")
+    ).lower()
+    combined = blob + " " + raw_blob
+    return any(kw in combined for kw in _LIVE_ACTIONABLE_KEYWORDS)
+
+
 def _time_bucket(dt: Optional[datetime], minutes: int) -> str:
     if dt is None:
         return ""
@@ -331,7 +408,7 @@ def _to_orm(record: IncidentRecord, raw_payload: dict[str, Any]) -> IncidentORM:
 
 def _to_public_dict(record: IncidentRecord, raw_payload: dict[str, Any], *, created_at: Optional[datetime] = None) -> dict[str, Any]:
     now = created_at or datetime.utcnow()
-    return {
+    out = {
         "id": record.id,
         "external_id": record.external_ref or record.id,
         "title": record.title,
@@ -358,6 +435,8 @@ def _to_public_dict(record: IncidentRecord, raw_payload: dict[str, Any], *, crea
         "created_at": now.isoformat(),
         "updated_at": now.isoformat(),
     }
+    out["is_actionable_live"] = _is_actionable_for_live(out)
+    return out
 
 
 def _diff_minutes(a: Optional[datetime], b: Optional[datetime]) -> float:
@@ -887,6 +966,12 @@ async def query_incidents(
                     or needle in _norm_text(it.get("source_name") or "")
                     or needle in _norm_text(it.get("incident_type") or "")
                 ]
+        # Backstop: ensure every item carries is_actionable_live before
+        # ranking / returning. Memory-path items + post-merge items may
+        # not yet have it stamped from upstream projections.
+        for it in out:
+            if "is_actionable_live" not in it:
+                it["is_actionable_live"] = _is_actionable_for_live(it)
         mode = (sort_by or "newest").lower()
         if mode == "severity":
             out = sorted(
@@ -908,6 +993,20 @@ async def query_incidents(
                 out,
                 key=lambda it: (
                     _priority_score(it),
+                    str(it.get("occurred_at") or it.get("published_at") or ""),
+                ),
+                reverse=True,
+            )
+        elif mode == "operational":
+            # Live-tab ordering: actionable rows first, then by severity,
+            # then by recency. Stable enough that the same input always
+            # produces the same order; relies only on fields already
+            # projected onto every row.
+            out = sorted(
+                out,
+                key=lambda it: (
+                    1 if it.get("is_actionable_live") else 0,
+                    _severity_rank(str(it.get("severity") or "")),
                     str(it.get("occurred_at") or it.get("published_at") or ""),
                 ),
                 reverse=True,
@@ -1030,6 +1129,11 @@ async def query_incidents(
                 }
                 for r in rows
             ]
+            # Stamp operational-actionability per row. Computed at projection
+            # time so /api/incidents consumers (notably the Live tab) can
+            # rank and filter without the frontend re-deriving the rule.
+            for it in items:
+                it["is_actionable_live"] = _is_actionable_for_live(it)
             items = [
                 it for it in items
                 if not _is_scanner_conventional_stored_row(it.get("raw_payload"))
