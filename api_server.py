@@ -6499,6 +6499,83 @@ def _scanner_transcribe_prompt(call: dict[str, Any]) -> str:
     return base
 
 
+def _stamp_attribution_on_analysis(
+    analysis: Any,
+    call_or_feed: dict[str, Any],
+) -> Any:
+    """Decorate a scanner-analysis result dict with channel + canonical-
+    agency attribution so downstream consumers (the in-memory whisper
+    cache, incident extraction, future UI) can read attribution
+    directly from the analysis instead of re-deriving from the source
+    call.
+
+    Composes the same identity bits the channel-aware Whisper prompt
+    (commit e0a4cef) and structured-analysis context (commit c5c92c8)
+    already see. Idempotent — calling twice produces the same result.
+    Defensive — any registry/import failure leaves the analysis dict
+    unchanged.
+
+    Returns the analysis dict (mutated in place AND returned for
+    chaining). Pass-through when analysis is not a dict so the function
+    is safe to call on None / error responses.
+    """
+    if not isinstance(analysis, dict):
+        return analysis
+    if not isinstance(call_or_feed, dict):
+        return analysis
+    attribution: dict[str, Any] = {}
+    try:
+        chan = _scanner_channel_for_call(call_or_feed)
+        if chan:
+            cid = str(chan.get("channel_id") or "")
+            label = str(chan.get("label") or "")
+            region = str(chan.get("region") or "")
+            disciplines = [
+                str(d) for d in (chan.get("disciplines") or [])
+                if isinstance(d, str) and d
+            ]
+            if cid:
+                attribution["channel_id"] = cid
+            if label:
+                attribution["channel_label"] = label
+            if disciplines:
+                attribution["channel_disciplines"] = disciplines
+            if region:
+                attribution["channel_region"] = region
+    except Exception:
+        pass
+    try:
+        from app.services.agency_registry import call_canonical_agency_summary
+        ag = call_canonical_agency_summary(call_or_feed)
+        # Normalize summary keys so the attribution shape is flat and
+        # consistent: agency_id / agency_short_name / agency_canonical_name
+        # / agency_type. (call_canonical_agency_summary returns
+        # agency_id / short_name / canonical_name / agency_type.)
+        if ag.get("agency_id"):
+            attribution["agency_id"] = ag["agency_id"]
+        if ag.get("short_name"):
+            attribution["agency_short_name"] = ag["short_name"]
+        if ag.get("canonical_name"):
+            attribution["agency_canonical_name"] = ag["canonical_name"]
+        if ag.get("agency_type"):
+            attribution["agency_type"] = ag["agency_type"]
+    except Exception:
+        pass
+    # Stream-monitor path has no talkgroup but does carry feed_id /
+    # feed_name / feed_priority — preserve those when present so the
+    # attribution block is never empty for live-stream alerts.
+    for feed_key in ("feed_id", "feed_name", "feed_priority"):
+        v = call_or_feed.get(feed_key)
+        if v not in (None, ""):
+            attribution[feed_key] = v
+
+    if attribution:
+        existing = analysis.get("attribution") if isinstance(analysis.get("attribution"), dict) else {}
+        merged = {**existing, **attribution}
+        analysis["attribution"] = merged
+    return analysis
+
+
 def _scanner_call_local_reference_context(call: dict[str, Any]) -> str:
     bits = [
         f"talkgroup_num={call.get('talkgroup_num') or call.get('talkgroupID') or ''}",
@@ -6675,6 +6752,10 @@ async def scanner_transcribe(request: Request):
                     municipality_hint=_scanner_call_municipality_hint(c),
                     local_reference_context=_scanner_call_local_reference_context(c),
                 )
+                # Stamp channel + agency attribution on the analysis dict
+                # so the cached / persisted result carries operational
+                # identity forward without re-derivation downstream.
+                analysis = _stamp_attribution_on_analysis(analysis, c)
                 keywords = _merge_scanner_keywords(keywords, analysis)
                 level = _max_scanner_alert_level(level, analysis)
 
@@ -6866,6 +6947,14 @@ async def _monitor_single_feed(feed: dict):
                     "| jurisdiction=Albany County, New York | source=broadcastify live stream"
                 ),
             )
+            # Stream-monitor path has no talkgroup; stamp whatever feed
+            # metadata we have. _stamp_attribution_on_analysis is
+            # defensive against missing channel/agency lookups.
+            analysis = _stamp_attribution_on_analysis(analysis, {
+                "feed_id": feed_id,
+                "feed_name": feed_name,
+                "feed_priority": feed_priority,
+            })
             keywords = _merge_scanner_keywords(keywords, analysis)
             level = _max_scanner_alert_level(level, analysis)
 

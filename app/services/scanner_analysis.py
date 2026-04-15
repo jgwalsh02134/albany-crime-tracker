@@ -51,6 +51,12 @@ class ScannerTranscriptAnalysis(BaseModel):
     incident_candidate: Optional[ScannerIncidentCandidate] = None
     ui: Optional[ScannerUiSurface] = None
     raw: dict[str, Any] = Field(default_factory=dict)
+    # Channel + canonical-agency context stamped by api_server after the
+    # OpenAI call returns, so downstream consumers (cache, incident
+    # extraction, UI) can read attribution directly from the analysis
+    # result instead of re-deriving it from the source call. Populated by
+    # _stamp_attribution_on_analysis. Empty dict when nothing resolves.
+    attribution: dict[str, Any] = Field(default_factory=dict)
     prompt_id: str = PROMPT_ID
     prompt_version: str = PROMPT_VERSION
 
