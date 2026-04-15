@@ -86,6 +86,10 @@ _HARD_FALSE_LOCAL_MARKERS = (
     "albany, washington",
     "delmar, md",
     "delmar md",
+    # Albany, GA outlets — when the source name itself is the dead
+    # giveaway (e.g. WALB, the Albany-GA NBC affiliate). Matched as
+    # a substring against title/description/source/raw_payload blob.
+    "walb", "wfxl", "albany herald",
 )
 
 

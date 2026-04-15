@@ -218,11 +218,21 @@ FALSE_POSITIVE_INDICATORS = frozenset([
     "ottawa, ontario", "ontario canada",
 ])
 
-# Non-local source names — reject regardless
+# Non-local source names — reject regardless. Substring-matched against the
+# article's `source` field (case-insensitive). When the source IS the dead
+# giveaway (e.g. an Albany, GA TV station), the text-level FALSE_POSITIVE
+# scan often misses it because the article itself doesn't always say
+# "Albany, GA" verbatim — it just says "Albany" and the locality gate
+# accepts. Adding the source name closes that hole at zero recall cost
+# for actual Albany, NY coverage.
 NON_LOCAL_SOURCES = frozenset([
     "iceland review", "reykjavik grapevine", "manila bulletin",
     "the guardian", "bbc news", "sydney morning herald",
     "the australian", "times of india", "daily mail",
+    # Albany, Georgia TV / radio affiliates — produced ~9 false-local rows
+    # in production data before this entry. WALB is the NBC affiliate;
+    # WFXL is the FOX affiliate; "albany herald" is the local newspaper.
+    "walb", "wfxl", "albany herald",
 ])
 
 # Local source domains — presence in link is strong Albany NY signal
