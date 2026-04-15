@@ -248,6 +248,10 @@ def _to_orm(record: IncidentRecord, raw_payload: dict[str, Any]) -> IncidentORM:
         longitude=record.longitude,
         confidence_score=record.confidence_score,
         verification_level=_safe_str(record.verification_level, 64),
+        responding_agency_id=(
+            _safe_str(record.responding_agency_id, 64)
+            if record.responding_agency_id else None
+        ),
         tags=record.tags,
         raw_payload=raw_payload,
         provenance=record.provenance or {},
@@ -275,6 +279,7 @@ def _to_public_dict(record: IncidentRecord, raw_payload: dict[str, Any], *, crea
         "longitude": record.longitude,
         "confidence_score": record.confidence_score,
         "verification_level": record.verification_level,
+        "responding_agency_id": record.responding_agency_id,
         "tags": record.tags or [],
         "raw_payload": raw_payload or {},
         "provenance": record.provenance or {},
@@ -341,6 +346,11 @@ def _apply_updates(
     _set("confidence_score", record.confidence_score)
     if not (existing_source_type == "open_data" and incoming_source_type != "open_data"):
         _set("verification_level", record.verification_level)
+    # Forward-rotate responding_agency_id when the resolver finds a canonical
+    # match. Only writes when the new value is non-empty so we never blank an
+    # already-resolved row with a later non-resolving update.
+    if record.responding_agency_id:
+        _set("responding_agency_id", record.responding_agency_id)
     _set("tags", record.tags)
     if record.provenance:
         _set("provenance", record.provenance)
@@ -902,6 +912,7 @@ async def query_incidents(
                     "longitude": r.longitude,
                     "confidence_score": r.confidence_score,
                     "verification_level": r.verification_level,
+                    "responding_agency_id": getattr(r, "responding_agency_id", None),
                     "tags": r.tags or [],
                     "raw_payload": r.raw_payload or {},
                     "provenance": r.provenance or {},

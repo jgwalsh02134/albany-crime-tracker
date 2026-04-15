@@ -117,6 +117,21 @@ BEGIN
         ) THEN
             ALTER TABLE incidents ADD COLUMN provenance JSONB DEFAULT '{}';
         END IF;
+        -- Forward-compatible: persisted canonical responding-agency identity.
+        -- Added in the schema/incident-reconciliation pass; nullable so
+        -- existing rows stay valid until a backfill or natural rotation
+        -- through _apply_updates() populates them.
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'responding_agency_id'
+        ) THEN
+            ALTER TABLE incidents ADD COLUMN responding_agency_id VARCHAR(64);
+            CREATE INDEX IF NOT EXISTS ix_incidents_responding_agency_id
+                ON incidents (responding_agency_id);
+        END IF;
     END IF;
 END $$;
 """

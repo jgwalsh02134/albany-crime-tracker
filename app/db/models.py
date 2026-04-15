@@ -32,6 +32,7 @@ class IncidentORM(Base):
         Index("ix_incidents_incident_type", "incident_type"),
         Index("ix_incidents_status", "status"),
         Index("ix_incidents_source_type", "source_type"),
+        Index("ix_incidents_responding_agency_id", "responding_agency_id"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -53,6 +54,13 @@ class IncidentORM(Base):
     longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
     verification_level: Mapped[str] = mapped_column(String(64), default="unknown")
+    # Canonical agency_id of the responding agency when one resolves via
+    # app.services.agency_registry.resolve_agency_from_call(). Nullable so
+    # incidents from non-LE sources (Times Union, FBI tip line, etc.) can
+    # be persisted without forcing a fake attribution.
+    responding_agency_id: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, default=None
+    )
     tags: Mapped[list[str]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=list)
     raw_payload: Mapped[dict[str, Any]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"),

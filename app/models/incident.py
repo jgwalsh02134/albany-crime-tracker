@@ -144,6 +144,13 @@ class IncidentRecord(BaseModel):
     tags: list[str] = Field(default_factory=list)
     provenance: dict[str, Any] = Field(default_factory=dict)
 
+    # Canonical agency identity for the responding agency, when one resolves.
+    # Populated by the transformer via app.services.agency_registry.
+    # Optional / nullable so unknown sources stay null rather than blocking
+    # ingest; the schemas/incident.schema.json `responding_agency` field is
+    # this column's downstream consumer.
+    responding_agency_id: Optional[str] = None
+
     # DB-ready metadata hooks (Postgres/PostGIS)
     geom_wkt: Optional[str] = None
     external_ref: Optional[str] = None
