@@ -12,6 +12,7 @@ from __future__ import annotations
 """
 
 import asyncio
+import hashlib
 import hmac
 import io
 import json
@@ -7696,12 +7697,45 @@ async def superfeedr_reconcile_apply(_: None = Depends(require_superfeedr_admin)
 # =============================================================================
 # STATIC FILES — Must be last (catches all unmatched routes)
 # =============================================================================
+def _asset_version_token() -> str:
+    """Per-deploy cache-bust token for app.js / style.css.
+
+    Computed from the mtime hash of the two top-level frontend assets so it
+    rolls every time either file changes on disk — which on Railway is once
+    per deploy. Falls back to a process-start timestamp if the files cannot
+    be stat'd, so the response never errors.
+    """
+    base = os.path.dirname(os.path.abspath(__file__))
+    parts: list[str] = []
+    for name in ("app.js", "style.css"):
+        try:
+            parts.append(str(int(os.path.getmtime(os.path.join(base, name)))))
+        except OSError:
+            parts.append("0")
+    # Short stable hash so the version is opaque but deterministic.
+    return hashlib.sha1("|".join(parts).encode("utf-8")).hexdigest()[:10]
+
+
 @app.get("/")
 async def root():
     index_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
     try:
         with open(index_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(f.read())
+            html = f.read()
+        # Per-deploy cache-bust on app.js / style.css so browsers and any
+        # edge cache fetch the freshly-built file after each Railway deploy.
+        # Without this, production users see the previous bundle until they
+        # hard-refresh — the exact symptom that masked the 9b92941 deploy.
+        html = html.replace("__ASSET_VERSION__", _asset_version_token())
+        # The HTML itself must be revalidated every request; the assets it
+        # references are versioned so they can stay aggressively cached.
+        return HTMLResponse(
+            html,
+            headers={
+                "Cache-Control": "no-cache, must-revalidate",
+                "Pragma": "no-cache",
+            },
+        )
     except Exception as e:
         return HTMLResponse(f"<h1>ERROR loading index.html</h1><pre>{str(e)}</pre>")
 
