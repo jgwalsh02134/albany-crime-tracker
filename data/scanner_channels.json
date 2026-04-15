@@ -1,0 +1,305 @@
+{
+  "_meta": {
+    "version": "2026.1",
+    "scope": "Albany County, NY virtual scanner channels",
+    "purpose": "Curated talkgroup → channel mapping for ACT scanner UI grouping. Each channel rolls one or more P25 talkgroups (from data/scanner_aliases.json) into a single user-facing view, with optional cross-reference to a canonical agency record (data/agencies.json).",
+    "field_contract": {
+      "channel_id": "stable kebab-case identifier; never reused if a channel is renamed",
+      "label": "display name shown in the scanner UI",
+      "agency_id": "data/agencies.json agency_id when 1:1; null for multi-agency rollups",
+      "talkgroup_ids": "array of string talkgroup IDs that belong to this channel; must exist in data/scanner_aliases.json",
+      "disciplines": "subset of [police, fire, ems]; multi means this channel mixes disciplines",
+      "region": "capital_albany | bethlehem_area | colonie_area | guilderland_area | coeymans_ravena | cohoes_watervliet_green_island | hilltowns | thruway | capitol | county_wide",
+      "priority": "high (high-frequency dispatch) | medium | low",
+      "notes": "free text"
+    }
+  },
+  "channels": [
+    {
+      "channel_id": "apd",
+      "label": "Albany Police Dispatch",
+      "agency_id": "apd",
+      "talkgroup_ids": ["13102", "13302", "13402", "13502"],
+      "disciplines": ["police"],
+      "region": "capital_albany",
+      "priority": "high",
+      "notes": "City of Albany Police: dispatch + Tac1/Tac2 + Detective."
+    },
+    {
+      "channel_id": "albany_fire",
+      "label": "Albany City Fire",
+      "agency_id": null,
+      "talkgroup_ids": ["12001", "12101", "13202", "8239"],
+      "disciplines": ["fire"],
+      "region": "capital_albany",
+      "priority": "high",
+      "notes": "City of Albany Fire: dispatch + fireground + Fire 1."
+    },
+    {
+      "channel_id": "albany_ems",
+      "label": "Albany EMS",
+      "agency_id": null,
+      "talkgroup_ids": ["13001", "8260"],
+      "disciplines": ["ems"],
+      "region": "capital_albany",
+      "priority": "medium",
+      "notes": "City of Albany EMS dispatch."
+    },
+    {
+      "channel_id": "albany_city_unified",
+      "label": "Albany City — Police / Fire / EMS",
+      "agency_id": null,
+      "talkgroup_ids": [
+        "13102", "13302", "13402", "13502",
+        "12001", "12101", "13202", "8239",
+        "13001", "8260"
+      ],
+      "disciplines": ["police", "fire", "ems"],
+      "region": "capital_albany",
+      "priority": "high",
+      "notes": "Composite of APD + AFD + Albany EMS. Mirrors Broadcastify feed 3626 conceptually but built from talkgroups."
+    },
+    {
+      "channel_id": "acso",
+      "label": "Albany County Sheriff",
+      "agency_id": "acso",
+      "talkgroup_ids": ["10002", "10003", "11003", "15202", "18301", "8206"],
+      "disciplines": ["police"],
+      "region": "county_wide",
+      "priority": "high",
+      "notes": "ACSO dispatch + County Law 1/2 + Law Ops + Sheriff."
+    },
+    {
+      "channel_id": "albany_county_fire",
+      "label": "Albany County Fire",
+      "agency_id": null,
+      "talkgroup_ids": ["10702", "11702"],
+      "disciplines": ["fire"],
+      "region": "county_wide",
+      "priority": "medium",
+      "notes": "County-wide volunteer fire dispatch + tac. Mirrors Broadcastify feed 37206."
+    },
+    {
+      "channel_id": "albany_county_ems",
+      "label": "Albany County EMS",
+      "agency_id": null,
+      "talkgroup_ids": ["8259"],
+      "disciplines": ["ems"],
+      "region": "county_wide",
+      "priority": "medium",
+      "notes": "County-wide EMS dispatch."
+    },
+    {
+      "channel_id": "albany_county_oem",
+      "label": "Albany County OEM",
+      "agency_id": null,
+      "talkgroup_ids": ["10925"],
+      "disciplines": ["police"],
+      "region": "county_wide",
+      "priority": "low",
+      "notes": "Office of Emergency Management."
+    },
+    {
+      "channel_id": "albany_county_interop",
+      "label": "Albany County Interop",
+      "agency_id": null,
+      "talkgroup_ids": ["10921", "10923", "10922"],
+      "disciplines": ["police"],
+      "region": "county_wide",
+      "priority": "low",
+      "notes": "Cross-agency interop + emergency-ops + multi-agency tactical."
+    },
+    {
+      "channel_id": "colonie_pd",
+      "label": "Colonie Police",
+      "agency_id": "colonie_pd",
+      "talkgroup_ids": ["10401", "10402", "10403", "8211", "8212"],
+      "disciplines": ["police"],
+      "region": "colonie_area",
+      "priority": "high",
+      "notes": "Colonie PD dispatch + Tac + Ops."
+    },
+    {
+      "channel_id": "colonie_fire",
+      "label": "Colonie Fire",
+      "agency_id": null,
+      "talkgroup_ids": ["12201", "8243"],
+      "disciplines": ["fire"],
+      "region": "colonie_area",
+      "priority": "medium",
+      "notes": "Colonie Fire dispatch."
+    },
+    {
+      "channel_id": "bethlehem_pd",
+      "label": "Bethlehem Police",
+      "agency_id": "bethlehem_pd",
+      "talkgroup_ids": ["10502", "8215"],
+      "disciplines": ["police"],
+      "region": "bethlehem_area",
+      "priority": "high",
+      "notes": "Bethlehem PD dispatch."
+    },
+    {
+      "channel_id": "bethlehem_fire",
+      "label": "Bethlehem Fire",
+      "agency_id": null,
+      "talkgroup_ids": ["12301"],
+      "disciplines": ["fire"],
+      "region": "bethlehem_area",
+      "priority": "medium",
+      "notes": "Bethlehem Fire dispatch."
+    },
+    {
+      "channel_id": "bethlehem_public_safety",
+      "label": "Bethlehem Public Safety (Police + Fire)",
+      "agency_id": null,
+      "talkgroup_ids": ["10502", "8215", "12301"],
+      "disciplines": ["police", "fire"],
+      "region": "bethlehem_area",
+      "priority": "high",
+      "notes": "Composite mirroring Broadcastify feed 36327."
+    },
+    {
+      "channel_id": "guilderland_pd",
+      "label": "Guilderland Police",
+      "agency_id": "guilderland_pd",
+      "talkgroup_ids": ["10501", "8216"],
+      "disciplines": ["police"],
+      "region": "guilderland_area",
+      "priority": "high",
+      "notes": "Guilderland PD dispatch."
+    },
+    {
+      "channel_id": "guilderland_fire",
+      "label": "Guilderland Fire",
+      "agency_id": null,
+      "talkgroup_ids": ["12401"],
+      "disciplines": ["fire"],
+      "region": "guilderland_area",
+      "priority": "medium",
+      "notes": "Guilderland Fire dispatch."
+    },
+    {
+      "channel_id": "altamont_pd",
+      "label": "Altamont Police",
+      "agency_id": "altamont_pd",
+      "talkgroup_ids": ["11001"],
+      "disciplines": ["police"],
+      "region": "guilderland_area",
+      "priority": "low",
+      "notes": "Village of Altamont PD dispatch."
+    },
+    {
+      "channel_id": "coeymans_pd",
+      "label": "Coeymans Police",
+      "agency_id": "coeymans_pd",
+      "talkgroup_ids": ["10901"],
+      "disciplines": ["police"],
+      "region": "coeymans_ravena",
+      "priority": "high",
+      "notes": "Town of Coeymans PD; covers Ravena. Note: brief lists tg 59 but the live alias map shows 10901; this file follows the live alias map."
+    },
+    {
+      "channel_id": "cohoes_pd",
+      "label": "Cohoes Police",
+      "agency_id": "cohoes_pd",
+      "talkgroup_ids": ["10601"],
+      "disciplines": ["police"],
+      "region": "cohoes_watervliet_green_island",
+      "priority": "high",
+      "notes": "City of Cohoes PD dispatch."
+    },
+    {
+      "channel_id": "cohoes_fire",
+      "label": "Cohoes Fire",
+      "agency_id": null,
+      "talkgroup_ids": ["12501"],
+      "disciplines": ["fire"],
+      "region": "cohoes_watervliet_green_island",
+      "priority": "medium",
+      "notes": "City of Cohoes Fire dispatch."
+    },
+    {
+      "channel_id": "watervliet_pd",
+      "label": "Watervliet Police",
+      "agency_id": "watervliet_pd",
+      "talkgroup_ids": ["10602"],
+      "disciplines": ["police"],
+      "region": "cohoes_watervliet_green_island",
+      "priority": "high",
+      "notes": "City of Watervliet PD dispatch."
+    },
+    {
+      "channel_id": "watervliet_fire",
+      "label": "Watervliet Fire",
+      "agency_id": null,
+      "talkgroup_ids": ["12601"],
+      "disciplines": ["fire"],
+      "region": "cohoes_watervliet_green_island",
+      "priority": "medium",
+      "notes": "City of Watervliet Fire dispatch."
+    },
+    {
+      "channel_id": "green_island_pd",
+      "label": "Green Island Police",
+      "agency_id": "green_island_pd",
+      "talkgroup_ids": ["10701"],
+      "disciplines": ["police"],
+      "region": "cohoes_watervliet_green_island",
+      "priority": "medium",
+      "notes": "Village of Green Island PD dispatch."
+    },
+    {
+      "channel_id": "menands_pd",
+      "label": "Menands Police",
+      "agency_id": "menands_pd",
+      "talkgroup_ids": ["10801"],
+      "disciplines": ["police"],
+      "region": "capital_albany",
+      "priority": "low",
+      "notes": "Village of Menands PD; dispatched by Colonie PD Communications."
+    },
+    {
+      "channel_id": "nysp_troop_g",
+      "label": "NYSP Troop G",
+      "agency_id": "nysp_troop_g",
+      "talkgroup_ids": ["11101", "11201"],
+      "disciplines": ["police"],
+      "region": "county_wide",
+      "priority": "high",
+      "notes": "NYSP Troop G dispatch + tac. Note: brief lists 10003 as NYSP-on-county-system but the live alias map files 10003 under ACSO; this file follows the live alias map."
+    },
+    {
+      "channel_id": "nysp_capitol",
+      "label": "NYSP Capitol",
+      "agency_id": "nysp_capitol_x",
+      "talkgroup_ids": ["18884"],
+      "disciplines": ["police"],
+      "region": "capitol",
+      "priority": "medium",
+      "notes": "Troop X / NYSP Capitol units around the State Capitol campus."
+    },
+    {
+      "channel_id": "metro_law",
+      "label": "Metro Law (Capital Region Tac)",
+      "agency_id": null,
+      "talkgroup_ids": ["10354"],
+      "disciplines": ["police"],
+      "region": "capital_albany",
+      "priority": "low",
+      "notes": "Cross-jurisdiction Capital Region tactical."
+    }
+  ],
+  "regions": [
+    {"region_id": "capital_albany", "label": "City of Albany / Menands"},
+    {"region_id": "colonie_area", "label": "Colonie / Latham / Loudonville"},
+    {"region_id": "bethlehem_area", "label": "Bethlehem / Delmar / Slingerlands / Selkirk"},
+    {"region_id": "guilderland_area", "label": "Guilderland / Altamont / Westmere"},
+    {"region_id": "coeymans_ravena", "label": "Coeymans / Ravena"},
+    {"region_id": "cohoes_watervliet_green_island", "label": "Cohoes / Watervliet / Green Island"},
+    {"region_id": "hilltowns", "label": "Berne / Knox / New Scotland / Rensselaerville / Westerlo"},
+    {"region_id": "county_wide", "label": "Albany County (county-wide)"},
+    {"region_id": "capitol", "label": "Capitol Campus / Empire State Plaza"},
+    {"region_id": "thruway", "label": "I-90 Thruway corridor"}
+  ]
+}

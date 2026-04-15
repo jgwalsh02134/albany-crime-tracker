@@ -6010,18 +6010,79 @@ async def _priority_p25_scanner_signal_articles(
 
 
 @app.get("/api/scanner/calls")
-async def get_scanner_calls():
+async def get_scanner_calls(channel: Optional[str] = None):
+    """Merged scanner calls from OpenMHz / Broadcastify / playlist.
+
+    Optional `channel` filter restricts to calls whose talkgroup is a
+    member of the named virtual channel from data/scanner_channels.json
+    (e.g. `apd`, `bethlehem_public_safety`, `nysp_troop_g`). Every
+    returned call also carries `channel_id` + `channel_label` stamped
+    in via app.services.scanner_channels.enrich_call_with_channel so
+    the UI can group without re-walking the registry.
+    """
+    from app.services.scanner_channels import (
+        call_matches_channel,
+        enrich_call_with_channel,
+    )
+
     cache_key = "scanner_calls"
     cached = get_cached(cache_key)
     if cached:
-        return {"status": "ok", "source": "cache", "calls": cached, "sources_used": cached[0].get("_sources", []) if cached else []}
+        merged = list(cached)
+        sources_used_local = cached[0].get("_sources", []) if cached else []
+        source_label = "cache"
+    else:
+        merged_fresh, sources_used_fresh, _rr_map = await _merge_scanner_calls_from_sources(write_cache=True)
+        merged = list(merged_fresh)
+        sources_used_local = sources_used_fresh
+        source_label = (
+            "multi" if len(sources_used_fresh) > 1
+            else (sources_used_fresh[0] if sources_used_fresh else "unavailable")
+        )
 
-    merged, sources_used, _rr_map = await _merge_scanner_calls_from_sources(write_cache=True)
+    # Stamp channel attribution on every call. Defensive try/except so
+    # a missing/malformed scanner_channels.json never breaks the
+    # endpoint — the calls list still returns, just without the stamp.
+    try:
+        for c in merged:
+            enrich_call_with_channel(c)
+    except Exception as exc:
+        logger.warning("scanner_channel_enrich_failed error=%s", exc)
+
+    if channel:
+        try:
+            merged = [c for c in merged if call_matches_channel(c, channel)]
+        except Exception as exc:
+            logger.warning("scanner_channel_filter_failed channel=%s error=%s",
+                           channel[:60], exc)
+
     return {
         "status": "ok",
-        "source": "multi" if len(sources_used) > 1 else (sources_used[0] if sources_used else "unavailable"),
-        "sources_used": sources_used,
+        "source": source_label,
+        "sources_used": sources_used_local,
+        "channel": channel or None,
         "calls": merged,
+    }
+
+
+@app.get("/api/scanner/channels")
+async def get_scanner_channels():
+    """Virtual channel registry — agency / region rollups of P25
+    talkgroups so the scanner UI can present "Bethlehem Public Safety"
+    or "Albany City Unified" without depending on a single live stream.
+
+    Backed by data/scanner_channels.json. Read-only, no auth, cheap
+    enough to compute that no caching is needed (small static file)."""
+    from app.services.scanner_channels import channels_payload
+    try:
+        payload = channels_payload()
+    except Exception as exc:
+        logger.warning("scanner_channels_payload_failed error=%s", exc)
+        return {"status": "error", "channels": [], "regions": [],
+                "talkgroup_index": {}, "message": "channel registry unavailable"}
+    return {
+        "status": "ok",
+        **payload,
     }
 
 
