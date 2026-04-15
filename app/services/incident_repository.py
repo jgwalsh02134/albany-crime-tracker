@@ -222,6 +222,76 @@ def _record_log_context(record: IncidentRecord, raw_payload: dict[str, Any]) -> 
     }
 
 
+_SOURCES_LIST_CAP = 20
+
+
+def _build_source_entry(record: IncidentRecord) -> dict[str, Any]:
+    """Shape a single source-provenance entry from an IncidentRecord.
+
+    Mirrors the client-side _linked_sources entry shape (name + url) and
+    extends with the canonical agency_id (when resolved) and an ISO-format
+    first_seen_at timestamp. Used by _to_orm() for new rows and by
+    _apply_updates() to append on dedupe.
+    """
+    return {
+        "name": str(record.source_name or ""),
+        "url": str(record.source_url or ""),
+        "agency_id": (record.responding_agency_id or None),
+        "first_seen_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _is_same_source_entry(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Two entries refer to the same source. Prefer URL equality (most
+    specific), fall back to name equality. Mirrors the frontend dedupe
+    in _liveClusterPushSource so the assembled list shape is identical."""
+    a_url = (a.get("url") or "").strip()
+    b_url = (b.get("url") or "").strip()
+    if a_url and b_url:
+        return a_url == b_url
+    a_name = (a.get("name") or "").strip().lower()
+    b_name = (b.get("name") or "").strip().lower()
+    return bool(a_name) and a_name == b_name
+
+
+def _merge_source_into_list(
+    existing_sources: Optional[list[dict[str, Any]]],
+    fallback_existing: dict[str, Any],
+    incoming: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Append `incoming` to `existing_sources` if not already present.
+
+    `fallback_existing` is the synthesized entry for an existing row that
+    was persisted BEFORE this column existed (sources is None on those
+    rows). On first touch we bootstrap the list with the row's own
+    historical source so we never lose the original attribution.
+
+    Returns a NEW list (callers re-assign rather than mutate in place so
+    SQLAlchemy's JSONB change tracking always sees the update).
+    """
+    out: list[dict[str, Any]] = []
+    if existing_sources:
+        # Deep-copy guard against mutating cached values.
+        for entry in existing_sources:
+            if isinstance(entry, dict):
+                out.append(dict(entry))
+    elif fallback_existing.get("name") or fallback_existing.get("url"):
+        out.append(dict(fallback_existing))
+
+    incoming_clean = {k: v for k, v in incoming.items() if v is not None}
+    if not (incoming_clean.get("name") or incoming_clean.get("url")):
+        return out
+
+    for entry in out:
+        if _is_same_source_entry(entry, incoming_clean):
+            return out
+
+    out.append(incoming_clean)
+    if len(out) > _SOURCES_LIST_CAP:
+        out = out[-_SOURCES_LIST_CAP:]
+    return out
+
+
 def _to_orm(record: IncidentRecord, raw_payload: dict[str, Any]) -> IncidentORM:
     rid = str(record.id or "").strip()
     if not rid:
@@ -252,6 +322,7 @@ def _to_orm(record: IncidentRecord, raw_payload: dict[str, Any]) -> IncidentORM:
             _safe_str(record.responding_agency_id, 64)
             if record.responding_agency_id else None
         ),
+        sources=[_build_source_entry(record)],
         tags=record.tags,
         raw_payload=raw_payload,
         provenance=record.provenance or {},
@@ -280,6 +351,7 @@ def _to_public_dict(record: IncidentRecord, raw_payload: dict[str, Any], *, crea
         "confidence_score": record.confidence_score,
         "verification_level": record.verification_level,
         "responding_agency_id": record.responding_agency_id,
+        "sources": [_build_source_entry(record)],
         "tags": record.tags or [],
         "raw_payload": raw_payload or {},
         "provenance": record.provenance or {},
@@ -313,6 +385,15 @@ def _apply_updates(
     raw_payload: Optional[dict[str, Any]] = None,
 ) -> bool:
     changed = False
+
+    # Snapshot fields the multi-source merge needs BEFORE _set() overwrites
+    # them. Without this, bootstrapping `sources` from a pre-migration row
+    # would attribute the incoming source to itself instead of preserving
+    # the row's original source.
+    pre_existing_source_name = str(getattr(existing, "source_name", "") or "")
+    pre_existing_source_url = str(getattr(existing, "source_url", "") or "")
+    pre_existing_agency_id = getattr(existing, "responding_agency_id", None)
+    pre_existing_created_at = getattr(existing, "created_at", None)
 
     def _set(attr: str, value: Any) -> None:
         nonlocal changed
@@ -351,6 +432,33 @@ def _apply_updates(
     # already-resolved row with a later non-resolving update.
     if record.responding_agency_id:
         _set("responding_agency_id", record.responding_agency_id)
+
+    # Multi-source provenance: append the incoming source to the existing
+    # row's sources list. Bootstraps from the row's historical source_name/
+    # source_url when the column was NULL (legacy row pre-migration). Always
+    # re-assigns the column so SQLAlchemy's JSONB change tracking notices.
+    incoming_source = _build_source_entry(record)
+    if incoming_source.get("name") or incoming_source.get("url"):
+        # Use pre-update snapshot so a legacy NULL `sources` row bootstraps
+        # with its ORIGINAL source, not the incoming one.
+        fallback_existing = {
+            "name": pre_existing_source_name,
+            "url": pre_existing_source_url,
+            "agency_id": pre_existing_agency_id,
+            "first_seen_at": (
+                pre_existing_created_at.isoformat()
+                if pre_existing_created_at else ""
+            ),
+        }
+        merged = _merge_source_into_list(
+            getattr(existing, "sources", None),
+            fallback_existing,
+            incoming_source,
+        )
+        if merged != (getattr(existing, "sources", None) or []):
+            existing.sources = merged
+            changed = True
+
     _set("tags", record.tags)
     if record.provenance:
         _set("provenance", record.provenance)
@@ -913,6 +1021,7 @@ async def query_incidents(
                     "confidence_score": r.confidence_score,
                     "verification_level": r.verification_level,
                     "responding_agency_id": getattr(r, "responding_agency_id", None),
+                    "sources": getattr(r, "sources", None) or [],
                     "tags": r.tags or [],
                     "raw_payload": r.raw_payload or {},
                     "provenance": r.provenance or {},

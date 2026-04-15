@@ -61,6 +61,16 @@ class IncidentORM(Base):
     responding_agency_id: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True, default=None
     )
+    # Multi-source provenance: every distinct source that has reported on this
+    # incident, deduped by URL-then-name. Mirrors the frontend's
+    # _linked_sources clustering so the UI no longer has to re-derive it at
+    # render time. Element shape: {name, url, agency_id?, first_seen_at}.
+    # Nullable for backward compat with rows persisted before this column.
+    sources: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        default=list,
+        nullable=True,
+    )
     tags: Mapped[list[str]] = mapped_column(JSON().with_variant(JSONB, "postgresql"), default=list)
     raw_payload: Mapped[dict[str, Any]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"),

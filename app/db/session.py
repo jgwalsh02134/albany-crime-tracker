@@ -132,6 +132,19 @@ BEGIN
             CREATE INDEX IF NOT EXISTS ix_incidents_responding_agency_id
                 ON incidents (responding_agency_id);
         END IF;
+        -- Multi-source provenance: every distinct source that reported on this
+        -- incident. Default '[]' so existing rows get an empty array on
+        -- backfill. Population happens in _to_orm() / _apply_updates() at
+        -- write time; no batch backfill required.
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'incidents'
+              AND column_name = 'sources'
+        ) THEN
+            ALTER TABLE incidents ADD COLUMN sources JSONB DEFAULT '[]';
+        END IF;
     END IF;
 END $$;
 """
