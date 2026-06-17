@@ -635,6 +635,23 @@ RSS_FEEDS_OFFICIAL = {
         "priority": 4,
         "timeout": 10,
     },
+    # ── NYSP Newsroom (press releases + blotter coverage via Google News) ────
+    "nysp_newsroom_albany": {
+        "url": "https://news.google.com/rss/search?q=site:troopers.ny.gov+(%22Troop+G%22+OR+%22Albany%22+OR+%22Colonie%22+OR+%22Bethlehem%22+OR+%22Guilderland%22)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "NYSP Newsroom",
+        "filter": None,
+        "force_label": True,
+        "reliability": 1.0,
+        "priority": 4,
+    },
+    "nysp_newsroom_arrests": {
+        "url": "https://news.google.com/rss/search?q=%22New+York+State+Police%22+(%22Albany%22+OR+%22Colonie%22+OR+%22Latham%22+OR+%22Cohoes%22+OR+%22Bethlehem%22)+(arrest+OR+crash+OR+investigation+OR+shooting)+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "label": "NYSP Press Release",
+        "filter": "albany",
+        "force_label": True,
+        "reliability": 0.97,
+        "priority": 4,
+    },
     # ── Daily Gazette Crime Blotter (direct RSS) ──────────────────────────────
     "dailygazette_blotter": {
         "url": "https://www.dailygazette.com/spotlightnews/news/crime/feed/",
@@ -3454,9 +3471,10 @@ def _parse_nysp_blotter_pdf(pdf_bytes: bytes, pdf_url: str) -> list[dict]:
 
 
 async def fetch_nysp_blotter_pdfs() -> list[dict]:
-    """Fetch and parse NYSP Troop G blotter PDFs for the last 2 days."""
+    """Fetch and parse NYSP Troop G blotter PDFs for the last 3 days.
+    Extended to 3 days because blotters are not always posted on time."""
     all_items: list[dict] = []
-    urls = _nysp_blotter_urls_for_window(days_back=2)
+    urls = _nysp_blotter_urls_for_window(days_back=3)
     logger.info("nysp_blotter_fetching urls=%d", len(urls))
 
     async def _fetch_one(url: str) -> list[dict]:
