@@ -4355,15 +4355,20 @@
       return true;
     });
 
-    // dedupe: skip same talkgroup within 30s
+    // dedupe: skip same talkgroup within 3 minutes (180s)
     var deduped = [];
     var dedupSeen = {};
     filtered.forEach(function (c) {
       var tg = String(c.talkgroup_num || c.talkgroup || "");
       var t = c.time ? new Date(c.time).getTime() : 0;
-      var key = tg + "_" + Math.floor(t / 30000);
-      if (dedupSeen[key]) return;
-      dedupSeen[key] = true;
+      var key = tg + "_" + Math.floor(t / 180000);
+      if (dedupSeen[key]) {
+        // Increment count on the existing entry
+        dedupSeen[key]._dupeCount = (dedupSeen[key]._dupeCount || 1) + 1;
+        return;
+      }
+      c._dupeCount = 1;
+      dedupSeen[key] = c;
       deduped.push(c);
     });
 
@@ -4374,29 +4379,46 @@
     }
 
     var html = "";
-    deduped.slice(0, 30).forEach(function (call, idx) {
+    deduped.slice(0, 25).forEach(function (call, idx) {
       var dept = resolveScannerDept(call);
       var len = call.duration != null ? parseFloat(call.duration) : (call.len ? parseFloat(call.len) : 0);
       var startTime = call.time ? new Date(call.time) : (call.start_time ? new Date(call.start_time) : null);
       var ta = startTime ? timeAgo(startTime) : "";
       var audioUrl = call.url || call.audio_url || "";
       var cat = dept.cat;
-      var catLabel = cat === "police" ? "Police" : cat === "fire" ? "Fire" : cat === "ems" ? "EMS" : "Scanner";
+      var catLabel = cat === "police" ? "Police" : cat === "fire" ? "Fire" : cat === "ems" ? "EMS" : "Other";
       var aiSum = getAiSummaryForCall(call);
-      var summary = aiSum && aiSum.summary ? aiSum.summary : scannerSummaryText(call, dept, catLabel);
-      var freqHz = call.freq || 0;
-      var freqMHz = freqHz ? (freqHz / 1e6).toFixed(4) : "";
-      var isSelected = idx === _scannerSelectedIdx;
-
-      // Check for Whisper transcription
       var whisper = getWhisperForCall(call);
+      var isSelected = idx === _scannerSelectedIdx;
+      var dupeCount = call._dupeCount || 1;
+
+      // Source resolution — always show where data came from
+      var callSource = call.source || "openmhz";
+      var sourceLabel = callSource === "broadcastify" ? "Broadcastify"
+        : callSource === "openmhz_realtime" ? "Live"
+        : callSource === "radioreference" ? "RadioRef"
+        : "OpenMHz";
+
+      // Smart summary — prioritize real content over templates
+      var summary = "";
+      if (whisper && whisper.text) {
+        summary = whisper.text;
+      } else if (aiSum && aiSum.summary) {
+        summary = aiSum.summary;
+      } else {
+        var tag = call.talkgroup_tag || call.talkgroup_description || "";
+        if (tag && tag.toLowerCase() !== "unknown" && tag.length > 3) {
+          summary = tag;
+        }
+      }
+
       var alertClass = "";
       if (whisper && whisper.alert_level === "critical") alertClass = " sc-card--alert-critical";
       else if (whisper && whisper.alert_level === "high") alertClass = " sc-card--alert-high";
 
       html += '<div class="sc-card sc-card--' + esc(cat) + (isSelected ? ' sc-card--active' : '') + alertClass + '" data-sc-idx="' + idx + '">';
 
-      // Alert banner if critical/high keywords detected
+      // Alert banner for critical/high
       if (whisper && (whisper.alert_level === "critical" || whisper.alert_level === "high")) {
         html += '<div class="sc-alert-banner sc-alert-banner--' + esc(whisper.alert_level) + '">';
         html += '<span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:4px;">' +
@@ -4407,21 +4429,10 @@
         html += '</div>';
       }
 
-      // Row 1: agency + play + time
+      // Header: Category label + Agency + Time
       html += '<div class="sc-card-top">';
-      html += '<div class="sc-card-agency-col">';
+      html += '<span class="sc-card-cat sc-card-cat--' + esc(cat) + '">' + esc(catLabel) + '</span>';
       html += '<span class="sc-card-agency">' + esc(dept.agency || dept.name) + '</span>';
-      if (dept.dept && dept.dept !== dept.agency) html += '<span class="sc-card-dept">' + esc(dept.dept) + '</span>';
-      // Channel attribution pill (commit c25379c). Backend stamps
-      // channel_label on every call when its talkgroup matches a
-      // channel in data/scanner_channels.json. We only show it when
-      // the user is NOT already filtered to that channel — otherwise
-      // every card would carry the same redundant pill.
-      if (call.channel_label && _activeScannerChannel !== call.channel_id) {
-        html += '<span class="sc-card-channel" title="Channel">'
-              + esc(call.channel_label) + '</span>';
-      }
-      html += '</div>';
       if (audioUrl) {
         html += '<button type="button" class="sc-row-play scanner-play-btn" data-audio="' + escAttr(audioUrl) + '" data-sc-idx="' + idx + '" title="Play">';
         html += '<span class="material-icons">play_arrow</span></button>';
@@ -4429,61 +4440,42 @@
       html += '<span class="sc-card-time">' + esc(ta || "\u2014") + '</span>';
       html += '</div>';
 
-      // Row 2: Whisper transcription (if available) or AI summary or template summary
-      if (whisper && whisper.text) {
-        html += '<div class="sc-card-transcript">';
-        html += '<span class="material-icons" style="font-size:13px;color:var(--text-3);vertical-align:middle;margin-right:4px;">mic</span>';
-        html += esc(whisper.text);
+      // Content: transcription or talkgroup info
+      if (summary) {
+        var isTranscript = whisper && whisper.text;
+        html += '<div class="sc-card-summary' + (isTranscript ? ' sc-card-summary--transcript' : '') + '">';
+        if (isTranscript) html += '<span class="material-icons" style="font-size:12px;opacity:0.6;vertical-align:middle;margin-right:3px;">mic</span>';
+        html += esc(summary);
         html += '</div>';
-        if (summary && summary !== (catLabel + " activity")) {
-          html += '<div class="sc-card-summary sc-card-summary--secondary">' + esc(summary) + '</div>';
-        }
-      } else {
-        html += '<div class="sc-card-summary">' + esc(summary) + '</div>';
       }
 
-      // Row 3: meta pills
+      // Meta row: location + source + duration + dupe count
       html += '<div class="sc-card-pills">';
-      html += '<span class="sc-pill sc-pill--' + esc(cat) + '">' + esc(catLabel) + '</span>';
-      if (dept.location) html += '<span class="sc-pill">' + esc(dept.location) + '</span>';
+      if (dept.location && dept.location !== "Albany County") {
+        html += '<span class="sc-pill"><span class="material-icons" style="font-size:11px;vertical-align:middle;">place</span>' + esc(dept.location) + '</span>';
+      }
+      html += '<span class="sc-pill sc-pill--source">' + esc(sourceLabel) + '</span>';
       if (len > 0) html += '<span class="sc-pill">' + len.toFixed(0) + 's</span>';
-      if (whisper) html += '<span class="sc-pill sc-pill--whisper">Transcribed</span>';
-      else if (aiSum) html += '<span class="sc-pill sc-pill--ai">AI summary</span>';
-      // Source badge
-      var callSource = call.source || "openmhz";
-      if (callSource === "broadcastify") html += '<span class="sc-pill sc-pill--bcfy">Broadcastify</span>';
-      else if (callSource === "openmhz_realtime") html += '<span class="sc-pill sc-pill--live">Live</span>';
-      // Emergency flag from Broadcastify
+      if (dupeCount > 1) html += '<span class="sc-pill sc-pill--count">' + dupeCount + ' transmissions</span>';
       if (call.is_emergency || call.emergency) html += '<span class="sc-pill sc-pill--emergency">EMERGENCY</span>';
-      // RadioReference enrichment indicator
-      if (call.rr_category) html += '<span class="sc-pill sc-pill--rr">' + esc(call.rr_category) + '</span>';
+      if (call.channel_label && _activeScannerChannel !== call.channel_id) {
+        html += '<span class="sc-pill sc-pill--channel">' + esc(call.channel_label) + '</span>';
+      }
       html += '</div>';
 
-      // Responding units (from Broadcastify)
+      // Responding units
       var units = call.responding_units || call.unit_ids;
       if (units && Array.isArray(units) && units.length) {
         html += '<div class="sc-card-units">';
-        html += '<span class="material-icons" style="font-size:12px;color:var(--text-3);vertical-align:middle;">groups</span> ';
-        html += units.slice(0, 6).map(function (u) {
+        html += '<span class="material-icons" style="font-size:11px;color:var(--text-3);vertical-align:middle;">groups</span> ';
+        html += units.slice(0, 5).map(function (u) {
           var uid = typeof u === "object" ? (u.src || u.id || "") : String(u);
           return '<span class="sc-unit-badge">' + esc(uid) + '</span>';
         }).join(" ");
-        if (units.length > 6) html += ' <span class="sc-unit-badge">+' + (units.length - 6) + '</span>';
+        if (units.length > 5) html += ' <span class="sc-unit-badge">+' + (units.length - 5) + '</span>';
         html += '</div>';
       }
 
-      // Expandable details
-      html += '<details class="sc-card-expand">';
-      html += '<summary>Technical details</summary>';
-      html += '<div class="sc-card-raw">TG ' + esc(String(call.talkgroup_num || call.talkgroup || "\u2014"));
-      if (freqMHz) html += ' · ' + esc(freqMHz) + ' MHz';
-      if (dept.channel) html += ' · ' + esc(dept.channel);
-      html += '</div>';
-      if (call.talkgroup_tag) html += '<div class="sc-card-raw">' + esc(call.talkgroup_tag) + '</div>';
-      if (call.talkgroup_description && call.talkgroup_description !== call.talkgroup_tag) {
-        html += '<div class="sc-card-raw">' + esc(call.talkgroup_description) + '</div>';
-      }
-      html += '</details>';
       html += '</div>';
     });
 
