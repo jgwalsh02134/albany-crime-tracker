@@ -4265,7 +4265,7 @@ _BACKGROUND_INGEST_STATS: dict[str, Any] = {
 
 def _background_crime_ingest_interval_s() -> float:
     """Seconds between full feed refresh + persistence ticks. 0 or negative disables the loop."""
-    raw = os.getenv("BACKGROUND_CRIME_INGEST_SECONDS", "120").strip()
+    raw = os.getenv("BACKGROUND_CRIME_INGEST_SECONDS", "60").strip()
     try:
         return float(raw)
     except ValueError:
@@ -6715,7 +6715,8 @@ _AD_NOISE_PATTERNS = [
     "commercial", "advertisement", "sponsor",
     "brought to you by", "this feed is provided",
     "radioreference", "radio reference",
-    "visit us at", "visit our website",
+    "visit us at", "visit our website", "visit www",
+    "for more information visit", "more information",
     "download the app", "available on",
     "thank you for listening", "thanks for listening",
     "support this feed", "feed provider",
@@ -6723,14 +6724,20 @@ _AD_NOISE_PATTERNS = [
     "sign up", "free trial", "upgrade",
     "promo code", "discount",
     "holiday sale", "black friday",
-    "dot com", ".com",
+    "dot com", ".com", ".gov", ".org", ".net",
     "limited time", "act now", "call now",
     "toll free", "1-800", "1-888", "1-877",
     "money back", "guarantee",
     "customer service", "satisfaction",
+    "fema", "ready.gov", "preparedness",
+    "every mile", "opportunity", "discover something",
+    "weather service", "national weather",
+    "public service announcement",
+    "this is a test", "test of the",
+    "emergency alert system", "eas test",
 ]
 
-_AD_NOISE_THRESHOLD = 3
+_AD_NOISE_THRESHOLD = 2
 
 
 def _is_ad_or_noise(text: str) -> bool:

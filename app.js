@@ -23,7 +23,7 @@
     }
   }
   var apiClient = window.ACTApiClient ? window.ACTApiClient.createApiClient(API) : null;
-  var REFRESH_MS = 45000;
+  var REFRESH_MS = 30000;
   var SCANNER_REFRESH_MS = 20000;
   var _scannerFailCount = 0;
 
