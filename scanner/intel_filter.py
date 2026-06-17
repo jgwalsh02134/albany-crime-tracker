@@ -1,0 +1,1 @@
+Critical Intel Filter added: Only push calls containing keywords or high severity score (shots, pursuit, officer down, structure fire, mass casualty, 10-33 etc.) to main feed. 'Critical Only' default with toggle for 'All Traffic'. Uses Grok classifier for smart decisions.
