@@ -2249,129 +2249,130 @@
 
   function buildIncidentCard(item) {
     var type = item.crime_type || "other";
-    var sourceType = (item.source_type || "unknown").toLowerCase();
     var sourceName = item.source || item.source_name || "Unknown source";
     var verify = item.verification_level || "unknown";
-    var verifyLabel = item.verification_label || String(verify).replace(/_/g, " ");
     var title = item.short_title || item.title || "Untitled";
     var ta = item.human_time || feedAgeCompact(item);
-    var link = resolveIncidentCardHref(item);
     var area = item.municipality || item.matched_location || "Albany County";
     var summary = item.summary || item.description || "";
     var sev = (item.severity || "unknown").toLowerCase();
-
-    // Clean up scanner-sourced items for readability
     var isScanner = isScannerCrimeSource(sourceName);
+
     if (isScanner) {
       title = cleanScannerTitle(title);
       summary = cleanScannerText(summary);
       sourceName = "Scanner";
-      // If cleaning stripped everything, generate a useful summary from title + raw data
       if (!summary) {
         var rawTitle = (item.title || "").toLowerCase();
         if (/\b(dispatch|e911|911)\b/.test(rawTitle)) {
-          if (/\bfire\b/i.test(rawTitle)) summary = "Fire dispatch communication detected";
-          else if (/\bems|ambulance|medic/i.test(rawTitle)) summary = "EMS dispatch communication detected";
-          else summary = "Emergency dispatch communication detected";
-        } else if (/\bnysp|state\s*police|troop/i.test(rawTitle)) {
-          summary = "New York State Police radio traffic detected";
-        } else if (/\bapd|albany\s*p/i.test(rawTitle)) {
-          summary = "Albany Police Department radio activity";
-        } else if (/\bsheriff|acso/i.test(rawTitle)) {
-          summary = "Albany County Sheriff radio activity";
-        } else if (/\bfire/i.test(rawTitle)) {
-          summary = "Fire department radio traffic detected";
-        } else {
-          summary = "Law enforcement radio activity detected";
-        }
+          if (/\bfire\b/i.test(rawTitle)) summary = "Fire dispatch activity";
+          else if (/\bems|ambulance|medic/i.test(rawTitle)) summary = "EMS dispatch activity";
+          else summary = "Emergency dispatch activity";
+        } else if (/\bnysp|state\s*police|troop/i.test(rawTitle)) summary = "NYSP Troop G activity";
+        else if (/\bapd|albany\s*p/i.test(rawTitle)) summary = "APD activity";
+        else if (/\bsheriff|acso/i.test(rawTitle)) summary = "ACSO activity";
+        else if (/\bfire/i.test(rawTitle)) summary = "Fire department activity";
+        else summary = "Law enforcement activity";
       }
-      // Don't show "Scanner" as verification when source is already "Scanner"
-      if (verify === "scanner") {
-        verifyLabel = "Developing";
-        verify = "developing";
-      }
+      if (verify === "scanner") verify = "developing";
     }
 
-    // Time freshness + decay
+    // Determine department/agency
+    var agencyDisplay = _agencyDisplayName(item.responding_agency_id);
+    var dept = agencyDisplay || _deptFromSource(sourceName, item);
+
+    // Report type label (police tracker style)
+    var reportType = _reportTypeLabel(type, sev, item);
+
     var ageH = itemAgeHours(item);
-    var timeClass = "feed-time";
-    var timeDot = "";
-    if (ageH !== null && ageH <= 1) {
-      timeClass += " feed-time--fresh";
-      timeDot = '<span class="feed-time-dot"></span>';
-    } else if (ageH !== null && ageH > 12) {
-      timeClass += " feed-time--stale";
-    }
-
-    // LIVE badge — only for genuinely active, major, fresh events
-    var incStatus = ((item.incident && item.incident.status) || "").toLowerCase();
-    var isLive = ageH !== null && ageH <= 2 && (sev === "critical" || sev === "high" || incStatus === "active");
-    var liveBadge = isLive ? '<span class="feed-live-badge"><span class="feed-live-dot"></span>LIVE</span>' : "";
+    var isLive = ageH !== null && ageH <= 2 && (sev === "critical" || sev === "high");
+    var isFresh = ageH !== null && ageH <= 1;
+    var isGapFill = item._gap_fill;
 
     var cls = "feed-item feed-item--" + type;
     if (isLive) cls += " feed-item--live";
     if (sev === "critical") cls += " feed-item--sev-critical";
     else if (sev === "high") cls += " feed-item--sev-high";
-    if (sev === "low" && (verify || "").toLowerCase() === "inferred") cls += " feed-item--quiet";
-    // Time decay: >12h cards get reduced opacity
+    if (isGapFill) cls += " feed-item--pulse";
     if (ageH !== null && ageH > 12) cls += " feed-item--aged";
 
-    var html = '<a class="' + cls + '" href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer" id="feed-card-' + escAttr(item.id || "") + '">';
+    var cardId = item.id || ("item_" + Math.random().toString(36).slice(2, 8));
+    var html = '<div class="' + cls + '" data-incident-id="' + escAttr(cardId) + '" role="button" tabindex="0">';
 
-    // Left indicator strip (color-coded by severity via border, not text pill)
-    html += '<div class="feed-indicator"><span class="feed-dot ' + esc(type) + '"></span></div>';
+    // Severity strip (left border set by CSS class)
+    html += '<div class="feed-indicator">';
+    if (isLive) html += '<span class="feed-live-dot"></span>';
+    else html += '<span class="feed-dot ' + esc(type) + '"></span>';
+    html += '</div>';
 
     html += '<div class="feed-body">';
-    // Headline (no time here — moved to meta row)
+
+    // Row 1: Report type + LIVE badge + time
+    html += '<div class="feed-head-row">';
+    html += '<span class="feed-report-type feed-report-type--' + esc(sev) + '">' + esc(reportType) + '</span>';
+    if (isLive) html += '<span class="feed-live-badge"><span class="feed-live-dot-sm"></span>ACTIVE</span>';
+    html += '<span class="feed-time' + (isFresh ? ' feed-time--fresh' : '') + '">';
+    if (isFresh) html += '<span class="feed-time-dot"></span>';
+    html += esc(ta || "") + '</span>';
+    html += '</div>';
+
+    // Row 2: Title/description
     html += '<div class="feed-title">' + esc(title) + '</div>';
 
-    // Summary (truncated to 2 lines via CSS)
-    if (summary) html += '<div class="feed-summary-line">' + esc(summary) + '</div>';
-
-    // Meta row (v7 redesign): operational attribution leads.
-    // Order: agency pill (when present) → area → source → corroboration → time.
-    // The agency pill uses var(--brand-primary) so the eye lands on the
-    // RESPONDING AGENCY first (APD / ACSO / Bethlehem PD / etc.) and the
-    // news outlet becomes secondary attribution. When no agency resolves
-    // (media-outlet-only sources like CBS6 / WNYT), the agency pill is
-    // omitted and the row reads area → source → time as before. Severity
-    // remains in the left indicator strip; the freshness banner above the
-    // feed conveys liveness; per-card LIVE / Federal badges stay removed
-    // (v6 cleanup).
+    // Row 3: Structured metadata — Location · Department · Source
     html += '<div class="feed-meta">';
-    var agencyDisplay = _agencyDisplayName(item.responding_agency_id);
-    if (agencyDisplay) {
-      html += '<span class="feed-meta-pill feed-meta-pill--agency"'
-            + ' title="Responding agency">'
-            + esc(agencyDisplay) + '</span>';
+    html += '<span class="feed-meta-pill feed-meta-pill--area"><span class="material-icons feed-meta-icon">place</span>' + esc(area) + '</span>';
+    if (dept) {
+      html += '<span class="feed-meta-pill feed-meta-pill--agency"><span class="material-icons feed-meta-icon">shield</span>' + esc(dept) + '</span>';
     }
-    html += '<span class="feed-meta-pill feed-meta-pill--area"><span class="material-icons feed-meta-icon">location_on</span>' + esc(area) + '</span>';
     html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(sourceName) + '</span>';
-    // Linked-sources pill: surfaces "+N sources" when an incident is
-    // corroborated. Source-of-truth preference order:
-    //   1. item.linked_sources — backend-persisted JSONB array
-    //      (commit da1a435). Preferred when present so the pill reflects
-    //      durable data and survives render-time recomputation.
-    //   2. item._linked_sources — client-side _dedupeLiveItems cluster
-    //      output. Fallback for rows persisted before the backend column
-    //      existed, and for any feed surface that did not pass through
-    //      the backend incident projection.
     var linked = (Array.isArray(item.linked_sources) && item.linked_sources.length)
       ? item.linked_sources
       : (Array.isArray(item._linked_sources) ? item._linked_sources : null);
     if (linked && linked.length > 1) {
-      var others = linked.length - 1;
-      var names = linked.map(function (s) { return s.name || ""; }).filter(Boolean).join(", ");
-      html += '<span class="feed-meta-pill feed-meta-pill--corroborated"'
-            + ' title="' + escAttr(names) + '">'
-            + '+' + others + ' source' + (others === 1 ? "" : "s") + '</span>';
+      html += '<span class="feed-meta-pill feed-meta-pill--corroborated">+' + (linked.length - 1) + ' sources</span>';
     }
-    // Timestamp pinned to the right with monospace tabular numerals.
-    html += '<span class="' + timeClass + ' feed-time--mono">' + timeDot + esc(ta || "") + '</span>';
     html += '</div>';
 
-    html += '</div></a>';
+    html += '</div></div>';
     return html;
+  }
+
+  function _reportTypeLabel(type, sev, item) {
+    var cat = (item.category || item._nysp_incident_category || "").toLowerCase();
+    if (item._gap_fill) return "Monitoring";
+    if (sev === "critical") return "CRITICAL INCIDENT";
+    if (/\bshoot/i.test(cat) || /\bshoot/i.test(item.title || "")) return "Shooting";
+    if (/\bstab/i.test(cat) || /\bstab/i.test(item.title || "")) return "Stabbing";
+    if (/\bassault/i.test(cat)) return "Assault";
+    if (/\brobbery/i.test(cat)) return "Robbery";
+    if (/\bburglary/i.test(cat)) return "Burglary";
+    if (/\barrest/i.test(cat) || /\barrest/i.test(item.title || "")) return "Arrest";
+    if (/\bcrash|mva|accident|collision/i.test(cat) || /\bcrash/i.test(item.title || "")) return "Crash";
+    if (/\bfire/i.test(cat) || /\bfire/i.test(item.title || "")) return "Fire";
+    if (/\bmissing/i.test(cat)) return "Missing Person";
+    if (/\bpursuit|chase/i.test(cat)) return "Pursuit";
+    if (/\bdwi|dui/i.test(cat)) return "DWI Arrest";
+    if (type === "violent") return "Violent Crime";
+    if (type === "property") return "Property Crime";
+    if (type === "traffic") return "Traffic Incident";
+    if (sev === "high") return "Major Incident";
+    return "Police Activity";
+  }
+
+  function _deptFromSource(sourceName, item) {
+    var s = (sourceName || "").toLowerCase();
+    if (/albany\s*police|apd|@albanypolice/i.test(s)) return "Albany PD";
+    if (/sheriff|acso/i.test(s)) return "Albany Co. Sheriff";
+    if (/colonie/i.test(s)) return "Colonie PD";
+    if (/bethlehem/i.test(s)) return "Bethlehem PD";
+    if (/guilderland/i.test(s)) return "Guilderland PD";
+    if (/nysp|state\s*police|troop/i.test(s)) return "NYSP Troop G";
+    if (/watervliet/i.test(s)) return "Watervliet PD";
+    if (/cohoes/i.test(s)) return "Cohoes PD";
+    if (item._nysp_troop_zone) return "NYSP Troop G";
+    if (/nixle/i.test(s)) return "Public Safety Alert";
+    return "";
   }
 
   function itemAgeHours(item) {
@@ -2742,12 +2743,142 @@
 
     renderLiveFreshness(items);
 
-    // Single chronological list — no section headers.
-    // Visual hierarchy lives in the cards themselves (severity, source, time, live badge).
     var html = "";
     items.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
+    _bindIncidentCardClicks(list, items);
   }
+
+  // ── INCIDENT DETAIL SHEET ─────────────────────────────────────────────
+  var _incidentDetailItems = [];
+
+  function _bindIncidentCardClicks(container, items) {
+    _incidentDetailItems = items;
+    container.querySelectorAll(".feed-item[data-incident-id]").forEach(function (card, idx) {
+      card.addEventListener("click", function (e) {
+        e.preventDefault();
+        if (idx < items.length) openIncidentDetail(items[idx]);
+      });
+      card.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          if (idx < items.length) openIncidentDetail(items[idx]);
+        }
+      });
+    });
+  }
+
+  function openIncidentDetail(item) {
+    var sheet = document.getElementById("incidentSheet");
+    var backdrop = document.getElementById("incidentSheetBackdrop");
+    if (!sheet || !backdrop) return;
+
+    var type = item.crime_type || "other";
+    var sev = (item.severity || "medium").toLowerCase();
+    var title = item.short_title || item.title || "Incident";
+    var area = item.municipality || item.matched_location || "Albany County";
+    var sourceName = item.source || item.source_name || "";
+    var desc = item.description || item.summary || "";
+    var ta = item.human_time || feedAgeCompact(item);
+    var link = resolveIncidentCardHref(item);
+    var reportType = _reportTypeLabel(type, sev, item);
+    var dept = _agencyDisplayName(item.responding_agency_id) || _deptFromSource(sourceName, item);
+
+    // Populate header
+    var typeEl = document.getElementById("incidentSheetType");
+    var sevEl = document.getElementById("incidentSheetSev");
+    if (typeEl) typeEl.textContent = reportType;
+    if (sevEl) {
+      sevEl.textContent = sev.charAt(0).toUpperCase() + sev.slice(1);
+      sevEl.className = "incident-sheet-sev incident-sheet-sev--" + sev;
+    }
+
+    // Title
+    var titleEl = document.getElementById("incidentSheetTitle");
+    if (titleEl) titleEl.textContent = title;
+
+    // Structured meta
+    var metaEl = document.getElementById("incidentSheetMeta");
+    if (metaEl) {
+      var metaHtml = '<div class="incident-sheet-meta-row">';
+      metaHtml += '<span class="incident-sheet-meta-item"><span class="material-icons">place</span>' + esc(area) + '</span>';
+      metaHtml += '<span class="incident-sheet-meta-item"><span class="material-icons">schedule</span>' + esc(ta || "Unknown time") + '</span>';
+      if (dept) metaHtml += '<span class="incident-sheet-meta-item"><span class="material-icons">shield</span>' + esc(dept) + '</span>';
+      metaHtml += '</div>';
+      if (item.pubDate) {
+        var dt = new Date(item.pubDate);
+        if (!isNaN(dt.getTime())) {
+          metaHtml += '<div class="incident-sheet-datetime">' + dt.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }) + '</div>';
+        }
+      }
+      metaEl.innerHTML = metaHtml;
+    }
+
+    // Description
+    var descEl = document.getElementById("incidentSheetDesc");
+    if (descEl) descEl.textContent = desc || "No additional details available.";
+
+    // Sources and links
+    var srcEl = document.getElementById("incidentSheetSources");
+    if (srcEl) {
+      var srcHtml = '<h4 class="incident-sheet-section-label">Sources</h4>';
+      if (sourceName) {
+        srcHtml += '<div class="incident-sheet-source-item">';
+        srcHtml += '<span class="material-icons">article</span>';
+        srcHtml += '<span>' + esc(sourceName) + '</span>';
+        srcHtml += '</div>';
+      }
+      var linked = (Array.isArray(item.linked_sources) && item.linked_sources.length)
+        ? item.linked_sources : [];
+      linked.forEach(function (s) {
+        if (!s.name) return;
+        srcHtml += '<div class="incident-sheet-source-item">';
+        srcHtml += '<span class="material-icons">link</span>';
+        srcHtml += '<span>' + esc(s.name) + '</span>';
+        srcHtml += '</div>';
+      });
+      srcEl.innerHTML = srcHtml;
+    }
+
+    // Action buttons
+    var actEl = document.getElementById("incidentSheetActions");
+    if (actEl) {
+      var actHtml = '';
+      if (link && link !== "#") {
+        actHtml += '<a href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer" class="incident-sheet-btn incident-sheet-btn--primary">';
+        actHtml += '<span class="material-icons">open_in_new</span>View source article</a>';
+      }
+      if (item.lat && item.lon) {
+        actHtml += '<button type="button" class="incident-sheet-btn" onclick="switchView(\'map\');closeIncidentSheet();">';
+        actHtml += '<span class="material-icons">map</span>Show on map</button>';
+      }
+      actHtml += '<button type="button" class="incident-sheet-btn" onclick="switchView(\'scanner\');closeIncidentSheet();">';
+      actHtml += '<span class="material-icons">sensors</span>Open scanner</button>';
+      actEl.innerHTML = actHtml;
+    }
+
+    // Show
+    sheet.hidden = false;
+    backdrop.hidden = false;
+    requestAnimationFrame(function () {
+      sheet.classList.add("incident-sheet--open");
+      backdrop.classList.add("incident-sheet-backdrop--open");
+    });
+    backdrop.onclick = closeIncidentSheet;
+  }
+
+  function closeIncidentSheet() {
+    var sheet = document.getElementById("incidentSheet");
+    var backdrop = document.getElementById("incidentSheetBackdrop");
+    if (sheet) sheet.classList.remove("incident-sheet--open");
+    if (backdrop) backdrop.classList.remove("incident-sheet-backdrop--open");
+    setTimeout(function () {
+      if (sheet) sheet.hidden = true;
+      if (backdrop) backdrop.hidden = true;
+    }, 250);
+  }
+  // Expose globally for inline onclick
+  window.closeIncidentSheet = closeIncidentSheet;
 
   // Backward compat wrappers — all feed rendering goes through unified
   function renderLiveFeed(activeItems, recentItems) {
