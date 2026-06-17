@@ -1323,6 +1323,99 @@ a:hover { text-decoration: underline; }
 /* Sits above the feed. Honestly surfaces the newest-item age so users can
    trust (or appropriately distrust) the "Live" promise. Tones: fresh (<15m),
    aging (15-60m), stale (>=60m). */
+/* ===== ALBANY PULSE BAR ===== */
+.albany-pulse {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 12px 4px;
+  padding: 7px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  font-size: 11px;
+}
+.albany-pulse[hidden] { display: none; }
+.albany-pulse-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.albany-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.albany-pulse-dot--live {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34,197,94,0.2);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+.albany-pulse-dot--aging {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245,158,11,0.15);
+}
+.albany-pulse-dot--quiet {
+  background: var(--text-3);
+}
+.albany-pulse-label {
+  font-weight: 700;
+  color: var(--text);
+}
+.albany-pulse-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.albany-pulse-sources {
+  color: var(--text-3);
+  font-size: 10px;
+}
+.albany-pulse-age {
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* ===== NEW ACTIVITY BANNER ===== */
+.new-activity-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 12px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  animation: slide-down 0.3s ease-out;
+}
+.new-activity-banner[hidden] { display: none; }
+.new-activity-text { flex: 1; }
+.new-activity-dismiss {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.new-activity-dismiss:hover { background: var(--surface-2); }
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .live-freshness {
   display: flex;
   align-items: center;

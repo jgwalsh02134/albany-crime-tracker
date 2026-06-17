@@ -419,6 +419,10 @@
 
     // Freshness indicator: update "Last updated X min ago" every 15s
     setInterval(updateFreshnessIndicator, 15000);
+
+    // Albany Pulse + SSE real-time connection
+    initAlbanyPulse();
+    initIncidentSSE();
   });
 
   var _lastFeedFetchTs = null;
@@ -440,6 +444,93 @@
     else label = "Updated " + Math.round(ago / 60) + " min ago";
     el.textContent = label;
     el.classList.toggle("feed-freshness--stale", ago > 180);
+  }
+
+  // ── ALBANY PULSE — real-time feed health bar ──────────────────────────
+  var _pulseData = null;
+  function initAlbanyPulse() {
+    fetchPulse();
+    setInterval(fetchPulse, 20000);
+    var dismissBtn = document.getElementById("newActivityDismiss");
+    if (dismissBtn) dismissBtn.addEventListener("click", function () {
+      var banner = document.getElementById("newActivityBanner");
+      if (banner) banner.hidden = true;
+    });
+  }
+
+  function fetchPulse() {
+    fetch(API + "/api/incidents/pulse").then(ok)
+      .then(function (d) {
+        if (!d || d.status !== "ok") return;
+        _pulseData = d;
+        renderPulseBar(d);
+      })
+      .catch(function () {});
+  }
+
+  function renderPulseBar(d) {
+    var el = document.getElementById("albanyPulse");
+    if (!el) return;
+    el.hidden = false;
+    var dot = document.getElementById("pulseDot");
+    var label = document.getElementById("pulseLabel");
+    var sources = document.getElementById("pulseSources");
+    var age = document.getElementById("pulseAge");
+
+    var state = d.feed_state || "quiet";
+    if (dot) {
+      dot.className = "albany-pulse-dot albany-pulse-dot--" + state;
+    }
+    if (label) {
+      var stateLabel = state === "live" ? "Live" : state === "aging" ? "Monitoring" : "Quiet";
+      label.textContent = stateLabel;
+    }
+    if (sources) {
+      sources.textContent = d.sources_total + " sources" + (d.scanner_pipeline_active ? " + scanner" : "");
+    }
+    if (age) {
+      var sec = d.seconds_since_last_incident || 0;
+      if (sec < 60) age.textContent = "< 1m ago";
+      else if (sec < 3600) age.textContent = Math.round(sec / 60) + "m ago";
+      else age.textContent = Math.round(sec / 3600) + "h ago";
+    }
+  }
+
+  // ── SSE REAL-TIME CONNECTION ─────────────────────────────────────────────
+  var _sseSource = null;
+  var _sseLastNewestId = null;
+
+  function initIncidentSSE() {
+    if (!window.EventSource) return;
+    try {
+      _sseSource = new EventSource(API + "/api/incidents/stream");
+      _sseSource.addEventListener("new_incidents", function (ev) {
+        try {
+          var d = JSON.parse(ev.data);
+          if (d.newest_id && d.newest_id !== _sseLastNewestId) {
+            _sseLastNewestId = d.newest_id;
+            showNewActivityBanner(d.newest_title || "New police activity detected");
+            fetchIncidents();
+          }
+        } catch (e) {}
+      });
+      _sseSource.onerror = function () {
+        // Will auto-reconnect per SSE spec
+      };
+    } catch (e) {}
+  }
+
+  function showNewActivityBanner(text) {
+    var banner = document.getElementById("newActivityBanner");
+    var textEl = document.getElementById("newActivityText");
+    if (!banner || !textEl) return;
+    textEl.textContent = text;
+    banner.hidden = false;
+    banner.classList.add("new-activity-banner--show");
+    setTimeout(function () {
+      banner.classList.remove("new-activity-banner--show");
+      banner.hidden = true;
+    }, 8000);
   }
 
   function refreshHeaderPrimaryCount() {

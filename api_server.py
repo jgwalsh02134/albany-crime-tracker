@@ -685,13 +685,139 @@ RSS_FEEDS_OFFICIAL = {
 }
 
 
+# =============================================================================
+# ADDITIONAL SOURCES — Patch, Fox23, Reddit, extended Nixle, 511NY
+# =============================================================================
+RSS_FEEDS_EXTENDED = {
+    # ── Patch.com (hyperlocal community news) ─────────────────────────────────
+    "patch_albany": {
+        "url": "https://patch.com/new-york/albany/police-fire.rss",
+        "label": "Patch Albany",
+        "filter": None,
+        "reliability": 0.82,
+        "priority": 2,
+        "timeout": 10,
+    },
+    "patch_colonie": {
+        "url": "https://patch.com/new-york/colonie/police-fire.rss",
+        "label": "Patch Colonie",
+        "filter": None,
+        "reliability": 0.82,
+        "priority": 2,
+        "timeout": 10,
+    },
+    "patch_bethlehem": {
+        "url": "https://patch.com/new-york/bethlehem/police-fire.rss",
+        "label": "Patch Bethlehem",
+        "filter": None,
+        "reliability": 0.82,
+        "priority": 2,
+        "timeout": 10,
+    },
+    "patch_guilderland": {
+        "url": "https://patch.com/new-york/guilderland/police-fire.rss",
+        "label": "Patch Guilderland",
+        "filter": None,
+        "reliability": 0.82,
+        "priority": 2,
+        "timeout": 10,
+    },
+    # ── Fox23 (WXXA) ──────────────────────────────────────────────────────────
+    "fox23_crime": {
+        "url": "https://www.fox23news.com/news/crime/feed/",
+        "label": "Fox23",
+        "filter": "strict",
+        "reliability": 0.88,
+        "priority": 2,
+    },
+    "fox23_gnews": {
+        "url": "https://news.google.com/rss/search?q=site:fox23news.com+(albany+OR+colonie+OR+cohoes+OR+watervliet+OR+guilderland)+(crime+OR+arrest+OR+police+OR+fire)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Fox23",
+        "filter": "strict",
+        "reliability": 0.85,
+        "priority": 2,
+    },
+    # ── Reddit (via RSS) ──────────────────────────────────────────────────────
+    "reddit_albany": {
+        "url": "https://www.reddit.com/r/Albany/search.rss?q=police+OR+crime+OR+shooting+OR+arrest+OR+crash+OR+fire&sort=new&restrict_sr=on&t=week",
+        "label": "Reddit r/Albany",
+        "filter": "albany",
+        "reliability": 0.55,
+        "priority": 1,
+        "timeout": 10,
+    },
+    "reddit_capitalregion": {
+        "url": "https://www.reddit.com/r/CapitalRegion/search.rss?q=police+OR+crime+OR+shooting+OR+arrest+OR+crash&sort=new&restrict_sr=on&t=week",
+        "label": "Reddit r/CapitalRegion",
+        "filter": "strict",
+        "reliability": 0.50,
+        "priority": 1,
+        "timeout": 10,
+    },
+    # ── Extended Nixle municipalities ─────────────────────────────────────────
+    "nixle_bethlehem": {
+        "url": "https://www.nixle.com/rss/?city=Bethlehem&state=NY",
+        "label": "Nixle Alert",
+        "filter": None,
+        "force_label": True,
+        "reliability": 1.0,
+        "priority": 4,
+        "timeout": 8,
+    },
+    "nixle_cohoes": {
+        "url": "https://www.nixle.com/rss/?city=Cohoes&state=NY",
+        "label": "Nixle Alert",
+        "filter": None,
+        "force_label": True,
+        "reliability": 1.0,
+        "priority": 4,
+        "timeout": 8,
+    },
+    "nixle_watervliet": {
+        "url": "https://www.nixle.com/rss/?city=Watervliet&state=NY",
+        "label": "Nixle Alert",
+        "filter": None,
+        "force_label": True,
+        "reliability": 1.0,
+        "priority": 4,
+        "timeout": 8,
+    },
+    # ── 511NY Traffic (always enabled — public RSS) ───────────────────────────
+    "ny511_albany_events": {
+        "url": "https://511ny.org/api/getevents?format=rss&eventtype=incidents&region=albany",
+        "label": "511NY Traffic",
+        "filter": None,
+        "reliability": 0.95,
+        "priority": 3,
+        "timeout": 10,
+    },
+    # ── Hudson Valley News Network ────────────────────────────────────────────
+    "hvnn_gnews": {
+        "url": "https://news.google.com/rss/search?q=site:hudsonvalleynewsnetwork.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+bethlehem)+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "label": "HVNN",
+        "filter": "strict",
+        "reliability": 0.78,
+        "priority": 2,
+    },
+    # ── Capital Region breaking — wire/aggregator layer ───────────────────────
+    "gnews_capital_overnight": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany+NY%22+OR+%22Albany+County%22)+(overnight+OR+%22early+morning%22+OR+%22late+night%22)+(police+OR+shooting+OR+stabbing+OR+robbery)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.72,
+        "priority": 2,
+    },
+}
+
+
 def build_operational_rss_feeds() -> dict[str, dict]:
     """
     Optional 511NY / NY-Alert RSS layers. Set env to enable:
       NY511_CAPITAL_DISTRICT_RSS — regional traffic/incident RSS URL
       NY_ALERT_RSS_URL — state or campus alert RSS URL
+    Also merges RSS_FEEDS_EXTENDED (always-on expanded sources).
     """
-    out: dict[str, dict] = {}
+    out: dict[str, dict] = dict(RSS_FEEDS_EXTENDED)
     u511 = os.getenv("NY511_CAPITAL_DISTRICT_RSS", "").strip()
     if u511:
         out["ny511_capital_district"] = {
@@ -1356,7 +1482,10 @@ async def lifespan(_app):
     # Optional APD-Socrata refresh into incidents table; opt-in via
     # SOCRATA_INGEST_SECONDS=1800 (30 min) or 3600 (1 hour).
     await start_background_socrata_ingest()
+    # Gap-fill: synthesize "ongoing activity" cards when feed goes quiet
+    await start_gap_fill_monitor()
     yield
+    await stop_gap_fill_monitor()
     await stop_background_socrata_ingest()
     await stop_background_scanner_ingest()
     await stop_background_crime_ingest()
@@ -3980,6 +4109,8 @@ async def get_crimes(
     else:
         rows_for_persistence = [a for a in all_articles if is_albany_related(a)][:250]
     persistence_stats = await persist_articles_as_incidents(rows_for_persistence)
+    if persistence_stats.get("inserted", 0) > 0 or persistence_stats.get("updated", 0) > 0:
+        _mark_real_incident_arrived()
 
     global _LAST_INCIDENT_PIPELINE
     diag = intel.build_pipeline_diagnostics(enriched, normalized, fused, scored)
@@ -4166,6 +4297,150 @@ async def stop_background_crime_ingest() -> None:
         pass
     _crime_ingest_bg_task = None
     _BACKGROUND_INGEST_STATS["crime"]["enabled"] = False
+
+
+# =============================================================================
+# GAP-FILLING — "Albany Pulse" synthetic activity cards
+# =============================================================================
+# When no new incident arrives for GAP_FILL_THRESHOLD_SECONDS, the system
+# generates lightweight "ongoing activity" incident cards from scanner
+# intelligence so the Live feed never appears dead.
+
+_GAP_FILL_THRESHOLD_S = int(os.getenv("GAP_FILL_THRESHOLD_SECONDS", "480"))  # 8 minutes
+_gap_fill_task: Optional[asyncio.Task] = None
+_last_real_incident_ts: float = time.time()
+_gap_fill_cards: list[dict[str, Any]] = []
+_GAP_FILL_MAX = 5
+
+
+def _mark_real_incident_arrived():
+    """Called whenever a genuine source-backed incident is persisted."""
+    global _last_real_incident_ts
+    _last_real_incident_ts = time.time()
+
+
+def _seconds_since_last_real_incident() -> float:
+    return time.time() - _last_real_incident_ts
+
+
+def _build_gap_fill_card(scanner_alerts: list[dict], stream_status: dict) -> Optional[dict[str, Any]]:
+    """Synthesize an 'ongoing activity' card from recent scanner intelligence."""
+    now = datetime.now(timezone.utc)
+    gap_minutes = int(_seconds_since_last_real_incident() / 60)
+
+    # Use scanner stream alerts if available
+    if scanner_alerts:
+        top = scanner_alerts[0]
+        analysis = top.get("analysis") or {}
+        cand = analysis.get("incident_candidate") or {}
+        muni = cand.get("municipality") or "Albany County"
+        itype = cand.get("incident_type") or "Police activity"
+        summary = analysis.get("summary") or top.get("text", "")[:120]
+        feed_name = top.get("feed_name", "Scanner")
+
+        title = f"Ongoing: {itype} in {muni}"
+        description = (
+            f"{summary} "
+            f"(Cross-referenced from live scanner transcription · {feed_name})"
+        )
+        return {
+            "id": f"gap_fill_{int(now.timestamp())}_{muni.replace(' ', '_')[:20]}",
+            "title": title,
+            "description": description,
+            "link": "",
+            "pubDate": now.isoformat(),
+            "source": "Albany Pulse",
+            "municipality": muni,
+            "severity": "medium",
+            "category": itype.lower() if itype else "police activity",
+            "confidence": 0.6,
+            "feed_tab": "live",
+            "_gap_fill": True,
+            "_gap_minutes": gap_minutes,
+            "lat": None,
+            "lon": None,
+        }
+
+    # Fallback: generic "monitoring" card
+    monitor_running = stream_status.get("monitor_running", False)
+    if gap_minutes >= 12:
+        return {
+            "id": f"gap_fill_monitoring_{int(now.timestamp())}",
+            "title": "Albany County · Routine monitoring",
+            "description": (
+                f"No new confirmed incidents in the past {gap_minutes} minutes. "
+                f"{'Scanner pipeline active — monitoring ' + str(stream_status.get('alert_count', 0)) + ' recent transmissions.' if monitor_running else 'All sources being polled.'} "
+                "Feed will update immediately when activity is detected."
+            ),
+            "link": "",
+            "pubDate": now.isoformat(),
+            "source": "Albany Pulse",
+            "municipality": "Albany County",
+            "severity": "low",
+            "category": "monitoring",
+            "confidence": 1.0,
+            "feed_tab": "live",
+            "_gap_fill": True,
+            "_gap_minutes": gap_minutes,
+            "lat": None,
+            "lon": None,
+        }
+    return None
+
+
+async def _gap_fill_loop() -> None:
+    """Background loop that synthesizes cards when the feed goes quiet."""
+    global _gap_fill_cards
+    await asyncio.sleep(30.0)  # Let other systems warm up first
+    while True:
+        try:
+            gap_s = _seconds_since_last_real_incident()
+            if gap_s >= _GAP_FILL_THRESHOLD_S:
+                # Grab latest scanner intelligence
+                async with _stream_alerts_lock:
+                    recent_alerts = list(_stream_alerts[:5])
+                stream_status = {
+                    "monitor_running": _stream_monitor_task is not None and not _stream_monitor_task.done(),
+                    "alert_count": len(_stream_alerts),
+                }
+                card = _build_gap_fill_card(recent_alerts, stream_status)
+                if card:
+                    # Avoid duplicates — only add if title differs from last
+                    if not _gap_fill_cards or _gap_fill_cards[0].get("title") != card["title"]:
+                        _gap_fill_cards.insert(0, card)
+                        if len(_gap_fill_cards) > _GAP_FILL_MAX:
+                            _gap_fill_cards = _gap_fill_cards[:_GAP_FILL_MAX]
+                        logger.info("gap_fill_card_generated title=%s gap_minutes=%s",
+                                    card["title"][:60], card.get("_gap_minutes"))
+            else:
+                # Real incident arrived — clear gap-fill cards
+                if _gap_fill_cards:
+                    _gap_fill_cards.clear()
+            await asyncio.sleep(60.0)  # Check every minute
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning("gap_fill_loop_error: %s", exc)
+            await asyncio.sleep(60.0)
+
+
+async def start_gap_fill_monitor() -> None:
+    global _gap_fill_task
+    if _GAP_FILL_THRESHOLD_S <= 0:
+        return
+    _gap_fill_task = asyncio.create_task(_gap_fill_loop())
+    logger.info("gap_fill_monitor_started threshold_s=%s", _GAP_FILL_THRESHOLD_S)
+
+
+async def stop_gap_fill_monitor() -> None:
+    global _gap_fill_task
+    if _gap_fill_task:
+        _gap_fill_task.cancel()
+        try:
+            await _gap_fill_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        _gap_fill_task = None
 
 
 def _background_scanner_ingest_interval_s() -> float:
@@ -4380,13 +4655,98 @@ async def get_incidents(
         q=q,
         sort_by=sort_mode,
     )
+    # Merge gap-fill cards when the feed is quiet (keeps Live feed alive)
+    gap_cards = list(_gap_fill_cards) if _gap_fill_cards else []
+    if gap_cards and not q:
+        items = list(items) + gap_cards
+
+    gap_seconds = _seconds_since_last_real_incident()
     payload = {
         "status": "ok",
         "source": incident_store_backend(),
         "count": len(items),
         "incidents": items,
+        "pulse": {
+            "seconds_since_last_incident": int(gap_seconds),
+            "gap_fill_active": bool(gap_cards),
+            "sources_active": len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED),
+            "scanner_pipeline_active": _stream_monitor_task is not None and not _stream_monitor_task.done(),
+        },
     }
     return payload
+
+
+@app.get("/api/incidents/pulse")
+async def get_incidents_pulse():
+    """Real-time feed health/freshness status for the Albany Pulse bar."""
+    gap_s = _seconds_since_last_real_incident()
+    total_sources = (
+        len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS)
+        + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED)
+    )
+    gnews_status = gnews_runtime_status()
+    scanner_running = _stream_monitor_task is not None and not _stream_monitor_task.done()
+    return {
+        "status": "ok",
+        "seconds_since_last_incident": int(gap_s),
+        "gap_fill_active": bool(_gap_fill_cards),
+        "gap_fill_count": len(_gap_fill_cards),
+        "sources_total": total_sources,
+        "gnews_status": gnews_status.get("status", "unknown"),
+        "scanner_pipeline_active": scanner_running,
+        "scanner_alert_count": len(_stream_alerts),
+        "feed_state": "live" if gap_s < 300 else ("aging" if gap_s < 900 else "quiet"),
+    }
+
+
+@app.get("/api/incidents/stream")
+async def incidents_stream():
+    """SSE endpoint — pushes new incident notifications to connected clients.
+    Clients subscribe via EventSource; server sends a heartbeat every 15s and
+    a 'new_incidents' event whenever the background ingest tick produces changes."""
+
+    async def event_generator():
+        last_count = 0
+        last_gap_state = ""
+        while True:
+            try:
+                current_items = await query_incidents(limit=5, sort_by="newest")
+                current_count = len(current_items)
+                gap_s = _seconds_since_last_real_incident()
+                gap_state = "live" if gap_s < 300 else ("aging" if gap_s < 900 else "quiet")
+
+                if current_count != last_count or gap_state != last_gap_state:
+                    newest = current_items[0] if current_items else {}
+                    payload = json.dumps({
+                        "type": "update",
+                        "newest_title": newest.get("title", ""),
+                        "newest_id": newest.get("id", ""),
+                        "count": current_count,
+                        "gap_state": gap_state,
+                        "seconds_since_last": int(gap_s),
+                    })
+                    yield f"event: new_incidents\ndata: {payload}\n\n"
+                    last_count = current_count
+                    last_gap_state = gap_state
+                else:
+                    yield f": heartbeat {int(time.time())}\n\n"
+
+                await asyncio.sleep(15)
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                yield f": error-retry\n\n"
+                await asyncio.sleep(30)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/api/incidents/{incident_id}/provenance")

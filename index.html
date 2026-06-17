@@ -136,8 +136,28 @@
       <!-- ── LIVE FEED (unified chronological) ── -->
       <div class="home-mode-panel active" id="homePanelLive">
         <div class="home-scroll">
-          <!-- Freshness banner: honestly surfaces "newest item is N min old" so
-               users can trust the Live promise rather than silently hiding lag. -->
+          <!-- Albany Pulse: real-time feed health indicator -->
+          <div class="albany-pulse" id="albanyPulse" hidden>
+            <div class="albany-pulse-left">
+              <span class="albany-pulse-dot" id="pulseDot"></span>
+              <span class="albany-pulse-label" id="pulseLabel">Albany Pulse</span>
+            </div>
+            <div class="albany-pulse-right">
+              <span class="albany-pulse-sources" id="pulseSources"></span>
+              <span class="albany-pulse-age" id="pulseAge"></span>
+            </div>
+          </div>
+
+          <!-- New activity sliding banner -->
+          <div class="new-activity-banner" id="newActivityBanner" hidden>
+            <span class="material-icons" style="font-size:14px;">notifications_active</span>
+            <span class="new-activity-text" id="newActivityText">New police activity detected</span>
+            <button type="button" class="new-activity-dismiss" id="newActivityDismiss" aria-label="Dismiss">
+              <span class="material-icons" style="font-size:14px;">close</span>
+            </button>
+          </div>
+
+          <!-- Freshness banner (existing) -->
           <div class="live-freshness" id="liveFreshness" hidden></div>
           <div class="feed-list" id="incidentListUnified">
             <div class="skeleton-card"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div>
