@@ -23,8 +23,13 @@
     }
   }
   var apiClient = window.ACTApiClient ? window.ACTApiClient.createApiClient(API) : null;
-  var REFRESH_MS = 45000;
+  var REFRESH_MS = 60000;   // Live feed: refresh every 60s (1 min)
   var SCANNER_REFRESH_MS = 20000;
+
+  // Critical Only state (global — affects both Live and Scanner)
+  var _criticalOnlyMode = false;
+  var _scannerCriticalMode = true;  // Scanner defaults to Critical Intel mode
+  var _newsFilterMode = "all";      // "all" | "incidents" | "general"
 
   // State
   var map, trendsChart;
@@ -385,6 +390,10 @@
     initSummaryControls();
     initChat();
     startClock();
+    initCriticalOnlyToggle();
+    initScannerCriticalToggle();
+    initNewsFilterBar();
+    initNewsModal();
 
     fetchIncidents();
     setTimeout(fetchScannerCalls, 900);
@@ -398,6 +407,7 @@
       fetchIncidents();
       fetchSummarySnapshot();
       fetchSituation();
+      updateLivePulseCounter();
     }, REFRESH_MS);
 
     setInterval(fetchScannerCalls, SCANNER_REFRESH_MS);
@@ -439,6 +449,187 @@
       if (typeof total !== "number" || total === 0) sub.textContent = "";
       else sub.textContent = total + " tracked in this window";
     }
+  }
+
+  // ── CRITICAL ONLY TOGGLE (Live feed) ─────────────────────────
+  function initCriticalOnlyToggle() {
+    var btn = document.getElementById("criticalOnlyToggle");
+    var label = document.getElementById("criticalToggleLabel");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      _criticalOnlyMode = !_criticalOnlyMode;
+      btn.setAttribute("aria-pressed", _criticalOnlyMode ? "true" : "false");
+      btn.classList.toggle("critical-toggle--active", _criticalOnlyMode);
+      if (label) label.textContent = _criticalOnlyMode ? "Critical Only" : "Show All";
+      fetchIncidents();
+    });
+  }
+
+  // ── SCANNER CRITICAL INTEL TOGGLE ────────────────────────────
+  function initScannerCriticalToggle() {
+    var btn = document.getElementById("scannerCriticalToggle");
+    var label = document.getElementById("scannerCriticalLabel");
+    var hint = document.querySelector(".sc-critical-hint");
+    if (!btn) return;
+    // Default: critical mode ON
+    btn.setAttribute("aria-pressed", "true");
+    btn.addEventListener("click", function () {
+      _scannerCriticalMode = !_scannerCriticalMode;
+      btn.setAttribute("aria-pressed", _scannerCriticalMode ? "true" : "false");
+      btn.classList.toggle("active", _scannerCriticalMode);
+      if (label) label.textContent = _scannerCriticalMode ? "Critical Intel" : "Show All";
+      if (hint) hint.textContent = _scannerCriticalMode ? "High-priority calls only" : "All radio traffic";
+      if (lastScannerCallsRef.length) renderScannerCalls(lastScannerCallsRef);
+    });
+  }
+
+  // ── NEWS FILTER BAR ───────────────────────────────────────────
+  function initNewsFilterBar() {
+    var btns = document.querySelectorAll("[data-news-filter]");
+    btns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        _newsFilterMode = btn.getAttribute("data-news-filter") || "all";
+        btns.forEach(function (b) {
+          b.classList.toggle("active", b === btn);
+        });
+        // Re-render news with current filter
+        if (_newsLoaded) {
+          _applyNewsFilter();
+        }
+      });
+    });
+  }
+
+  // Apply news filter to currently rendered stories
+  var _allMajorStories = [];
+  var _allDevelopingStories = [];
+
+  function _isIncidentStory(story) {
+    var blob = ((story.title || "") + " " + (story.summary || "") + " " + (story.source_name || "")).toLowerCase();
+    var incidentKws = ["shooting", "stabbing", "arrest", "crash", "fire", "pursuit", "robbery", "assault", "homicide", "overdose", "missing", "standoff", "swat", "burglary", "charged", "indicted", "police", "scanner"];
+    return incidentKws.some(function (kw) { return blob.indexOf(kw) !== -1; });
+  }
+
+  function _applyNewsFilter() {
+    var major = _allMajorStories;
+    var developing = _allDevelopingStories;
+    if (_newsFilterMode === "incidents") {
+      major = major.filter(_isIncidentStory);
+      developing = developing.filter(_isIncidentStory);
+    } else if (_newsFilterMode === "general") {
+      major = major.filter(function (s) { return !_isIncidentStory(s); });
+      developing = developing.filter(function (s) { return !_isIncidentStory(s); });
+    }
+    renderMajorStories(major);
+    renderDevelopingStories(developing);
+  }
+
+  // ── LIVE PULSE COUNTER ────────────────────────────────────────
+  function updateLivePulseCounter() {
+    var countEl = document.getElementById("livePulseCount");
+    if (!countEl) return;
+    var fiveMinAgo = Date.now() - 5 * 60 * 1000;
+    var recentCount = (allIncidentData || []).filter(function (item) {
+      var t = item.pubDate ? new Date(item.pubDate).getTime() : 0;
+      return t >= fiveMinAgo;
+    }).length;
+    countEl.textContent = String(recentCount);
+    var counter = document.getElementById("livePulseCounter");
+    if (counter) {
+      counter.classList.toggle("live-pulse-counter--active", recentCount > 0);
+    }
+  }
+
+  // ── NEWS MODAL ────────────────────────────────────────────────
+  function initNewsModal() {
+    var backdrop = document.getElementById("newsModalBackdrop");
+    var modal = document.getElementById("newsModal");
+    var closeBtn = document.getElementById("newsModalClose");
+    var shareBtn = document.getElementById("newsModalShare");
+
+    function closeModal() {
+      if (!modal || !backdrop) return;
+      modal.classList.remove("news-modal--open");
+      backdrop.classList.remove("news-modal-backdrop--open");
+      setTimeout(function () {
+        modal.setAttribute("hidden", "");
+        backdrop.setAttribute("hidden", "");
+      }, 280);
+    }
+
+    if (closeBtn) closeBtn.addEventListener("click", closeModal);
+    if (backdrop) backdrop.addEventListener("click", closeModal);
+
+    if (shareBtn) {
+      shareBtn.addEventListener("click", function () {
+        var link = document.getElementById("newsModalReadMore");
+        var title = document.getElementById("newsModalTitle");
+        var url = (link && link.href) || location.href;
+        var text = (title && title.textContent) || "Albany County Crime Tracker";
+        if (navigator.share) {
+          navigator.share({ title: text, url: url }).catch(function () {});
+        } else if (navigator.clipboard) {
+          navigator.clipboard.writeText(url).then(function () {
+            shareBtn.textContent = "Copied!";
+            setTimeout(function () {
+              shareBtn.innerHTML = '<span class="material-icons" style="font-size:14px;vertical-align:middle;margin-right:4px;">share</span>Share';
+            }, 1800);
+          });
+        }
+      });
+    }
+
+    // Close on Escape
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && modal && !modal.hasAttribute("hidden")) closeModal();
+    });
+  }
+
+  function openNewsModal(story) {
+    var backdrop = document.getElementById("newsModalBackdrop");
+    var modal = document.getElementById("newsModal");
+    if (!modal || !backdrop) return;
+
+    var titleEl = document.getElementById("newsModalTitle");
+    var sourceEl = document.getElementById("newsModalSource");
+    var metaEl = document.getElementById("newsModalMeta");
+    var summaryEl = document.getElementById("newsModalSummary");
+    var readMoreEl = document.getElementById("newsModalReadMore");
+    var readMoreLabel = document.getElementById("newsModalReadMoreLabel");
+    var credEl = document.getElementById("newsModalCredibility");
+
+    if (titleEl) titleEl.textContent = story.title || "Untitled";
+    if (sourceEl) sourceEl.textContent = story.source_name || story.source || "";
+    if (metaEl) {
+      var parts = [];
+      if (story.human_time) parts.push(story.human_time);
+      if (story.municipality) parts.push(story.municipality);
+      if (story.verification_level) parts.push(story.verification_level.replace(/_/g, " "));
+      metaEl.textContent = parts.join(" · ");
+    }
+    if (summaryEl) summaryEl.textContent = story.summary || story.description || "No summary available.";
+    if (readMoreEl) {
+      var link = story.source_url || story.link || "#";
+      readMoreEl.href = link;
+      readMoreEl.style.display = link && link !== "#" ? "" : "none";
+    }
+    if (readMoreLabel) {
+      var srcName = story.source_name || story.source || "Source";
+      readMoreLabel.textContent = "Read on " + srcName;
+    }
+    if (credEl) {
+      var sev = (story.severity || "").toLowerCase();
+      var sevLabel = sev === "critical" ? "🔴 Critical" : sev === "high" ? "🟠 High" : sev === "medium" ? "🟡 Medium" : "";
+      credEl.textContent = sevLabel;
+      credEl.style.display = sevLabel ? "" : "none";
+    }
+
+    backdrop.removeAttribute("hidden");
+    modal.removeAttribute("hidden");
+    // Trigger CSS transition
+    void modal.offsetHeight;
+    modal.classList.add("news-modal--open");
+    backdrop.classList.add("news-modal-backdrop--open");
   }
 
   // ── FEED (unified — no subtabs) ────────────────────────────────
@@ -752,12 +943,17 @@
         if (!data || data.status !== "ok") return;
         var major = data.major_stories || [];
         var developing = data.developing_stories || [];
-        renderMajorStories(major);
-        renderDevelopingStories(developing);
+        // Store for filter re-application
+        _allMajorStories = major;
+        _allDevelopingStories = developing;
+        // Apply current filter
+        _applyNewsFilter();
         renderRecaps(data.recap_24h, data.recap_7d, data.recap_30d);
         renderNewsFreshness(major.concat(developing));
       })
       .catch(function () {
+        _allMajorStories = [];
+        _allDevelopingStories = [];
         renderMajorStories([]);
         renderDevelopingStories([]);
         renderNewsFreshness([]);
@@ -863,12 +1059,22 @@
     var sev = (item.severity || "").toLowerCase();
     var sevCls = sev === "critical" ? " home-story-pill--sev-critical" : sev === "high" ? " home-story-pill--sev-high" : "";
     var link = item.source_url || item.link || "";
-    var tag = link ? "a" : "div";
-    var linkAttrs = link ? ' href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer"' : "";
-    var html = '<' + tag + ' class="home-story-card ' + cls + '"' + linkAttrs + '>';
+    var srcName = item.source_name || item.source || "";
+    // Cards are now clickable to open the in-app modal; external link is in the modal
+    var storyJson = escAttr(JSON.stringify({
+      title: item.title || "",
+      source_name: srcName,
+      source_url: link,
+      link: link,
+      human_time: item.human_time || "",
+      municipality: item.municipality || "",
+      verification_level: item.verification_level || "",
+      severity: sev,
+      summary: item.summary || item.description || ""
+    }));
+    var html = '<div class="home-story-card ' + cls + ' home-story-card--expandable" role="button" tabindex="0" data-story=\'' + storyJson + '\'>';
     // Source letter-avatar acts as the News visual anchor in place of a
     // publisher image (which the backend does not expose today).
-    var srcName = item.source_name || item.source || "";
     html += '<div class="home-story-avatar" aria-hidden="true">' + esc(_sourceInitials(srcName)) + '</div>';
     html += '<div class="home-story-body">';
     html += '<div class="home-story-head">';
@@ -878,36 +1084,63 @@
     if (item.summary) html += '<div class="home-story-desc">' + esc(item.summary) + '</div>';
     html += '<div class="home-story-meta">';
     if (item.municipality) html += '<span class="home-story-pill"><span class="material-icons" style="font-size:11px;margin-right:2px;">location_on</span>' + esc(item.municipality) + '</span>';
-    if (item.source_name) html += '<span class="home-story-pill home-story-pill--source">' + esc(item.source_name) + '</span>';
+    if (srcName) html += '<span class="home-story-pill home-story-pill--source">' + esc(srcName) + '</span>';
     if (sev && sev !== "unknown") html += '<span class="home-story-pill' + sevCls + '">' + esc(sev) + '</span>';
     var vl = (item.verification_level || "").replace(/_/g, " ");
     if (vl && vl !== "unknown") html += '<span class="home-story-pill">' + esc(vl) + '</span>';
-    html += '</div></div></' + tag + '>';
+    // Expand hint
+    html += '<span class="home-story-expand-hint"><span class="material-icons" style="font-size:12px;vertical-align:middle;">open_in_full</span></span>';
+    html += '</div></div></div>';
     return html;
+  }
+
+  // Bind click handlers on story cards to open the modal
+  function _bindStoryCardClicks(container) {
+    if (!container) return;
+    container.querySelectorAll(".home-story-card--expandable").forEach(function (card) {
+      card.addEventListener("click", function () {
+        var raw = card.getAttribute("data-story");
+        if (!raw) return;
+        try {
+          var story = JSON.parse(raw);
+          openNewsModal(story);
+        } catch (e) {}
+      });
+      card.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          card.click();
+        }
+      });
+    });
   }
 
   function renderMajorStories(stories) {
     var el = document.getElementById("homeMajorStories");
     if (!el) return;
-    if (!stories.length) {
+    if (!stories || !stories.length) {
       el.innerHTML = '<div class="feed-summary-empty">No major stories right now.</div>';
       return;
     }
+    // Show up to 20 stories
     var html = "";
-    stories.forEach(function (s) { html += _storyCard(s, "home-story-card--major"); });
+    stories.slice(0, 20).forEach(function (s) { html += _storyCard(s, "home-story-card--major"); });
     el.innerHTML = html;
+    _bindStoryCardClicks(el);
   }
 
   function renderDevelopingStories(stories) {
     var el = document.getElementById("homeDevelopingStories");
     if (!el) return;
-    if (!stories.length) {
+    if (!stories || !stories.length) {
       el.innerHTML = '<div class="feed-summary-empty">Nothing developing right now.</div>';
       return;
     }
+    // Show up to 15 developing stories
     var html = "";
-    stories.forEach(function (s) { html += _storyCard(s, "home-story-card--developing"); });
+    stories.slice(0, 15).forEach(function (s) { html += _storyCard(s, "home-story-card--developing"); });
     el.innerHTML = html;
+    _bindStoryCardClicks(el);
   }
 
   function renderRecaps(r24, r7, r30) {
@@ -1919,18 +2152,22 @@
     var tid = setTimeout(function () {
       ctrl.abort();
     }, CRIMES_FETCH_MS);
-    // Live tab requests sort_by=operational (commit landing this pass) so
-    // the backend ranks actionable incidents first and the timeline
-    // becomes incident-first instead of strictly chronological.
+    // Live tab requests sort_by=operational so the backend ranks actionable
+    // incidents first. critical_only param filters to high-criticality items.
     var params = {
-      limit: 180,
+      limit: 100,
       sort_by: "operational",
       start_date: homeWindowStartIso()
     };
+    if (_criticalOnlyMode) {
+      params.critical_only = "true";
+    }
+    var qs = "limit=" + params.limit + "&sort_by=" + params.sort_by + "&start_date=" + encodeURIComponent(params.start_date);
+    if (_criticalOnlyMode) qs += "&critical_only=true";
     (apiClient && apiClient.getPersistedIncidents
       ? apiClient.getPersistedIncidents(params)
       : fetch(
-          API + "/api/incidents?limit=180&sort_by=operational&start_date=" + encodeURIComponent(params.start_date),
+          API + "/api/incidents?" + qs,
           { signal: ctrl.signal }
         ).then(ok))
       .finally(function () {
@@ -1954,6 +2191,7 @@
         refreshHeaderPrimaryCount();
         markTopbarLiveIfStillConnecting();
         markFeedFreshNow();
+        updateLivePulseCounter();
       })
       .catch(function (err) {
         console.error("Incidents fetch error (/api/incidents):", err);
@@ -2640,9 +2878,24 @@
 
     // Single chronological list — no section headers.
     // Visual hierarchy lives in the cards themselves (severity, source, time, live badge).
+    // Track existing card IDs for slide-in animation on new items.
+    var existingIds = {};
+    list.querySelectorAll("[id^='feed-card-']").forEach(function (el) {
+      existingIds[el.id] = true;
+    });
+
     var html = "";
     items.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
+
+    // Animate new cards (slide in from top)
+    list.querySelectorAll("[id^='feed-card-']").forEach(function (el) {
+      if (!existingIds[el.id]) {
+        el.classList.add("feed-item--new");
+        // Remove animation class after it completes
+        setTimeout(function () { el.classList.remove("feed-item--new"); }, 600);
+      }
+    });
   }
 
   // Backward compat wrappers — all feed rendering goes through unified
@@ -3944,6 +4197,16 @@
           String(c.talkgroup_description || "")).toLowerCase();
         if (blob.indexOf(scannerSearchQuery) < 0) return false;
       }
+      // Critical Intel mode: only show high-priority police calls
+      if (_scannerCriticalMode) {
+        var isCriticalCall = d.priority === "high" || c.is_emergency || c.emergency;
+        if (!isCriticalCall) {
+          // Also allow calls with critical keywords in talkgroup text
+          var tgBlob = (String(c.talkgroup_tag || "") + " " + String(c.talkgroup_description || "")).toLowerCase();
+          var hasCritKw = CRITICAL_SCANNER_KEYWORDS.some(function (kw) { return tgBlob.indexOf(kw) !== -1; });
+          if (!hasCritKw) return false;
+        }
+      }
       return true;
     });
 
@@ -3986,7 +4249,20 @@
       if (whisper && whisper.alert_level === "critical") alertClass = " sc-card--alert-critical";
       else if (whisper && whisper.alert_level === "high") alertClass = " sc-card--alert-high";
 
-      html += '<div class="sc-card sc-card--' + esc(cat) + (isSelected ? ' sc-card--active' : '') + alertClass + '" data-sc-idx="' + idx + '">';
+      // Priority color: red=critical, orange=high, yellow=medium, gray=low
+      var priorityClass = "";
+      var whisperLevel = whisper ? whisper.alert_level : "none";
+      if (whisperLevel === "critical" || call.is_emergency || call.emergency) {
+        priorityClass = " sc-card--priority-critical";
+      } else if (whisperLevel === "high" || dept.priority === "high") {
+        priorityClass = " sc-card--priority-high";
+      } else if (dept.priority === "medium") {
+        priorityClass = " sc-card--priority-medium";
+      } else {
+        priorityClass = " sc-card--priority-low";
+      }
+
+      html += '<div class="sc-card sc-card--' + esc(cat) + (isSelected ? ' sc-card--active' : '') + alertClass + priorityClass + '" data-sc-idx="' + idx + '">';
 
       // Alert banner if critical/high keywords detected
       if (whisper && (whisper.alert_level === "critical" || whisper.alert_level === "high")) {
@@ -4076,10 +4352,30 @@
         html += '<div class="sc-card-raw">' + esc(call.talkgroup_description) + '</div>';
       }
       html += '</details>';
+
+      // View Agency button
+      if (dept.agencyId) {
+        html += '<div class="sc-card-actions">';
+        html += '<button type="button" class="sc-agency-btn" data-agency-id="' + escAttr(dept.agencyId) + '">';
+        html += '<span class="material-icons" style="font-size:13px;vertical-align:middle;margin-right:3px;">badge</span>View Agency';
+        html += '</button>';
+        html += '</div>';
+      }
+
       html += '</div>';
     });
 
     container.innerHTML = html;
+
+    // Bind View Agency buttons
+    container.querySelectorAll(".sc-agency-btn").forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var aid = btn.getAttribute("data-agency-id");
+        openDirectoryToAgency(aid || null);
+      });
+    });
+
     bindScannerRowPlay(container, deduped);
     bindScannerAudio(container);
     if (_scannerSelectedIdx < 0) updateMainPlayer(deduped);

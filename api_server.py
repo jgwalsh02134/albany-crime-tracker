@@ -378,6 +378,37 @@ RSS_FEEDS_LOCAL = {
         "reliability": 1.0,
         "priority": 3,
     },
+    # ── 511NY Traffic — Capital District incidents (low-priority feed items) ──
+    # Enabled when NY511_CAPITAL_DISTRICT_RSS env var is set; also polled
+    # via the 511NY API adapter (get_511_adapter). These appear as traffic
+    # source items in the live feed with low priority.
+    "ny511_traffic_gnews": {
+        "url": "https://news.google.com/rss/search?q=%22511NY%22+OR+%22511+NY%22+(albany+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes+OR+watervliet)+(traffic+OR+closure+OR+crash+OR+incident)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "511NY Traffic",
+        "filter": "albany",
+        "reliability": 0.90,
+        "priority": 2,
+        "tag_511": True,
+        "source_type": "traffic",
+    },
+    # ── Socrata / Albany Open Data — crime statistics and incident data ───────
+    "albany_open_data_gnews": {
+        "url": "https://news.google.com/rss/search?q=site:data.albanyny.gov+OR+%22albany+open+data%22+(crime+OR+arrest+OR+incident+OR+police)+when:7d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Albany Open Data",
+        "filter": "albany",
+        "reliability": 0.95,
+        "priority": 3,
+        "source_type": "open_data",
+    },
+    # ── Community alerts / social media RSS (local Twitter/X feeds) ───────────
+    "community_alerts_gnews": {
+        "url": "https://news.google.com/rss/search?q=%22albany+county%22+(alert+OR+warning+OR+emergency+OR+community+notice)+(police+OR+fire+OR+ems+OR+public+safety)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Community Alerts",
+        "filter": "albany",
+        "reliability": 0.75,
+        "priority": 2,
+        "source_type": "community",
+    },
 }
 
 # Google News targeted searches — strict Albany filter applied to all
@@ -4344,14 +4375,118 @@ def _parse_tags(value: Optional[str]) -> Optional[list[str]]:
     return tags or None
 
 
+# =============================================================================
+# CRITICALITY SCORING — keyword-based 0.0–1.0 score for incident prioritization
+# =============================================================================
+
+_CRITICALITY_HIGH_KEYWORDS = frozenset([
+    "shooting", "shot", "shots fired", "stabbing", "stabbed", "homicide", "murder",
+    "fatal", "deadly", "killed", "dead", "fire", "structure fire", "working fire",
+    "pursuit", "vehicle pursuit", "foot pursuit", "high-speed chase",
+    "missing", "amber alert", "silver alert", "missing person",
+    "hostage", "swat", "barricade", "standoff",
+    "wrong-way", "wrong way", "officer down", "officer involved",
+    "explosion", "bomb", "hazmat", "mass casualty",
+])
+
+_CRITICALITY_MEDIUM_KEYWORDS = frozenset([
+    "arrest", "arrested", "robbery", "burglary", "assault", "overdose",
+    "crash", "collision", "mva", "rollover", "road closed", "closure",
+    "charged", "indicted", "suspect", "weapon",
+])
+
+_CRITICALITY_LOW_KEYWORDS = frozenset([
+    "traffic", "minor incident", "noise complaint", "parking", "trespass",
+    "vandalism", "graffiti",
+])
+
+
+def score_incident_criticality(incident: dict) -> float:
+    """Return a criticality score 0.0–1.0 based on incident keywords.
+
+    High-priority incidents (shooting, homicide, fire, pursuit, etc.) → 0.7–1.0
+    Medium-priority (arrest, robbery, assault, overdose) → 0.4–0.69
+    Low-priority (traffic, minor) → 0.1–0.39
+    Unknown → 0.3
+    """
+    blob = (
+        (incident.get("title") or "")
+        + " "
+        + (incident.get("description") or "")
+        + " "
+        + (incident.get("short_title") or "")
+        + " "
+        + (incident.get("incident_type") or "")
+    ).lower()
+
+    # Severity field shortcut
+    sev = (incident.get("severity") or "").lower()
+    if sev == "critical":
+        return 1.0
+    if sev == "high":
+        return 0.85
+
+    # Keyword scan — high priority
+    high_hits = sum(1 for kw in _CRITICALITY_HIGH_KEYWORDS if kw in blob)
+    if high_hits >= 2:
+        return min(1.0, 0.80 + high_hits * 0.05)
+    if high_hits == 1:
+        return 0.75
+
+    # Medium priority
+    med_hits = sum(1 for kw in _CRITICALITY_MEDIUM_KEYWORDS if kw in blob)
+    if med_hits >= 2:
+        return 0.60
+    if med_hits == 1:
+        return 0.45
+
+    # Low priority
+    low_hits = sum(1 for kw in _CRITICALITY_LOW_KEYWORDS if kw in blob)
+    if low_hits:
+        return 0.20
+
+    # Scanner calls get a slight boost
+    if incident.get("_scanner_call") or (incident.get("source_type") or "").lower() == "scanner":
+        return 0.40
+
+    return 0.30
+
+
+def _short_timestamp(dt_str: Optional[str]) -> str:
+    """Convert ISO datetime string to compact relative timestamp like '2m ago', '1h ago'."""
+    if not dt_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(str(dt_str).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - dt
+        total_seconds = int(delta.total_seconds())
+        if total_seconds < 0:
+            return "just now"
+        if total_seconds < 60:
+            return "just now"
+        if total_seconds < 3600:
+            m = total_seconds // 60
+            return f"{m}m ago"
+        if total_seconds < 86400:
+            h = total_seconds // 3600
+            return f"{h}h ago"
+        d = total_seconds // 86400
+        return f"{d}d ago"
+    except Exception:
+        return ""
+
+
 @app.get("/api/incidents")
 async def get_incidents(
-    limit: int = 100,
+    limit: int = 50,
     offset: int = 0,
     municipality: Optional[str] = None,
     incident_type: Optional[str] = None,
     status: Optional[str] = None,
     source_type: Optional[str] = None,
+    sources: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     has_coordinates: Optional[str] = None,
@@ -4360,17 +4495,29 @@ async def get_incidents(
     tags: Optional[str] = None,
     q: Optional[str] = None,
     sort_by: str = "newest",
+    critical_only: Optional[str] = None,
 ):
+    # Clamp limit: default 50, max 100
+    limit = max(1, min(int(limit), 100))
     sort_mode = (sort_by or "newest").lower()
     if sort_mode not in ("newest", "severity", "verification", "priority", "operational"):
         sort_mode = "newest"
+
+    # Resolve source_type from ?sources= multi-value param (scanner,news,traffic)
+    effective_source_type = source_type
+    if sources and not source_type:
+        source_list = [s.strip().lower() for s in sources.split(",") if s.strip()]
+        if len(source_list) == 1:
+            effective_source_type = source_list[0]
+        # Multiple sources: fetch all and filter post-query (handled below)
+
     items = await query_incidents(
         limit=limit,
         offset=offset,
         municipality=municipality,
         incident_type=incident_type,
         status=status,
-        source_type=source_type,
+        source_type=effective_source_type,
         start_date=_parse_iso_dt(start_date),
         end_date=_parse_iso_dt(end_date),
         has_coordinates=_parse_optional_bool(has_coordinates),
@@ -4380,6 +4527,44 @@ async def get_incidents(
         q=q,
         sort_by=sort_mode,
     )
+
+    # Multi-source filter when ?sources= has multiple values
+    if sources and not source_type:
+        source_list = [s.strip().lower() for s in sources.split(",") if s.strip()]
+        if len(source_list) > 1:
+            def _matches_source(item: dict) -> bool:
+                st = (item.get("source_type") or "").lower()
+                sn = (item.get("source_name") or "").lower()
+                for sl in source_list:
+                    if sl == "scanner" and (st == "scanner" or "scanner" in sn):
+                        return True
+                    if sl == "traffic" and ("traffic" in sn or "511" in sn or st == "traffic"):
+                        return True
+                    if sl == "news" and st in ("local_news", "media", "official_alerts"):
+                        return True
+                    if sl in st or sl in sn:
+                        return True
+                return False
+            items = [it for it in items if _matches_source(it)]
+
+    # Stamp criticality_score and short_timestamp on each item
+    for item in items:
+        cs = score_incident_criticality(item)
+        item["criticality_score"] = round(cs, 3)
+        ts_raw = item.get("occurred_at") or item.get("published_at") or ""
+        item["short_timestamp"] = _short_timestamp(ts_raw)
+        # municipality_tag: compact display label
+        muni = (item.get("municipality") or "").strip()
+        item["municipality_tag"] = muni if muni else "Albany County"
+        # action_buttons: standard set for frontend
+        item["action_buttons"] = ["view_map"] if (item.get("latitude") and item.get("longitude")) else []
+        if item.get("source_url"):
+            item["action_buttons"].append("read_more")
+
+    # critical_only filter: keep items with criticality_score >= 0.7
+    if _parse_optional_bool(critical_only):
+        items = [it for it in items if it.get("criticality_score", 0) >= 0.7]
+
     payload = {
         "status": "ok",
         "source": incident_store_backend(),
