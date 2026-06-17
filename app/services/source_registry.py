@@ -27,11 +27,37 @@ def load_source_registry() -> list[dict[str, Any]]:
 def source_registry_summary(entries: list[dict[str, Any]]) -> dict[str, Any]:
     category_counts = Counter(str(x.get("category") or "unknown") for x in entries)
     active_count = sum(1 for x in entries if bool(x.get("active_status")))
+    # New adapters registered in api_server.py RSS_FEEDS_LOCAL
+    new_adapters = [
+        {
+            "id": "ny511_traffic_gnews",
+            "label": "511NY Traffic",
+            "type": "traffic",
+            "status": "active",
+            "description": "511NY Capital District traffic incidents via Google News RSS",
+        },
+        {
+            "id": "albany_open_data_gnews",
+            "label": "Albany Open Data (Socrata)",
+            "type": "open_data",
+            "status": "active",
+            "description": "Albany city/county open data crime statistics and incident records",
+        },
+        {
+            "id": "community_alerts_gnews",
+            "label": "Community Alerts",
+            "type": "community",
+            "status": "active",
+            "description": "Local community alerts and social media public safety posts",
+        },
+    ]
     return {
         "total_sources": len(entries),
         "active_sources": active_count,
         "inactive_sources": max(0, len(entries) - active_count),
         "category_counts": dict(sorted(category_counts.items(), key=lambda kv: (-kv[1], kv[0]))),
+        "new_adapters": new_adapters,
+        "adapter_types": ["scanner", "news", "traffic", "open_data", "community", "official"],
     }
 
 

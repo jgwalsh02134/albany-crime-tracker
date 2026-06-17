@@ -1,0 +1,1 @@
+UI Home: Split 'Live Activity' (scanner heavy, frequent) and 'Headlines' collapsible. Timestamps in minutes, dynamic population from all sources.
