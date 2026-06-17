@@ -7211,22 +7211,27 @@ _stream_monitor_task: Optional[asyncio.Task] = None
 
 
 async def _capture_audio_chunk(stream_url: str, duration_secs: int = 30) -> Optional[bytes]:
-    """Capture an audio chunk from a live stream using ffmpeg."""
-    if not shutil.which("ffmpeg"):
-        logger.warning("ffmpeg not found — stream monitor disabled")
-        return None
+    """Capture an audio chunk from a live stream.
+    Prefers ffmpeg (produces clean WAV), falls back to raw HTTP stream
+    capture (returns MP3 bytes — Whisper accepts MP3 directly)."""
+    if shutil.which("ffmpeg"):
+        return await _capture_audio_chunk_ffmpeg(stream_url, duration_secs)
+    return await _capture_audio_chunk_http(stream_url, duration_secs)
 
+
+async def _capture_audio_chunk_ffmpeg(stream_url: str, duration_secs: int = 30) -> Optional[bytes]:
+    """Capture via ffmpeg — produces 16kHz mono WAV ideal for Whisper."""
     try:
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg",
-            "-y",                      # overwrite
-            "-t", str(duration_secs),  # capture duration
-            "-i", stream_url,          # input stream
-            "-acodec", "pcm_s16le",    # raw PCM
-            "-ar", "16000",            # 16kHz for Whisper
-            "-ac", "1",                # mono
-            "-f", "wav",               # WAV output
-            "pipe:1",                  # stdout
+            "-y",
+            "-t", str(duration_secs),
+            "-i", stream_url,
+            "-acodec", "pcm_s16le",
+            "-ar", "16000",
+            "-ac", "1",
+            "-f", "wav",
+            "pipe:1",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -7235,33 +7240,64 @@ async def _capture_audio_chunk(stream_url: str, duration_secs: int = 30) -> Opti
             err_msg = stderr.decode("utf-8", errors="replace")[-200:] if stderr else "unknown"
             logger.warning("ffmpeg error (feed): %s", err_msg)
             return None
-        if len(stdout) < 1000:  # too small = silence or error
+        if len(stdout) < 1000:
             return None
         return stdout
     except asyncio.TimeoutError:
         logger.warning("ffmpeg capture timed out")
         return None
     except Exception as e:
-        logger.warning("Audio capture error: %s", e)
+        logger.warning("Audio capture ffmpeg error: %s", e)
         return None
 
 
-async def _transcribe_audio_bytes(audio_wav: bytes) -> Optional[str]:
-    """Send raw WAV audio to Whisper API for transcription."""
+async def _capture_audio_chunk_http(stream_url: str, duration_secs: int = 30) -> Optional[bytes]:
+    """Fallback: capture raw MP3 bytes from a Broadcastify CDN stream via HTTP.
+    No ffmpeg required — Whisper API accepts MP3 directly. Collects bytes for
+    `duration_secs` then returns the buffer."""
+    try:
+        chunks: list[bytes] = []
+        total_bytes = 0
+        target_bytes = duration_secs * 16000  # ~128kbps stream ≈ 16KB/s
+
+        async with http_client.stream("GET", stream_url, timeout=duration_secs + 10) as resp:
+            if resp.status_code != 200:
+                logger.warning("HTTP stream capture failed: status %d", resp.status_code)
+                return None
+            start = time.time()
+            async for chunk in resp.aiter_bytes(chunk_size=4096):
+                chunks.append(chunk)
+                total_bytes += len(chunk)
+                elapsed = time.time() - start
+                if elapsed >= duration_secs or total_bytes >= target_bytes * 2:
+                    break
+
+        if total_bytes < 2000:
+            return None
+        return b"".join(chunks)
+    except Exception as e:
+        logger.warning("HTTP stream capture error: %s", e)
+        return None
+
+
+async def _transcribe_audio_bytes(audio_bytes: bytes) -> Optional[str]:
+    """Send audio to Whisper API for transcription. Accepts WAV or MP3."""
     openai_key = settings.openai_api_key
-    if not openai_key or not audio_wav:
+    if not openai_key or not audio_bytes:
         return None
+
+    # Detect format: WAV starts with RIFF header, otherwise assume MP3
+    is_wav = audio_bytes[:4] == b"RIFF"
+    filename = "stream_chunk.wav" if is_wav else "stream_chunk.mp3"
+    mime = "audio/wav" if is_wav else "audio/mpeg"
 
     try:
         _transcribe_model = (os.getenv("SCANNER_TRANSCRIBE_MODEL") or "whisper-1").strip()
         files = {
-            "file": ("stream_chunk.wav", io.BytesIO(audio_wav), "audio/wav"),
+            "file": (filename, io.BytesIO(audio_bytes), mime),
             "model": (None, _transcribe_model),
             "language": (None, "en"),
-            "prompt": (None, "Albany County NY police fire EMS dispatch radio. "
-                       "10-codes, signal codes, street names, locations. "
-                       "Common: Central Avenue, Washington Avenue, State Street, "
-                       "New Scotland, Western Avenue, Delaware Avenue, Lark Street."),
+            "prompt": (None, _SCANNER_TRANSCRIBE_PROMPT_BASE),
         }
         resp = await http_client.post(
             "https://api.openai.com/v1/audio/transcriptions",
@@ -7388,24 +7424,25 @@ async def _monitor_single_feed(feed: dict):
 
 
 async def start_stream_monitor():
-    """Start background stream monitoring for all configured feeds."""
+    """Start background stream monitoring for all configured feeds.
+    Uses ffmpeg when available for optimal audio quality; falls back to
+    direct HTTP stream capture (MP3) when ffmpeg is not installed."""
     global _stream_monitor_task
     if not settings.openai_api_key:
         logger.info("Stream monitor disabled — no OPENAI_API_KEY")
         return
-    if not shutil.which("ffmpeg"):
-        logger.info("Stream monitor disabled — ffmpeg not installed")
-        return
+
+    has_ffmpeg = shutil.which("ffmpeg") is not None
+    if not has_ffmpeg:
+        logger.info("Stream monitor starting WITHOUT ffmpeg (using HTTP MP3 capture fallback)")
 
     # Only monitor high and medium priority feeds to save API costs
     feeds_to_monitor = [f for f in BROADCASTIFY_FEEDS if f["priority"] in ("high", "medium")]
     if not feeds_to_monitor:
         return
 
-    logger.info("Starting stream monitor for %d feeds", len(feeds_to_monitor))
+    logger.info("Starting stream monitor for %d feeds (ffmpeg=%s)", len(feeds_to_monitor), has_ffmpeg)
     tasks = [asyncio.create_task(_monitor_single_feed(f)) for f in feeds_to_monitor]
-    # gather() already schedules the tasks and returns an awaitable/cancelable
-    # future — wrapping it in create_task() raises TypeError (expects a coroutine).
     _stream_monitor_task = asyncio.gather(*tasks, return_exceptions=True)
 
 
@@ -7438,11 +7475,13 @@ async def get_stream_alerts(limit: int = 20):
 async def get_stream_status():
     """Return stream monitor status."""
     running = _stream_monitor_task is not None and not _stream_monitor_task.done()
+    has_ffmpeg = shutil.which("ffmpeg") is not None
     return {
         "status": "ok",
         "monitor_running": running,
         "feeds": BROADCASTIFY_FEEDS,
-        "ffmpeg_available": shutil.which("ffmpeg") is not None,
+        "ffmpeg_available": has_ffmpeg,
+        "http_fallback_active": running and not has_ffmpeg,
         "whisper_configured": bool(settings.openai_api_key),
         "alert_count": len(_stream_alerts),
     }

@@ -3927,18 +3927,16 @@
           txt.textContent = "Whisper pipeline unavailable";
           return;
         }
-        if (d.monitor_running && d.whisper_configured && d.ffmpeg_available) {
+        if (d.monitor_running && d.whisper_configured) {
           bar.setAttribute("data-state", "live");
           var feedCount = d.feeds ? d.feeds.filter(function (f) {
             return f.priority === "high" || f.priority === "medium";
           }).length : 0;
-          txt.textContent = "Live • Monitoring " + feedCount + " feed" + (feedCount !== 1 ? "s" : "");
+          var modeLabel = d.http_fallback_active ? " (stream capture)" : "";
+          txt.textContent = "Live • Monitoring " + feedCount + " feed" + (feedCount !== 1 ? "s" : "") + modeLabel;
         } else if (!d.whisper_configured) {
           bar.setAttribute("data-state", "offline");
           txt.textContent = "Transcription unavailable";
-        } else if (!d.ffmpeg_available) {
-          bar.setAttribute("data-state", "offline");
-          txt.textContent = "Audio processor initializing…";
         } else if (d.alert_count > 0) {
           bar.setAttribute("data-state", "idle");
           txt.textContent = d.alert_count + " recent transcription" + (d.alert_count !== 1 ? "s" : "");
