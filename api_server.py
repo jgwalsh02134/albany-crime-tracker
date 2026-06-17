@@ -6593,6 +6593,54 @@ _whisper_lock = asyncio.Lock()
 _whisper_semaphore = asyncio.Semaphore(3)
 
 
+_AD_NOISE_PATTERNS = [
+    "broadcastify", "broadcast", "scanner radio",
+    "premium", "subscribe", "subscription",
+    "commercial", "advertisement", "sponsor",
+    "brought to you by", "this feed is provided",
+    "radioreference", "radio reference",
+    "visit us at", "visit our website",
+    "download the app", "available on",
+    "thank you for listening", "thanks for listening",
+    "support this feed", "feed provider",
+    "listeners", "streaming",
+    "sign up", "free trial", "upgrade",
+    "promo code", "discount",
+    "holiday sale", "black friday",
+    "dot com", ".com",
+    "limited time", "act now", "call now",
+    "toll free", "1-800", "1-888", "1-877",
+    "money back", "guarantee",
+    "customer service", "satisfaction",
+]
+
+_AD_NOISE_THRESHOLD = 3
+
+
+def _is_ad_or_noise(text: str) -> bool:
+    """Detect Broadcastify ad breaks, promos, and non-dispatch audio."""
+    if not text:
+        return True
+    lower = text.lower().strip()
+    # Very short transcriptions are usually silence artifacts
+    if len(lower) < 15:
+        return True
+    # Count ad-pattern matches
+    hits = sum(1 for p in _AD_NOISE_PATTERNS if p in lower)
+    if hits >= _AD_NOISE_THRESHOLD:
+        return True
+    # Catch repetitive filler (Whisper hallucinates on silence/music)
+    words = lower.split()
+    if len(words) >= 6:
+        unique = set(words)
+        if len(unique) <= len(words) * 0.3:
+            return True
+    # Whisper silence hallucination: repeated phrases
+    if lower.count("thank you") >= 3 or lower.count("you") >= 8:
+        return True
+    return False
+
+
 def _scan_for_keywords(text: str) -> list[str]:
     """Find critical keywords in transcription text."""
     lower = text.lower()
@@ -7154,6 +7202,11 @@ async def scanner_transcribe(request: Request):
                 transcript_data = whisper_resp.json()
                 text = transcript_data.get("text", "").strip()
 
+                # Filter ads/promos that sometimes appear in call audio
+                if _is_ad_or_noise(text):
+                    results.append({"id": call_id, "status": "skip", "reason": "ad_or_noise"})
+                    continue
+
                 # Scan for critical keywords
                 keywords = _scan_for_keywords(text)
                 level = _alert_level(keywords)
@@ -7380,6 +7433,12 @@ async def _monitor_single_feed(feed: dict):
             # Transcribe the audio chunk
             text = await _transcribe_audio_bytes(audio)
             if not text or len(text.strip()) < 5:
+                await asyncio.sleep(pause_secs)
+                continue
+
+            # Filter out ads, promos, and non-dispatch audio
+            if _is_ad_or_noise(text):
+                logger.debug("stream_monitor_ad_filtered feed=%s text=%s", feed_id, text[:80])
                 await asyncio.sleep(pause_secs)
                 continue
 
