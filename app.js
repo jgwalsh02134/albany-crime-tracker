@@ -2568,7 +2568,7 @@
   // Home live feed must never re-show scanner-tab-only rows. fetchIncidents() filters
   // these out, but filter chips / sheet re-render used allIncidentData (unfiltered),
   // which brought scanner directory / conventional-frequency cards back into the list.
-  var _BAD_SOURCES_RE = /\b(kezi|kval|kmtr|walb|wfxl)\b/i;
+  var _BAD_SOURCES_RE = /\b(kezi|kval|kmtr|walb|wfxl|morning call)\b/i;
   var _OUT_OF_COUNTY_RE = /\b(troy|saratoga|schenectady|kingston|saugerties|fort edward|cobleskill|adams|glens falls|hudson|catskill|oneonta)\b/i;
 
   function _homeFeedExcludeScannerOnly(items) {
