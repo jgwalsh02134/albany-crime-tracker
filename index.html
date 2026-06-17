@@ -247,6 +247,28 @@
           <button type="button" class="sc-filter sc-filter--ems" data-scanner-filter="ems">EMS</button>
         </div>
 
+        <!-- ───────────────────────────────────────────────────────────
+             LIVE WHISPER FEED — primary scanner content.
+             Source: /api/scanner/stream-alerts (Broadcastify live audio →
+             ffmpeg → Whisper → keyword + criticality analysis). Requires no
+             Broadcastify API key. The status bar reflects real pipeline state
+             from /api/scanner/stream-status. Rendered by renderStreamAlerts();
+             play buttons stream the source feed live via the public CDN.
+        ──────────────────────────────────────────────────────────────── -->
+        <section class="sc-whisper" id="streamAlertsSection" aria-label="Live scanner transcriptions">
+          <div class="sc-whisper-bar" id="streamAlertsStatus" data-state="connecting">
+            <span class="sc-whisper-dot"></span>
+            <span class="sc-whisper-bar-text" id="streamAlertsStatusText">Connecting to Whisper pipeline…</span>
+            <span class="sc-whisper-count" id="streamAlertCount"></span>
+          </div>
+          <div class="sc-whisper-list" id="streamAlertsList">
+            <div class="sc-whisper-empty">
+              <span class="material-icons">graphic_eq</span>
+              <span>Listening for live transmissions…</span>
+            </div>
+          </div>
+        </section>
+
         <div class="sc-player" id="mainPlayerCard">
           <div class="sc-player-top">
             <div class="sc-player-info">
@@ -285,16 +307,6 @@
           <strong>Live radio traffic</strong> from Albany County's P25 system. This is raw dispatch audio — not confirmed incidents.
           Tap any card to listen. <span id="scannerTimestamp"></span>
           <span class="sc-source-info" id="scannerSourceInfo"></span>
-        </div>
-
-        <!-- Live stream alerts from Broadcastify → Whisper pipeline -->
-        <div class="sc-stream-alerts" id="streamAlertsSection" style="display:none;">
-          <div class="sc-stream-header">
-            <span class="material-icons" style="font-size:16px;color:#E53935;vertical-align:middle;">cell_tower</span>
-            <strong>Live Stream Alerts</strong>
-            <span class="sc-stream-count" id="streamAlertCount"></span>
-          </div>
-          <div class="sc-stream-list" id="streamAlertsList"></div>
         </div>
 
         <div class="sc-list" id="scannerCallsList">

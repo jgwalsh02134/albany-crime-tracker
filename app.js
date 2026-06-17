@@ -401,8 +401,11 @@
     }, REFRESH_MS);
 
     setInterval(fetchScannerCalls, SCANNER_REFRESH_MS);
-    setTimeout(fetchStreamAlerts, 5000);
-    setInterval(fetchStreamAlerts, 15000);  // Poll stream alerts every 15s
+    initWhisperFeed();
+    setTimeout(fetchWhisperStatus, 700);
+    setInterval(fetchWhisperStatus, 30000);  // Pipeline status every 30s
+    setTimeout(fetchStreamAlerts, 2500);
+    setInterval(fetchStreamAlerts, 15000);   // Poll Whisper calls every 15s
 
     // Freshness indicator: update "Last updated X min ago" every 15s
     setInterval(updateFreshnessIndicator, 15000);
@@ -3654,57 +3657,213 @@
       });
   }
 
-  // ── Broadcastify stream alerts (live transcription pipeline) ─────
+  // ── Live Whisper feed (Broadcastify live audio → ffmpeg → Whisper) ──
+  // Primary content of the Scanner tab. Alerts carry a transcript, an AI
+  // analysis (summary, incident type, municipality), a criticality level
+  // and the source feed id. There is no per-call audio file — the play
+  // button streams the SOURCE FEED live via the public Broadcastify CDN.
   var _lastStreamAlertTs = 0;
+  var _whisperAudio = null;
+  var _whisperPlayingFeed = null;  // string feed id currently playing, or null
+
+  var WHISPER_LEVEL_ORDER = { critical: 4, high: 3, medium: 2, low: 1, info: 0, none: 0 };
+
+  function _getWhisperAudio() {
+    if (!_whisperAudio) {
+      _whisperAudio = new Audio();
+      _whisperAudio.preload = "none";
+      var clear = function () { _whisperPlayingFeed = null; _syncWhisperPlayButtons(); };
+      _whisperAudio.addEventListener("error", clear);
+      _whisperAudio.addEventListener("ended", clear);
+      _whisperAudio.addEventListener("pause", function () {
+        // Reflect external pauses (e.g. another media session) in the UI.
+        if (_whisperAudio.ended || _whisperAudio.paused) _syncWhisperPlayButtons();
+      });
+    }
+    return _whisperAudio;
+  }
+
+  function toggleWhisperPlay(feedId) {
+    feedId = String(feedId || "");
+    if (!feedId) return;
+    var audio = _getWhisperAudio();
+    if (_whisperPlayingFeed === feedId) {
+      audio.pause();
+      _whisperPlayingFeed = null;
+      _syncWhisperPlayButtons();
+      return;
+    }
+    // Public live stream for this feed — open CORS, no API key required.
+    audio.src = "https://broadcastify.cdnstream1.com/" + encodeURIComponent(feedId);
+    _whisperPlayingFeed = feedId;
+    _syncWhisperPlayButtons();  // optimistic; reverted on error
+    var p = audio.play();
+    if (p && p.catch) {
+      p.catch(function () { _whisperPlayingFeed = null; _syncWhisperPlayButtons(); });
+    }
+  }
+
+  function _syncWhisperPlayButtons() {
+    var list = document.getElementById("streamAlertsList");
+    if (!list) return;
+    var btns = list.querySelectorAll(".sc-wc-play");
+    for (var i = 0; i < btns.length; i++) {
+      var fid = btns[i].getAttribute("data-feed");
+      var playing = _whisperPlayingFeed && fid === _whisperPlayingFeed;
+      var icon = btns[i].querySelector(".material-icons");
+      if (icon) icon.textContent = playing ? "pause" : "play_arrow";
+      btns[i].setAttribute("aria-label", playing ? "Pause live feed" : "Play live feed");
+      var card = btns[i].closest(".sc-wc");
+      if (card) card.classList.toggle("is-playing", !!playing);
+    }
+  }
+
+  function initWhisperFeed() {
+    var list = document.getElementById("streamAlertsList");
+    if (!list || list._whisperBound) return;
+    list._whisperBound = true;
+    // Delegated click — survives the 15s innerHTML re-render.
+    list.addEventListener("click", function (e) {
+      var btn = e.target.closest && e.target.closest(".sc-wc-play");
+      if (!btn) return;
+      e.preventDefault();
+      toggleWhisperPlay(btn.getAttribute("data-feed"));
+    });
+  }
+
+  // Units rarely accompany a stream transcript (no talkgroup), but surface
+  // them when the analysis happens to extract any.
+  function _whisperUnits(a) {
+    var an = a.analysis || {};
+    var cand = an.incident_candidate || {};
+    var raw = an.raw || {};
+    var u = a.units || cand.units || raw.units || raw.unit_ids;
+    if (!u) return [];
+    if (typeof u === "string") u = [u];
+    if (!Array.isArray(u)) return [];
+    return u.map(function (x) { return String(x).trim(); }).filter(Boolean).slice(0, 6);
+  }
+
+  function _whisperCardHtml(a) {
+    var level = String(a.alert_level || "info").toLowerCase();
+    if (!(level in WHISPER_LEVEL_ORDER)) level = "info";
+    var an = a.analysis || {};
+    var cand = an.incident_candidate || {};
+    var summary = an.summary || cand.summary || "";
+    var text = a.text || "";
+    var muni = cand.municipality || (an.raw && an.raw.municipality) || "Albany County";
+    var itype = cand.incident_type || "";
+    var units = _whisperUnits(a);
+    var ta = a.timestamp ? timeAgo(new Date(a.timestamp * 1000)) : "";
+    var lvlLabel = level.charAt(0).toUpperCase() + level.slice(1);
+    var feedId = String(a.feed_id || "");
+    var playing = _whisperPlayingFeed && feedId === _whisperPlayingFeed;
+
+    var h = '<article class="sc-wc sc-wc--' + level + (playing ? ' is-playing' : '') + '">';
+
+    h += '<button class="sc-wc-play" type="button" data-feed="' + esc(feedId) + '"'
+       + (feedId ? '' : ' disabled') + ' aria-label="' + (playing ? 'Pause' : 'Play') + ' live feed">'
+       + '<span class="material-icons">' + (playing ? 'pause' : 'play_arrow') + '</span></button>';
+
+    h += '<div class="sc-wc-body">';
+    h += '<div class="sc-wc-head">';
+    h += '<span class="sc-wc-level sc-wc-level--' + level + '">' + esc(lvlLabel) + '</span>';
+    if (itype) h += '<span class="sc-wc-type">' + esc(itype) + '</span>';
+    h += '<span class="sc-wc-time">' + esc(ta) + '</span>';
+    h += '</div>';
+
+    if (summary) h += '<div class="sc-wc-summary">' + esc(summary) + '</div>';
+    if (text && text !== summary) h += '<div class="sc-wc-transcript">“' + esc(text) + '”</div>';
+
+    h += '<div class="sc-wc-meta">';
+    h += '<span class="sc-wc-chip sc-wc-chip--feed"><span class="material-icons">cell_tower</span>' + esc(a.feed_name || "Scanner") + '</span>';
+    if (muni) h += '<span class="sc-wc-chip"><span class="material-icons">place</span>' + esc(muni) + '</span>';
+    if (units.length) h += '<span class="sc-wc-chip"><span class="material-icons">groups</span>' + esc(units.join(", ")) + '</span>';
+    h += '</div>';
+
+    if (a.keywords && a.keywords.length) {
+      h += '<div class="sc-wc-kw">';
+      a.keywords.slice(0, 6).forEach(function (kw) {
+        h += '<span class="sc-wc-kwchip">' + esc(kw) + '</span>';
+      });
+      h += '</div>';
+    }
+
+    h += '</div></article>';
+    return h;
+  }
+
+  function renderStreamAlerts(alerts) {
+    var list = document.getElementById("streamAlertsList");
+    if (!list) return;
+    if (!alerts.length) {
+      list.innerHTML = '<div class="sc-whisper-empty">'
+        + '<span class="material-icons">graphic_eq</span>'
+        + '<span>Listening for live transmissions…</span></div>';
+      return;
+    }
+    var html = "";
+    for (var i = 0; i < alerts.length; i++) html += _whisperCardHtml(alerts[i]);
+    list.innerHTML = html;
+    _syncWhisperPlayButtons();  // keep the playing card's icon after re-render
+  }
+
+  function fetchWhisperStatus() {
+    fetch(API + "/api/scanner/stream-status").then(ok)
+      .then(function (d) {
+        var bar = document.getElementById("streamAlertsStatus");
+        var txt = document.getElementById("streamAlertsStatusText");
+        if (!bar || !txt) return;
+        if (!d || d.status !== "ok") {
+          bar.setAttribute("data-state", "offline");
+          txt.textContent = "Whisper pipeline unavailable";
+          return;
+        }
+        if (d.monitor_running && d.whisper_configured && d.ffmpeg_available) {
+          bar.setAttribute("data-state", "live");
+          txt.textContent = "Live • Whisper Pipeline Active";
+        } else if (!d.whisper_configured) {
+          bar.setAttribute("data-state", "offline");
+          txt.textContent = "Whisper pipeline not configured";
+        } else if (!d.ffmpeg_available) {
+          bar.setAttribute("data-state", "offline");
+          txt.textContent = "Whisper pipeline offline";
+        } else {
+          bar.setAttribute("data-state", "idle");
+          txt.textContent = "Whisper pipeline starting…";
+        }
+      })
+      .catch(function () {
+        var bar = document.getElementById("streamAlertsStatus");
+        var txt = document.getElementById("streamAlertsStatusText");
+        if (bar) bar.setAttribute("data-state", "offline");
+        if (txt) txt.textContent = "Whisper pipeline unavailable";
+      });
+  }
 
   function fetchStreamAlerts() {
-    fetch(API + "/api/scanner/stream-alerts?limit=10").then(ok)
+    initWhisperFeed();
+    fetch(API + "/api/scanner/stream-alerts?limit=20").then(ok)
       .then(function (data) {
         if (!data || data.status !== "ok") return;
         var alerts = data.alerts || [];
-        var section = document.getElementById("streamAlertsSection");
-        var list = document.getElementById("streamAlertsList");
         var countEl = document.getElementById("streamAlertCount");
-        if (!section || !list) return;
+        if (countEl) countEl.textContent = alerts.length
+          ? alerts.length + (alerts.length === 1 ? " call" : " calls")
+          : "";
+        renderStreamAlerts(alerts);
 
-        if (!alerts.length) { section.style.display = "none"; return; }
-        section.style.display = "block";
-        if (countEl) countEl.textContent = alerts.length + " alert" + (alerts.length === 1 ? "" : "s");
-
-        var html = "";
-        alerts.forEach(function (a) {
-          var level = a.alert_level || "none";
-          var alertCls = level === "critical" ? "sc-stream-card--critical"
-            : level === "high" ? "sc-stream-card--high" : "sc-stream-card--medium";
-          var ta = a.timestamp ? timeAgo(new Date(a.timestamp * 1000)) : "";
-
-          html += '<div class="sc-stream-card ' + alertCls + '">';
-          html += '<div class="sc-stream-card-head">';
-          html += '<span class="sc-stream-feed">' + esc(a.feed_name || "Stream") + '</span>';
-          html += '<span class="sc-stream-time">' + esc(ta) + '</span>';
-          html += '</div>';
-          html += '<div class="sc-stream-text">' + esc(a.text || "") + '</div>';
-          if (a.keywords && a.keywords.length) {
-            html += '<div class="sc-stream-keywords">';
-            a.keywords.forEach(function (kw) {
-              html += '<span class="sc-alert-keyword">' + esc(kw) + '</span>';
-            });
-            html += '</div>';
-          }
-          html += '</div>';
-
-          // Flash scanner nav if critical and newer than last check
-          if ((level === "critical" || level === "high") && a.timestamp > _lastStreamAlertTs) {
+        // Flash the Scanner nav when a fresh critical/high call arrives.
+        if (alerts.length) {
+          var top = alerts[0];
+          var lvl = String(top.alert_level || "").toLowerCase();
+          if ((lvl === "critical" || lvl === "high") && top.timestamp > _lastStreamAlertTs) {
             _flashScannerAlert();
           }
-        });
-
-        if (alerts.length && alerts[0].timestamp > _lastStreamAlertTs) {
-          _lastStreamAlertTs = alerts[0].timestamp;
+          if (top.timestamp > _lastStreamAlertTs) _lastStreamAlertTs = top.timestamp;
         }
-        list.innerHTML = html;
       })
-      .catch(function () { /* silently fail — stream may not be running */ });
+      .catch(function () { /* silent — pipeline may be warming up */ });
   }
 
   function fetchScannerDirect() {
