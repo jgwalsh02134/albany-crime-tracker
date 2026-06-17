@@ -381,6 +381,7 @@
     initDirFilters();
     loadScannerAliases();
     initScannerToolbar();
+    initLiveRadio();
     initFeedTabs();
     initFeedControls();
     initSummaryControls();
@@ -4623,6 +4624,166 @@
         });
       });
     });
+  }
+
+  // ── LIVE RADIO (Broadcastify CDN streams — no API key) ──────────────────
+  var _liveRadioAudio = null;
+  var _liveRadioFeedId = null;
+  var _liveRadioPlaying = false;
+  var _liveRadioMuted = false;
+  var _liveRadioVizTimer = null;
+
+  var BCFY_FEEDS = [
+    { id: "3626",  name: "Albany/Colonie PD",  type: "police" },
+    { id: "1440",  name: "Albany Fire",        type: "fire" },
+    { id: "37206", name: "County Vol. Fire",   type: "fire" },
+    { id: "21216", name: "Thruway",            type: "other" },
+    { id: "7581",  name: "Colonie EMS",        type: "ems" },
+  ];
+
+  function _bcfyStreamUrl(feedId) {
+    return "https://broadcastify.cdnstream1.com/" + encodeURIComponent(feedId);
+  }
+
+  function initLiveRadio() {
+    var feedHost = document.getElementById("liveRadioFeeds");
+    var playBtn = document.getElementById("liveRadioPlayBtn");
+    var muteBtn = document.getElementById("liveRadioMuteBtn");
+    var volSlider = document.getElementById("liveRadioVolume");
+    if (!feedHost || !playBtn) return;
+
+    feedHost.addEventListener("click", function (e) {
+      var btn = e.target.closest && e.target.closest("[data-feed-id]");
+      if (!btn || !feedHost.contains(btn)) return;
+      var fid = btn.getAttribute("data-feed-id");
+      feedHost.querySelectorAll("[data-feed-id]").forEach(function (b) {
+        var active = (b === btn);
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      _liveRadioSelectFeed(fid);
+    });
+
+    playBtn.addEventListener("click", function () {
+      if (_liveRadioPlaying) {
+        _liveRadioStop();
+      } else {
+        var fid = _liveRadioFeedId || "3626";
+        _liveRadioStart(fid);
+      }
+    });
+
+    if (muteBtn) muteBtn.addEventListener("click", function () {
+      _liveRadioMuted = !_liveRadioMuted;
+      if (_liveRadioAudio) _liveRadioAudio.muted = _liveRadioMuted;
+      var icon = document.getElementById("liveRadioMuteIcon");
+      if (icon) icon.textContent = _liveRadioMuted ? "volume_off" : "volume_up";
+      if (muteBtn) muteBtn.classList.toggle("muted", _liveRadioMuted);
+    });
+
+    if (volSlider) volSlider.addEventListener("input", function () {
+      var v = parseInt(volSlider.value, 10) / 100;
+      if (_liveRadioAudio) _liveRadioAudio.volume = v;
+    });
+  }
+
+  function _liveRadioSelectFeed(feedId) {
+    if (_liveRadioPlaying && _liveRadioFeedId !== feedId) {
+      _liveRadioStop();
+      _liveRadioStart(feedId);
+    } else {
+      _liveRadioFeedId = feedId;
+      _liveRadioUpdateNowPlaying(feedId, false);
+    }
+  }
+
+  function _liveRadioStart(feedId) {
+    _liveRadioStop();
+    _liveRadioFeedId = feedId;
+    var url = _bcfyStreamUrl(feedId);
+    _liveRadioAudio = new Audio();
+    _liveRadioAudio.preload = "none";
+    _liveRadioAudio.muted = _liveRadioMuted;
+    var volSlider = document.getElementById("liveRadioVolume");
+    _liveRadioAudio.volume = volSlider ? parseInt(volSlider.value, 10) / 100 : 0.8;
+    _liveRadioAudio.src = url;
+
+    _liveRadioAudio.addEventListener("error", function () {
+      _liveRadioSetStatus("Stream unavailable");
+      _liveRadioPlaying = false;
+      _liveRadioSyncUI();
+    });
+    _liveRadioAudio.addEventListener("waiting", function () {
+      _liveRadioSetStatus("Buffering…");
+    });
+    _liveRadioAudio.addEventListener("playing", function () {
+      _liveRadioSetStatus("Live");
+      _liveRadioStartViz();
+    });
+    _liveRadioAudio.addEventListener("pause", function () {
+      _liveRadioSetStatus("Paused");
+      _liveRadioStopViz();
+    });
+
+    var p = _liveRadioAudio.play();
+    if (p && p.catch) p.catch(function () {
+      _liveRadioSetStatus("Tap to play");
+      _liveRadioPlaying = false;
+      _liveRadioSyncUI();
+    });
+
+    _liveRadioPlaying = true;
+    _liveRadioUpdateNowPlaying(feedId, true);
+    _liveRadioSyncUI();
+  }
+
+  function _liveRadioStop() {
+    if (_liveRadioAudio) {
+      _liveRadioAudio.pause();
+      _liveRadioAudio.src = "";
+      _liveRadioAudio = null;
+    }
+    _liveRadioPlaying = false;
+    _liveRadioStopViz();
+    _liveRadioSyncUI();
+    _liveRadioSetStatus("Ready");
+  }
+
+  function _liveRadioSyncUI() {
+    var icon = document.getElementById("liveRadioPlayIcon");
+    if (icon) icon.textContent = _liveRadioPlaying ? "stop" : "play_arrow";
+    var playBtn = document.getElementById("liveRadioPlayBtn");
+    if (playBtn) playBtn.classList.toggle("playing", _liveRadioPlaying);
+    var badge = document.getElementById("liveRadioBadge");
+    if (badge) badge.classList.toggle("is-live", _liveRadioPlaying);
+    var card = document.getElementById("liveRadioCard");
+    if (card) card.classList.toggle("is-streaming", _liveRadioPlaying);
+  }
+
+  function _liveRadioUpdateNowPlaying(feedId, playing) {
+    var el = document.getElementById("liveRadioNowPlaying");
+    if (!el) return;
+    var feed = BCFY_FEEDS.find(function (f) { return f.id === feedId; });
+    if (feed) {
+      el.textContent = playing ? "Now streaming: " + feed.name : feed.name;
+    } else {
+      el.textContent = playing ? "Streaming feed " + feedId : "Feed " + feedId;
+    }
+  }
+
+  function _liveRadioSetStatus(text) {
+    var el = document.getElementById("liveRadioStatus");
+    if (el) el.textContent = text;
+  }
+
+  function _liveRadioStartViz() {
+    var viz = document.getElementById("liveRadioViz");
+    if (viz) viz.classList.add("active");
+  }
+
+  function _liveRadioStopViz() {
+    var viz = document.getElementById("liveRadioViz");
+    if (viz) viz.classList.remove("active");
   }
 
   // ── LAW ENFORCEMENT DIRECTORY ─────────────────────────────────

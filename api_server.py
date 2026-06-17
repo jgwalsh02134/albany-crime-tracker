@@ -6834,10 +6834,11 @@ async def scanner_transcribe(request: Request):
 
 # Configurable feeds — Albany County area
 BROADCASTIFY_FEEDS = [
-    {"id": "3626", "name": "Albany City & Colonie Police/Fire/EMS", "priority": "high"},
-    {"id": "1440", "name": "Albany City Fire", "priority": "medium"},
-    {"id": "37206", "name": "Albany County Volunteer Fire", "priority": "medium"},
-    {"id": "21216", "name": "NYS Thruway - Albany Division", "priority": "low"},
+    {"id": "3626", "name": "Albany City & Colonie Police/Fire/EMS", "priority": "high", "type": "police"},
+    {"id": "1440", "name": "Albany City Fire", "priority": "medium", "type": "fire"},
+    {"id": "37206", "name": "Albany County Volunteer Fire", "priority": "medium", "type": "fire"},
+    {"id": "7581", "name": "Colonie EMS/Fire", "priority": "medium", "type": "ems"},
+    {"id": "21216", "name": "NYS Thruway - Albany Division", "priority": "low", "type": "other"},
 ]
 
 # Stream alerts buffer — most recent keyword-flagged transcriptions
@@ -7084,6 +7085,26 @@ async def get_stream_status():
         "ffmpeg_available": shutil.which("ffmpeg") is not None,
         "whisper_configured": bool(settings.openai_api_key),
         "alert_count": len(_stream_alerts),
+    }
+
+
+@app.get("/api/scanner/live-feeds")
+async def get_scanner_live_feeds():
+    """Public Broadcastify live stream feeds — no API key required.
+    Returns feed metadata + CDN stream URLs for direct playback."""
+    return {
+        "status": "ok",
+        "feeds": [
+            {
+                "id": f["id"],
+                "name": f["name"],
+                "type": f.get("type", "other"),
+                "priority": f["priority"],
+                "stream_url": f"https://broadcastify.cdnstream1.com/{f['id']}",
+                "page_url": f"https://www.broadcastify.com/listen/feed/{f['id']}",
+            }
+            for f in BROADCASTIFY_FEEDS
+        ],
     }
 
 

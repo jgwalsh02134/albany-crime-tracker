@@ -269,6 +269,66 @@
           </div>
         </section>
 
+        <!-- ───────────────────────────────────────────────────────────
+             LIVE RADIO — Broadcastify public CDN streams (no API key).
+             Users can listen to live Albany County dispatch radio
+             directly in the app. Feed switching, volume, and visual
+             feedback are all client-side using standard HTML5 Audio.
+        ──────────────────────────────────────────────────────────────── -->
+        <div class="sc-live-radio" id="liveRadioCard">
+          <div class="sc-live-radio-header">
+            <span class="material-icons sc-live-radio-icon">cell_tower</span>
+            <span class="sc-live-radio-title">Live Radio</span>
+            <span class="sc-live-radio-badge" id="liveRadioBadge">
+              <span class="live-pulse"></span> Broadcastify
+            </span>
+          </div>
+          <div class="sc-live-radio-feeds" id="liveRadioFeeds" role="tablist" aria-label="Select feed">
+            <button type="button" class="sc-live-feed active" data-feed-id="3626" role="tab" aria-selected="true">
+              <span class="material-icons sc-live-feed-icon">local_police</span>
+              <span class="sc-live-feed-name">Albany/Colonie PD</span>
+            </button>
+            <button type="button" class="sc-live-feed" data-feed-id="1440" role="tab" aria-selected="false">
+              <span class="material-icons sc-live-feed-icon">local_fire_department</span>
+              <span class="sc-live-feed-name">Albany Fire</span>
+            </button>
+            <button type="button" class="sc-live-feed" data-feed-id="37206" role="tab" aria-selected="false">
+              <span class="material-icons sc-live-feed-icon">fire_truck</span>
+              <span class="sc-live-feed-name">County Vol. Fire</span>
+            </button>
+            <button type="button" class="sc-live-feed" data-feed-id="21216" role="tab" aria-selected="false">
+              <span class="material-icons sc-live-feed-icon">directions_car</span>
+              <span class="sc-live-feed-name">Thruway</span>
+            </button>
+            <button type="button" class="sc-live-feed" data-feed-id="7581" role="tab" aria-selected="false">
+              <span class="material-icons sc-live-feed-icon">medical_services</span>
+              <span class="sc-live-feed-name">Colonie EMS</span>
+            </button>
+          </div>
+          <div class="sc-live-radio-player">
+            <button type="button" class="sc-live-play" id="liveRadioPlayBtn" aria-label="Play live feed">
+              <span class="material-icons" id="liveRadioPlayIcon">play_arrow</span>
+            </button>
+            <div class="sc-live-info">
+              <span class="sc-live-now" id="liveRadioNowPlaying">Select a feed to listen live</span>
+              <span class="sc-live-status" id="liveRadioStatus">Ready</span>
+            </div>
+            <div class="sc-live-viz" id="liveRadioViz" aria-hidden="true">
+              <span class="sc-live-viz-bar"></span>
+              <span class="sc-live-viz-bar"></span>
+              <span class="sc-live-viz-bar"></span>
+              <span class="sc-live-viz-bar"></span>
+              <span class="sc-live-viz-bar"></span>
+            </div>
+            <div class="sc-live-vol-wrap">
+              <button type="button" class="sc-live-mute" id="liveRadioMuteBtn" aria-label="Mute" title="Mute">
+                <span class="material-icons" id="liveRadioMuteIcon">volume_up</span>
+              </button>
+              <input type="range" id="liveRadioVolume" class="sc-live-vol" min="0" max="100" value="80" aria-label="Volume">
+            </div>
+          </div>
+        </div>
+
         <div class="sc-player" id="mainPlayerCard">
           <div class="sc-player-top">
             <div class="sc-player-info">
@@ -314,8 +374,18 @@
         </div>
 
         <div class="sc-links">
-          <a href="https://openmhz.com/system/albanycony" target="_blank" rel="noopener noreferrer" class="link-btn">OpenMHz full scanner</a>
-          <a href="https://www.broadcastify.com/listen/feed/3626" target="_blank" rel="noopener noreferrer" class="link-btn">Broadcastify feed 3626</a>
+          <a href="https://www.broadcastify.com/listen/feed/3626" target="_blank" rel="noopener noreferrer" class="link-btn">
+            <span class="material-icons" style="font-size:13px;">cell_tower</span> Albany/Colonie PD on Broadcastify
+          </a>
+          <a href="https://www.broadcastify.com/listen/feed/1440" target="_blank" rel="noopener noreferrer" class="link-btn">
+            <span class="material-icons" style="font-size:13px;">local_fire_department</span> Albany Fire on Broadcastify
+          </a>
+          <a href="https://openmhz.com/system/albanycony" target="_blank" rel="noopener noreferrer" class="link-btn">
+            <span class="material-icons" style="font-size:13px;">radio</span> OpenMHz full system
+          </a>
+          <a href="https://www.broadcastify.com/calls/node/8553" target="_blank" rel="noopener noreferrer" class="link-btn">
+            <span class="material-icons" style="font-size:13px;">list</span> Broadcastify Calls (P25 system)
+          </a>
         </div>
       </div>
     </section>
