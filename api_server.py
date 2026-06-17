@@ -5483,41 +5483,68 @@ async def get_nibrs_agency_detail(ori: str):
 
 # ── Multi-source scanner: OpenMHz + Broadcastify + RadioReference ──────
 
+_OMHZ_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://openmhz.com/",
+    "Origin": "https://openmhz.com",
+}
+
+
 async def _fetch_openmhz_calls() -> list[dict]:
-    """Fetch decoded calls from OpenMHz (free, no auth)."""
+    """Fetch decoded calls from OpenMHz (free, no auth).
+
+    Tries the primary API endpoint first; falls back to an alternative
+    path if Cloudflare blocks the primary or returns non-JSON.
+    """
     OPENMHZ_SYSTEM = "albanycony"
-    try:
-        resp = await http_client.get(
-            f"https://api.openmhz.com/{OPENMHZ_SYSTEM}/calls",
-            params={"num": 40},
-            timeout=12.0,
-        )
-        if resp.status_code != 200:
-            return []
-        data = resp.json()
-        calls = []
-        for call in data.get("calls", [])[:40]:
-            audio_url = call.get("url", "")
-            tg_num = str(call.get("talkgroup", "") or "")
-            if not tg_num:
-                m = re.search(r"/(\d{4,6})/", audio_url)
-                if m:
-                    tg_num = m.group(1)
-            calls.append({
-                "id": f"omhz_{call.get('_id', '')}",
-                "time": call.get("time", ""),
-                "talkgroup_num": tg_num,
-                "talkgroup_tag": call.get("talkgroup_tag", "") or call.get("talkgroupTag", ""),
-                "talkgroup_description": call.get("talkgroup_description", "") or call.get("talkgroupDescription", ""),
-                "audio_url": audio_url,
-                "duration": call.get("len", 0) or call.get("duration", 0),
-                "freq": call.get("freq", 0),
-                "source": "openmhz",
-            })
-        return calls
-    except Exception as e:
-        logger.warning("OpenMHz fetch error: %s", e)
-        return []
+    urls = [
+        f"https://api.openmhz.com/{OPENMHZ_SYSTEM}/calls",
+        f"https://openmhz.com/api/{OPENMHZ_SYSTEM}/calls",
+    ]
+    for url in urls:
+        try:
+            resp = await http_client.get(
+                url,
+                params={"num": 40},
+                headers=_OMHZ_HEADERS,
+                timeout=12.0,
+            )
+            if resp.status_code != 200:
+                logger.warning("OpenMHz returned status %d from %s", resp.status_code, url)
+                continue
+            content_type = resp.headers.get("content-type", "")
+            if "text/html" in content_type:
+                logger.warning("OpenMHz returned HTML from %s (likely Cloudflare challenge)", url)
+                continue
+            data = resp.json()
+            calls = []
+            for call in data.get("calls", [])[:40]:
+                audio_url = call.get("url", "")
+                tg_num = str(call.get("talkgroup", "") or "")
+                if not tg_num:
+                    m = re.search(r"/(\d{4,6})/", audio_url)
+                    if m:
+                        tg_num = m.group(1)
+                calls.append({
+                    "id": f"omhz_{call.get('_id', '')}",
+                    "time": call.get("time", ""),
+                    "talkgroup_num": tg_num,
+                    "talkgroup_tag": call.get("talkgroup_tag", "") or call.get("talkgroupTag", ""),
+                    "talkgroup_description": call.get("talkgroup_description", "") or call.get("talkgroupDescription", ""),
+                    "audio_url": audio_url,
+                    "duration": call.get("len", 0) or call.get("duration", 0),
+                    "freq": call.get("freq", 0),
+                    "source": "openmhz",
+                })
+            if calls:
+                return calls
+        except Exception as e:
+            logger.warning("OpenMHz fetch error from %s: %s", url, e)
+            continue
+    return []
 
 
 async def _fetch_broadcastify_calls() -> list[dict]:

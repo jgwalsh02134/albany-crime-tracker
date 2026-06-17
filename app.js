@@ -25,6 +25,7 @@
   var apiClient = window.ACTApiClient ? window.ACTApiClient.createApiClient(API) : null;
   var REFRESH_MS = 45000;
   var SCANNER_REFRESH_MS = 20000;
+  var _scannerFailCount = 0;
 
   // State
   var map, trendsChart;
@@ -400,12 +401,20 @@
       fetchSituation();
     }, REFRESH_MS);
 
-    setInterval(fetchScannerCalls, SCANNER_REFRESH_MS);
+    (function scannerPollLoop() {
+      var delay = _scannerFailCount > 3
+        ? Math.min(120000, SCANNER_REFRESH_MS * Math.pow(1.5, _scannerFailCount - 3))
+        : SCANNER_REFRESH_MS;
+      setTimeout(function () {
+        fetchScannerCalls();
+        scannerPollLoop();
+      }, delay);
+    })();
     initWhisperFeed();
     setTimeout(fetchWhisperStatus, 700);
-    setInterval(fetchWhisperStatus, 30000);  // Pipeline status every 30s
+    setInterval(fetchWhisperStatus, 30000);
     setTimeout(fetchStreamAlerts, 2500);
-    setInterval(fetchStreamAlerts, 15000);   // Poll Whisper calls every 15s
+    setInterval(fetchStreamAlerts, 15000);
 
     // Freshness indicator: update "Last updated X min ago" every 15s
     setInterval(updateFreshnessIndicator, 15000);
@@ -3618,8 +3627,6 @@
   }
 
   function fetchScannerCalls() {
-    // When a channel is selected, bypass apiClient (which doesn't know
-    // about the new param) and use the raw fetch URL with ?channel=<id>.
     var url = API + "/api/scanner/calls"
             + (_activeScannerChannel ? "?channel=" + encodeURIComponent(_activeScannerChannel) : "");
     var req = (_activeScannerChannel || !apiClient)
@@ -3630,7 +3637,7 @@
         var sourcesUsed = data && data.sources_used ? data.sources_used : [];
 
         // Merge any real-time Socket.IO calls we've received
-        if (_omhzRealtimeCalls.length && calls.length) {
+        if (_omhzRealtimeCalls.length) {
           var existingIds = {};
           calls.forEach(function (c) { existingIds[c.id] = true; });
           _omhzRealtimeCalls.forEach(function (rt) {
@@ -3639,20 +3646,29 @@
         }
 
         if (calls.length > 0) {
-          // Update source indicator
+          _scannerFailCount = 0;
           var srcEl = document.getElementById("scannerSourceInfo");
-          if (srcEl) srcEl.textContent = sourcesUsed.length > 1
-            ? sourcesUsed.join(" + ") + (_omhzConnected ? " + live" : "")
-            : (sourcesUsed[0] || "openmhz") + (_omhzConnected ? " + live" : "");
+          if (srcEl) {
+            var srcText = sourcesUsed.length > 1
+              ? sourcesUsed.join(" + ")
+              : (sourcesUsed[0] || "openmhz");
+            if (_omhzConnected) srcText += " + live";
+            srcEl.textContent = srcText;
+          }
           processAndRenderScanner(calls);
+        } else if (_omhzRealtimeCalls.length > 0) {
+          // API returned no calls but we have real-time ones from WebSocket
+          _scannerFailCount = 0;
+          var srcEl2 = document.getElementById("scannerSourceInfo");
+          if (srcEl2) srcEl2.textContent = "live (real-time only)";
+          processAndRenderScanner(_omhzRealtimeCalls.slice());
         } else {
+          _scannerFailCount++;
           return fetchScannerDirect();
         }
       })
       .catch(function () {
-        if (window.ACTScanner && window.ACTScanner.renderUnavailable) {
-          window.ACTScanner.renderUnavailable("scannerCallsList", "Scanner API unavailable, trying direct feed.");
-        }
+        _scannerFailCount++;
         fetchScannerDirect();
       });
   }
@@ -3821,23 +3837,29 @@
         }
         if (d.monitor_running && d.whisper_configured && d.ffmpeg_available) {
           bar.setAttribute("data-state", "live");
-          txt.textContent = "Live • Whisper Pipeline Active";
+          var feedCount = d.feeds ? d.feeds.filter(function (f) {
+            return f.priority === "high" || f.priority === "medium";
+          }).length : 0;
+          txt.textContent = "Live • Monitoring " + feedCount + " feed" + (feedCount !== 1 ? "s" : "");
         } else if (!d.whisper_configured) {
           bar.setAttribute("data-state", "offline");
-          txt.textContent = "Whisper pipeline not configured";
+          txt.textContent = "Transcription unavailable";
         } else if (!d.ffmpeg_available) {
           bar.setAttribute("data-state", "offline");
-          txt.textContent = "Whisper pipeline offline";
+          txt.textContent = "Audio processor initializing…";
+        } else if (d.alert_count > 0) {
+          bar.setAttribute("data-state", "idle");
+          txt.textContent = d.alert_count + " recent transcription" + (d.alert_count !== 1 ? "s" : "");
         } else {
           bar.setAttribute("data-state", "idle");
-          txt.textContent = "Whisper pipeline starting…";
+          txt.textContent = "Pipeline warming up…";
         }
       })
       .catch(function () {
         var bar = document.getElementById("streamAlertsStatus");
         var txt = document.getElementById("streamAlertsStatusText");
         if (bar) bar.setAttribute("data-state", "offline");
-        if (txt) txt.textContent = "Whisper pipeline unavailable";
+        if (txt) txt.textContent = "Connecting…";
       });
   }
 
@@ -3869,9 +3891,17 @@
   function fetchScannerDirect() {
     fetch("https://api.openmhz.com/albanycony/calls?num=20", {
       mode: "cors",
-      headers: { "Accept": "application/json" }
+      headers: {
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9"
+      }
     })
-      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (res) {
+        if (!res.ok) return null;
+        var ct = res.headers.get("content-type") || "";
+        if (ct.indexOf("text/html") >= 0) return null;
+        return res.json();
+      })
       .then(function (data) {
         if (data) {
           var calls = data.calls || data;
@@ -4513,16 +4543,25 @@
   function renderScannerFallback() {
     var container = document.getElementById("scannerCallsList");
     if (!container) return;
-    if (container.querySelector(".scanner-call-item")) return;
+    if (container.querySelector(".scanner-call-item") || container.querySelector(".sc-card")) return;
 
     container.innerHTML =
       '<div class="scanner-fallback">' +
         '<div class="scanner-fallback-header">' +
-          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>' +
+          '<span class="material-icons" style="font-size:18px;color:var(--warning, #f59e0b);">info</span>' +
           '<span>Call log temporarily unavailable</span>' +
         '</div>' +
-        '<p class="scanner-fallback-text">Call log from OpenMHz may be intermittently unavailable due to API limits. Check scanner links below.</p>' +
+        '<p class="scanner-fallback-text">Radio call data from OpenMHz is intermittently unavailable due to upstream rate limits. ' +
+          'The live Whisper transcription feed above still operates independently.</p>' +
+        '<div class="scanner-fallback-actions">' +
+          '<button type="button" class="link-btn sc-retry-btn" style="margin-top:8px;">Retry now</button>' +
+        '</div>' +
       '</div>';
+    var retryBtn = container.querySelector(".sc-retry-btn");
+    if (retryBtn) retryBtn.addEventListener("click", function () {
+      _scannerFailCount = 0;
+      fetchScannerCalls();
+    });
   }
 
   function bindScannerAudio(container) {
