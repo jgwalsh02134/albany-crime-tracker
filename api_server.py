@@ -50,6 +50,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from app.api.health import router as health_router
+from app.routers.scanner_v4 import router as scanner_v4_router
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging, set_request_id
@@ -1375,6 +1376,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(health_router)
+app.include_router(scanner_v4_router)
 install_error_handlers(app)
 
 

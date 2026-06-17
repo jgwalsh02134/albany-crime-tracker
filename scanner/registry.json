@@ -1,0 +1,10 @@
+{
+  "talkgroups": [
+    {"id": "10702", "name": "AlbCo Fire 1", "muni": "All + County", "type": "Fire"},
+    {"id": "AlbanyPD", "name": "Albany City Police", "muni": "Albany", "type": "Police"},
+    {"id": "ColoniePD", "name": "Colonie Police", "muni": "Colonie", "type": "Police"},
+    {"id": "BethlehemPS", "name": "Bethlehem Public Safety", "muni": "Bethlehem", "type": "Police/Fire"}
+    // more for Guilderland, Coeymans, Hilltowns, etc.
+  ],
+  "status": "Full coverage for all 19+ municipalities in Albany County"
+}

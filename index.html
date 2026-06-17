@@ -245,6 +245,7 @@
           <button type="button" class="sc-filter sc-filter--police" data-scanner-filter="police">Police</button>
           <button type="button" class="sc-filter sc-filter--fire" data-scanner-filter="fire">Fire</button>
           <button type="button" class="sc-filter sc-filter--ems" data-scanner-filter="ems">EMS</button>
+          <button type="button" class="sc-filter sc-filter--v4-toggle" id="scannerV4Toggle" aria-label="Toggle critical-only filter">Show All</button>
         </div>
 
         <!-- ───────────────────────────────────────────────────────────
@@ -311,6 +312,16 @@
 
         <div class="sc-list" id="scannerCallsList">
           <div class="empty-state">Loading radio traffic…</div>
+        </div>
+
+        <!-- Scanner v4 rich incident cards (critical filter + multi-source) -->
+        <div class="sc-v4-section">
+          <div class="sc-v4-header">
+            <span class="material-icons" style="font-size:15px;vertical-align:middle;color:var(--accent);">bolt</span>
+            <strong>Critical Incidents</strong>
+            <span class="sc-v4-subtitle">Scored ≥65 criticality · Albany County</span>
+          </div>
+          <div id="scannerV4Feed"></div>
         </div>
 
         <div class="sc-links">
@@ -567,6 +578,7 @@
   <script src="frontend/feed/render.js"></script>
   <script src="frontend/map/map.js"></script>
   <script src="frontend/scanner/scanner.js"></script>
+  <script src="frontend/scanner/scanner_v4.js"></script>
   <script src="frontend/chat/chat.js"></script>
   <script src="frontend/directory/directory.js"></script>
 
@@ -581,6 +593,47 @@
       var v = "__ASSET_VERSION__";
       if (v.charAt(0) === "_") v = "dev"; // unsubstituted → local file mode
       document.write('<script src="app.js?v=' + v + '"><\/script>');
+    })();
+  </script>
+
+  <!-- Scanner v4: wire up rich feed + toggle when Scanner tab becomes active -->
+  <script>
+    (function () {
+      var V4_FEED_ID   = "scannerV4Feed";
+      var V4_TOGGLE_ID = "scannerV4Toggle";
+      var _v4Inited    = false;
+
+      function _initV4() {
+        if (_v4Inited) return;
+        if (!window.ACTScannerV4) return;
+        _v4Inited = true;
+        // Wire the Critical Only / Show All toggle
+        window.ACTScannerV4.initToggle(V4_TOGGLE_ID, V4_FEED_ID);
+        // Load the critical feed immediately on first open
+        window.ACTScannerV4.renderFeed(V4_FEED_ID);
+      }
+
+      // Hook into tab navigation: detect when #viewScanner becomes active.
+      // app.js activates views by toggling the "active" class on .view elements
+      // and data-view buttons. We observe the Scanner section directly.
+      var scannerSection = document.getElementById("viewScanner");
+      if (scannerSection && window.MutationObserver) {
+        var obs = new MutationObserver(function (mutations) {
+          mutations.forEach(function (m) {
+            if (m.type === "attributes" && m.attributeName === "class") {
+              if (scannerSection.classList.contains("active")) {
+                _initV4();
+              }
+            }
+          });
+        });
+        obs.observe(scannerSection, { attributes: true });
+      }
+
+      // Also fire if the Scanner tab is already active on page load
+      if (scannerSection && scannerSection.classList.contains("active")) {
+        document.addEventListener("DOMContentLoaded", _initV4);
+      }
     })();
   </script>
 <script data-pplx-inline-edit>

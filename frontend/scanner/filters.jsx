@@ -1,0 +1,1 @@
+UI: Added toggle switch 'Critical Intel Mode' (ON by default). Routine calls hidden or collapsed unless toggled.
