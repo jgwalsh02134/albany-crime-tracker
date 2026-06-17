@@ -2852,8 +2852,6 @@
         actHtml += '<button type="button" class="incident-sheet-btn" onclick="switchView(\'map\');closeIncidentSheet();">';
         actHtml += '<span class="material-icons">map</span>Show on map</button>';
       }
-      actHtml += '<button type="button" class="incident-sheet-btn" onclick="switchView(\'scanner\');closeIncidentSheet();">';
-      actHtml += '<span class="material-icons">sensors</span>Open scanner</button>';
       actEl.innerHTML = actHtml;
     }
 
