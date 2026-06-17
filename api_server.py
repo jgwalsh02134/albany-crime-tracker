@@ -2032,8 +2032,12 @@ def is_albany_related(article: dict) -> bool:
         _GEO_FILTER_STATS["reasons"] = rs
         article["rejected_reason"] = reason
         article.pop("locality_match_reason", None)
-        t = (article.get("title") or "")[:90]
-        print(f"[geo-reject] {reason} | {t!r}")
+        # Per-article reject logging is opt-in: at ~800 rejects/tick it trips
+        # Railway's 500 logs/sec limit and drops other logs. The aggregate
+        # geo_filter_counts summary already reports reject reasons + counts.
+        if os.getenv("LOG_GEO_REJECTS", "").strip().lower() in {"1", "true", "yes"}:
+            t = (article.get("title") or "")[:90]
+            print(f"[geo-reject] {reason} | {t!r}")
     return ok
 
 
@@ -4135,7 +4139,7 @@ async def get_crimes(
     else:
         rows_for_persistence = [a for a in all_articles if is_albany_related(a)][:250]
     persistence_stats = await persist_articles_as_incidents(rows_for_persistence)
-    if persistence_stats.get("inserted", 0) > 0 or persistence_stats.get("updated", 0) > 0:
+    if persistence_stats.get("inserted", 0) > 0:
         _mark_real_incident_arrived()
 
     global _LAST_INCIDENT_PIPELINE
@@ -4661,43 +4665,16 @@ def _parse_tags(value: Optional[str]) -> Optional[list[str]]:
 
 _FALSE_LOCAL_SOURCES = frozenset([
     "kezi", "kval", "kmtr", "albany democrat-herald",
-    "the morning call", "walb", "wfxl", "albany herald",
-])
-
-_ALBANY_COUNTY_MUNICIPALITIES = frozenset([
-    "city of albany", "albany county", "colonie", "bethlehem", "guilderland",
-    "cohoes", "watervliet", "green island", "menands", "coeymans",
-    "new scotland", "berne", "knox", "westerlo", "rensselaerville",
-    "ravena", "voorheesville", "altamont", "latham", "loudonville",
-    "delmar", "slingerlands", "glenmont", "selkirk", "feura bush",
+    "walb", "wfxl", "albany herald",
 ])
 
 
 def _is_false_local_incident(item: dict) -> bool:
-    """Detect incidents that aren't actually in Albany County, NY."""
+    """Detect incidents clearly NOT in Albany County, NY.
+    CONSERVATIVE: only reject items from confirmed wrong-state sources."""
     src = str(item.get("source_name") or "").lower().strip()
-    # Known wrong-state sources
     if any(bad in src for bad in _FALSE_LOCAL_SOURCES):
         return True
-    # MSN aggregator with no confirmed Albany County municipality
-    if "msn" in src:
-        muni = str(item.get("municipality") or "").lower().strip()
-        if muni not in _ALBANY_COUNTY_MUNICIPALITIES and muni != "albany":
-            return True
-    # Items without municipality from regional TV (broad coverage area)
-    muni = str(item.get("municipality") or "").lower().strip()
-    if not muni:
-        title = str(item.get("title") or "").lower()
-        # Check if title mentions out-of-county locations
-        out_of_county = (
-            "troy " in title or "saratoga" in title or "schenectady" in title
-            or "kingston" in title or "saugerties" in title
-            or "fort edward" in title or "cobleskill" in title
-            or "adams " in title or "glens falls" in title
-            or "hudson " in title or "catskill" in title
-        )
-        if out_of_county:
-            return True
     return False
 
 

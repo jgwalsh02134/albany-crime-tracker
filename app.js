@@ -2568,33 +2568,15 @@
   // Home live feed must never re-show scanner-tab-only rows. fetchIncidents() filters
   // these out, but filter chips / sheet re-render used allIncidentData (unfiltered),
   // which brought scanner directory / conventional-frequency cards back into the list.
-  var _BAD_SOURCES_RE = /\b(kezi|kval|kmtr|walb|wfxl|morning call)\b/i;
-  var _OUT_OF_COUNTY_RE = /\b(troy|saratoga|schenectady|kingston|saugerties|fort edward|cobleskill|adams|glens falls|hudson|catskill|oneonta)\b/i;
+  var _BAD_SOURCES_RE = /\b(kezi|kval|kmtr|walb|wfxl)\b/i;
 
   function _homeFeedExcludeScannerOnly(items) {
     return (items || []).filter(function (x) {
       if (x.feed_tab === "scanner_only") return false;
       if (x._gap_fill) return true;
-
       var src = (x.source || x.source_name || "").toLowerCase();
-      var muni = (x.municipality || "").toLowerCase().trim();
-      var title = (x.title || "").toLowerCase();
-
-      // Block known wrong-state sources
+      // Only block confirmed wrong-state TV stations
       if (_BAD_SOURCES_RE.test(src)) return false;
-
-      // MSN without specific Albany County municipality
-      if (src === "msn" && muni !== "city of albany" && muni !== "colonie" && muni !== "bethlehem"
-          && muni !== "guilderland" && muni !== "cohoes" && muni !== "watervliet") return false;
-
-      // Items mentioning out-of-county locations in title
-      if (_OUT_OF_COUNTY_RE.test(title) && !muni) return false;
-
-      // Items with no municipality from regional TV feeds
-      if (!muni && !x.matched_location) {
-        if (/official|nixle|nysp|albany\s*p|acso|scanner|pulse/i.test(src)) return true;
-        return false;
-      }
       return true;
     });
   }
