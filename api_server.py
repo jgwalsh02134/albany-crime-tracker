@@ -5525,7 +5525,8 @@ async def _fetch_broadcastify_calls() -> list[dict]:
     api_key = settings.broadcastify_api_key
     system_id = settings.broadcastify_system_id or "8553"
     if not api_key:
-        logger.debug("broadcastify_calls_skipped — no BROADCASTIFY_API_KEY set")
+        # Optional source — skipped quietly when no key is configured.
+        logger.debug("broadcastify_calls_skipped — optional API source, no BROADCASTIFY_API_KEY")
         return []
 
     try:
@@ -5670,7 +5671,10 @@ async def _fetch_broadcastify_playlist_calls() -> list[dict]:
     except Exception as e:
         logger.debug("bcfy_playlist_console_error error=%s", e)
 
-    # ── Strategy 2: Use the Calls API for each system ID ──────────────────
+    # ── Strategy 2: Optional Calls API enrichment for each system ID ──────
+    # The API key is NOT required — the scrape strategies above and the public
+    # live-audio → Whisper pipeline already work without it. When a key happens
+    # to be configured we use the official API as a higher-fidelity source.
     if not calls:
         api_key = settings.broadcastify_api_key
         if api_key:
@@ -5694,7 +5698,8 @@ async def _fetch_broadcastify_playlist_calls() -> list[dict]:
                 except Exception as e:
                     logger.debug("bcfy_playlist_api_error sys=%s error=%s", sys_id, e)
         else:
-            logger.info("bcfy_playlist_no_api_key — set BROADCASTIFY_API_KEY for call data")
+            # No key configured — expected; the optional API enrichment is simply skipped.
+            logger.debug("bcfy_playlist_api_enrichment_skipped — no BROADCASTIFY_API_KEY (optional)")
 
     # ── Strategy 3: Scrape the public system calls page ───────────────────
     if not calls:
@@ -5733,9 +5738,12 @@ async def _fetch_broadcastify_playlist_calls() -> list[dict]:
                 logger.debug("bcfy_playlist_page_error sys=%s error=%s", sys_id, e)
 
     if not calls:
-        logger.info(
-            "bcfy_playlist_empty — no calls retrieved. "
-            "Ensure BROADCASTIFY_API_KEY is set or the playlist console page is scrapable. "
+        # Non-blocking: the playlist console is login-walled for guests, so this
+        # path may legitimately return nothing. Live scanner coverage comes from
+        # the public live-audio → Whisper pipeline (/api/scanner/stream-alerts);
+        # no Broadcastify API key is required for the app to work.
+        logger.debug(
+            "bcfy_playlist_empty — no calls from playlist scrape (expected when console requires login). "
             "Playlist UUID=%s, systems=%s",
             uuid, _BCFY_PLAYLIST_SYSTEM_IDS,
         )
@@ -7008,10 +7016,9 @@ async def start_stream_monitor():
 
     logger.info("Starting stream monitor for %d feeds", len(feeds_to_monitor))
     tasks = [asyncio.create_task(_monitor_single_feed(f)) for f in feeds_to_monitor]
-    # Wrap all feed tasks in a single gatherer
-    _stream_monitor_task = asyncio.create_task(
-        asyncio.gather(*tasks, return_exceptions=True)
-    )
+    # gather() already schedules the tasks and returns an awaitable/cancelable
+    # future — wrapping it in create_task() raises TypeError (expects a coroutine).
+    _stream_monitor_task = asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def stop_stream_monitor():

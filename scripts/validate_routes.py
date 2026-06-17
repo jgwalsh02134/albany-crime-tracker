@@ -43,19 +43,28 @@ async def main() -> int:
     index_html = _read("index.html")
     app_js = _read("app.js")
 
-    # Frontend shell checks
-    nav_labels = re.findall(r'<button class="nav-btn[^"]*"[^>]*>\s*<span class="material-icons">[^<]+</span>\s*<span>([^<]+)</span>', index_html)
-    print(f"bottom_nav_labels: {nav_labels}")
-    if nav_labels != ["Home", "Map", "Scanner", "AI", "Directory"]:
-        print("bottom nav invalid: expected exactly Home, Map, Scanner, AI, Directory")
+    # Frontend shell checks.
+    # The stable contract is the set of routable views (data-view targets), not the
+    # label text — the v7 redesign renamed the mobile Home tab to "Live" and moved AI
+    # into a slide-up "More" sheet, while desktop tabs still read Home/Map/Scanner/AI/Directory.
+    required_views = ["feed", "map", "scanner", "chat", "directory"]
+    for view in required_views:
+        if f'data-view="{view}"' not in index_html:
+            print(f'nav invalid: no control routes to data-view="{view}"')
+            failures += 1
+    desktop_tabs = re.findall(r'<button class="desktop-tab[^"]*"[^>]*>([^<]+)</button>', index_html)
+    print(f"desktop_tab_labels: {desktop_tabs}")
+    if desktop_tabs != ["Home", "Map", "Scanner", "AI", "Directory"]:
+        print("desktop nav invalid: expected exactly Home, Map, Scanner, AI, Directory")
         failures += 1
-    if re.search(r'<button class="nav-btn[^"]*"[^>]*>\s*<span class="material-icons">[^<]+</span>\s*<span>More</span>', index_html):
-        print("primary nav invalid: More still present in bottom nav")
+    bottom_labels = re.findall(r'<span class="tab-bar-label">([^<]+)</span>', index_html)
+    print(f"bottom_nav_labels: {bottom_labels}")
+    if bottom_labels != ["Live", "Map", "Scanner", "Directory", "More"]:
+        print("bottom nav invalid: expected exactly Live, Map, Scanner, Directory, More (AI lives under More)")
         failures += 1
-    if re.search(r'<button class="desktop-tab[^"]*"[^>]*>More</button>', index_html):
-        print("primary nav invalid: More still present in desktop tabs")
-        failures += 1
-    required_home_ids = ["homePanelLive", "homePanelNews", "feedSummaryGrid", "incidentListVerified", "incidentListDeveloping", "incidentListOfficial", "homeMajorStories", "homeDevelopingStories", "homeRecaps"]
+    # incidentListUnified is the v7 live-feed container (replaced the old
+    # feedSummaryGrid + per-tier incidentList{Verified,Developing,Official} lists).
+    required_home_ids = ["homePanelLive", "homePanelNews", "incidentListUnified", "homeMajorStories", "homeDevelopingStories", "homeRecaps"]
     for rid in required_home_ids:
         if f'id="{rid}"' not in index_html:
             print(f"home shell invalid: missing {rid}")
