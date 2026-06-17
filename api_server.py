@@ -4336,7 +4336,7 @@ async def stop_background_crime_ingest() -> None:
 # generates lightweight "ongoing activity" incident cards from scanner
 # intelligence so the Live feed never appears dead.
 
-_GAP_FILL_THRESHOLD_S = int(os.getenv("GAP_FILL_THRESHOLD_SECONDS", "240"))  # 4 minutes
+_GAP_FILL_THRESHOLD_S = int(os.getenv("GAP_FILL_THRESHOLD_SECONDS", "300"))  # 5 minutes
 _gap_fill_task: Optional[asyncio.Task] = None
 _last_real_incident_ts: float = time.time()
 _gap_fill_cards: list[dict[str, Any]] = []
@@ -4344,9 +4344,24 @@ _GAP_FILL_MAX = 8
 
 
 def _mark_real_incident_arrived():
-    """Called whenever a genuine source-backed incident is persisted."""
+    """Called whenever a genuinely NEW incident is inserted."""
     global _last_real_incident_ts
     _last_real_incident_ts = time.time()
+
+
+async def _newest_incident_age_seconds() -> float:
+    """Check the actual age of the newest incident in the database.
+    This is the ground truth — doesn't matter when DB writes happened."""
+    try:
+        items = await query_incidents(limit=1, sort_by="newest")
+        if items:
+            raw_dt = items[0].get("published_at") or items[0].get("occurred_at")
+            if raw_dt:
+                dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
+                return max(0, (datetime.now(timezone.utc) - dt).total_seconds())
+    except Exception:
+        pass
+    return _seconds_since_last_real_incident()
 
 
 def _seconds_since_last_real_incident() -> float:
@@ -4393,26 +4408,41 @@ def _build_gap_fill_card(scanner_alerts: list[dict], stream_status: dict) -> Opt
             "lon": None,
         }
 
-    # Fallback: generic "monitoring" card
+    # Fallback: always generate a status card when gap threshold is met
     monitor_running = stream_status.get("monitor_running", False)
-    if gap_minutes >= 12:
-        return {
-            "id": f"gap_fill_monitoring_{int(now.timestamp())}",
-            "title": "Albany County · Routine monitoring",
-            "description": (
-                f"No new confirmed incidents in the past {gap_minutes} minutes. "
-                f"{'Scanner pipeline active — monitoring ' + str(stream_status.get('alert_count', 0)) + ' recent transmissions.' if monitor_running else 'All sources being polled.'} "
-                "Feed will update immediately when activity is detected."
-            ),
-            "link": "",
-            "pubDate": now.isoformat(),
-            "source": "Albany Pulse",
-            "municipality": "Albany County",
-            "severity": "low",
-            "category": "monitoring",
-            "confidence": 1.0,
-            "feed_tab": "live",
-            "_gap_fill": True,
+    alert_count = stream_status.get("alert_count", 0)
+    hour = datetime.now(timezone.utc).hour
+    # Time-aware messaging
+    if 0 <= hour < 6:
+        period = "Overnight monitoring"
+        desc_prefix = "Low activity period (overnight)."
+    elif 6 <= hour < 9:
+        period = "Early morning monitoring"
+        desc_prefix = "Morning shift starting."
+    elif 22 <= hour < 24:
+        period = "Late evening monitoring"
+        desc_prefix = "Activity winding down for the evening."
+    else:
+        period = "Active monitoring"
+        desc_prefix = f"No new confirmed incidents in the past {gap_minutes} minutes."
+
+    return {
+        "id": f"gap_fill_monitoring_{int(now.timestamp())}",
+        "title": f"Albany County · {period}",
+        "description": (
+            f"{desc_prefix} "
+            f"{'Scanner pipeline active — ' + str(alert_count) + ' transmission(s) captured.' if monitor_running else 'All ' + str(stream_status.get('sources_total', 57)) + ' sources being polled.'} "
+            "Feed updates immediately when activity is detected from any source."
+        ),
+        "link": "",
+        "pubDate": now.isoformat(),
+        "source": "Albany Pulse",
+        "municipality": "Albany County",
+        "severity": "low",
+        "category": "monitoring",
+        "confidence": 1.0,
+        "feed_tab": "live",
+        "_gap_fill": True,
             "_gap_minutes": gap_minutes,
             "lat": None,
             "lon": None,
@@ -4421,12 +4451,13 @@ def _build_gap_fill_card(scanner_alerts: list[dict], stream_status: dict) -> Opt
 
 
 async def _gap_fill_loop() -> None:
-    """Background loop that synthesizes cards when the feed goes quiet."""
+    """Background loop that synthesizes cards when the feed goes quiet.
+    Uses the actual age of the newest incident (not last DB write time)."""
     global _gap_fill_cards
     await asyncio.sleep(30.0)
     while True:
         try:
-            gap_s = _seconds_since_last_real_incident()
+            gap_s = await _newest_incident_age_seconds()
             if gap_s >= _GAP_FILL_THRESHOLD_S:
                 async with _stream_alerts_lock:
                     recent_alerts = list(_stream_alerts[:10])
@@ -4724,14 +4755,27 @@ async def get_incidents(
     if gap_cards and not q:
         items = list(items) + gap_cards
 
-    gap_seconds = _seconds_since_last_real_incident()
+    # Compute real gap from the actual newest non-gap-fill item pubdate
+    real_gap_s = 0
+    for it in items:
+        if it.get("_gap_fill"):
+            continue
+        raw_dt = it.get("published_at") or it.get("occurred_at") or it.get("pubDate")
+        if raw_dt:
+            try:
+                dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
+                real_gap_s = max(0, int((datetime.now(timezone.utc) - dt).total_seconds()))
+                break
+            except Exception:
+                pass
+
     payload = {
         "status": "ok",
         "source": incident_store_backend(),
         "count": len(items),
         "incidents": items,
         "pulse": {
-            "seconds_since_last_incident": int(gap_seconds),
+            "seconds_since_last_incident": real_gap_s or int(_seconds_since_last_real_incident()),
             "gap_fill_active": bool(gap_cards),
             "sources_active": len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED),
             "scanner_pipeline_active": _stream_monitor_task is not None and not _stream_monitor_task.done(),
