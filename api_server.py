@@ -229,10 +229,13 @@ NON_LOCAL_SOURCES = frozenset([
     "iceland review", "reykjavik grapevine", "manila bulletin",
     "the guardian", "bbc news", "sydney morning herald",
     "the australian", "times of india", "daily mail",
-    # Albany, Georgia TV / radio affiliates — produced ~9 false-local rows
-    # in production data before this entry. WALB is the NBC affiliate;
-    # WFXL is the FOX affiliate; "albany herald" is the local newspaper.
+    # Albany, Georgia TV / radio affiliates
     "walb", "wfxl", "albany herald",
+    # Albany, Oregon TV / radio — KEZI (ABC), KVAL (CBS), KMTR (NBC)
+    "kezi", "kval", "kmtr", "albany democrat-herald",
+    # Other "Albany" cities in other states
+    "the morning call",  # Lehigh Valley PA (Bethlehem, PA — not NY)
+    "msn",  # Aggregator that mixes all cities
 ])
 
 # Local source domains — presence in link is strong Albany NY signal
@@ -1665,6 +1668,11 @@ OUT_OF_AREA_GEO_MARKERS = (
     "florida",
     "arizona",
     "california",
+    "oregon",
+    "albany, or",
+    "albany, oregon",
+    "albany oregon",
+    "linn county",
     "georgia",
     "washington, d.c",
     "washington dc",
@@ -4324,11 +4332,11 @@ async def stop_background_crime_ingest() -> None:
 # generates lightweight "ongoing activity" incident cards from scanner
 # intelligence so the Live feed never appears dead.
 
-_GAP_FILL_THRESHOLD_S = int(os.getenv("GAP_FILL_THRESHOLD_SECONDS", "480"))  # 8 minutes
+_GAP_FILL_THRESHOLD_S = int(os.getenv("GAP_FILL_THRESHOLD_SECONDS", "240"))  # 4 minutes
 _gap_fill_task: Optional[asyncio.Task] = None
 _last_real_incident_ts: float = time.time()
 _gap_fill_cards: list[dict[str, Any]] = []
-_GAP_FILL_MAX = 5
+_GAP_FILL_MAX = 8
 
 
 def _mark_real_incident_arrived():
@@ -4411,37 +4419,49 @@ def _build_gap_fill_card(scanner_alerts: list[dict], stream_status: dict) -> Opt
 async def _gap_fill_loop() -> None:
     """Background loop that synthesizes cards when the feed goes quiet."""
     global _gap_fill_cards
-    await asyncio.sleep(30.0)  # Let other systems warm up first
+    await asyncio.sleep(30.0)
     while True:
         try:
             gap_s = _seconds_since_last_real_incident()
             if gap_s >= _GAP_FILL_THRESHOLD_S:
-                # Grab latest scanner intelligence
                 async with _stream_alerts_lock:
-                    recent_alerts = list(_stream_alerts[:5])
+                    recent_alerts = list(_stream_alerts[:10])
                 stream_status = {
                     "monitor_running": _stream_monitor_task is not None and not _stream_monitor_task.done(),
                     "alert_count": len(_stream_alerts),
                 }
-                card = _build_gap_fill_card(recent_alerts, stream_status)
-                if card:
-                    # Avoid duplicates — only add if title differs from last
-                    if not _gap_fill_cards or _gap_fill_cards[0].get("title") != card["title"]:
+                # Generate cards from EACH unique scanner alert
+                new_cards_added = 0
+                existing_titles = {c.get("title") for c in _gap_fill_cards}
+                for alert in recent_alerts:
+                    card = _build_gap_fill_card([alert], stream_status)
+                    if card and card["title"] not in existing_titles:
                         _gap_fill_cards.insert(0, card)
-                        if len(_gap_fill_cards) > _GAP_FILL_MAX:
-                            _gap_fill_cards = _gap_fill_cards[:_GAP_FILL_MAX]
-                        logger.info("gap_fill_card_generated title=%s gap_minutes=%s",
-                                    card["title"][:60], card.get("_gap_minutes"))
+                        existing_titles.add(card["title"])
+                        new_cards_added += 1
+                        if len(_gap_fill_cards) >= _GAP_FILL_MAX:
+                            break
+
+                # If no scanner alerts, generate a monitoring card
+                if not recent_alerts and not _gap_fill_cards:
+                    card = _build_gap_fill_card([], stream_status)
+                    if card:
+                        _gap_fill_cards.insert(0, card)
+
+                if len(_gap_fill_cards) > _GAP_FILL_MAX:
+                    _gap_fill_cards = _gap_fill_cards[:_GAP_FILL_MAX]
+                if new_cards_added:
+                    logger.info("gap_fill_generated count=%d total=%d gap_minutes=%d",
+                                new_cards_added, len(_gap_fill_cards), int(gap_s / 60))
             else:
-                # Real incident arrived — clear gap-fill cards
                 if _gap_fill_cards:
                     _gap_fill_cards.clear()
-            await asyncio.sleep(60.0)  # Check every minute
+            await asyncio.sleep(45.0)  # Check every 45 seconds
         except asyncio.CancelledError:
             break
         except Exception as exc:
             logger.warning("gap_fill_loop_error: %s", exc)
-            await asyncio.sleep(60.0)
+            await asyncio.sleep(45.0)
 
 
 async def start_gap_fill_monitor() -> None:

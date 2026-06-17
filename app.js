@@ -2505,7 +2505,19 @@
   // these out, but filter chips / sheet re-render used allIncidentData (unfiltered),
   // which brought scanner directory / conventional-frequency cards back into the list.
   function _homeFeedExcludeScannerOnly(items) {
-    return (items || []).filter(function (x) { return x.feed_tab !== "scanner_only"; });
+    return (items || []).filter(function (x) {
+      if (x.feed_tab === "scanner_only") return false;
+      // Suppress items with no municipality from regional TV feeds
+      // (they're likely not Albany County — e.g. NEWS10 covers 20 counties)
+      if (!x.municipality && !x.matched_location && !x._gap_fill) {
+        var src = (x.source || x.source_name || "").toLowerCase();
+        // Keep official/nixle/NYSP/scanner — they're always Albany County
+        if (/official|nixle|nysp|albany\s*p|acso|scanner|pulse/i.test(src)) return true;
+        // Regional TV feeds without confirmed municipality → filter out
+        return false;
+      }
+      return true;
+    });
   }
 
   // ── Unified feed renderer ─────────────────────────────────────
