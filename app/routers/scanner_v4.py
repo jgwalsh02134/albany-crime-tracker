@@ -22,5 +22,5 @@ async def get_all_feed(limit: int = Query(100, ge=1, le=500)):
 
 @router.get("/municipalities")
 async def get_municipalities():
-    from app.services.agency_registry import MUNICIPALITY_MAP
-    return list(MUNICIPALITY_MAP.keys())
+    from app.services.agency_registry import albany_county_municipality_set
+    return sorted(albany_county_municipality_set())

@@ -26,11 +26,11 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 
 # Existing services
-import app.services.scanner_analysis as scanner_analysis
-from app.services.source_registry import get_active_sources, SOURCE_REGISTRY
-from app.services.agency_registry import get_agency_for_talkgroup, MUNICIPALITY_MAP
+from app.services.agency_registry import (
+    resolve_agency_from_call,
+    albany_county_municipality_set,
+)
 from app.services.geocoding import geocode_address
-from app.services.incident_transformers import transform_to_incident
 
 @dataclass
 class ScannerCall:
@@ -46,13 +46,13 @@ class ScannerCall:
 
 class AdvancedScanner:
     def __init__(self):
-        self.sources = get_active_sources()  # Multi-source: scanner, 511ny, open_data, social, news
         self.critical_keywords = [
             "shots", "shot", "pursuit", "chase", "officer down", "10-33", "10-32",
             "structure fire", "working fire", "mayday", "assist officer", "domestic with weapon",
             "injury crash", "10-50 with injuries", "active shooter", "hostage", "stabbing", "shooting"
         ]
-        self.municipality_map = MUNICIPALITY_MAP
+        # Build a set of known Albany County municipality names for geo-filter validation
+        self._known_munis: frozenset = albany_county_municipality_set()
 
     async def ingest_from_all_sources(self) -> List[ScannerCall]:
         """Ingest from scanner + 511NY + open data + social + filtered news."""
@@ -122,20 +122,36 @@ class AdvancedScanner:
         transcript = raw_call.get("transcript", "")
         talkgroup = raw_call.get("talkgroup", "")
 
-        # AI parse (existing scanner_analysis + transformers)
-        parsed = await scanner_analysis.analyze_transcript(transcript, talkgroup)
+        # Build a minimal parsed dict from available raw fields.
+        # Full AI analysis (scanner_analysis.analyze_scanner_transcript) is
+        # invoked by the existing /api/scanner/transcribe endpoint; here we
+        # extract what we can from the raw call dict so the v4 pipeline
+        # works even when no Whisper/OpenAI key is configured.
+        parsed: Dict[str, Any] = {
+            "summary": raw_call.get("ai_summary") or raw_call.get("summary", ""),
+            "units": raw_call.get("units") or [],
+            "location": raw_call.get("location", ""),
+            "type": raw_call.get("type") or raw_call.get("call_type", "Unknown"),
+        }
 
-        # Geocode
+        # Geocode if a location string is present
         location = parsed.get("location") or raw_call.get("location", "")
-        geo = await geocode_address(location) if location else None
+        geo: Optional[Dict] = None
+        if location:
+            try:
+                geo = await geocode_address(location)
+            except Exception:
+                geo = None
 
         call = ScannerCall(
             talkgroup=talkgroup,
             timestamp=datetime.now(),
             transcript=transcript,
             parsed=parsed,
-            criticality_score=self.calculate_criticality(transcript, talkgroup, parsed.get("units", [])),
-            municipality=self._resolve_municipality(talkgroup, location),
+            criticality_score=self.calculate_criticality(
+                transcript, talkgroup, parsed.get("units", [])
+            ),
+            municipality=self._resolve_municipality(raw_call, talkgroup, location),
             source=raw_call.get("source", "scanner"),
         )
         call.is_critical = self.is_critical(call)
@@ -143,8 +159,27 @@ class AdvancedScanner:
             call.parsed["geo"] = geo
         return call
 
-    def _resolve_municipality(self, talkgroup: str, location: str) -> str:
-        return get_agency_for_talkgroup(talkgroup) or "Albany County"
+    def _resolve_municipality(
+        self, raw_call: Dict, talkgroup: str, location: str
+    ) -> str:
+        """Resolve municipality via agency registry, then location text, then fallback."""
+        # 1. Try canonical agency resolution from the call dict (talkgroup tags, etc.)
+        agency = resolve_agency_from_call(raw_call)
+        if agency:
+            muni = str(agency.get("municipality") or "").strip()
+            if muni:
+                return muni
+
+        # 2. Try matching location text against known Albany County municipalities
+        if location:
+            loc_lower = location.lower()
+            for muni in self._known_munis:
+                if muni and muni in loc_lower:
+                    # Title-case the matched municipality name
+                    return muni.title()
+
+        # 3. Fallback
+        return "Albany County"
 
     async def get_critical_feed(self, limit: int = 50) -> List[Dict]:
         """Main feed: only critical intel by default (user can toggle Show All)."""
