@@ -4659,6 +4659,48 @@ def _parse_tags(value: Optional[str]) -> Optional[list[str]]:
     return tags or None
 
 
+_FALSE_LOCAL_SOURCES = frozenset([
+    "kezi", "kval", "kmtr", "albany democrat-herald",
+    "the morning call", "walb", "wfxl", "albany herald",
+])
+
+_ALBANY_COUNTY_MUNICIPALITIES = frozenset([
+    "city of albany", "albany county", "colonie", "bethlehem", "guilderland",
+    "cohoes", "watervliet", "green island", "menands", "coeymans",
+    "new scotland", "berne", "knox", "westerlo", "rensselaerville",
+    "ravena", "voorheesville", "altamont", "latham", "loudonville",
+    "delmar", "slingerlands", "glenmont", "selkirk", "feura bush",
+])
+
+
+def _is_false_local_incident(item: dict) -> bool:
+    """Detect incidents that aren't actually in Albany County, NY."""
+    src = str(item.get("source_name") or "").lower().strip()
+    # Known wrong-state sources
+    if any(bad in src for bad in _FALSE_LOCAL_SOURCES):
+        return True
+    # MSN aggregator with no confirmed Albany County municipality
+    if "msn" in src:
+        muni = str(item.get("municipality") or "").lower().strip()
+        if muni not in _ALBANY_COUNTY_MUNICIPALITIES and muni != "albany":
+            return True
+    # Items without municipality from regional TV (broad coverage area)
+    muni = str(item.get("municipality") or "").lower().strip()
+    if not muni:
+        title = str(item.get("title") or "").lower()
+        # Check if title mentions out-of-county locations
+        out_of_county = (
+            "troy " in title or "saratoga" in title or "schenectady" in title
+            or "kingston" in title or "saugerties" in title
+            or "fort edward" in title or "cobleskill" in title
+            or "adams " in title or "glens falls" in title
+            or "hudson " in title or "catskill" in title
+        )
+        if out_of_county:
+            return True
+    return False
+
+
 @app.get("/api/incidents")
 async def get_incidents(
     limit: int = 100,
@@ -4695,6 +4737,11 @@ async def get_incidents(
         q=q,
         sort_by=sort_mode,
     )
+    # Filter out false-local items from wrong-state sources already in DB
+    items = [
+        it for it in items
+        if not _is_false_local_incident(it)
+    ]
     # Merge gap-fill cards when the feed is quiet (keeps Live feed alive)
     gap_cards = list(_gap_fill_cards) if _gap_fill_cards else []
     if gap_cards and not q:
