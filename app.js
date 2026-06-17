@@ -840,15 +840,15 @@
         });
         document.getElementById("homePanelLive").classList.toggle("active", mode === "live");
         document.getElementById("homePanelNews").classList.toggle("active", mode === "news");
-        if (mode === "news" && !_newsLoaded) {
-          _newsLoaded = true;
+        if (mode === "news") {
           fetchHomeNews();
+          _newsLoaded = true;
         }
       });
     });
   }
 
-  // ── HOME NEWS (major stories, developing, recaps) ─────────────
+  // ── HOME NEWS (major stories, developing, headlines, recaps) ──
   function fetchHomeNews() {
     fetch(API + "/api/home/news")
       .then(ok)
@@ -856,14 +856,18 @@
         if (!data || data.status !== "ok") return;
         var major = data.major_stories || [];
         var developing = data.developing_stories || [];
+        var headlines = data.headlines || [];
         renderMajorStories(major);
         renderDevelopingStories(developing);
+        renderHeadlines(headlines);
         renderRecaps(data.recap_24h, data.recap_7d, data.recap_30d);
-        renderNewsFreshness(major.concat(developing));
+        renderNewsStats(data);
+        renderNewsFreshness(major.concat(developing).concat(headlines));
       })
       .catch(function () {
         renderMajorStories([]);
         renderDevelopingStories([]);
+        renderHeadlines([]);
         renderNewsFreshness([]);
       });
   }
@@ -1012,6 +1016,66 @@
     var html = "";
     stories.forEach(function (s) { html += _storyCard(s, "home-story-card--developing"); });
     el.innerHTML = html;
+  }
+
+  function renderHeadlines(headlines) {
+    var el = document.getElementById("homeHeadlinesList");
+    if (!el) return;
+    if (!headlines || !headlines.length) {
+      el.innerHTML = '<div class="feed-summary-empty">No recent headlines.</div>';
+      return;
+    }
+    var html = "";
+    headlines.forEach(function (s) {
+      html += _headlineCard(s);
+    });
+    el.innerHTML = html;
+  }
+
+  function _headlineCard(item) {
+    var link = item.source_url || "";
+    var muni = item.municipality || "";
+    if (muni.toLowerCase() === "albany") muni = "City of Albany";
+    var time = item.human_time || "";
+    var src = item.source_name || "";
+    var sev = (item.severity || "").toLowerCase();
+
+    var html = '<a class="news-headline" href="' + (link ? escAttr(link) : '#') + '"'
+      + (link ? ' target="_blank" rel="noopener noreferrer"' : '') + '>';
+    html += '<div class="news-headline-top">';
+    if (sev === "critical" || sev === "high") {
+      html += '<span class="news-headline-sev news-headline-sev--' + esc(sev) + '"></span>';
+    }
+    html += '<span class="news-headline-title">' + esc(item.title || "Untitled") + '</span>';
+    html += '</div>';
+    html += '<div class="news-headline-meta">';
+    if (muni) html += '<span>' + esc(muni) + '</span>';
+    if (src) html += '<span>' + esc(src) + '</span>';
+    if (time) html += '<span>' + esc(time) + '</span>';
+    html += '</div>';
+    html += '</a>';
+    return html;
+  }
+
+  function renderNewsStats(data) {
+    var r24 = data.recap_24h || {};
+    var r7 = data.recap_7d || {};
+    var topCats = data.top_categories || [];
+    var topLocs = data.top_locations || [];
+
+    var el24 = document.getElementById("newsStat24h");
+    var el7d = document.getElementById("newsStat7d");
+    var elType = document.getElementById("newsStatTopType");
+    var elArea = document.getElementById("newsStatTopArea");
+
+    if (el24) el24.textContent = String(r24.total || 0);
+    if (el7d) el7d.textContent = String(r7.total || 0);
+    if (elType && topCats.length) elType.textContent = (topCats[0].key || "—").replace(/_/g, " ");
+    if (elArea && topLocs.length) {
+      var loc = topLocs[0].key || "—";
+      if (loc.toLowerCase() === "albany") loc = "City of Albany";
+      elArea.textContent = loc;
+    }
   }
 
   function renderRecaps(r24, r7, r30) {

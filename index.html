@@ -170,24 +170,69 @@
       <!-- ── NEWS MODE ── -->
       <div class="home-mode-panel" id="homePanelNews">
         <div class="home-scroll">
-          <section class="home-major" aria-label="Major stories">
-            <h2 class="home-section-label">Major stories</h2>
+
+          <!-- Stats summary bar -->
+          <div class="news-stats-bar" id="newsStatsBar">
+            <div class="news-stat">
+              <span class="news-stat-val" id="newsStat24h">—</span>
+              <span class="news-stat-lbl">24h</span>
+            </div>
+            <div class="news-stat">
+              <span class="news-stat-val" id="newsStat7d">—</span>
+              <span class="news-stat-lbl">7 days</span>
+            </div>
+            <div class="news-stat">
+              <span class="news-stat-val" id="newsStatTopType">—</span>
+              <span class="news-stat-lbl">top category</span>
+            </div>
+            <div class="news-stat">
+              <span class="news-stat-val" id="newsStatTopArea">—</span>
+              <span class="news-stat-lbl">top area</span>
+            </div>
+          </div>
+
+          <!-- Top Stories -->
+          <section class="home-major" aria-label="Top stories">
+            <h2 class="home-section-label">
+              <span class="material-icons" style="font-size:14px;">star</span>
+              Top Stories
+            </h2>
             <div id="homeMajorStories" class="home-stories-list">
               <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
             </div>
           </section>
+
+          <!-- Developing -->
           <section class="home-developing" aria-label="Developing">
-            <h2 class="home-section-label">Developing</h2>
+            <h2 class="home-section-label">
+              <span class="material-icons" style="font-size:14px;">trending_up</span>
+              Developing
+            </h2>
             <div id="homeDevelopingStories" class="home-stories-list">
               <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
             </div>
           </section>
-          <section class="home-recaps" aria-label="Recaps">
-            <h2 class="home-section-label">Recaps</h2>
-            <div id="homeRecaps" class="home-recaps-grid">
+
+          <!-- Latest Headlines (all recent stories chronologically) -->
+          <section class="home-headlines" aria-label="Latest headlines">
+            <h2 class="home-section-label">
+              <span class="material-icons" style="font-size:14px;">article</span>
+              Latest Headlines
+            </h2>
+            <div id="homeHeadlinesList" class="home-stories-list">
               <div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>
             </div>
           </section>
+
+          <!-- Recaps -->
+          <section class="home-recaps" aria-label="Recaps">
+            <h2 class="home-section-label">
+              <span class="material-icons" style="font-size:14px;">bar_chart</span>
+              Crime Stats
+            </h2>
+            <div id="homeRecaps" class="home-recaps-grid"></div>
+          </section>
+
         </div>
       </div>
 

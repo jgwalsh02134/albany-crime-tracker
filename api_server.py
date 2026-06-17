@@ -4932,8 +4932,32 @@ async def get_home_news():
 
     scored = sorted(items_48h, key=_score, reverse=True)
 
+    def _entry(it: dict) -> dict:
+        title = str(it.get("short_title") or it.get("title") or "").strip()
+        muni = it.get("municipality") or ""
+        if muni.lower() == "albany":
+            muni = "City of Albany"
+        return {
+            "id": it.get("id"),
+            "title": title,
+            "summary": str(it.get("description") or "")[:200],
+            "municipality": muni,
+            "occurred_at": it.get("occurred_at") or it.get("published_at"),
+            "published_at": it.get("published_at"),
+            "human_time": it.get("human_time") or "",
+            "severity": it.get("severity") or "unknown",
+            "incident_type": it.get("incident_type") or "",
+            "source_name": it.get("source_name") or "",
+            "source_url": it.get("source_url") or "",
+            "source_type": it.get("source_type") or "",
+            "verification_level": it.get("verification_level") or "unknown",
+            "coordinate_quality": it.get("coordinate_quality") or "missing",
+            "priority_score": round(_score(it), 1),
+        }
+
     major_stories: list[dict[str, Any]] = []
     developing_stories: list[dict[str, Any]] = []
+    headlines: list[dict[str, Any]] = []
     seen_titles: set[str] = set()
     for it in scored:
         title = str(it.get("short_title") or it.get("title") or "").strip()
@@ -4941,27 +4965,28 @@ async def get_home_news():
         if title_key in seen_titles:
             continue
         seen_titles.add(title_key)
-        entry = {
-            "id": it.get("id"),
-            "title": title,
-            "summary": str(it.get("description") or "")[:200],
-            "municipality": it.get("municipality") or "",
-            "occurred_at": it.get("occurred_at") or it.get("published_at"),
-            "human_time": it.get("human_time") or "",
-            "severity": it.get("severity") or "unknown",
-            "source_name": it.get("source_name") or "",
-            "source_type": it.get("source_type") or "",
-            "verification_level": it.get("verification_level") or "unknown",
-            "coordinate_quality": it.get("coordinate_quality") or "missing",
-            "priority_score": round(_score(it), 1),
-        }
+        entry = _entry(it)
         ver_lev = str(it.get("verification_level") or "").lower()
         status = str(it.get("status") or "").lower()
         if ver_lev in ("scanner", "inferred") or status == "active":
-            developing_stories.append(entry)
+            if len(developing_stories) < 5:
+                developing_stories.append(entry)
         else:
-            major_stories.append(entry)
-        if len(major_stories) >= 3 and len(developing_stories) >= 3:
+            if len(major_stories) < 5:
+                major_stories.append(entry)
+        if len(major_stories) >= 5 and len(developing_stories) >= 5:
+            break
+
+    # Headlines: chronological, all stories (deduped)
+    chrono = sorted(items_48h, key=lambda x: x.get("published_at") or x.get("occurred_at") or "", reverse=True)
+    for it in chrono:
+        title = str(it.get("short_title") or it.get("title") or "").strip()
+        title_key = title.lower()[:60]
+        if title_key in seen_titles:
+            continue
+        seen_titles.add(title_key)
+        headlines.append(_entry(it))
+        if len(headlines) >= 15:
             break
 
     summary_24h = await summarize_incidents(window="24h")
@@ -4980,8 +5005,9 @@ async def get_home_news():
     return {
         "status": "ok",
         "source": incident_store_backend(),
-        "major_stories": major_stories[:3],
-        "developing_stories": developing_stories[:3],
+        "major_stories": major_stories,
+        "developing_stories": developing_stories,
+        "headlines": headlines,
         "recap_24h": _recap(summary_24h),
         "recap_7d": _recap(summary_7d),
         "recap_30d": _recap(summary_30d),
