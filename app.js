@@ -2253,7 +2253,7 @@
     var verify = item.verification_level || "unknown";
     var title = item.short_title || item.title || "Untitled";
     var ta = item.human_time || feedAgeCompact(item);
-    var area = item.municipality || item.matched_location || "Albany County";
+    var area = _resolveDisplayMunicipality(item);
     var summary = item.summary || item.description || "";
     var sev = (item.severity || "unknown").toLowerCase();
     var isScanner = isScannerCrimeSource(sourceName);
@@ -2358,6 +2358,19 @@
     if (type === "traffic") return "Traffic Incident";
     if (sev === "high") return "Major Incident";
     return "Police Activity";
+  }
+
+  function _resolveDisplayMunicipality(item) {
+    var raw = item.municipality || item.matched_location || "";
+    if (!raw) return "Albany County";
+    var lower = raw.toLowerCase().trim();
+    // "Albany" alone is ambiguous — resolve to "City of Albany"
+    if (lower === "albany") return "City of Albany";
+    // Already specific
+    if (lower === "city of albany") return "City of Albany";
+    if (lower === "albany county") return "Albany County";
+    // Capitalize properly
+    return raw;
   }
 
   function _deptFromSource(sourceName, item) {
@@ -2776,7 +2789,7 @@
     var type = item.crime_type || "other";
     var sev = (item.severity || "medium").toLowerCase();
     var title = item.short_title || item.title || "Incident";
-    var area = item.municipality || item.matched_location || "Albany County";
+    var area = _resolveDisplayMunicipality(item);
     var sourceName = item.source || item.source_name || "";
     var desc = item.description || item.summary || "";
     var ta = item.human_time || feedAgeCompact(item);
@@ -3989,6 +4002,7 @@
     var summary = an.summary || cand.summary || "";
     var text = a.text || "";
     var muni = cand.municipality || (an.raw && an.raw.municipality) || "Albany County";
+    if (muni.toLowerCase() === "albany") muni = "City of Albany";
     var itype = cand.incident_type || "";
     var units = _whisperUnits(a);
     var ta = a.timestamp ? timeAgo(new Date(a.timestamp * 1000)) : "";
@@ -4451,8 +4465,10 @@
 
       // Meta row: location + source + duration + dupe count
       html += '<div class="sc-card-pills">';
-      if (dept.location && dept.location !== "Albany County") {
-        html += '<span class="sc-pill"><span class="material-icons" style="font-size:11px;vertical-align:middle;">place</span>' + esc(dept.location) + '</span>';
+      var scLoc = dept.location || "";
+      if (scLoc.toLowerCase() === "albany") scLoc = "City of Albany";
+      if (scLoc && scLoc !== "Albany County") {
+        html += '<span class="sc-pill"><span class="material-icons" style="font-size:11px;vertical-align:middle;">place</span>' + esc(scLoc) + '</span>';
       }
       html += '<span class="sc-pill sc-pill--source">' + esc(sourceLabel) + '</span>';
       if (len > 0) html += '<span class="sc-pill">' + len.toFixed(0) + 's</span>';

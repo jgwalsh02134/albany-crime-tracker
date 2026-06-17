@@ -226,18 +226,40 @@ def infer_event_type_and_subtype(blob: str) -> tuple[str, str]:
 
 
 def _municipality_from_text(blob: str, matched_loc: Optional[str]) -> str:
+    """Resolve municipality from text. CRITICAL DISTINCTION:
+    - "City of Albany" = the actual city (county seat, ~99k pop)
+    - "Albany County" = the full county (when we can't identify a specific town)
+    Never return bare "Albany" — always qualify which one."""
     if matched_loc:
         ml = matched_loc.lower().strip()
         for m in sorted(ALBANY_MUNICIPALITIES, key=len, reverse=True):
             if m in ml or m in blob:
+                # "albany" in the municipality set means the CITY
+                if m == "albany":
+                    return "City of Albany"
                 return m.title()
     for m in sorted(ALBANY_MUNICIPALITIES, key=len, reverse=True):
         if re.search(rf"(?<![a-z0-9]){re.escape(m)}(?![a-z0-9])", blob):
+            if m == "albany":
+                return "City of Albany"
             return m.title()
     if "albany county" in blob:
         return "Albany County"
-    if re.search(r"\balbany\b", blob) and ("ny" in blob or "new york" in blob or "county" in blob):
-        return "Albany"
+    # City-specific context: street names, neighborhoods, landmarks in City of Albany
+    city_signals = (
+        "central ave" in blob or "washington ave" in blob or "state st" in blob
+        or "lark st" in blob or "pearl st" in blob or "new scotland" in blob
+        or "western ave" in blob or "delaware ave" in blob or "madison ave" in blob
+        or "broadway" in blob or "downtown albany" in blob or "city of albany" in blob
+        or "albany police" in blob or "albany pd" in blob or "apd" in blob
+        or "pine hills" in blob or "center square" in blob or "arbor hill" in blob
+        or "south end" in blob or "west hill" in blob or "north albany" in blob
+        or "buckingham" in blob or "whitehall" in blob
+    )
+    if re.search(r"\balbany\b", blob) and city_signals:
+        return "City of Albany"
+    if re.search(r"\balbany\b", blob) and ("ny" in blob or "new york" in blob):
+        return "City of Albany"
     return ""
 
 

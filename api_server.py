@@ -4352,6 +4352,8 @@ def _build_gap_fill_card(scanner_alerts: list[dict], stream_status: dict) -> Opt
         analysis = top.get("analysis") or {}
         cand = analysis.get("incident_candidate") or {}
         muni = cand.get("municipality") or "Albany County"
+        if muni.lower() == "albany":
+            muni = "City of Albany"
         itype = cand.get("incident_type") or "Police activity"
         summary = analysis.get("summary") or top.get("text", "")[:120]
         feed_name = top.get("feed_name", "Scanner")
@@ -6714,7 +6716,10 @@ def _scanner_call_timestamp(call: dict[str, Any]) -> str:
 
 
 def _scanner_call_municipality_hint(call: dict[str, Any]) -> str:
-    return str(call.get("municipality") or call.get("matched_location") or "Albany County").strip()
+    raw = str(call.get("municipality") or call.get("matched_location") or "Albany County").strip()
+    if raw.lower() == "albany":
+        return "City of Albany"
+    return raw
 
 
 _SCANNER_TRANSCRIBE_PROMPT_BASE = (
