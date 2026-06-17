@@ -1,0 +1,26 @@
+{
+  "version": "4.0",
+  "description": "Full multi-source Albany County scanner registry with advanced features",
+  "sources": {
+    "scanner_audio": ["OpenMHz Albany P25", "RadioReference Albany County", "Broadcastify Albany feeds"],
+    "traffic_incidents": ["511NY Capital Region"],
+    "open_data": ["Albany County/City CAD", "Socrata calls for service"],
+    "social_blotter": ["Albany PD X/Facebook", "Albany County Sheriff", "Colonie PD", "Bethlehem PD", "Guilderland PD"],
+    "news_filtered": ["CBS6 Albany", "NEWS10 ABC", "Times Union crime", "Spectrum News"]
+  },
+  "features": {
+    "critical_filter": true,
+    "ai_parsing": true,
+    "transcription": "Whisper + fallback",
+    "geocoding": true,
+    "municipality_resolution": true,
+    "keyword_alerts": true,
+    "voice_input": "ready",
+    "timeline_view": true
+  },
+  "municipalities_covered": [
+    "Albany City", "Colonie", "Bethlehem", "Guilderland", "Coeymans", "New Scotland",
+    "Rensselaerville", "Westerlo", "Berne", "Knox", "Voorheesville", "Green Island",
+    "Menands", "Watervliet", "Albany County Sheriff", "NYSP Troop G"
+  ]
+}
