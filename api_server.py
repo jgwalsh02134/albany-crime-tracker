@@ -47,6 +47,8 @@ from sources.advanced_adapters import radioreference_runtime_status
 from sources.tier1_official import fetch_tier1_sources
 from sources.bluesky_adapter import bluesky_runtime_status
 from sources.bluesky_adapter import fetch_bluesky_posts
+from sources.nws_alerts import fetch_nws_alerts
+from sources.nws_alerts import nws_runtime_status
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, PlainTextResponse
@@ -2550,7 +2552,7 @@ def is_real_local_incident(article: dict) -> bool:
     if article.get("_nixle_item"):
         return len(combined.strip()) > 10
 
-    if article.get("_511_incident") or article.get("_ny_alert"):
+    if article.get("_511_incident") or article.get("_ny_alert") or article.get("_nws_alert"):
         return len(combined.strip()) > 12
 
     if article.get("_scanner_call"):
@@ -4063,6 +4065,7 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
         fetch_tier1_sources(limit_per_source=80, strict_live_sources=strict_live_sources),
         fetch_nysp_blotter_pdfs(),
         fetch_bluesky_posts(limit_per_account=20),
+        fetch_nws_alerts(limit=25),
         return_exceptions=True,
     )
     for batch in _extra_batches:
@@ -4389,7 +4392,7 @@ async def get_news():
 
 
 def _operational_signal_article(a: dict) -> bool:
-    return bool(a.get("_511_incident") or a.get("_ny_alert"))
+    return bool(a.get("_511_incident") or a.get("_ny_alert") or a.get("_nws_alert"))
 
 
 @app.get("/api/crimes")
@@ -5715,6 +5718,29 @@ async def bluesky_debug(discover: bool = False):
                     "pubDate": r.get("pubDate"),
                 }
                 for r in rows[:25]
+            ],
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/api/nws/debug")
+async def nws_debug():
+    """Debug: fetch active NWS weather-emergency alerts for the Capital Region."""
+    try:
+        rows = await fetch_nws_alerts(limit=25)
+        return {
+            "status": "ok",
+            "runtime": nws_runtime_status(),
+            "count": len(rows),
+            "items": [
+                {
+                    "severity": r.get("severity"),
+                    "municipality": r.get("municipality"),
+                    "title": r.get("title"),
+                    "pubDate": r.get("pubDate"),
+                }
+                for r in rows
             ],
         }
     except Exception as e:
