@@ -376,6 +376,17 @@ RSS_FEEDS_LOCAL = {
         "reliability": 0.85,
         "priority": 2,
     },
+    # WAMC Northeast Public Radio — direct RSS (proper dates, not IP-blocked).
+    # A reliable, high-quality DIRECT alternative to Google News for the
+    # Capital Region. filter=strict applies the standard locality gate.
+    "wamc_news": {
+        "url": "https://www.wamc.org/news.rss",
+        "label": "WAMC",
+        "filter": "strict",
+        "reliability": 0.88,
+        "priority": 2,
+        "timeout": 10,
+    },
     "albany_city_official": {
         "url": "https://www.albanyny.gov/RSSFeed.aspx?ModID=71&CID=All-0",
         "label": "City of Albany",
@@ -1837,6 +1848,46 @@ def set_cached(key, data):
 # =============================================================================
 # RSS PARSING
 # =============================================================================
+# URL path fragments that indicate a digest/newsletter/roundup page. These
+# re-publish older top stories with a fresh send-date, so they pollute the
+# live feed with stale content dressed up as current events.
+_DIGEST_URL_MARKERS = (
+    "/newsletter", "newsletter-daily", "/daily-digest", "/daily-brief",
+    "/email/", "/digest/", "/roundup", "/week-in-review", "/recap/",
+    "/this-week", "/morning-brief", "/evening-brief", "/top-stories-",
+)
+
+# Hard maximum age for any live-feed article. The home window is 48h; this is
+# a backstop so a feed handing us a wrong/fresh date on old content can't slip
+# multi-week-old stories into "current events".
+_FEED_MAX_AGE_HOURS = float(os.getenv("FEED_MAX_AGE_HOURS", "72"))
+
+
+def _is_digest_url(url: str) -> bool:
+    low = (url or "").lower()
+    if not low:
+        return False
+    return any(m in low for m in _DIGEST_URL_MARKERS)
+
+
+def _pubdate_within_max_age(article: dict) -> bool:
+    """True if the article's pubDate is within the hard max-age window.
+    Articles with NO parseable date are kept (handled elsewhere); only those
+    with a clearly OLD date are dropped."""
+    raw = article.get("pubDate") or ""
+    if not raw:
+        return True
+    try:
+        dt = parsedate_to_datetime(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return True
+    age_h = (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
+    # Allow small future skew; drop anything older than the backstop.
+    return age_h <= _FEED_MAX_AGE_HOURS
+
+
 def parse_rss(xml_text, default_source=None):
     articles = []
     try:
@@ -4003,6 +4054,16 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
 
     _GEO_FILTER_STATS = {"accepted": 0, "rejected": 0, "reasons": {}}
     articles = [a for a in articles if is_albany_related(a)]
+    # Reject digest/newsletter/roundup URLs — these re-surface OLD stories with
+    # a fresh send-date, making 2-month-old articles appear as current events
+    # (e.g. a CBS6 "newsletter-daily" link to an April shooting showing in June).
+    before_digest = len(articles)
+    articles = [a for a in articles if not _is_digest_url(a.get("link", ""))]
+    if before_digest != len(articles):
+        logger.info("digest_url_filtered removed=%d", before_digest - len(articles))
+    # Freshness guard: drop anything whose pubDate is older than the hard
+    # max-age window even if a feed handed it a misleading recent date.
+    articles = [a for a in articles if _pubdate_within_max_age(a)]
 
     def _norm_link(u: str) -> str:
         return (u or "").strip().lower().split("?")[0].rstrip("/")
