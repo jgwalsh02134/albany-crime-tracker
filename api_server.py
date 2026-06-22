@@ -4369,13 +4369,20 @@ def _seconds_since_last_real_incident() -> float:
 
 
 def _build_gap_fill_card(scanner_alerts: list[dict], stream_status: dict) -> Optional[dict[str, Any]]:
-    """Synthesize an 'ongoing activity' card from recent scanner intelligence."""
+    """Synthesize an 'ongoing activity' card from scanner intelligence or time-aware status."""
     now = datetime.now(timezone.utc)
     gap_minutes = int(_seconds_since_last_real_incident() / 60)
 
-    # Use scanner stream alerts if available
-    if scanner_alerts:
-        top = scanner_alerts[0]
+    # Only use scanner alerts that are RECENT (<30 min) and not hallucinated
+    fresh_alerts = [
+        a for a in scanner_alerts
+        if (time.time() - (a.get("timestamp") or 0)) < 1800
+        and not _is_ad_or_noise(a.get("text", ""))
+        and a.get("alert_level", "none") != "none"
+    ]
+
+    if fresh_alerts:
+        top = fresh_alerts[0]
         analysis = top.get("analysis") or {}
         cand = analysis.get("incident_candidate") or {}
         muni = cand.get("municipality") or "Albany County"
@@ -4451,10 +4458,11 @@ def _build_gap_fill_card(scanner_alerts: list[dict], stream_status: dict) -> Opt
 
 
 async def _gap_fill_loop() -> None:
-    """Background loop that synthesizes cards when the feed goes quiet.
-    Uses the actual age of the newest incident (not last DB write time)."""
+    """Background loop that keeps the feed alive during quiet periods.
+    Generates time-stamped status cards every 5 minutes when no real
+    news is publishing, so the feed always has recent content."""
     global _gap_fill_cards
-    await asyncio.sleep(30.0)
+    await asyncio.sleep(20.0)
     while True:
         try:
             gap_s = await _newest_incident_age_seconds()
@@ -4464,45 +4472,39 @@ async def _gap_fill_loop() -> None:
                 stream_status = {
                     "monitor_running": _stream_monitor_task is not None and not _stream_monitor_task.done(),
                     "alert_count": len(_stream_alerts),
+                    "sources_total": len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED),
                 }
-                # Generate cards from EACH unique scanner alert
-                new_cards_added = 0
-                existing_titles = {c.get("title") for c in _gap_fill_cards}
-                for alert in recent_alerts:
-                    card = _build_gap_fill_card([alert], stream_status)
-                    if card and card["title"] not in existing_titles:
-                        _gap_fill_cards.insert(0, card)
-                        existing_titles.add(card["title"])
-                        new_cards_added += 1
-                        if len(_gap_fill_cards) >= _GAP_FILL_MAX:
-                            break
 
-                # If no scanner alerts, generate a monitoring card
-                if not recent_alerts and not _gap_fill_cards:
-                    card = _build_gap_fill_card([], stream_status)
-                    if card:
-                        _gap_fill_cards.insert(0, card)
+                # Always generate a fresh monitoring/activity card
+                card = _build_gap_fill_card(recent_alerts, stream_status)
+                if card:
+                    # Replace oldest card to keep the list fresh
+                    _gap_fill_cards.insert(0, card)
+                    if len(_gap_fill_cards) > _GAP_FILL_MAX:
+                        _gap_fill_cards = _gap_fill_cards[:_GAP_FILL_MAX]
 
-                if len(_gap_fill_cards) > _GAP_FILL_MAX:
-                    _gap_fill_cards = _gap_fill_cards[:_GAP_FILL_MAX]
-                if new_cards_added:
-                    logger.info("gap_fill_generated count=%d total=%d gap_minutes=%d",
-                                new_cards_added, len(_gap_fill_cards), int(gap_s / 60))
+                logger.debug("gap_fill_tick total=%d gap_min=%d",
+                             len(_gap_fill_cards), int(gap_s / 60))
             else:
                 if _gap_fill_cards:
                     _gap_fill_cards.clear()
-            await asyncio.sleep(45.0)  # Check every 45 seconds
+            # Generate a new card every 5 minutes during gaps
+            await asyncio.sleep(300)
         except asyncio.CancelledError:
             break
         except Exception as exc:
             logger.warning("gap_fill_loop_error: %s", exc)
-            await asyncio.sleep(45.0)
+            await asyncio.sleep(300)
 
 
 async def start_gap_fill_monitor() -> None:
-    global _gap_fill_task
+    global _gap_fill_task, _stream_alerts
     if _GAP_FILL_THRESHOLD_S <= 0:
         return
+    # Purge stale alerts on startup (>1 hour old are useless for gap-fill)
+    cutoff = time.time() - 3600
+    async with _stream_alerts_lock:
+        _stream_alerts[:] = [a for a in _stream_alerts if (a.get("timestamp") or 0) > cutoff]
     _gap_fill_task = asyncio.create_task(_gap_fill_loop())
     logger.info("gap_fill_monitor_started threshold_s=%s", _GAP_FILL_THRESHOLD_S)
 
@@ -6741,12 +6743,18 @@ _AD_NOISE_THRESHOLD = 2
 
 
 def _is_ad_or_noise(text: str) -> bool:
-    """Detect Broadcastify ad breaks, promos, and non-dispatch audio."""
+    """Detect Broadcastify ad breaks, promos, Whisper hallucinations, and non-dispatch audio."""
     if not text:
         return True
     lower = text.lower().strip()
-    # Very short transcriptions are usually silence artifacts
     if len(lower) < 15:
+        return True
+    # Whisper prompt echo — model outputs the prompt when audio is silence/noise
+    if "10-codes, signal codes, street names" in lower:
+        return True
+    if "common streets" in lower and "10-codes" in lower:
+        return True
+    if lower.startswith("10-codes"):
         return True
     # Count ad-pattern matches
     hits = sum(1 for p in _AD_NOISE_PATTERNS if p in lower)
@@ -6758,7 +6766,6 @@ def _is_ad_or_noise(text: str) -> bool:
         unique = set(words)
         if len(unique) <= len(words) * 0.3:
             return True
-    # Whisper silence hallucination: repeated phrases
     if lower.count("thank you") >= 3 or lower.count("you") >= 8:
         return True
     return False
