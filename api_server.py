@@ -830,6 +830,123 @@ RSS_FEEDS_EXTENDED = {
 }
 
 
+# =============================================================================
+# POLICE ACTIVITY DRAGNET — full-spectrum incident-type coverage
+# =============================================================================
+# These searches deliberately target SPECIFIC police-activity types rather
+# than generic "crime" so the Live feed captures the full operational picture
+# (tactical situations, searches, alerts, fatalities, fire/EMS) — not just
+# what a newsroom labels a "crime story". Each runs through the standard RSS
+# pipeline (parse_rss → is_albany_related strict filter), so out-of-area
+# matches are gated the same way as every other Google News feed.
+RSS_FEEDS_POLICE_ACTIVITY = {
+    # ── Tactical / high-risk operations ───────────────────────────────────────
+    "act_tactical": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany+County%22+OR+%22Albany+NY%22+OR+Colonie+OR+Bethlehem+OR+Guilderland+OR+Cohoes+OR+Watervliet)+(standoff+OR+barricade+OR+hostage+OR+SWAT+OR+%22shelter+in+place%22+OR+lockdown)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.74,
+        "priority": 3,
+    },
+    "act_pursuit": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany+County%22+OR+%22Albany+NY%22+OR+Colonie+OR+Latham+OR+Cohoes)+(pursuit+OR+%22police+chase%22+OR+manhunt+OR+%22foot+pursuit%22+OR+fugitive)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.74,
+        "priority": 3,
+    },
+    # ── Searches, seizures, enforcement actions ───────────────────────────────
+    "act_enforcement": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany+County%22+OR+%22Albany+NY%22+OR+Colonie+OR+Bethlehem+OR+Guilderland)+(%22search+warrant%22+OR+%22drug+bust%22+OR+%22narcotics%22+OR+%22weapons+seized%22+OR+%22gun+recovered%22+OR+%22K-9%22)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.74,
+        "priority": 3,
+    },
+    # ── Public-safety alerts (threats, packages, evacuations) ─────────────────
+    "act_alerts": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany+County%22+OR+%22Albany+NY%22+OR+Colonie+OR+Guilderland)+(%22bomb+threat%22+OR+%22suspicious+package%22+OR+evacuation+OR+%22active+shooter%22+OR+hazmat)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.74,
+        "priority": 3,
+    },
+    # ── Missing persons / AMBER / Silver alerts ───────────────────────────────
+    "act_missing": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany+County%22+OR+%22Albany+NY%22+OR+Colonie+OR+Bethlehem)+(%22missing+person%22+OR+%22AMBER+Alert%22+OR+%22Silver+Alert%22+OR+%22endangered%22)+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.78,
+        "priority": 3,
+    },
+    # ── Officer-involved / use of force ───────────────────────────────────────
+    "act_officer_involved": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany%22+OR+%22Albany+County%22)+(%22officer-involved%22+OR+%22officer+involved%22+OR+%22use+of+force%22+OR+%22police+shooting%22+OR+%22officer+shot%22)+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.80,
+        "priority": 4,
+    },
+    # ── Death / homicide investigations ───────────────────────────────────────
+    "act_death_inv": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany+County%22+OR+%22Albany+NY%22+OR+Colonie+OR+Cohoes+OR+Watervliet)+(homicide+OR+%22death+investigation%22+OR+%22body+found%22+OR+fatal+OR+%22shot+dead%22)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.78,
+        "priority": 3,
+    },
+    # ── Fire / EMS major responses ────────────────────────────────────────────
+    "act_fire_ems": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany+County%22+OR+%22Albany+NY%22+OR+Colonie+OR+Bethlehem+OR+Guilderland+OR+Cohoes)+(%22structure+fire%22+OR+%22working+fire%22+OR+%22house+fire%22+OR+%22mass+casualty%22+OR+%22multiple+injured%22)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.74,
+        "priority": 3,
+    },
+    # ── Albany County Sheriff specific ────────────────────────────────────────
+    "act_acso": {
+        "url": "https://news.google.com/rss/search?q=%22Albany+County+Sheriff%22+(arrest+OR+investigation+OR+incident+OR+deputies+OR+%22traffic+stop%22+OR+seized)+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Official @ACSOTWEET",
+        "filter": "albany",
+        "force_label": True,
+        "reliability": 0.92,
+        "priority": 4,
+    },
+    # ── University at Albany Police (Clery / campus safety) ───────────────────
+    "act_ualbany": {
+        "url": "https://news.google.com/rss/search?q=(%22University+at+Albany%22+OR+UAlbany+OR+%22UAlbany+Police%22)+(crime+OR+arrest+OR+assault+OR+%22timely+warning%22+OR+%22campus+safety%22+OR+theft)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "UAlbany Campus Safety",
+        "filter": "strict",
+        "reliability": 0.80,
+        "priority": 2,
+    },
+    # ── Siena / College of Saint Rose campus areas ────────────────────────────
+    "act_campus_other": {
+        "url": "https://news.google.com/rss/search?q=(%22Siena+College%22+OR+%22Saint+Rose%22+OR+%22Albany+Law%22+OR+%22Albany+Medical%22)+(crime+OR+arrest+OR+assault+OR+%22campus+safety%22+OR+robbery)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Campus Safety",
+        "filter": "strict",
+        "reliability": 0.72,
+        "priority": 1,
+    },
+    # ── CapNewYork / NY Daily wire dragnet for any Albany police action ────────
+    "act_wire_dragnet": {
+        "url": "https://news.google.com/rss/search?q=(%22Albany+police%22+OR+%22Colonie+police%22+OR+%22Bethlehem+police%22+OR+%22Guilderland+police%22+OR+%22Cohoes+police%22+OR+%22Watervliet+police%22)+when:1d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Capital Region",
+        "filter": "strict",
+        "reliability": 0.74,
+        "priority": 3,
+    },
+}
+
+
+def _total_source_count() -> int:
+    """Count of all configured RSS/news/activity sources for status display."""
+    return (
+        len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL)
+        + len(RSS_FEEDS_EXTENDED) + len(RSS_FEEDS_POLICE_ACTIVITY)
+    )
+
+
 def build_operational_rss_feeds() -> dict[str, dict]:
     """
     Optional 511NY / NY-Alert RSS layers. Set env to enable:
@@ -838,6 +955,7 @@ def build_operational_rss_feeds() -> dict[str, dict]:
     Also merges RSS_FEEDS_EXTENDED (always-on expanded sources).
     """
     out: dict[str, dict] = dict(RSS_FEEDS_EXTENDED)
+    out.update(RSS_FEEDS_POLICE_ACTIVITY)
     u511 = os.getenv("NY511_CAPITAL_DISTRICT_RSS", "").strip()
     if u511:
         out["ny511_capital_district"] = {
@@ -4472,7 +4590,7 @@ async def _gap_fill_loop() -> None:
                 stream_status = {
                     "monitor_running": _stream_monitor_task is not None and not _stream_monitor_task.done(),
                     "alert_count": len(_stream_alerts),
-                    "sources_total": len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED),
+                    "sources_total": _total_source_count(),
                 }
 
                 # Always generate a fresh monitoring/activity card
@@ -4512,7 +4630,7 @@ async def start_gap_fill_monitor() -> None:
             stream_status = {
                 "monitor_running": _stream_monitor_task is not None and not _stream_monitor_task.done(),
                 "alert_count": len(_stream_alerts),
-                "sources_total": len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED),
+                "sources_total": _total_source_count(),
             }
             card = _build_gap_fill_card([], stream_status)
             if card:
@@ -4794,7 +4912,7 @@ async def get_incidents(
         "pulse": {
             "seconds_since_last_incident": real_gap_s or int(_seconds_since_last_real_incident()),
             "gap_fill_active": bool(gap_cards),
-            "sources_active": len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED),
+            "sources_active": _total_source_count(),
             "scanner_pipeline_active": _stream_monitor_task is not None and not _stream_monitor_task.done(),
         },
     }
@@ -4805,10 +4923,7 @@ async def get_incidents(
 async def get_incidents_pulse():
     """Real-time feed health/freshness status for the Albany Pulse bar."""
     gap_s = await _newest_incident_age_seconds()
-    total_sources = (
-        len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS)
-        + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED)
-    )
+    total_sources = _total_source_count()
     gnews_status = gnews_runtime_status()
     scanner_running = _stream_monitor_task is not None and not _stream_monitor_task.done()
     return {
