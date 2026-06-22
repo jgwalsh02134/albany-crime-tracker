@@ -4998,13 +4998,19 @@ async def _gap_fill_loop() -> None:
                     "sources_total": _total_source_count(),
                 }
 
-                # Always generate a fresh monitoring/activity card
+                # Generate a card; de-duplicate by title so the feed doesn't
+                # accumulate multiple identical "Active monitoring" cards.
                 card = _build_gap_fill_card(recent_alerts, stream_status)
                 if card:
-                    # Replace oldest card to keep the list fresh
-                    _gap_fill_cards.insert(0, card)
-                    if len(_gap_fill_cards) > _GAP_FILL_MAX:
-                        _gap_fill_cards = _gap_fill_cards[:_GAP_FILL_MAX]
+                    existing = next((c for c in _gap_fill_cards if c.get("title") == card["title"]), None)
+                    if existing:
+                        existing["pubDate"] = card["pubDate"]  # refresh timestamp only
+                        existing["description"] = card["description"]
+                    else:
+                        _gap_fill_cards.insert(0, card)
+                    # Keep at most 2 distinct gap-fill cards.
+                    if len(_gap_fill_cards) > 2:
+                        _gap_fill_cards = _gap_fill_cards[:2]
 
                 logger.debug("gap_fill_tick total=%d gap_min=%d",
                              len(_gap_fill_cards), int(gap_s / 60))
@@ -5307,6 +5313,39 @@ def _title_dedup_key(title: str) -> str:
     return " ".join(sorted(set(words))[:10])
 
 
+_STREET_PHRASE_RE = re.compile(
+    r"\b(north|south|east|west)?\s?([a-z]{3,})\s+"
+    r"(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|drive|dr)\b"
+)
+_KNOWN_AREAS = (
+    "south pearl", "north pearl", "pine hills", "arbor hill", "south end",
+    "west hill", "center square", "downtown", "washington park", "mansion",
+    "park south", "sheridan hollow", "north albany",
+)
+
+
+def _incident_signature(it: dict) -> str:
+    """A (location + incident-type) signature that catches the SAME incident
+    reported by different outlets with different wording — e.g. three South
+    Pearl Street robbery stories. Empty when no clear location is present."""
+    title = (it.get("short_title") or it.get("title") or "").lower()
+    itype = (it.get("fused_incident_type") or it.get("crime_type") or "").strip().lower()
+    if not itype or itype in ("other", "police_activity"):
+        return ""
+    loc = ""
+    for area in _KNOWN_AREAS:
+        if area in title:
+            loc = area
+            break
+    if not loc:
+        m = _STREET_PHRASE_RE.search(title)
+        if m:
+            loc = ((m.group(1) or "") + " " + m.group(2)).strip()
+    if not loc:
+        return ""
+    return f"{loc}|{itype}"
+
+
 def _merge_duplicate_source(kept: dict, dupe: dict) -> None:
     """Fold a duplicate's source attribution into the kept incident."""
     linked = kept.get("linked_sources")
@@ -5339,18 +5378,25 @@ def _polish_incidents(items: list[dict]) -> list[dict]:
         if not (_INCIDENT_FUSION_CACHE.get(it.get("id"), {}).get("drop"))
     ]
 
-    seen: dict[str, dict] = {}
+    seen_title: dict[str, dict] = {}
+    seen_sig: dict[str, dict] = {}
     deduped: list[dict] = []
     for it in items:
         if it.get("_gap_fill"):
             deduped.append(it)
             continue
-        key = _title_dedup_key(it.get("short_title") or it.get("title") or "")
-        if key and key in seen:
-            _merge_duplicate_source(seen[key], it)
+        tkey = _title_dedup_key(it.get("short_title") or it.get("title") or "")
+        skey = _incident_signature(it)
+        # A duplicate if EITHER the title signature OR the location+type
+        # signature has already been seen.
+        kept = (seen_title.get(tkey) if tkey else None) or (seen_sig.get(skey) if skey else None)
+        if kept is not None:
+            _merge_duplicate_source(kept, it)
             continue
-        if key:
-            seen[key] = it
+        if tkey:
+            seen_title[tkey] = it
+        if skey:
+            seen_sig[skey] = it
         deduped.append(it)
 
     in_area = [it for it in deduped if _locality_confidence(it) >= 1]
@@ -5409,8 +5455,12 @@ async def get_incidents(
     if gap_cards and not q:
         items = list(items) + gap_cards
 
-    # Compute real gap from the actual newest non-gap-fill item pubdate
+    # Compute real gap from the TRUE newest non-gap-fill item (min age across
+    # all items — not the first, since operational sort puts the highest-
+    # severity item first, which may be older than the actual newest).
     real_gap_s = 0
+    now_utc = datetime.now(timezone.utc)
+    ages: list[int] = []
     for it in items:
         if it.get("_gap_fill"):
             continue
@@ -5418,10 +5468,11 @@ async def get_incidents(
         if raw_dt:
             try:
                 dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
-                real_gap_s = max(0, int((datetime.now(timezone.utc) - dt).total_seconds()))
-                break
+                ages.append(max(0, int((now_utc - dt).total_seconds())))
             except Exception:
                 pass
+    if ages:
+        real_gap_s = min(ages)
 
     payload = {
         "status": "ok",
