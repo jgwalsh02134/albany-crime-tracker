@@ -525,9 +525,18 @@ RSS_FEEDS_GNEWS = {
     },
 }
 
+# Browser User-Agent + concurrency cap for Google News. Datacenter IPs that
+# burst many simultaneous requests with a bot UA get 403/429'd; a real browser
+# UA + a low concurrency cap keeps us under Google News' rate limit.
+_GNEWS_BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+)
+_GNEWS_SEMAPHORE = asyncio.Semaphore(4)
+
 _gnews_blocked_until: float = 0.0
 _gnews_block_logged_at: float = 0.0
-_GNEWS_BLOCK_TTL = 1800
+_GNEWS_BLOCK_TTL = 600  # 10 min (was 30) — faster recovery after a transient block
 
 
 def _check_gnews_blocked(url: str, resp_status: int = 0) -> bool:
@@ -3803,12 +3812,34 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
         if is_gnews and _check_gnews_blocked(url):
             return []
         try:
-            resp = await fetch_with_retry(
-                http_client,
-                url,
-                timeout=settings.external_timeout_seconds,
-                retries=1 if is_gnews else settings.external_retry_attempts,
-            )
+            # Google News blocks datacenter IPs that burst with a bot UA.
+            # Use a browser UA + throttle concurrency so we stay under its
+            # rate limit (the root cause of the recurring "feed stale" gaps).
+            req_headers = None
+            if is_gnews:
+                req_headers = {
+                    "User-Agent": _GNEWS_BROWSER_UA,
+                    "Accept": "application/rss+xml, application/xml, text/xml, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                }
+            if is_gnews:
+                async with _GNEWS_SEMAPHORE:
+                    resp = await fetch_with_retry(
+                        http_client,
+                        url,
+                        timeout=settings.external_timeout_seconds,
+                        retries=1,
+                        headers=req_headers,
+                    )
+                    # Small spacing between GNews hits to avoid burst-detection.
+                    await asyncio.sleep(0.25)
+            else:
+                resp = await fetch_with_retry(
+                    http_client,
+                    url,
+                    timeout=settings.external_timeout_seconds,
+                    retries=settings.external_retry_attempts,
+                )
             if resp and resp.status_code == 200:
                 parsed = parse_rss(
                     resp.text,
