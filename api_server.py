@@ -4498,13 +4498,28 @@ async def _gap_fill_loop() -> None:
 
 
 async def start_gap_fill_monitor() -> None:
-    global _gap_fill_task, _stream_alerts
+    global _gap_fill_task, _stream_alerts, _gap_fill_cards
     if _GAP_FILL_THRESHOLD_S <= 0:
         return
     # Purge stale alerts on startup (>1 hour old are useless for gap-fill)
     cutoff = time.time() - 3600
     async with _stream_alerts_lock:
         _stream_alerts[:] = [a for a in _stream_alerts if (a.get("timestamp") or 0) > cutoff]
+    # Generate an initial gap-fill card immediately if there's a gap
+    try:
+        gap_s = await _newest_incident_age_seconds()
+        if gap_s >= _GAP_FILL_THRESHOLD_S:
+            stream_status = {
+                "monitor_running": _stream_monitor_task is not None and not _stream_monitor_task.done(),
+                "alert_count": len(_stream_alerts),
+                "sources_total": len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED),
+            }
+            card = _build_gap_fill_card([], stream_status)
+            if card:
+                _gap_fill_cards.append(card)
+                logger.info("gap_fill_initial_card generated (gap=%dm)", int(gap_s / 60))
+    except Exception as exc:
+        logger.warning("gap_fill_initial_error: %s", exc)
     _gap_fill_task = asyncio.create_task(_gap_fill_loop())
     logger.info("gap_fill_monitor_started threshold_s=%s", _GAP_FILL_THRESHOLD_S)
 
@@ -4789,7 +4804,7 @@ async def get_incidents(
 @app.get("/api/incidents/pulse")
 async def get_incidents_pulse():
     """Real-time feed health/freshness status for the Albany Pulse bar."""
-    gap_s = _seconds_since_last_real_incident()
+    gap_s = await _newest_incident_age_seconds()
     total_sources = (
         len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS)
         + len(RSS_FEEDS_OFFICIAL) + len(RSS_FEEDS_EXTENDED)

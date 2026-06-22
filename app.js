@@ -4843,23 +4843,32 @@
   function renderScannerFallback() {
     var container = document.getElementById("scannerCallsList");
     if (!container) return;
-    if (container.querySelector(".scanner-call-item") || container.querySelector(".sc-card")) return;
+    if (container.querySelector(".sc-card")) return;
 
     container.innerHTML =
       '<div class="scanner-fallback">' +
         '<div class="scanner-fallback-header">' +
-          '<span class="material-icons" style="font-size:18px;color:var(--warning, #f59e0b);">info</span>' +
-          '<span>Call log temporarily unavailable</span>' +
+          '<span class="material-icons" style="font-size:18px;color:var(--warning, #f59e0b);">cell_tower</span>' +
+          '<span>Radio calls data source unavailable</span>' +
         '</div>' +
-        '<p class="scanner-fallback-text">Radio call data from OpenMHz is intermittently unavailable due to upstream rate limits. ' +
-          'The live Whisper transcription feed above still operates independently.</p>' +
-        '<div class="scanner-fallback-actions">' +
-          '<button type="button" class="link-btn sc-retry-btn" style="margin-top:8px;">Retry now</button>' +
+        '<p class="scanner-fallback-text">' +
+          'OpenMHz P25 call data is currently unreachable (upstream issue). ' +
+          'This does NOT affect the Live Radio player above — you can still listen to live feeds directly.</p>' +
+        '<p class="scanner-fallback-text" style="margin-top:6px;">' +
+          '<strong>What still works:</strong></p>' +
+        '<ul class="scanner-fallback-text" style="margin:4px 0 0 16px;list-style:disc;">' +
+          '<li>Live Radio — tap any feed above to listen</li>' +
+          '<li>Whisper transcriptions — when audio is captured</li>' +
+          '<li>Live feed incidents — separate from scanner</li>' +
+        '</ul>' +
+        '<div class="scanner-fallback-actions" style="margin-top:10px;">' +
+          '<button type="button" class="link-btn sc-retry-btn">Retry calls</button>' +
         '</div>' +
       '</div>';
     var retryBtn = container.querySelector(".sc-retry-btn");
     if (retryBtn) retryBtn.addEventListener("click", function () {
       _scannerFailCount = 0;
+      container.innerHTML = '<div class="empty-state">Retrying…</div>';
       fetchScannerCalls();
     });
   }
