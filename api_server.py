@@ -757,23 +757,8 @@ RSS_FEEDS_EXTENDED = {
         "reliability": 0.85,
         "priority": 2,
     },
-    # ── Reddit (via RSS) ──────────────────────────────────────────────────────
-    "reddit_albany": {
-        "url": "https://www.reddit.com/r/Albany/search.rss?q=police+OR+crime+OR+shooting+OR+arrest+OR+crash+OR+fire&sort=new&restrict_sr=on&t=week",
-        "label": "Reddit r/Albany",
-        "filter": "albany",
-        "reliability": 0.55,
-        "priority": 1,
-        "timeout": 10,
-    },
-    "reddit_capitalregion": {
-        "url": "https://www.reddit.com/r/CapitalRegion/search.rss?q=police+OR+crime+OR+shooting+OR+arrest+OR+crash&sort=new&restrict_sr=on&t=week",
-        "label": "Reddit r/CapitalRegion",
-        "filter": "strict",
-        "reliability": 0.50,
-        "priority": 1,
-        "timeout": 10,
-    },
+    # Reddit + social moved to dedicated RSS_FEEDS_SOCIAL block (verified
+    # accounts, reliable Google News site: surfacing — see below).
     # ── Extended Nixle municipalities ─────────────────────────────────────────
     "nixle_bethlehem": {
         "url": "https://www.nixle.com/rss/?city=Bethlehem&state=NY",
@@ -939,11 +924,104 @@ RSS_FEEDS_POLICE_ACTIVITY = {
 }
 
 
+# =============================================================================
+# SOCIAL MEDIA + REDDIT — verified Albany County NY accounts/communities
+# =============================================================================
+# IMPORTANT — reliability note: Reddit, X/Twitter, and Facebook all block
+# direct server-side scraping (Reddit 403s datacenter IPs; X/FB require
+# API keys). The RELIABLE way to surface their content is Google News
+# `site:` searches — Google indexes posts from these accounts/communities
+# and is not IP-blocked. Each account below was verified to exist:
+#   • Albany PD:           x.com/albanypolice · facebook.com/AlbanyNYPolice
+#   • Albany Co. Sheriff:  x.com/ACSOTWEET     · facebook.com/Albany-County-Sheriffs-Office
+#   • Colonie PD:          x.com/colonie_police· facebook.com/ColoniePD
+#   • NY State Police:     x.com/nyspolice
+#   • Reddit:              r/Albany · r/CapitalRegion · r/albanyny
+RSS_FEEDS_SOCIAL = {
+    # ── Reddit communities (via Google News site: search — reliable) ──────────
+    "social_reddit_albany": {
+        "url": "https://news.google.com/rss/search?q=site:reddit.com/r/Albany+(police+OR+crime+OR+shooting+OR+stabbing+OR+arrest+OR+crash+OR+fire+OR+emergency+OR+%22shots+fired%22)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Reddit r/Albany",
+        "filter": "albany",
+        "reliability": 0.55,
+        "priority": 1,
+    },
+    "social_reddit_capitalregion": {
+        "url": "https://news.google.com/rss/search?q=site:reddit.com/r/CapitalRegion+(police+OR+crime+OR+shooting+OR+stabbing+OR+arrest+OR+crash+OR+fire+OR+emergency)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Reddit r/CapitalRegion",
+        "filter": "strict",
+        "reliability": 0.52,
+        "priority": 1,
+    },
+    "social_reddit_albanyny": {
+        "url": "https://news.google.com/rss/search?q=site:reddit.com/r/albanyny+(police+OR+crime+OR+shooting+OR+arrest+OR+crash+OR+fire+OR+emergency)+when:5d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Reddit r/albanyny",
+        "filter": "strict",
+        "reliability": 0.50,
+        "priority": 1,
+    },
+    # Reddit sitewide — catches threads in any sub mentioning Albany incidents
+    "social_reddit_sitewide": {
+        "url": "https://news.google.com/rss/search?q=site:reddit.com+(%22Albany+NY%22+OR+%22Albany+County%22+OR+Colonie+OR+Cohoes+OR+Watervliet)+(shooting+OR+stabbing+OR+%22police+activity%22+OR+%22heavy+police%22+OR+standoff+OR+%22shots+fired%22)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Reddit",
+        "filter": "strict",
+        "reliability": 0.48,
+        "priority": 1,
+    },
+    # ── Direct Reddit RSS (best-effort — may be IP-blocked on server) ─────────
+    "social_reddit_albany_direct": {
+        "url": "https://www.reddit.com/r/Albany/search.rss?q=police+OR+shooting+OR+stabbing+OR+arrest+OR+crash+OR+fire&sort=new&restrict_sr=on&t=week",
+        "label": "Reddit r/Albany",
+        "filter": "albany",
+        "reliability": 0.45,
+        "priority": 1,
+        "timeout": 10,
+    },
+    # ── Albany PD social (verified @albanypolice / facebook.com/AlbanyNYPolice) ─
+    "social_albany_pd": {
+        "url": "https://news.google.com/rss/search?q=(site:twitter.com/albanypolice+OR+site:x.com/albanypolice+OR+site:facebook.com/AlbanyNYPolice+OR+%22Albany+Police%22)+(arrest+OR+incident+OR+shooting+OR+investigation+OR+%22in+custody%22+OR+alert)+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Official @albanypolice",
+        "filter": "albany",
+        "force_label": True,
+        "reliability": 0.90,
+        "priority": 4,
+    },
+    # ── Albany County Sheriff social (verified @ACSOTWEET) ────────────────────
+    "social_acso": {
+        "url": "https://news.google.com/rss/search?q=(site:twitter.com/ACSOTWEET+OR+site:x.com/ACSOTWEET+OR+%22Albany+County+Sheriff%22)+(arrest+OR+incident+OR+investigation+OR+deputies+OR+seized+OR+alert)+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Official @ACSOTWEET",
+        "filter": "albany",
+        "force_label": True,
+        "reliability": 0.90,
+        "priority": 4,
+    },
+    # ── Colonie PD social (verified @colonie_police / facebook.com/ColoniePD) ──
+    "social_colonie_pd": {
+        "url": "https://news.google.com/rss/search?q=(site:twitter.com/colonie_police+OR+site:x.com/colonie_police+OR+site:facebook.com/ColoniePD+OR+%22Colonie+Police%22)+(arrest+OR+incident+OR+shooting+OR+investigation+OR+%22news+release%22)+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Official @colonie_police",
+        "filter": "albany",
+        "force_label": True,
+        "reliability": 0.90,
+        "priority": 4,
+    },
+    # ── NY State Police social (verified @nyspolice) — Albany scoped ──────────
+    "social_nysp": {
+        "url": "https://news.google.com/rss/search?q=(site:twitter.com/nyspolice+OR+site:x.com/nyspolice)+(Albany+OR+%22Troop+G%22+OR+Colonie+OR+Cohoes)+when:2d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Official @nyspolice",
+        "filter": "albany",
+        "force_label": True,
+        "reliability": 0.90,
+        "priority": 4,
+    },
+}
+
+
 def _total_source_count() -> int:
     """Count of all configured RSS/news/activity sources for status display."""
     return (
         len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL)
         + len(RSS_FEEDS_EXTENDED) + len(RSS_FEEDS_POLICE_ACTIVITY)
+        + len(RSS_FEEDS_SOCIAL)
     )
 
 
@@ -956,6 +1034,7 @@ def build_operational_rss_feeds() -> dict[str, dict]:
     """
     out: dict[str, dict] = dict(RSS_FEEDS_EXTENDED)
     out.update(RSS_FEEDS_POLICE_ACTIVITY)
+    out.update(RSS_FEEDS_SOCIAL)
     u511 = os.getenv("NY511_CAPITAL_DISTRICT_RSS", "").strip()
     if u511:
         out["ny511_capital_district"] = {
