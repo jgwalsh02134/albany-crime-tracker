@@ -1,4 +1,9 @@
+# ffmpeg is required for the Whisper scanner pipeline (clean stream capture).
+# Provide it via BOTH the Nixpacks-native nix package AND apt, because the
+# Python provider's default image doesn't always honor aptPkgs alone — this
+# is why ffmpeg_available was reporting False in production.
 [phases.setup]
+nixPkgs = ["...", "ffmpeg"]
 aptPkgs = ["ffmpeg", "curl"]
 
 [start]

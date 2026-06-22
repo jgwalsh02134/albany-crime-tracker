@@ -73,6 +73,7 @@ from app.services.incident_repository import summarize_incidents
 from app.services.scanner_analysis import analyze_scanner_transcript
 from app.services.incident_transformers import article_to_incident
 from app.services.geocoding import geocode_article_mapbox, geocode_cache_stats
+from app.services.geocoding import geocode_article_local_first
 from app.services.source_registry import load_source_registry
 from app.services.source_registry import source_registry_summary
 from app.services.source_audit import audit_counts
@@ -3247,6 +3248,132 @@ def detect_patterns(crime_data):
 # =============================================================================
 # xAI / GROK HELPERS
 # =============================================================================
+# =============================================================================
+# LLM INCIDENT FUSION — Grok-powered clean, structured incident summaries
+# =============================================================================
+# Raw source titles are messy (Bluesky post text, Google News cruft, blotter
+# legalese). This background pass sends the newest incidents to Grok in ONE
+# batched call to produce a clean headline + one-line "what happened" +
+# normalized incident type. Results are cached by incident id, so the API
+# response stays fast (no per-request LLM latency).
+_INCIDENT_FUSION_CACHE: dict[str, dict[str, Any]] = {}
+_FUSION_CACHE_MAX = 400
+_fusion_task: Optional[asyncio.Task] = None
+
+_FUSION_SYSTEM = (
+    "You are the lead editor for an Albany County, NY police/emergency activity "
+    "tracker. You receive raw incident items (messy titles from news, scanner, "
+    "social, blotters). For EACH item, produce a clean, factual, scannable entry. "
+    "Rules: Ground every word in the provided text — never invent suspects, "
+    "charges, locations, or outcomes. Keep the City of Albany vs Albany County "
+    "distinction. If the item is not a real Albany County public-safety incident, "
+    "set drop=true. Output STRICT JSON only."
+)
+
+
+def _fusion_prompt(items: list[dict]) -> str:
+    lines = []
+    for it in items:
+        lines.append(json.dumps({
+            "id": it.get("id"),
+            "title": (it.get("short_title") or it.get("title") or "")[:200],
+            "desc": (it.get("description") or it.get("summary") or "")[:300],
+            "muni": it.get("municipality") or "",
+            "source": it.get("source_name") or it.get("source") or "",
+        }, ensure_ascii=True))
+    return (
+        "For each incident below, return a JSON array of objects with keys: "
+        "id (echo), headline (<=80 chars, factual, no clickbait), "
+        "summary (<=160 chars, what/where/who-if-stated), "
+        "incident_type (one of: shooting, stabbing, assault, robbery, burglary, "
+        "theft, arrest, crash, fire, missing_person, pursuit, dwi, weapons, "
+        "overdose, hazard, weather, police_activity, other), "
+        "drop (true if not a real Albany County incident). "
+        "Items:\n" + "\n".join(lines)
+    )
+
+
+def _parse_fusion_response(text: str) -> list[dict]:
+    if not text:
+        return []
+    s = text.strip()
+    # Strip code fences if the model wrapped the JSON.
+    s = re.sub(r"^```(?:json)?\s*", "", s)
+    s = re.sub(r"\s*```$", "", s)
+    start = s.find("[")
+    end = s.rfind("]")
+    if start == -1 or end == -1 or end <= start:
+        return []
+    try:
+        arr = json.loads(s[start:end + 1])
+        return arr if isinstance(arr, list) else []
+    except Exception:
+        return []
+
+
+async def fuse_recent_incidents(limit: int = 15) -> int:
+    """Generate clean Grok summaries for the newest un-cached incidents.
+    Returns the number of incidents enriched. Safe no-op without an API key."""
+    if not XAI_API_KEY:
+        return 0
+    try:
+        items = await query_incidents(limit=limit, sort_by="newest")
+    except Exception:
+        return 0
+    pending = [it for it in items if it.get("id") and it["id"] not in _INCIDENT_FUSION_CACHE]
+    if not pending:
+        return 0
+    pending = pending[:12]  # bound per call
+    try:
+        content = await call_grok(
+            [
+                {"role": "system", "content": _FUSION_SYSTEM},
+                {"role": "user", "content": _fusion_prompt(pending)},
+            ],
+            max_tokens=900,
+            temperature=0.2,
+            timeout=40.0,
+        )
+    except Exception as exc:
+        logger.warning("fusion_grok_error: %s", exc)
+        return 0
+    parsed = _parse_fusion_response(content or "")
+    n = 0
+    for obj in parsed:
+        iid = obj.get("id")
+        if not iid:
+            continue
+        _INCIDENT_FUSION_CACHE[iid] = {
+            "headline": (obj.get("headline") or "").strip()[:120],
+            "summary": (obj.get("summary") or "").strip()[:200],
+            "incident_type": (obj.get("incident_type") or "").strip().lower(),
+            "drop": bool(obj.get("drop")),
+        }
+        n += 1
+    # Evict oldest entries when the cache grows too large.
+    if len(_INCIDENT_FUSION_CACHE) > _FUSION_CACHE_MAX:
+        for k in list(_INCIDENT_FUSION_CACHE.keys())[: len(_INCIDENT_FUSION_CACHE) - _FUSION_CACHE_MAX]:
+            _INCIDENT_FUSION_CACHE.pop(k, None)
+    if n:
+        logger.info("incident_fusion_enriched count=%d cache=%d", n, len(_INCIDENT_FUSION_CACHE))
+    return n
+
+
+def _apply_fusion(it: dict) -> dict:
+    """Overlay cached Grok fusion (clean headline/summary/type) onto an incident."""
+    fused = _INCIDENT_FUSION_CACHE.get(it.get("id"))
+    if not fused:
+        return it
+    if fused.get("headline"):
+        it["short_title"] = fused["headline"]
+        it["_fused"] = True
+    if fused.get("summary"):
+        it["ai_summary"] = fused["summary"]
+    if fused.get("incident_type"):
+        it["fused_incident_type"] = fused["incident_type"]
+    return it
+
+
 async def call_grok(
     messages,
     max_tokens=400,
@@ -4439,9 +4566,12 @@ async def get_crimes(
     enriched: list[dict] = []
     for a in crime_articles:
         geo = geocode_article(a)
-        # Mapbox fallback: if dictionary geocoder found no coords, try Mapbox
+        # If the dictionary geocoder found no coords, use the enhanced
+        # local-first geocoder: street/intersection extraction from the
+        # title/description + local Albany gazetteer (free, no token) +
+        # Mapbox for precise addresses. Greatly increases map density.
         if geo.get("latitude") is None and geo.get("longitude") is None:
-            geo = await geocode_article_mapbox(geo)
+            geo = await geocode_article_local_first(geo)
         geo["crime_type"] = classify_crime_type(a)
         geo["neighborhood"] = get_neighborhood(geo.get("matched_location", ""))
         geo["confidence"] = compute_article_confidence(a)
@@ -4679,6 +4809,12 @@ async def _background_crime_ingest_loop(interval_s: float) -> None:
                     st.get("processed", 0),
                     st.get("backend", ""),
                 )
+                # LLM fusion: enrich newest incidents with clean Grok summaries
+                # (cached by id; best-effort, never blocks ingest).
+                try:
+                    await fuse_recent_incidents(limit=15)
+                except Exception as fexc:
+                    logger.debug("fusion_tick_skipped: %s", fexc)
             except Exception as exc:
                 _BACKGROUND_INGEST_STATS["crime"]["last_error"] = f"{type(exc).__name__}: {exc}"
                 logger.warning("background_crime_ingest_tick_error error=%s", exc)
@@ -5194,6 +5330,14 @@ def _polish_incidents(items: list[dict]) -> list[dict]:
     for it in items:
         if (it.get("municipality") or "").strip().lower() == "albany":
             it["municipality"] = "City of Albany"
+        # Overlay cached LLM fusion (clean headline/summary) when available.
+        _apply_fusion(it)
+
+    # Drop items the LLM flagged as not-real-Albany-incidents.
+    items = [
+        it for it in items
+        if not (_INCIDENT_FUSION_CACHE.get(it.get("id"), {}).get("drop"))
+    ]
 
     seen: dict[str, dict] = {}
     deduped: list[dict] = []
