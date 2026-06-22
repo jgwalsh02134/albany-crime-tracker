@@ -4946,7 +4946,6 @@
     { id: "1440",  name: "Albany Fire",        type: "fire" },
     { id: "37206", name: "County Vol. Fire",   type: "fire" },
     { id: "21216", name: "Thruway",            type: "other" },
-    { id: "7581",  name: "Colonie EMS",        type: "ems" },
   ];
 
   function _bcfyStreamUrl(feedId) {

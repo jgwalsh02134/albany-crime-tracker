@@ -7407,6 +7407,29 @@ _whisper_lock = asyncio.Lock()
 # Rate limiting: max concurrent transcriptions
 _whisper_semaphore = asyncio.Semaphore(3)
 
+# Whisper 429 circuit breaker. OpenAI returns 429 when the account is rate-
+# limited / over quota. Hammering it (47/47 failed calls in prod) just burns
+# the limit and floods logs. When we hit 429 we open the breaker for a cooldown
+# so the pipeline stops calling Whisper, then auto-recovers when quota frees up.
+_whisper_429_until: float = 0.0
+_WHISPER_429_COOLDOWN_S = 300.0  # 5 min backoff after a 429
+
+
+def _whisper_breaker_open() -> bool:
+    return time.time() < _whisper_429_until
+
+
+def _trip_whisper_breaker(retry_after: Optional[str] = None) -> None:
+    global _whisper_429_until
+    cooldown = _WHISPER_429_COOLDOWN_S
+    if retry_after:
+        try:
+            cooldown = max(cooldown, float(retry_after))
+        except (TypeError, ValueError):
+            pass
+    _whisper_429_until = time.time() + cooldown
+    logger.warning("whisper_429_breaker_open cooldown_s=%.0f (OpenAI rate-limited/over quota)", cooldown)
+
 
 _AD_NOISE_PATTERNS = [
     "broadcastify", "broadcast", "scanner radio",
@@ -8014,6 +8037,9 @@ async def scanner_transcribe(request: Request):
                     "language": (None, "en"),
                     "prompt": (None, _transcribe_prompt),
                 }
+                if _whisper_breaker_open():
+                    results.append({"id": call_id, "status": "skip", "reason": "rate_limited_cooldown"})
+                    continue
                 whisper_resp = await http_client.post(
                     "https://api.openai.com/v1/audio/transcriptions",
                     headers={"Authorization": f"Bearer {openai_key}"},
@@ -8021,6 +8047,10 @@ async def scanner_transcribe(request: Request):
                     timeout=30.0,
                 )
 
+                if whisper_resp.status_code == 429:
+                    _trip_whisper_breaker(whisper_resp.headers.get("Retry-After"))
+                    results.append({"id": call_id, "status": "skip", "reason": "rate_limited_429"})
+                    break
                 if whisper_resp.status_code != 200:
                     results.append({
                         "id": call_id,
@@ -8098,7 +8128,8 @@ BROADCASTIFY_FEEDS = [
     {"id": "3626", "name": "Albany City & Colonie Police/Fire/EMS", "priority": "high", "type": "police"},
     {"id": "1440", "name": "Albany City Fire", "priority": "medium", "type": "fire"},
     {"id": "37206", "name": "Albany County Volunteer Fire", "priority": "medium", "type": "fire"},
-    {"id": "7581", "name": "Colonie EMS/Fire", "priority": "medium", "type": "ems"},
+    # Feed 7581 (Colonie EMS/Fire) removed — its CDN URLs 401 (premium/auth
+    # required), so it can't be captured or played publicly.
     {"id": "21216", "name": "NYS Thruway - Albany Division", "priority": "low", "type": "other"},
 ]
 
@@ -8186,6 +8217,8 @@ async def _transcribe_audio_bytes(audio_bytes: bytes) -> Optional[str]:
     openai_key = settings.openai_api_key
     if not openai_key or not audio_bytes:
         return None
+    if _whisper_breaker_open():
+        return None  # cooling down after a 429 — skip without burning quota
 
     # Detect format: WAV starts with RIFF header, otherwise assume MP3
     is_wav = audio_bytes[:4] == b"RIFF"
@@ -8206,6 +8239,9 @@ async def _transcribe_audio_bytes(audio_bytes: bytes) -> Optional[str]:
             files=files,
             timeout=30.0,
         )
+        if resp.status_code == 429:
+            _trip_whisper_breaker(resp.headers.get("Retry-After"))
+            return None
         if resp.status_code != 200:
             return None
         return resp.json().get("text", "").strip()
@@ -8390,6 +8426,8 @@ async def get_stream_status():
         "ffmpeg_available": has_ffmpeg,
         "http_fallback_active": running and not has_ffmpeg,
         "whisper_configured": bool(settings.openai_api_key),
+        "whisper_rate_limited": _whisper_breaker_open(),
+        "whisper_cooldown_remaining_s": max(0, int(_whisper_429_until - time.time())),
         "alert_count": len(_stream_alerts),
     }
 
