@@ -5399,8 +5399,14 @@ def _polish_incidents(items: list[dict]) -> list[dict]:
             seen_sig[skey] = it
         deduped.append(it)
 
-    in_area = [it for it in deduped if _locality_confidence(it) >= 1]
-    out_area = [it for it in deduped if _locality_confidence(it) < 1]
+    in_area = [it for it in deduped if _locality_confidence(it) >= 1 or it.get("_gap_fill")]
+    out_area = [it for it in deduped if _locality_confidence(it) < 1 and not it.get("_gap_fill")]
+    # Out-of-county items (Rotterdam, Poughkeepsie, Johnsonville, Pittsfield…)
+    # don't belong in an ALBANY COUNTY tracker. Drop them entirely when we have
+    # enough genuine local content; only keep them as a last resort so the feed
+    # is never empty.
+    if len(in_area) >= 5:
+        return in_area
     return in_area + out_area
 
 
