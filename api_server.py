@@ -1557,11 +1557,32 @@ def classify_feed_tab(article) -> str:
     return "news"
 
 
+def _is_gnews_item(art: dict) -> bool:
+    """A Google News item: redirect URL on news.google.com, no real outlet URL."""
+    link = (art.get("link") or "").lower()
+    return "news.google.com" in link
+
+
 def _dedup_should_replace_rep(rep: dict, cand: dict) -> bool:
     """
-    Prefer fresher scanner/Nixle over stale official X when the cluster is the same story,
-    so routine social posts do not swallow operational audio/alerts.
+    Decide whether candidate should become the cluster representative.
+    Priorities:
+      1. Prefer a DIRECT-source / Bluesky / official item over a Google News
+         item for the SAME story — direct items have real outlet URLs and
+         trustworthy publication dates (Google News redirect URLs are laggy,
+         opaque, and prone to stale/aggregated dates).
+      2. Prefer fresher scanner/Nixle over stale official X posts.
     """
+    # (1) Source-quality preference: a direct/non-gnews candidate replaces a
+    # Google News representative regardless of small time differences.
+    rep_is_gnews = _is_gnews_item(rep)
+    cand_is_gnews = _is_gnews_item(cand)
+    if rep_is_gnews and not cand_is_gnews:
+        return True
+    if cand_is_gnews and not rep_is_gnews:
+        # Never let a Google News item replace a direct/official representative.
+        return False
+
     try:
         dr = parsedate_to_datetime(rep.get("pubDate", "") or "")
         dc = parsedate_to_datetime(cand.get("pubDate", "") or "")
