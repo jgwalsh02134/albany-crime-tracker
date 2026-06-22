@@ -143,14 +143,29 @@ def _crime_type_for(blob: str) -> str:
     return "other"
 
 
+def _clean_post_text(text: str) -> str:
+    """Strip trailing URLs and collapse whitespace for clean card titles."""
+    if not text:
+        return ""
+    # Remove bare URLs (Bluesky posts often append the article link).
+    text = re.sub(r"https?://\S+", "", text)
+    text = re.sub(r"\b\w+\.(?:com|org|net|gov|io)/\S*", "", text)
+    return re.sub(r"\s+", " ", text).strip(" -–—|")
+
+
 def _post_text(post: dict) -> str:
     rec = post.get("record") or {}
-    text = rec.get("text") or ""
-    # Include embedded external link card title/description for more signal.
+    text = _clean_post_text(rec.get("text") or "")
+    # Prefer the embedded article headline when the post itself is just a link.
     embed = post.get("embed") or rec.get("embed") or {}
     ext = embed.get("external") or {}
-    extra = " ".join(filter(None, [ext.get("title"), ext.get("description")]))
-    return f"{text} {extra}".strip()
+    ext_title = (ext.get("title") or "").strip()
+    if len(text) < 25 and ext_title:
+        text = ext_title
+    elif ext_title and ext_title.lower() not in text.lower():
+        # Append the article headline for extra keyword/locality signal.
+        text = f"{text} — {ext_title}".strip(" —")
+    return text.strip()
 
 
 def _post_link(post: dict, handle: str) -> str:

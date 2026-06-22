@@ -5110,6 +5110,107 @@ def _is_false_local_incident(item: dict) -> bool:
     return False
 
 
+# Specific Albany-County municipalities → high locality confidence.
+_ALBANY_MUNI_SET = frozenset({
+    "city of albany", "colonie", "bethlehem", "guilderland", "cohoes",
+    "watervliet", "green island", "menands", "coeymans", "new scotland",
+    "berne", "knox", "westerlo", "rensselaerville", "ravena", "voorheesville",
+    "altamont", "latham", "loudonville", "delmar", "slingerlands", "glenmont",
+    "selkirk", "feura bush", "clarksville", "westmere", "mckownville",
+})
+
+# Non-Albany-County places. When one dominates a title AND no Albany
+# municipality is present, the item is demoted (it merely MENTIONS Albany —
+# e.g. "Albany County Court" — but actually happened elsewhere).
+_OTHER_COUNTY_PLACES = frozenset({
+    "rotterdam", "schenectady", "troy", "saratoga", "ballston", "clifton park",
+    "poughkeepsie", "kingston", "catskill", "hudson", "johnsonville", "mohawk",
+    "pittsfield", "amsterdam", "gloversville", "glens falls", "queensbury",
+    "rensselaer", "east greenbush", "north greenbush", "mechanicville",
+    "malta", "wilton", "greenwich", "cambridge", "fonda", "broadalbin",
+    "northumberland", "stillwater", "halfmoon", "waterford", "scotia",
+})
+
+_ALBANY_TITLE_TOKENS = (
+    "albany", "colonie", "bethlehem", "guilderland", "cohoes", "watervliet",
+    "menands", "green island", "coeymans", "new scotland", "delmar", "latham",
+    "loudonville", "ravena", "voorheesville", "altamont", "slingerlands",
+    "glenmont", "selkirk", "berne", "knox", "westerlo",
+)
+
+_TITLE_KEY_STOP = frozenset({
+    "the", "a", "an", "in", "on", "at", "to", "of", "and", "or", "for", "after",
+    "with", "from", "is", "was", "were", "as", "by", "near", "into", "over",
+})
+
+
+def _locality_confidence(it: dict) -> int:
+    """2 = specific Albany-County municipality; 1 = Albany-tied; 0 = clearly elsewhere."""
+    muni = (it.get("municipality") or "").strip().lower()
+    if muni in _ALBANY_MUNI_SET:
+        return 2
+    title = (it.get("short_title") or it.get("title") or "").lower()
+    names_albany = any(t in title for t in _ALBANY_TITLE_TOKENS)
+    names_other = any(p in title for p in _OTHER_COUNTY_PLACES)
+    if names_other and not names_albany:
+        return 0
+    if muni == "albany county" or names_albany:
+        return 1
+    return 1
+
+
+def _title_dedup_key(title: str) -> str:
+    """Normalized significant-word signature for collapsing repeated titles."""
+    low = re.sub(r"[^a-z0-9\s]", " ", (title or "").lower())
+    words = [w for w in low.split() if len(w) > 3 and w not in _TITLE_KEY_STOP]
+    if len(words) < 3:
+        return ""
+    return " ".join(sorted(set(words))[:10])
+
+
+def _merge_duplicate_source(kept: dict, dupe: dict) -> None:
+    """Fold a duplicate's source attribution into the kept incident."""
+    linked = kept.get("linked_sources")
+    if not isinstance(linked, list):
+        linked = []
+        own = kept.get("source_name") or kept.get("source")
+        if own:
+            linked.append({"name": own, "url": kept.get("source_url") or kept.get("link") or ""})
+    dupe_name = dupe.get("source_name") or dupe.get("source")
+    if dupe_name and not any((s.get("name") == dupe_name) for s in linked):
+        linked.append({"name": dupe_name, "url": dupe.get("source_url") or dupe.get("link") or ""})
+    kept["linked_sources"] = linked
+
+
+def _polish_incidents(items: list[dict]) -> list[dict]:
+    """Output-quality pass for the Live feed:
+      1. Normalize bare "Albany" → "City of Albany"
+      2. Collapse near-identical repeated titles (merge source attribution)
+      3. Demote clearly-out-of-county items to the bottom (stable otherwise)
+    """
+    for it in items:
+        if (it.get("municipality") or "").strip().lower() == "albany":
+            it["municipality"] = "City of Albany"
+
+    seen: dict[str, dict] = {}
+    deduped: list[dict] = []
+    for it in items:
+        if it.get("_gap_fill"):
+            deduped.append(it)
+            continue
+        key = _title_dedup_key(it.get("short_title") or it.get("title") or "")
+        if key and key in seen:
+            _merge_duplicate_source(seen[key], it)
+            continue
+        if key:
+            seen[key] = it
+        deduped.append(it)
+
+    in_area = [it for it in deduped if _locality_confidence(it) >= 1]
+    out_area = [it for it in deduped if _locality_confidence(it) < 1]
+    return in_area + out_area
+
+
 @app.get("/api/incidents")
 async def get_incidents(
     limit: int = 100,
@@ -5151,6 +5252,11 @@ async def get_incidents(
         it for it in items
         if not _is_false_local_incident(it)
     ]
+    # Output-quality polish: dedup repeats, normalize City of Albany, demote
+    # clearly-out-of-county items (skip when a specific query/municipality
+    # filter is active so we don't reorder targeted results).
+    if not q and not municipality:
+        items = _polish_incidents(items)
     # Merge gap-fill cards when the feed is quiet (keeps Live feed alive)
     gap_cards = list(_gap_fill_cards) if _gap_fill_cards else []
     if gap_cards and not q:
