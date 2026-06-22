@@ -2312,6 +2312,17 @@
   }
 
   function buildIncidentCard(item) {
+    // Gap-fill / monitoring items render as an honest STATUS STRIP — clearly
+    // not an incident — so the feed never looks like it's padding with fake
+    // reports during quiet periods.
+    if (item._gap_fill) {
+      var gfText = item.description || item.summary || item.title || "Monitoring Albany County for new activity.";
+      return '<div class="feed-status-strip">' +
+        '<span class="feed-status-pulse"></span>' +
+        '<span class="feed-status-text">' + esc(gfText) + '</span>' +
+        '</div>';
+    }
+
     var type = item.crime_type || "other";
     var sourceName = item.source || item.source_name || "Unknown source";
     var verify = item.verification_level || "unknown";
