@@ -7485,7 +7485,33 @@ def _trip_whisper_breaker(retry_after: Optional[str] = None) -> None:
         except (TypeError, ValueError):
             pass
     _whisper_429_until = time.time() + cooldown
-    logger.warning("whisper_429_breaker_open cooldown_s=%.0f (OpenAI rate-limited/over quota)", cooldown)
+    logger.warning("whisper_429_breaker_open cooldown_s=%.0f (transcription provider rate-limited/over quota)", cooldown)
+
+
+def _transcription_provider() -> tuple[str, str, str, str]:
+    """Pick the speech-to-text provider so the scanner isn't hostage to one
+    account's quota. Returns (url, api_key, model, provider_name).
+
+    Priority:
+      1. GROQ_API_KEY  -> Groq Whisper-large-v3-turbo (free tier, fast,
+         OpenAI-compatible) — bypasses the OpenAI quota entirely.
+      2. OPENAI_API_KEY -> OpenAI Whisper (default).
+    Set GROQ_API_KEY on Railway to switch instantly with no code change.
+    """
+    groq = (os.getenv("GROQ_API_KEY") or "").strip()
+    if groq:
+        return (
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            groq,
+            (os.getenv("GROQ_TRANSCRIBE_MODEL") or "whisper-large-v3-turbo").strip(),
+            "groq",
+        )
+    return (
+        "https://api.openai.com/v1/audio/transcriptions",
+        (settings.openai_api_key or "").strip(),
+        (os.getenv("SCANNER_TRANSCRIBE_MODEL") or "whisper-1").strip(),
+        "openai",
+    )
 
 
 _AD_NOISE_PATTERNS = [
@@ -8016,10 +8042,10 @@ def _scanner_call_local_reference_context(call: dict[str, Any]) -> str:
 
 @app.post("/api/scanner/transcribe")
 async def scanner_transcribe(request: Request):
-    """Transcribe scanner audio using OpenAI Whisper and flag critical keywords."""
-    openai_key = settings.openai_api_key
+    """Transcribe scanner audio using the configured provider (Groq/OpenAI)."""
+    _txc_url, openai_key, _txc_model, _txc_provider = _transcription_provider()
     if not openai_key:
-        return {"status": "error", "message": "OPENAI_API_KEY not configured"}
+        return {"status": "error", "message": "no transcription provider configured (set GROQ_API_KEY or OPENAI_API_KEY)"}
 
     try:
         body = await request.json()
@@ -8083,14 +8109,13 @@ async def scanner_transcribe(request: Request):
                 # cheaper live transcription, or gpt-4o-transcribe for
                 # high-priority rechecks.
                 import io
-                _transcribe_model = (os.getenv("SCANNER_TRANSCRIBE_MODEL") or "whisper-1").strip()
                 # Talkgroup-aware prompt: police/fire/EMS get discipline-tuned
                 # jargon hints. Falls back to generic base prompt for unknown
                 # talkgroups so nothing regresses below prior behavior.
                 _transcribe_prompt = _scanner_transcribe_prompt(c)
                 files = {
                     "file": (f"scanner_call{ext}", io.BytesIO(audio_bytes), "audio/mp4"),
-                    "model": (None, _transcribe_model),
+                    "model": (None, _txc_model),
                     "language": (None, "en"),
                     "prompt": (None, _transcribe_prompt),
                 }
@@ -8098,7 +8123,7 @@ async def scanner_transcribe(request: Request):
                     results.append({"id": call_id, "status": "skip", "reason": "rate_limited_cooldown"})
                     continue
                 whisper_resp = await http_client.post(
-                    "https://api.openai.com/v1/audio/transcriptions",
+                    _txc_url,
                     headers={"Authorization": f"Bearer {openai_key}"},
                     files=files,
                     timeout=30.0,
@@ -8270,29 +8295,27 @@ async def _capture_audio_chunk_http(stream_url: str, duration_secs: int = 30) ->
 
 
 async def _transcribe_audio_bytes(audio_bytes: bytes) -> Optional[str]:
-    """Send audio to Whisper API for transcription. Accepts WAV or MP3."""
-    openai_key = settings.openai_api_key
-    if not openai_key or not audio_bytes:
+    """Send audio to the configured transcription provider. Accepts WAV or MP3."""
+    url, api_key, model, _provider = _transcription_provider()
+    if not api_key or not audio_bytes:
         return None
     if _whisper_breaker_open():
         return None  # cooling down after a 429 — skip without burning quota
 
-    # Detect format: WAV starts with RIFF header, otherwise assume MP3
     is_wav = audio_bytes[:4] == b"RIFF"
     filename = "stream_chunk.wav" if is_wav else "stream_chunk.mp3"
     mime = "audio/wav" if is_wav else "audio/mpeg"
 
     try:
-        _transcribe_model = (os.getenv("SCANNER_TRANSCRIBE_MODEL") or "whisper-1").strip()
         files = {
             "file": (filename, io.BytesIO(audio_bytes), mime),
-            "model": (None, _transcribe_model),
+            "model": (None, model),
             "language": (None, "en"),
             "prompt": (None, _SCANNER_TRANSCRIBE_PROMPT_BASE),
         }
         resp = await http_client.post(
-            "https://api.openai.com/v1/audio/transcriptions",
-            headers={"Authorization": f"Bearer {openai_key}"},
+            url,
+            headers={"Authorization": f"Bearer {api_key}"},
             files=files,
             timeout=30.0,
         )
@@ -8303,7 +8326,7 @@ async def _transcribe_audio_bytes(audio_bytes: bytes) -> Optional[str]:
             return None
         return resp.json().get("text", "").strip()
     except Exception as e:
-        logger.warning("Whisper stream transcription error: %s", e)
+        logger.warning("Stream transcription error: %s", e)
         return None
 
 
@@ -8482,7 +8505,8 @@ async def get_stream_status():
         "feeds": BROADCASTIFY_FEEDS,
         "ffmpeg_available": has_ffmpeg,
         "http_fallback_active": running and not has_ffmpeg,
-        "whisper_configured": bool(settings.openai_api_key),
+        "whisper_configured": bool(_transcription_provider()[1]),
+        "transcription_provider": _transcription_provider()[3],
         "whisper_rate_limited": _whisper_breaker_open(),
         "whisper_cooldown_remaining_s": max(0, int(_whisper_429_until - time.time())),
         "alert_count": len(_stream_alerts),
