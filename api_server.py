@@ -45,6 +45,8 @@ from sources.advanced_adapters import get_radioreference_ws_adapter
 from sources.advanced_adapters import get_talkgroup_mapper
 from sources.advanced_adapters import radioreference_runtime_status
 from sources.tier1_official import fetch_tier1_sources
+from sources.bluesky_adapter import bluesky_runtime_status
+from sources.bluesky_adapter import fetch_bluesky_posts
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse, PlainTextResponse
@@ -3878,7 +3880,7 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
     for feed_articles in results:
         articles.extend(feed_articles)
 
-    # Real-time layers from directory + OpenMHz / Nixle / Grok / Nitter RSS mirrors (parallel)
+    # Real-time layers from directory + OpenMHz / Nixle / Bluesky / Grok mirrors (parallel)
     _extra_batches = await asyncio.gather(
         fetch_nixle_directory_articles(),
         # fetch_official_social_posts(),
@@ -3886,6 +3888,7 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
         fetch_scanner_directory_items(),
         fetch_tier1_sources(limit_per_source=80, strict_live_sources=strict_live_sources),
         fetch_nysp_blotter_pdfs(),
+        fetch_bluesky_posts(limit_per_account=20),
         return_exceptions=True,
     )
     for batch in _extra_batches:
@@ -5401,6 +5404,31 @@ async def nysp_blotter_debug():
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+@app.get("/api/bluesky/debug")
+async def bluesky_debug(discover: bool = False):
+    """Debug: fetch Bluesky (AT Protocol) Capital Region posts and report rows."""
+    try:
+        rows = await fetch_bluesky_posts(limit_per_account=25, discover=discover)
+        return {
+            "status": "ok",
+            "runtime": bluesky_runtime_status(),
+            "count": len(rows),
+            "items": [
+                {
+                    "source": r.get("source_name"),
+                    "severity": r.get("incident", {}).get("severity"),
+                    "crime_type": r.get("event_type"),
+                    "title": r.get("title"),
+                    "link": r.get("link"),
+                    "pubDate": r.get("pubDate"),
+                }
+                for r in rows[:25]
+            ],
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @app.get("/api/broadcastify/debug")
