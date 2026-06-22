@@ -936,6 +936,76 @@ RSS_FEEDS_POLICE_ACTIVITY = {
 
 
 # =============================================================================
+# COMMUNITY / BLOGS / NEIGHBORHOOD WATCH — hyperlocal + grassroots layer
+# =============================================================================
+# Verified working feeds + Google News site: searches for platforms that
+# block direct scraping. Direct-RSS blogs use filter="crime" so only their
+# public-safety posts surface (their arts/culture/fundraising content is
+# gated out). Honest note: Nextdoor, Citizen, Ring Neighbors, and private
+# Facebook groups have NO public API and block scraping — the reliable way
+# to surface their content is Google News indexing of public posts.
+RSS_FEEDS_COMMUNITY = {
+    # ── Direct-RSS hyperlocal blogs / newsletters (verified live) ─────────────
+    "community_them_and_us": {
+        "url": "https://themandus.substack.com/feed",
+        "label": "Them & Us Media",
+        "filter": "crime",
+        "reliability": 0.62,
+        "priority": 1,
+        "timeout": 10,
+    },
+    "community_albany_proper": {
+        "url": "https://www.albanyproper.com/feed/",
+        "label": "Albany Proper",
+        "filter": "crime",
+        "reliability": 0.60,
+        "priority": 1,
+        "timeout": 10,
+    },
+    "community_albany_scanner": {
+        "url": "https://www.albanyscanner.com/rss/",
+        "label": "Albany Scanner",
+        "filter": "crime",
+        "reliability": 0.66,
+        "priority": 1,
+        "timeout": 10,
+    },
+    # ── Neighborhood associations (safety alerts via Google News) ─────────────
+    "community_neighborhood_assns": {
+        "url": "https://news.google.com/rss/search?q=(%22Pine+Hills%22+OR+%22Center+Square%22+OR+%22West+Hill%22+OR+%22Arbor+Hill%22+OR+%22South+End%22+OR+%22Mansion+neighborhood%22+OR+%22Park+South%22)+Albany+(crime+OR+shooting+OR+robbery+OR+safety+OR+police+OR+burglary)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Neighborhood Watch",
+        "filter": "strict",
+        "reliability": 0.62,
+        "priority": 2,
+    },
+    # ── Nextdoor public agency / neighborhood posts (via Google News) ─────────
+    "community_nextdoor": {
+        "url": "https://news.google.com/rss/search?q=site:nextdoor.com+(Albany+OR+Colonie+OR+Bethlehem+OR+Guilderland)+(police+OR+crime+OR+shooting+OR+suspicious+OR+burglary+OR+theft)+when:5d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Nextdoor",
+        "filter": "strict",
+        "reliability": 0.50,
+        "priority": 1,
+    },
+    # ── Citizen app incidents (via Google News indexing) ──────────────────────
+    "community_citizen": {
+        "url": "https://news.google.com/rss/search?q=site:citizen.com+(Albany+OR+Colonie+OR+Cohoes+OR+Watervliet)+when:3d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Citizen",
+        "filter": "strict",
+        "reliability": 0.55,
+        "priority": 1,
+    },
+    # ── Council of Albany Neighborhood Associations (CANA) ────────────────────
+    "community_cana": {
+        "url": "https://news.google.com/rss/search?q=(%22Council+of+Albany+Neighborhood+Associations%22+OR+CANA+Albany+OR+%22neighborhood+association%22+Albany)+(safety+OR+crime+OR+police+OR+shooting)+when:5d&hl=en-US&gl=US&ceid=US:en",
+        "label": "Neighborhood Watch",
+        "filter": "strict",
+        "reliability": 0.58,
+        "priority": 1,
+    },
+}
+
+
+# =============================================================================
 # SOCIAL MEDIA + REDDIT — verified Albany County NY accounts/communities
 # =============================================================================
 # IMPORTANT — reliability note: Reddit, X/Twitter, and Facebook all block
@@ -1032,7 +1102,7 @@ def _total_source_count() -> int:
     return (
         len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL)
         + len(RSS_FEEDS_EXTENDED) + len(RSS_FEEDS_POLICE_ACTIVITY)
-        + len(RSS_FEEDS_SOCIAL)
+        + len(RSS_FEEDS_SOCIAL) + len(RSS_FEEDS_COMMUNITY)
     )
 
 
@@ -1046,6 +1116,7 @@ def build_operational_rss_feeds() -> dict[str, dict]:
     out: dict[str, dict] = dict(RSS_FEEDS_EXTENDED)
     out.update(RSS_FEEDS_POLICE_ACTIVITY)
     out.update(RSS_FEEDS_SOCIAL)
+    out.update(RSS_FEEDS_COMMUNITY)
     u511 = os.getenv("NY511_CAPITAL_DISTRICT_RSS", "").strip()
     if u511:
         out["ny511_capital_district"] = {
