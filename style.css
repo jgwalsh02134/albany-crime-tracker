@@ -5,8 +5,13 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --font-body: 'Satoshi', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  /* Typography — Adobe Fonts (Typekit fqg2wpk).
+     - Display / branding / incident type : Neue Haas Grotesk Display
+     - UI / dashboard / body              : Interstate
+     - Logs / IDs / coordinates / clocks  : IBM Plex Mono (tabular) */
+  --font-display: "neue-haas-grotesk-display", "Helvetica Neue", system-ui, sans-serif;
+  --font-body: "interstate", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "ibm-plex-mono", "SF Mono", ui-monospace, monospace;
 
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
@@ -17,64 +22,61 @@
   --nav-h: 49px; /* Apple HIG: 49pt tab bar height */
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  /* Brand foundation tokens — theme-neutral reference values. Semantic tokens
-     (--accent, --brand-alert, etc.) resolve to these per theme below. Do not
-     reference --brand-* directly in component styles; use the semantic names
-     so a future brand refresh only needs to re-map the semantic layer. */
-  --brand-cern-blue: #0033A0;        /* CERN blue, primary */
-  --brand-princeton-orange: #E77500; /* Princeton orange, secondary */
-  --brand-white: #ffffff;
+  /* Brand foundation — Princeton Navy & Orange. */
+  --brand-princeton-orange: #FF8A22; /* Luminous Orange (a11y-tuned) */
+  --brand-cyan: #00E5FF;             /* transitional / en-route */
+  --brand-white: #F0F4F8;
 }
 
-/* ===== DARK THEME (default) — Navy + Gold palette ===== */
+/* ===== DARK THEME (default) — Princeton Navy & Orange =====
+   Base Navy #0A1128 · Surface Navy #141E3A · Divider #2A3A5E
+   Luminous Orange #FF8A22 (scarcity) · Primary White #F0F4F8 · Steel #8B9BB4 */
 [data-theme="dark"] {
-  --bg: #0a0f1c;
-  --surface: #121825;
-  --surface-2: #1e2535;
-  --surface-3: #2a3347;
-  --border: #334155;
-  --border-subtle: #1e2535;
+  --bg: #0A1128;          /* Base Navy — app + map background */
+  --surface: #141E3A;     /* Surface Navy — cards, sidebar, tooltips */
+  --surface-2: #1B2747;   /* one step elevated */
+  --surface-3: #243358;   /* highest elevation / hover fills */
+  --border: #2A3A5E;      /* Divider Navy */
+  --border-subtle: #1E2C4D;
 
-  --text: #f1f5f9;
-  --text-2: #cbd5e1;
-  --text-3: #94a3b8;
+  --text: #F0F4F8;        /* Primary White (cool, low-halation) */
+  --text-2: #B9C4D8;      /* between primary and steel */
+  --text-3: #8B9BB4;      /* Muted Steel — timestamps, metadata */
 
-  /* Primary brand colours */
-  --accent: #60a5fa;           /* bright navy-blue */
-  --accent-gold: #fbbf24;      /* bright gold */
+  /* Orange is the SCARCITY color: primary actions, live pulse, critical. */
+  --accent: #FF8A22;          /* Luminous Orange — primary */
+  --accent-gold: #FFD54F;     /* Gold — high severity / secondary state */
 
-  /* Semantic incident colours */
-  --violent: #ef4444;
-  --property: #f59e0b;
-  --live-dot: #22c55e;
+  /* Status hierarchy */
+  --violent: #FF8A22;         /* critical / violent — orange pops */
+  --property: #FFD54F;        /* high / property — gold */
+  --live-dot: #FF8A22;        /* Live pulsating indicator — orange (per spec) */
+  --info: #00E5FF;            /* developing / en-route — crisp cyan */
 
   /* Legacy aliases — keep all existing selectors working */
-  --cyan: var(--accent);
+  --cyan: var(--info);
   --red: var(--violent);
   --amber: var(--property);
-  --blue: var(--accent);
+  --blue: var(--info);
   --green: var(--live-dot);
 
   /* Dim / tinted variants */
-  --red-dim: rgba(239,68,68,0.12);
-  --amber-dim: rgba(245,158,11,0.12);
-  --blue-dim: rgba(96,165,250,0.12);
-  --green-dim: rgba(34,197,94,0.12);
+  --red-dim: rgba(255,138,34,0.14);
+  --amber-dim: rgba(255,213,79,0.14);
+  --blue-dim: rgba(0,229,255,0.12);
+  --green-dim: rgba(255,138,34,0.12);
 
   --elevated: var(--violent);
   --moderate: var(--property);
-  --low: var(--live-dot);
+  --low: var(--text-3);
 
-  /* Semantic brand tokens. Kept visually identical to current live-badge red
-     today; a future brand pass can re-map these to var(--brand-cern-blue) /
-     var(--brand-princeton-orange) without touching component CSS. */
   --brand-primary: var(--accent);
   --brand-secondary: var(--accent-gold);
-  --brand-alert: #E53935;
+  --brand-alert: #FF8A22;
 
-  --shadow-sm: 0 1px 4px rgba(0,0,0,0.45);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.55);
-  --shadow-card: 0 0 0 1px rgba(255,255,255,0.05), 0 2px 8px rgba(0,0,0,0.45);
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.5);
+  --shadow-md: 0 8px 28px rgba(0,0,0,0.55);
+  --shadow-card: 0 0 0 1px rgba(42,58,94,0.4), 0 2px 10px rgba(0,0,0,0.4);
 }
 
 /* ===== LIGHT THEME — Navy + Gold palette ===== */
@@ -142,11 +144,29 @@ body {
   height: 100dvh;
   position: fixed;
   width: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button { cursor: pointer; background: none; border: none; font: inherit; color: inherit; }
 a { color: var(--cyan); text-decoration: none; }
 a:hover { text-decoration: underline; }
+
+/* Display font for branding, headers, and incident-type labels. */
+.header-name, .feed-report-type, .home-section-label, .more-section-title,
+.dir-section-title, .incident-sheet-type, .sc-card-cat, .filter-sheet-title,
+.home-recap-val, .news-stat-val {
+  font-family: var(--font-display);
+}
+
+/* All numeric/log/ID/timestamp surfaces use IBM Plex Mono with stable,
+   non-jittering tabular figures so live-updating numbers don't shift. */
+.feed-time, .incident-sheet-datetime, .sc-card-time, .albany-pulse-age,
+.news-headline-meta, .home-recap-val, .news-stat-val, .feed-meta,
+.sc-card-raw, .sc-unit-badge, [class*="-mono"] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
 
 /* ===== SKELETON ===== */
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
@@ -1646,17 +1666,17 @@ a:hover { text-decoration: underline; }
 }
 .feed-item:active { transform: translateY(0); }
 
-.feed-item--sev-critical::before { background: linear-gradient(180deg,#ff5a5a,#ef4444); }
-.feed-item--sev-high::before { background: linear-gradient(180deg,#ffa34d,#f97316); }
-.feed-item--violent::before { background: linear-gradient(180deg,#ff6b6b,var(--violent)); }
-.feed-item--property::before { background: linear-gradient(180deg,#fbbf64,var(--property)); }
-.feed-item--traffic::before { background: linear-gradient(180deg,#ffd66b,var(--accent-gold)); }
+.feed-item--sev-critical::before { background: linear-gradient(180deg,#FFB066,var(--accent)); }
+.feed-item--sev-high::before { background: linear-gradient(180deg,#FFE390,var(--accent-gold)); }
+.feed-item--violent::before { background: linear-gradient(180deg,#FFB066,var(--violent)); }
+.feed-item--property::before { background: linear-gradient(180deg,#FFE390,var(--property)); }
+.feed-item--traffic::before { background: linear-gradient(180deg,#7FF0FF,var(--info)); }
 .feed-item--sev-critical {
-  background: linear-gradient(90deg, color-mix(in srgb,#ef4444 6%,var(--surface)) 0%, var(--surface) 38%);
+  background: linear-gradient(90deg, color-mix(in srgb,var(--accent) 8%,var(--surface)) 0%, var(--surface) 40%);
 }
-.feed-item--live::before { background: linear-gradient(180deg,#ff5a5a,#ef4444); }
+.feed-item--live::before { background: linear-gradient(180deg,#FFB066,var(--accent)); }
 .feed-item--live {
-  background: linear-gradient(90deg, color-mix(in srgb,#ef4444 7%,var(--surface)) 0%, var(--surface) 40%);
+  background: linear-gradient(90deg, color-mix(in srgb,var(--accent) 10%,var(--surface)) 0%, var(--surface) 42%);
 }
 .feed-item--pulse {
   border-style: dashed; opacity: 0.92;
@@ -1678,26 +1698,26 @@ a:hover { text-decoration: underline; }
   padding: 3px 8px; border-radius: 6px;
   background: var(--surface-2);
 }
-.feed-report-type--critical { color: #ef4444; background: color-mix(in srgb,#ef4444 12%,var(--surface)); }
-.feed-report-type--high { color: #f97316; background: color-mix(in srgb,#f97316 12%,var(--surface)); }
+.feed-report-type--critical { color: var(--accent); background: color-mix(in srgb,var(--accent) 14%,var(--surface)); }
+.feed-report-type--high { color: var(--accent-gold); background: color-mix(in srgb,var(--accent-gold) 14%,var(--surface)); }
 .feed-live-badge {
   display: inline-flex; align-items: center; gap: 5px;
   font-size: 9px; font-weight: 800; text-transform: uppercase;
-  color: #fff; background: #ef4444; letter-spacing: 0.05em;
+  color: #0A1128; background: var(--accent); letter-spacing: 0.05em;
   padding: 3px 7px; border-radius: 6px;
 }
-.feed-live-dot-sm { width: 5px; height: 5px; border-radius: 50%; background: #fff; animation: pulse-dot 1.5s ease-in-out infinite; }
+.feed-live-dot-sm { width: 5px; height: 5px; border-radius: 50%; background: #0A1128; animation: pulse-dot 1.5s ease-in-out infinite; }
 .feed-time {
   margin-left: auto; font-size: 11px; color: var(--text-3);
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.feed-time--fresh { color: #22c55e; font-weight: 700; }
+.feed-time--fresh { color: var(--accent); font-weight: 700; }
 .feed-time-dot {
   display: inline-block; width: 5px; height: 5px;
-  background: #22c55e; border-radius: 50%;
+  background: var(--accent); border-radius: 50%;
   margin-right: 4px; vertical-align: middle;
-  box-shadow: 0 0 0 2px color-mix(in srgb,#22c55e 25%,transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent);
   animation: pulse-dot 1.8s ease-in-out infinite;
 }
 

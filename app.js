@@ -318,7 +318,7 @@
 
   function updateThemeMeta(theme) {
     var el = document.querySelector('meta[name="theme-color"]');
-    if (el) el.setAttribute("content", theme === "dark" ? "#0c0f14" : "#ffffff");
+    if (el) el.setAttribute("content", theme === "dark" ? "#0A1128" : "#ffffff");
   }
 
   function updateThemeToggleIcon(theme) {
