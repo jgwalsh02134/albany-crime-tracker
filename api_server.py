@@ -7537,15 +7537,14 @@ def _build_transcription_files(provider: str, model: str, filename: str, mime: s
     """Build the multipart payload for the chosen STT provider.
     xAI STT uses `format`/`keyterm`; OpenAI-compatible uses `prompt`."""
     if provider == "xai":
-        # xAI STT — match the official docs payload exactly (no `model` field;
-        # the endpoint defaults to grok-stt). Sending unexpected fields can 400.
+        # xAI STT — match the official docs payload (no `model` field; endpoint
+        # defaults to grok-stt). NOTE: keyterm has a hard 50-char limit.
         files: dict = {
             "file": (filename, io.BytesIO(audio_bytes), mime),
             "format": (None, "true"),
             "language": (None, "en"),
+            "keyterm": (None, "Albany County police fire EMS dispatch"),  # 38 chars
         }
-        kt = (hint or "Albany County police fire EMS dispatch")[:200]
-        files["keyterm"] = (None, kt)
         return files
     # OpenAI-compatible (OpenAI / Groq)
     files = {
