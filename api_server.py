@@ -5326,6 +5326,40 @@ _FALSE_LOCAL_SOURCES = frozenset([
     "walb", "wfxl", "albany herald",
 ])
 
+# Low-credibility / scraped / off-area sources that flood the Live feed with
+# junk via Google News. Dropped from the LIVE feed so it shows trustworthy
+# Albany County reporting. (Substring match on source name.)
+_LOW_QUALITY_SOURCES = frozenset([
+    "facebook.com",          # scraped FB posts — unreliable as a primary source
+    "aol.com", "msn", "yahoo", "ground.news",
+    "newport dispatch",      # Rhode Island
+    "dailyvoice.com", "daily voice",
+    "theunionstar.com", "union star",
+    "philomath news", "philomath",   # Albany, OREGON area
+    "wfmz", "wfmz.com",      # Allentown, PA
+    "lehigh valley", "morning call",
+])
+
+# Albany-County primary/credible source markers — these always pass the
+# credibility gate even if a name partially matches above.
+_CREDIBLE_SOURCE_MARKERS = (
+    "news10", "wten", "cbs6", "wrgb", "wnyt", "wamc", "times union",
+    "daily gazette", "spotlight", "spectrum", "fox23", "fox 23",
+    "nysp", "state police", "troop", "sheriff", "acso", "albany police",
+    "official", "nixle", "scanner", "us attorney", "district attorney",
+    "department of justice", "albany pulse", "bluesky", "albany proper",
+    "albany scanner", "nws", "511",
+)
+
+
+def _is_low_quality_source(item: dict) -> bool:
+    src = str(item.get("source_name") or item.get("source") or "").lower().strip()
+    if not src:
+        return False
+    if any(c in src for c in _CREDIBLE_SOURCE_MARKERS):
+        return False
+    return any(bad and bad in src for bad in _LOW_QUALITY_SOURCES)
+
 
 def _is_false_local_incident(item: dict) -> bool:
     """Detect incidents clearly NOT in Albany County, NY.
@@ -5355,6 +5389,7 @@ _OTHER_COUNTY_PLACES = frozenset({
     "rensselaer", "east greenbush", "north greenbush", "mechanicville",
     "malta", "wilton", "greenwich", "cambridge", "fonda", "broadalbin",
     "northumberland", "stillwater", "halfmoon", "waterford", "scotia",
+    "cobleskill", "schoharie", "philomath", "allentown", "corvallis",
 })
 
 _ALBANY_TITLE_TOKENS = (
@@ -5527,10 +5562,12 @@ async def get_incidents(
         q=q,
         sort_by=sort_mode,
     )
-    # Filter out false-local items from wrong-state sources already in DB
+    # Filter out false-local (wrong-state) + low-credibility/scraped sources
+    # so the Live feed shows trustworthy Albany County reporting, not Google
+    # News junk (facebook scrapes, out-of-area aggregators, content farms).
     items = [
         it for it in items
-        if not _is_false_local_incident(it)
+        if not _is_false_local_incident(it) and not _is_low_quality_source(it)
     ]
     # Output-quality polish: dedup repeats, normalize City of Albany, demote
     # clearly-out-of-county items (skip when a specific query/municipality
