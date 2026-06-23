@@ -971,6 +971,63 @@
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
 
+  // Map a source name → the publisher's domain so we can show its real logo.
+  var _SOURCE_DOMAINS = [
+    [/news10|wten/i, "news10.com"],
+    [/cbs6|wrgb/i, "cbs6albany.com"],
+    [/wnyt|newschannel ?13/i, "wnyt.com"],
+    [/wamc/i, "wamc.org"],
+    [/times ?union/i, "timesunion.com"],
+    [/daily ?gazette|gazette/i, "dailygazette.com"],
+    [/spotlight/i, "spotlightnews.com"],
+    [/spectrum/i, "spectrumlocalnews.com"],
+    [/fox ?23|wxxa/i, "fox23news.com"],
+    [/patch/i, "patch.com"],
+    [/albany proper/i, "albanyproper.com"],
+    [/albany scanner/i, "albanyscanner.com"],
+    [/them ?(&|and)? ?us/i, "themandus.substack.com"],
+    [/hudson valley|hvnn/i, "hudsonvalleynewsnetwork.com"],
+    [/reddit/i, "reddit.com"],
+    [/nextdoor/i, "nextdoor.com"],
+    [/citizen/i, "citizen.com"],
+    [/bluesky/i, "bsky.app"],
+    [/nysp|state police|troop/i, "troopers.ny.gov"],
+    [/albany.*sheriff|acso/i, "albanycountyny.gov"],
+    [/albany.*police|\bapd\b/i, "albanyny.gov"],
+    [/city of albany/i, "albanyny.gov"],
+    [/nixle/i, "nixle.com"],
+    [/facebook/i, "facebook.com"],
+  ];
+
+  function _domainFromUrl(u) {
+    try {
+      var m = /^https?:\/\/([^/?#]+)/i.exec(u || "");
+      if (!m) return "";
+      var host = m[1].replace(/^www\./, "");
+      // Skip Google News redirect domains — they aren't the real publisher.
+      if (/google\.com$/i.test(host)) return "";
+      return host;
+    } catch (e) { return ""; }
+  }
+
+  function _sourceDomain(sourceName, sourceUrl) {
+    var d = _domainFromUrl(sourceUrl);
+    if (d) return d;
+    var s = String(sourceName || "");
+    for (var i = 0; i < _SOURCE_DOMAINS.length; i++) {
+      if (_SOURCE_DOMAINS[i][0].test(s)) return _SOURCE_DOMAINS[i][1];
+    }
+    return "";
+  }
+
+  // Real publisher logo via Google's favicon service (reliable, no hotlink
+  // blocking). Falls back to the letter-avatar via onerror in the card.
+  function _sourceLogoUrl(sourceName, sourceUrl) {
+    var d = _sourceDomain(sourceName, sourceUrl);
+    if (!d) return "";
+    return "https://www.google.com/s2/favicons?sz=128&domain=" + encodeURIComponent(d);
+  }
+
   function _storyCard(item, cls) {
     var sev = (item.severity || "").toLowerCase();
     var sevCls = sev === "critical" ? " home-story-pill--sev-critical" : sev === "high" ? " home-story-pill--sev-high" : "";
@@ -978,17 +1035,25 @@
     var tag = link ? "a" : "div";
     var linkAttrs = link ? ' href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer"' : "";
     var html = '<' + tag + ' class="home-story-card ' + cls + '"' + linkAttrs + '>';
-    // Real media thumbnail when the source RSS provided one; fall back to a
-    // source letter-avatar so the layout never breaks.
     var srcName = item.source_name || item.source || "";
     var img = item.image_url || "";
+    // Real article thumbnail when the source RSS provided one.
     if (img) {
       html += '<div class="home-story-thumb">'
-        + '<img src="' + escAttr(img) + '" alt="" loading="lazy" referrerpolicy="no-referrer"'
-        + ' onerror="this.closest(\'.home-story-card\').classList.add(\'no-thumb\');this.remove();">'
+        + '<img src="' + escAttr(img) + '" alt="" loading="lazy"'
+        + ' onerror="this.closest(\'.home-story-card\').classList.add(\'no-thumb\');this.closest(\'.home-story-thumb\').remove();">'
         + '</div>';
     }
-    html += '<div class="home-story-avatar" aria-hidden="true">' + esc(_sourceInitials(srcName)) + '</div>';
+    // Publisher logo (reliable favicon) — falls back to letter initials.
+    var logo = _sourceLogoUrl(srcName, item.source_url || item.link || "");
+    var initials = esc(_sourceInitials(srcName));
+    html += '<div class="home-story-avatar' + (logo ? '' : ' is-letter') + '" aria-hidden="true">';
+    if (logo) {
+      html += '<img class="home-story-logo" src="' + escAttr(logo) + '" alt=""'
+        + ' onerror="this.parentNode.classList.add(\'is-letter\');this.remove();">';
+    }
+    html += '<span class="home-story-initials--fallback">' + initials + '</span>';
+    html += '</div>';
     html += '<div class="home-story-body">';
     html += '<div class="home-story-head">';
     html += '<div class="home-story-title">' + esc(item.title || "Untitled") + '</div>';
@@ -1052,11 +1117,19 @@
     var sev = (item.severity || "").toLowerCase();
 
     var img = item.image_url || "";
-    var html = '<a class="news-headline' + (img ? ' news-headline--thumb' : '') + '" href="' + (link ? escAttr(link) : '#') + '"'
+    var hlLogo = _sourceLogoUrl(src, item.source_url || "");
+    // Prefer the article thumbnail; otherwise show the publisher logo tile.
+    var leadVisual = img || hlLogo;
+    var html = '<a class="news-headline' + (leadVisual ? ' news-headline--thumb' : '') + '" href="' + (link ? escAttr(link) : '#') + '"'
       + (link ? ' target="_blank" rel="noopener noreferrer"' : '') + '>';
     if (img) {
       html += '<div class="news-headline-thumb">'
-        + '<img src="' + escAttr(img) + '" alt="" loading="lazy" referrerpolicy="no-referrer"'
+        + '<img src="' + escAttr(img) + '" alt="" loading="lazy"'
+        + ' onerror="var c=this.closest(\'.news-headline-thumb\'); if(c){c.classList.add(\'is-logo\'); this.src=\'' + escAttr(hlLogo || "") + '\';}">'
+        + '</div>';
+    } else if (hlLogo) {
+      html += '<div class="news-headline-thumb is-logo">'
+        + '<img src="' + escAttr(hlLogo) + '" alt=""'
         + ' onerror="this.closest(\'.news-headline\').classList.remove(\'news-headline--thumb\');this.closest(\'.news-headline-thumb\').remove();">'
         + '</div>';
     }
@@ -2424,7 +2497,13 @@
     if (dept) {
       html += '<span class="feed-meta-pill feed-meta-pill--agency"><span class="material-icons feed-meta-icon">shield</span>' + esc(dept) + '</span>';
     }
-    html += '<span class="feed-meta-pill feed-meta-pill--source">' + esc(sourceName) + '</span>';
+    var srcLogo = isGapFill ? "" : _sourceLogoUrl(sourceName, item.source_url || item.link || "");
+    var srcPill = '<span class="feed-meta-pill feed-meta-pill--source">';
+    if (srcLogo) {
+      srcPill += '<img class="feed-src-logo" src="' + escAttr(srcLogo) + '" alt="" loading="lazy" onerror="this.remove()">';
+    }
+    srcPill += esc(sourceName) + '</span>';
+    html += srcPill;
     var linked = (Array.isArray(item.linked_sources) && item.linked_sources.length)
       ? item.linked_sources
       : (Array.isArray(item._linked_sources) ? item._linked_sources : null);

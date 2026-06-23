@@ -5389,3 +5389,30 @@ a.home-story-card:active {
   color: var(--text-2); margin-top: 3px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+
+/* ===== PUBLISHER LOGO on news cards (real media identity) ===== */
+.home-story-avatar { position: relative; overflow: hidden; background: #fff; }
+.home-story-logo {
+  width: 100%; height: 100%; object-fit: contain; padding: 5px;
+  background: #fff; display: block;
+}
+.home-story-initials { font: inherit; }
+/* The fallback initials sit under the logo; shown only when logo is removed. */
+.home-story-initials--fallback { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: var(--surface-2); color: var(--text-2); }
+.home-story-avatar.is-letter { background: var(--surface-2); }
+.home-story-avatar.is-letter .home-story-initials--fallback { display: flex; }
+.home-story-card--major .home-story-avatar.is-letter { background: var(--surface); }
+
+/* Headline logo tile (when no article photo) */
+.news-headline-thumb.is-logo {
+  background: #fff; display: flex; align-items: center; justify-content: center;
+}
+.news-headline-thumb.is-logo img {
+  width: auto; height: auto; max-width: 70%; max-height: 70%; object-fit: contain;
+}
+
+/* Small publisher logo inside the live-feed source pill */
+.feed-src-logo {
+  width: 13px; height: 13px; border-radius: 3px; margin-right: 5px;
+  object-fit: contain; background: #fff; vertical-align: middle;
+}
