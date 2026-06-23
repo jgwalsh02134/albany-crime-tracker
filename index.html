@@ -293,51 +293,16 @@
     <section class="view" id="viewScanner">
       <div class="view-scroll">
 
-        <!-- Agency / region channel preset strip. Backed by
-             /api/scanner/channels (commit c25379c). Populated by
-             initScannerChannelChips() on first scanner-tab render; the
-             "All channels" pill is the default and ships in the HTML so
-             the surface is never blank if the channels endpoint is
-             slow or unavailable. -->
-        <div class="sc-channel-row" id="scannerChannelChips" role="tablist" aria-label="Scanner channel">
-          <button type="button" class="sc-channel-chip active"
-                  data-scanner-channel="" role="tab" aria-selected="true">All channels</button>
+        <!-- Hero: tune in to live Albany County dispatch radio -->
+        <div class="sc-section-head">
+          <span class="material-icons">graphic_eq</span>
+          <span class="sc-section-title">Live Scanner</span>
+          <span class="sc-section-sub">Albany County P25</span>
         </div>
-
-        <div class="sc-filters" id="scannerFilterChips" role="group" aria-label="Filter by service">
-          <button type="button" class="sc-filter active" data-scanner-filter="all">All</button>
-          <button type="button" class="sc-filter sc-filter--police" data-scanner-filter="police">Police</button>
-          <button type="button" class="sc-filter sc-filter--fire" data-scanner-filter="fire">Fire</button>
-          <button type="button" class="sc-filter sc-filter--ems" data-scanner-filter="ems">EMS</button>
-        </div>
-
-        <!-- ───────────────────────────────────────────────────────────
-             LIVE WHISPER FEED — primary scanner content.
-             Source: /api/scanner/stream-alerts (Broadcastify live audio →
-             ffmpeg → Whisper → keyword + criticality analysis). Requires no
-             Broadcastify API key. The status bar reflects real pipeline state
-             from /api/scanner/stream-status. Rendered by renderStreamAlerts();
-             play buttons stream the source feed live via the public CDN.
-        ──────────────────────────────────────────────────────────────── -->
-        <section class="sc-whisper" id="streamAlertsSection" aria-label="Live scanner transcriptions">
-          <div class="sc-whisper-bar" id="streamAlertsStatus" data-state="connecting">
-            <span class="sc-whisper-dot"></span>
-            <span class="sc-whisper-bar-text" id="streamAlertsStatusText">Connecting to Whisper pipeline…</span>
-            <span class="sc-whisper-count" id="streamAlertCount"></span>
-          </div>
-          <div class="sc-whisper-list" id="streamAlertsList">
-            <div class="sc-whisper-empty">
-              <span class="material-icons">graphic_eq</span>
-              <span>Listening for live transmissions…</span>
-            </div>
-          </div>
-        </section>
 
         <!-- ───────────────────────────────────────────────────────────
              LIVE RADIO — Broadcastify public CDN streams (no API key).
-             Users can listen to live Albany County dispatch radio
-             directly in the app. Feed switching, volume, and visual
-             feedback are all client-side using standard HTML5 Audio.
+             Listen to live Albany County dispatch radio directly in-app.
         ──────────────────────────────────────────────────────────────── -->
         <div class="sc-live-radio" id="liveRadioCard">
           <div class="sc-live-radio-header">
@@ -389,6 +354,52 @@
           </div>
         </div>
 
+        <!-- AI Transcriptions: the live intelligence feed (Grok STT) -->
+        <div class="sc-section-head">
+          <span class="material-icons">auto_awesome</span>
+          <span class="sc-section-title">Live Transcriptions</span>
+          <span class="sc-section-sub">AI · Grok</span>
+        </div>
+
+        <!-- Service filter for the transcription + call surfaces -->
+        <div class="sc-filters" id="scannerFilterChips" role="group" aria-label="Filter by service">
+          <button type="button" class="sc-filter active" data-scanner-filter="all">All</button>
+          <button type="button" class="sc-filter sc-filter--police" data-scanner-filter="police">Police</button>
+          <button type="button" class="sc-filter sc-filter--fire" data-scanner-filter="fire">Fire</button>
+          <button type="button" class="sc-filter sc-filter--ems" data-scanner-filter="ems">EMS</button>
+        </div>
+
+        <!-- ───────────────────────────────────────────────────────────
+             LIVE WHISPER/GROK FEED — AI transcriptions with keyword +
+             criticality analysis. Source: /api/scanner/stream-alerts.
+        ──────────────────────────────────────────────────────────────── -->
+        <section class="sc-whisper" id="streamAlertsSection" aria-label="Live scanner transcriptions">
+          <div class="sc-whisper-bar" id="streamAlertsStatus" data-state="connecting">
+            <span class="sc-whisper-dot"></span>
+            <span class="sc-whisper-bar-text" id="streamAlertsStatusText">Connecting to transcription pipeline…</span>
+            <span class="sc-whisper-count" id="streamAlertCount"></span>
+          </div>
+          <div class="sc-whisper-list" id="streamAlertsList">
+            <div class="sc-whisper-empty">
+              <span class="material-icons">graphic_eq</span>
+              <span>Listening for live transmissions…</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Recent decoded calls -->
+        <div class="sc-section-head">
+          <span class="material-icons">radio</span>
+          <span class="sc-section-title">Recent Calls</span>
+          <span class="sc-section-sub" id="scannerSourceInfo"></span>
+        </div>
+
+        <!-- Channel preset strip (agency/region rollups) -->
+        <div class="sc-channel-row" id="scannerChannelChips" role="tablist" aria-label="Scanner channel">
+          <button type="button" class="sc-channel-chip active"
+                  data-scanner-channel="" role="tab" aria-selected="true">All channels</button>
+        </div>
+
         <div class="sc-player" id="mainPlayerCard">
           <div class="sc-player-top">
             <div class="sc-player-info">
@@ -424,9 +435,8 @@
         </div>
 
         <div class="sc-note">
-          <strong>Live radio traffic</strong> from Albany County's P25 system. This is raw dispatch audio — not confirmed incidents.
-          Tap any card to listen. <span id="scannerTimestamp"></span>
-          <span class="sc-source-info" id="scannerSourceInfo"></span>
+          <strong>Raw P25 dispatch audio</strong> — not confirmed incidents. Tap any card to listen.
+          <span id="scannerTimestamp"></span>
         </div>
 
         <div class="sc-list" id="scannerCallsList">

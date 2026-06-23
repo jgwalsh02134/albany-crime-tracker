@@ -5146,3 +5146,193 @@ a.home-story-card:active {
 .feed-live-badge         { background: var(--brand-alert); color: var(--brand-white, #fff); }
 .feed-item--live         { border-left-color: var(--brand-alert); }
 .feed-time-dot           { background: var(--brand-alert); }
+
+/* ============================================================================
+   SCANNER MAKEOVER — Princeton Navy & Orange, premium surfaces (appended last
+   so it re-themes the scanner cohesively over the legacy rules above).
+   ============================================================================ */
+
+/* Scanner view scroll padding */
+#viewScanner .view-scroll { padding-bottom: 28px; }
+
+/* ── Section header for the scanner ── */
+.sc-section-head {
+  display: flex; align-items: center; gap: 8px;
+  margin: 14px 14px 4px;
+}
+.sc-section-head .material-icons { font-size: 18px; color: var(--accent); }
+.sc-section-title {
+  font-family: var(--font-display);
+  font-size: 15px; font-weight: 500; letter-spacing: -0.01em; color: var(--text);
+}
+.sc-section-sub {
+  margin-left: auto; font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em;
+}
+
+/* ── Channel + service filter chips ── */
+.sc-channel-row, .sc-filters {
+  gap: 6px; padding: 8px 12px;
+}
+.sc-channel-chip, .sc-filter {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-family: var(--font-body);
+  font-size: 11px; font-weight: 600;
+  padding: 6px 13px;
+  transition: all 0.15s ease;
+}
+.sc-channel-chip:hover, .sc-filter:hover { border-color: var(--accent); color: var(--text); }
+.sc-channel-chip.active, .sc-filter.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0A1128;
+  font-weight: 700;
+}
+
+/* ── LIVE RADIO — hero player ── */
+.sc-live-radio {
+  margin: 8px 12px;
+  padding: 16px;
+  background: linear-gradient(160deg, var(--surface-2) 0%, var(--surface) 70%);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
+}
+.sc-live-radio.is-streaming {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+              0 8px 28px rgba(0,0,0,0.4);
+}
+.sc-live-radio-icon { color: var(--accent); }
+.sc-live-radio-title {
+  font-family: var(--font-display); font-weight: 500; font-size: 14px;
+  letter-spacing: -0.01em; color: var(--text);
+}
+.sc-live-radio-badge {
+  background: var(--surface-3); border-color: var(--border); color: var(--text-3);
+}
+.sc-live-radio-badge.is-live {
+  color: #0A1128; background: var(--accent);
+  border-color: var(--accent);
+}
+.sc-live-radio-badge .live-pulse { background: currentColor; }
+
+.sc-live-feed {
+  border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text-2);
+  font-family: var(--font-body); font-size: 11px; font-weight: 600;
+}
+.sc-live-feed:hover { border-color: var(--accent); color: var(--text); }
+.sc-live-feed.active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  border-color: var(--accent); color: var(--text);
+}
+.sc-live-feed.active .sc-live-feed-icon { color: var(--accent); }
+
+.sc-live-play {
+  background: var(--accent); color: #0A1128;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.sc-live-play.playing { background: var(--accent); }
+.sc-live-now { font-family: var(--font-body); font-weight: 600; color: var(--text); }
+.sc-live-status { font-family: var(--font-mono); color: var(--text-3); font-size: 10px; }
+.sc-live-viz-bar { background: var(--accent); }
+.sc-live-mute { border-color: var(--border); background: var(--surface-3); color: var(--text-2); }
+.sc-live-vol { accent-color: var(--accent); }
+
+/* ── WHISPER PIPELINE STATUS BAR ── */
+.sc-whisper {
+  margin: 8px 12px; border-radius: 14px; overflow: hidden;
+  border: 1px solid var(--border); background: var(--surface);
+}
+.sc-whisper-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 14px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-subtle);
+  font-family: var(--font-body); font-size: 12px; font-weight: 600;
+  color: var(--text-2);
+}
+.sc-whisper-bar-text { color: var(--text); }
+.sc-whisper-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
+.sc-whisper-bar[data-state="live"] .sc-whisper-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+.sc-whisper-bar[data-state="connecting"] .sc-whisper-dot { background: var(--info); animation: pulse-dot 1.6s ease-in-out infinite; }
+.sc-whisper-bar[data-state="idle"] .sc-whisper-dot { background: var(--accent-gold); }
+.sc-whisper-bar[data-state="offline"] .sc-whisper-dot { background: var(--text-3); }
+.sc-whisper-count {
+  margin-left: auto; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  color: var(--accent); font-variant-numeric: tabular-nums;
+}
+.sc-whisper-empty { color: var(--text-3); font-family: var(--font-body); }
+
+/* ── WHISPER TRANSCRIPTION CARDS (premium) ── */
+.sc-wc {
+  border-bottom: 1px solid var(--border-subtle);
+  border-left: 3px solid transparent;
+  padding: 12px 14px; gap: 11px;
+}
+.sc-wc--critical { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.sc-wc--high     { border-left-color: var(--accent-gold); background: color-mix(in srgb, var(--accent-gold) 5%, var(--surface)); }
+.sc-wc--medium   { border-left-color: var(--info); }
+.sc-wc--low, .sc-wc--info, .sc-wc--none { border-left-color: var(--border); }
+.sc-wc.is-playing { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+
+.sc-wc-play { background: var(--accent); color: #0A1128; }
+.sc-wc--critical .sc-wc-play { background: var(--accent); }
+.sc-wc--high .sc-wc-play { background: var(--accent-gold); color: #0A1128; }
+
+.sc-wc-level {
+  font-family: var(--font-display); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: #0A1128; background: var(--text-3); border-radius: 5px; padding: 2px 7px;
+}
+.sc-wc-level--critical { background: var(--accent); }
+.sc-wc-level--high { background: var(--accent-gold); }
+.sc-wc-level--medium { background: var(--info); }
+.sc-wc-level--low, .sc-wc-level--info, .sc-wc-level--none { background: var(--surface-3); color: var(--text-2); }
+.sc-wc-type { font-family: var(--font-body); font-size: 11px; font-weight: 600; color: var(--text-2); text-transform: capitalize; }
+.sc-wc-time { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.sc-wc-summary { font-family: var(--font-body); font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.4; }
+.sc-wc-transcript {
+  font-family: var(--font-body); font-size: 12.5px; font-style: italic;
+  color: var(--text-2); line-height: 1.45; margin-top: 3px;
+  padding-left: 9px; border-left: 2px solid var(--border);
+}
+.sc-wc-chip {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-3);
+  background: var(--surface-2); border: 1px solid var(--border-subtle);
+  border-radius: 6px; padding: 2px 7px; display: inline-flex; align-items: center; gap: 3px;
+}
+.sc-wc-chip .material-icons { font-size: 11px; }
+.sc-wc-kwchip {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 600;
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-radius: 5px; padding: 2px 6px; text-transform: uppercase; letter-spacing: 0.03em;
+}
+
+/* ── CALL LOG CARDS ── */
+.sc-card { border-left: 3px solid transparent; padding: 11px 14px; }
+.sc-card--police { border-left-color: var(--accent); }
+.sc-card--fire { border-left-color: var(--accent-gold); }
+.sc-card--ems { border-left-color: var(--info); }
+.sc-card-cat { font-family: var(--font-display); }
+.sc-card-cat--police { background: color-mix(in srgb,var(--accent) 15%,var(--surface)); color: var(--accent); }
+.sc-card-cat--fire { background: color-mix(in srgb,var(--accent-gold) 15%,var(--surface)); color: var(--accent-gold); }
+.sc-card-cat--ems { background: color-mix(in srgb,var(--info) 14%,var(--surface)); color: var(--info); }
+.sc-card-agency { font-family: var(--font-body); }
+.sc-card-time, .sc-card-raw { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.sc-card-summary--transcript { background: color-mix(in srgb,var(--accent) 5%,var(--surface)); border-left-color: var(--accent); }
+.sc-pill--source { background: color-mix(in srgb,var(--accent) 10%,var(--surface-2)); color: var(--text-2); }
+.sc-pill--emergency { background: var(--accent); color: #0A1128; }
+
+/* ── Note + search ── */
+.sc-note { font-family: var(--font-body); color: var(--text-3); }
+.sc-search-row { border-radius: 12px; }
+.sc-search-input { font-family: var(--font-body); }
