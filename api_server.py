@@ -7489,29 +7489,65 @@ def _trip_whisper_breaker(retry_after: Optional[str] = None) -> None:
 
 
 def _transcription_provider() -> tuple[str, str, str, str]:
-    """Pick the speech-to-text provider so the scanner isn't hostage to one
-    account's quota. Returns (url, api_key, model, provider_name).
+    """Pick the speech-to-text provider. Returns (url, api_key, model, provider).
 
-    Priority:
-      1. GROQ_API_KEY  -> Groq Whisper-large-v3-turbo (free tier, fast,
-         OpenAI-compatible) — bypasses the OpenAI quota entirely.
-      2. OPENAI_API_KEY -> OpenAI Whisper (default).
-    Set GROQ_API_KEY on Railway to switch instantly with no code change.
+    Priority (override with TRANSCRIBE_PROVIDER=xai|groq|openai):
+      1. xAI Grok STT (api.x.ai/v1/stt, model grok-stt) using the existing
+         XAI_API_KEY — preferred, since that key already powers Grok fusion.
+      2. Groq Whisper-large-v3-turbo (free, OpenAI-compatible).
+      3. OpenAI Whisper.
+    Note: xAI STT uses a DIFFERENT multipart shape than the OpenAI-compatible
+    providers — request building branches on the provider name.
     """
+    pref = (os.getenv("TRANSCRIBE_PROVIDER") or "").strip().lower()
+    xai = (XAI_API_KEY or "").strip()
     groq = (os.getenv("GROQ_API_KEY") or "").strip()
+    openai_key = (settings.openai_api_key or "").strip()
+
+    def _xai():
+        return ("https://api.x.ai/v1/stt", xai,
+                (os.getenv("XAI_TRANSCRIBE_MODEL") or "grok-stt").strip(), "xai")
+
+    def _groq():
+        return ("https://api.groq.com/openai/v1/audio/transcriptions", groq,
+                (os.getenv("GROQ_TRANSCRIBE_MODEL") or "whisper-large-v3-turbo").strip(), "groq")
+
+    def _openai():
+        return ("https://api.openai.com/v1/audio/transcriptions", openai_key,
+                (os.getenv("SCANNER_TRANSCRIBE_MODEL") or "whisper-1").strip(), "openai")
+
+    if pref == "xai" and xai:
+        return _xai()
+    if pref == "groq" and groq:
+        return _groq()
+    if pref == "openai" and openai_key:
+        return _openai()
+    # Default preference order.
+    if xai:
+        return _xai()
     if groq:
-        return (
-            "https://api.groq.com/openai/v1/audio/transcriptions",
-            groq,
-            (os.getenv("GROQ_TRANSCRIBE_MODEL") or "whisper-large-v3-turbo").strip(),
-            "groq",
-        )
-    return (
-        "https://api.openai.com/v1/audio/transcriptions",
-        (settings.openai_api_key or "").strip(),
-        (os.getenv("SCANNER_TRANSCRIBE_MODEL") or "whisper-1").strip(),
-        "openai",
-    )
+        return _groq()
+    return _openai()
+
+
+def _build_transcription_files(provider: str, model: str, filename: str, mime: str,
+                               audio_bytes: bytes, hint: str = "") -> dict:
+    """Build the multipart payload for the chosen STT provider.
+    xAI STT uses `format`/`keyterm`; OpenAI-compatible uses `prompt`."""
+    files: dict = {
+        "file": (filename, io.BytesIO(audio_bytes), mime),
+        "model": (None, model),
+        "language": (None, "en"),
+    }
+    if provider == "xai":
+        # xAI STT: enable text formatting; bias toward Albany dispatch terms.
+        files["format"] = (None, "true")
+        kt = (hint or "Albany County police fire EMS dispatch")[:200]
+        files["keyterm"] = (None, kt)
+    else:
+        if hint:
+            files["prompt"] = (None, hint)
+    return files
 
 
 _AD_NOISE_PATTERNS = [
@@ -8113,12 +8149,10 @@ async def scanner_transcribe(request: Request):
                 # jargon hints. Falls back to generic base prompt for unknown
                 # talkgroups so nothing regresses below prior behavior.
                 _transcribe_prompt = _scanner_transcribe_prompt(c)
-                files = {
-                    "file": (f"scanner_call{ext}", io.BytesIO(audio_bytes), "audio/mp4"),
-                    "model": (None, _txc_model),
-                    "language": (None, "en"),
-                    "prompt": (None, _transcribe_prompt),
-                }
+                _mime = "audio/mpeg" if ext == ".mp3" else ("audio/wav" if ext == ".wav" else "audio/mp4")
+                files = _build_transcription_files(
+                    _txc_provider, _txc_model, f"scanner_call{ext}", _mime, audio_bytes, _transcribe_prompt
+                )
                 if _whisper_breaker_open():
                     results.append({"id": call_id, "status": "skip", "reason": "rate_limited_cooldown"})
                     continue
@@ -8296,7 +8330,7 @@ async def _capture_audio_chunk_http(stream_url: str, duration_secs: int = 30) ->
 
 async def _transcribe_audio_bytes(audio_bytes: bytes) -> Optional[str]:
     """Send audio to the configured transcription provider. Accepts WAV or MP3."""
-    url, api_key, model, _provider = _transcription_provider()
+    url, api_key, model, provider = _transcription_provider()
     if not api_key or not audio_bytes:
         return None
     if _whisper_breaker_open():
@@ -8307,12 +8341,9 @@ async def _transcribe_audio_bytes(audio_bytes: bytes) -> Optional[str]:
     mime = "audio/wav" if is_wav else "audio/mpeg"
 
     try:
-        files = {
-            "file": (filename, io.BytesIO(audio_bytes), mime),
-            "model": (None, model),
-            "language": (None, "en"),
-            "prompt": (None, _SCANNER_TRANSCRIBE_PROMPT_BASE),
-        }
+        files = _build_transcription_files(
+            provider, model, filename, mime, audio_bytes, _SCANNER_TRANSCRIBE_PROMPT_BASE
+        )
         resp = await http_client.post(
             url,
             headers={"Authorization": f"Bearer {api_key}"},
@@ -8323,8 +8354,9 @@ async def _transcribe_audio_bytes(audio_bytes: bytes) -> Optional[str]:
             _trip_whisper_breaker(resp.headers.get("Retry-After"))
             return None
         if resp.status_code != 200:
+            logger.debug("transcription_non200 provider=%s status=%s", provider, resp.status_code)
             return None
-        return resp.json().get("text", "").strip()
+        return (resp.json().get("text") or "").strip()
     except Exception as e:
         logger.warning("Stream transcription error: %s", e)
         return None
