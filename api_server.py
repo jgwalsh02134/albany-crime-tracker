@@ -1912,6 +1912,34 @@ def _pubdate_within_max_age(article: dict) -> bool:
     return age_h <= _FEED_MAX_AGE_HOURS
 
 
+# Article thumbnail cache: link/guid -> image_url. Populated in parse_rss on
+# every feed fetch, read by the News endpoint. Decouples thumbnails from the
+# incident-persistence pipeline (which transforms articles and can drop the
+# field), so images reliably show as long as the source feed carries one.
+_ARTICLE_IMAGE_CACHE: dict[str, str] = {}
+_ARTICLE_IMAGE_CACHE_MAX = 1500
+
+
+def _cache_article_image(link: str, guid: str, image_url: str) -> None:
+    if not image_url:
+        return
+    for key in (link, guid):
+        k = (key or "").strip().split("?")[0].rstrip("/").lower()
+        if k:
+            _ARTICLE_IMAGE_CACHE[k] = image_url
+    if len(_ARTICLE_IMAGE_CACHE) > _ARTICLE_IMAGE_CACHE_MAX:
+        for k in list(_ARTICLE_IMAGE_CACHE.keys())[: len(_ARTICLE_IMAGE_CACHE) - _ARTICLE_IMAGE_CACHE_MAX]:
+            _ARTICLE_IMAGE_CACHE.pop(k, None)
+
+
+def _lookup_article_image(*urls: str) -> str:
+    for u in urls:
+        k = (u or "").strip().split("?")[0].rstrip("/").lower()
+        if k and k in _ARTICLE_IMAGE_CACHE:
+            return _ARTICLE_IMAGE_CACHE[k]
+    return ""
+
+
 # Media RSS namespace URIs (media:content / media:thumbnail).
 _MEDIA_NS = "{http://search.yahoo.com/mrss/}"
 # Reject tracking pixels / spacers / logos that aren't real article art.
@@ -1993,6 +2021,9 @@ def parse_rss(xml_text, default_source=None):
             raw_desc_html = desc  # keep HTML before stripping for <img> extraction
             content_encoded = content_el.text if (content_el is not None and content_el.text) else ""
             image_url = _extract_rss_image(item, raw_desc_html, content_encoded)
+            if image_url:
+                _guid_for_img = (item.find("guid").text if item.find("guid") is not None and item.find("guid").text else "")
+                _cache_article_image(link, _guid_for_img, image_url)
 
             desc = re.sub(r"<[^>]+>", "", desc).strip()
             desc = desc.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
@@ -5733,9 +5764,9 @@ async def get_incidents_trends(window: str = "30d"):
 async def get_home_news():
     now = datetime.now(timezone.utc)
     items_48h = await query_incidents(
-        limit=200,
+        limit=300,
         sort_by="newest",
-        start_date=now - timedelta(hours=48),
+        start_date=now - timedelta(hours=120),
     )
 
     def _score(it: dict) -> float:
@@ -5764,7 +5795,11 @@ async def get_home_news():
         if muni.lower() == "albany":
             muni = "City of Albany"
         prov = it.get("provenance") if isinstance(it.get("provenance"), dict) else {}
-        image_url = prov.get("image_url") or ""
+        image_url = (
+            prov.get("image_url")
+            or _lookup_article_image(it.get("source_url") or "", it.get("external_ref") or "")
+            or ""
+        )
         return {
             "id": it.get("id"),
             "title": title,
