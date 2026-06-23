@@ -53,7 +53,11 @@
   var mapFetchTimer = null;
   var feedControlTimer = null;
   var summaryWindow = "7d";
-  var HOME_WINDOW_HOURS = 48;
+  // 7-day window. The DB holds ~5 days of incidents; a 48h window was
+  // hiding the bulk of them, making the feed look empty even though the
+  // content existed. Newest-first sort keeps the top current; older items
+  // fill the depth below so the feed never feels starved.
+  var HOME_WINDOW_HOURS = 168;
 
   // Law enforcement directory (lazy-loaded from /api/directory/*)
   var leDirectory = null;
@@ -2091,14 +2095,14 @@
     // the backend ranks actionable incidents first and the timeline
     // becomes incident-first instead of strictly chronological.
     var params = {
-      limit: 180,
+      limit: 300,
       sort_by: "operational",
       start_date: homeWindowStartIso()
     };
     (apiClient && apiClient.getPersistedIncidents
       ? apiClient.getPersistedIncidents(params)
       : fetch(
-          API + "/api/incidents?limit=180&sort_by=operational&start_date=" + encodeURIComponent(params.start_date),
+          API + "/api/incidents?limit=300&sort_by=operational&start_date=" + encodeURIComponent(params.start_date),
           { signal: ctrl.signal }
         ).then(ok))
       .finally(function () {
