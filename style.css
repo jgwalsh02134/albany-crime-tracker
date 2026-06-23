@@ -5416,3 +5416,12 @@ a.home-story-card:active {
   width: 13px; height: 13px; border-radius: 3px; margin-right: 5px;
   object-fit: contain; background: #fff; vertical-align: middle;
 }
+
+/* News topic bucket pill (Law Enforcement / Emergency Services / Courts & Law / Local News) */
+.home-story-pill--topic {
+  background: rgba(0, 229, 255, 0.12);
+  color: #00E5FF;
+  border: 1px solid rgba(0, 229, 255, 0.32);
+  font-family: var(--font-mono, ibm-plex-mono, monospace);
+  font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+}

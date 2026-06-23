@@ -5797,6 +5797,201 @@ async def get_incidents_trends(window: str = "30d"):
     return {"status": "ok", "source": incident_store_backend(), **(await incident_trends(window=window))}
 
 
+# =============================================================================
+# ALBANY COUNTY NEWS FEED  (law enforcement · news · laws/courts · emergency)
+# =============================================================================
+# The News tab is a real local-news reader, not just a re-render of crime
+# incidents. These Google-News queries cover the four topic buckets the user
+# asked for, scoped to Albany County municipalities.
+_ALBANY_GEO = (
+    '("Albany County" OR "Albany, NY" OR "Albany New York" OR Colonie OR '
+    'Guilderland OR Bethlehem OR Cohoes OR Watervliet OR Menands OR '
+    '"Green Island" OR Coeymans OR Ravena OR Voorheesville OR Altamont OR '
+    'Latham OR Loudonville OR Delmar OR Slingerlands OR Glenmont)'
+)
+NEWS_TOPIC_FEEDS = {
+    "law_enforcement": {
+        "label": "Law Enforcement",
+        "terms": '(police OR sheriff OR "state police" OR trooper OR arrest OR '
+                 'arrested OR investigation OR charged OR indicted OR "law enforcement")',
+        "when": "3d",
+    },
+    "emergency_services": {
+        "label": "Emergency Services",
+        "terms": '(fire OR firefighter OR EMS OR paramedic OR rescue OR crash OR '
+                 'accident OR hazmat OR evacuation OR "first responders" OR ambulance)',
+        "when": "3d",
+    },
+    "courts_law": {
+        "label": "Courts & Law",
+        "terms": '(court OR sentenced OR sentencing OR lawsuit OR trial OR verdict OR '
+                 '"district attorney" OR legislation OR "new law" OR pleads OR conviction)',
+        "when": "4d",
+    },
+    "local_news": {
+        "label": "Local News",
+        "terms": '(news OR mayor OR "county executive" OR "common council" OR '
+                 '"public safety" OR community OR "city of albany")',
+        "when": "2d",
+    },
+}
+
+
+def _build_news_feed_url(cfg: dict) -> str:
+    q = f"{_ALBANY_GEO} {cfg['terms']} when:{cfg.get('when', '3d')}"
+    return (
+        "https://news.google.com/rss/search?q="
+        + quote_plus(q)
+        + "&hl=en-US&gl=US&ceid=US:en"
+    )
+
+
+def _relative_time(dt: Optional[datetime]) -> str:
+    if not dt:
+        return ""
+    try:
+        secs = max(0, (datetime.now(timezone.utc) - dt).total_seconds())
+    except Exception:
+        return ""
+    if secs < 90:
+        return "just now"
+    if secs < 3600:
+        return f"{int(secs // 60)}m ago"
+    if secs < 86400:
+        return f"{int(secs // 3600)}h ago"
+    return f"{int(secs // 86400)}d ago"
+
+
+def _news_article_ok(article: dict) -> bool:
+    """Albany-County locality + credibility gate for news articles."""
+    src = str(article.get("source") or "").lower()
+    if not any(c in src for c in _CREDIBLE_SOURCE_MARKERS):
+        if any(bad and bad in src for bad in _LOW_QUALITY_SOURCES):
+            return False
+    title = str(article.get("title") or "").lower()
+    blob = title + " " + str(article.get("description") or "").lower()
+    names_albany = any(t in blob for t in _ALBANY_TITLE_TOKENS)
+    if not names_albany:
+        return False
+    names_other = any(p in title for p in _OTHER_COUNTY_PLACES)
+    names_albany_muni = any(m in blob for m in _ALBANY_MUNI_SET) or "albany county" in blob
+    # Title dominated by another county and no Albany municipality present.
+    if names_other and not names_albany_muni:
+        return False
+    return True
+
+
+_NEWS_FEED_CACHE: dict[str, Any] = {"ts": 0.0, "items": []}
+_NEWS_FEED_TTL = 420  # 7 minutes
+_NEWS_FEED_LOCK = asyncio.Lock()
+
+
+async def _fetch_albany_news() -> list[dict]:
+    """Fetch + filter Albany County news across the four topic buckets.
+
+    Cached for _NEWS_FEED_TTL so the News tab stays snappy and we don't hammer
+    Google News. Returns entries in the /api/home/news output shape.
+    """
+    now_ts = time.time()
+    if (now_ts - float(_NEWS_FEED_CACHE.get("ts") or 0)) < _NEWS_FEED_TTL and _NEWS_FEED_CACHE.get("items"):
+        return list(_NEWS_FEED_CACHE["items"])
+
+    async with _NEWS_FEED_LOCK:
+        # Re-check after acquiring the lock (another request may have refreshed).
+        now_ts = time.time()
+        if (now_ts - float(_NEWS_FEED_CACHE.get("ts") or 0)) < _NEWS_FEED_TTL and _NEWS_FEED_CACHE.get("items"):
+            return list(_NEWS_FEED_CACHE["items"])
+
+        if http_client is None:
+            return list(_NEWS_FEED_CACHE.get("items") or [])
+
+        gnews_headers = {
+            "User-Agent": _GNEWS_BROWSER_UA,
+            "Accept": "application/rss+xml, application/xml, text/xml, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
+        async def _one(topic: str, cfg: dict) -> list[dict]:
+            url = _build_news_feed_url(cfg)
+            if _check_gnews_blocked(url):
+                return []
+            try:
+                async with _GNEWS_SEMAPHORE:
+                    resp = await fetch_with_retry(
+                        http_client, url, timeout=settings.external_timeout_seconds,
+                        retries=1, headers=gnews_headers,
+                    )
+                    await asyncio.sleep(0.2)
+            except Exception:
+                return []
+            if not resp or resp.status_code != 200:
+                return []
+            out = []
+            for a in parse_rss(resp.text):
+                a["_topic"] = topic
+                a["_topic_label"] = cfg["label"]
+                out.append(a)
+            return out
+
+        try:
+            batches = await asyncio.gather(
+                *[_one(t, c) for t, c in NEWS_TOPIC_FEEDS.items()],
+                return_exceptions=True,
+            )
+        except Exception:
+            batches = []
+
+        seen: set[str] = set()
+        entries: list[dict] = []
+        for batch in batches:
+            if not isinstance(batch, list):
+                continue
+            for a in batch:
+                if not _news_article_ok(a):
+                    continue
+                title = str(a.get("title") or "").strip()
+                key = title.lower()[:60]
+                if not title or key in seen:
+                    continue
+                # Freshness backstop (drop republished/stale items).
+                pub_dt = None
+                try:
+                    if a.get("pubDate"):
+                        pub_dt = parsedate_to_datetime(a["pubDate"])
+                        if pub_dt and pub_dt.tzinfo is None:
+                            pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+                except Exception:
+                    pub_dt = None
+                if pub_dt and (datetime.now(timezone.utc) - pub_dt) > timedelta(hours=120):
+                    continue
+                seen.add(key)
+                iso = pub_dt.astimezone(timezone.utc).isoformat() if pub_dt else ""
+                entries.append({
+                    "id": "news_" + hashlib.md5((a.get("link") or title).encode()).hexdigest()[:12],
+                    "title": title,
+                    "summary": str(a.get("description") or "")[:240],
+                    "municipality": "",
+                    "occurred_at": iso,
+                    "published_at": iso,
+                    "human_time": _relative_time(pub_dt),
+                    "severity": "unknown",
+                    "incident_type": a.get("_topic") or "",
+                    "topic": a.get("_topic_label") or "",
+                    "source_name": a.get("source") or "Local News",
+                    "source_url": a.get("link") or "",
+                    "source_type": "news",
+                    "verification_level": "media",
+                    "coordinate_quality": "missing",
+                    "image_url": a.get("image_url") or _lookup_article_image(a.get("link") or ""),
+                    "is_news": True,
+                })
+
+        entries.sort(key=lambda e: e.get("published_at") or "", reverse=True)
+        _NEWS_FEED_CACHE["items"] = entries
+        _NEWS_FEED_CACHE["ts"] = time.time()
+        return list(entries)
+
+
 _LOGO_CACHE: dict[str, tuple[bytes, str]] = {}
 _LOGO_CACHE_MAX = 400
 # Tiny transparent 1x1 PNG used when no logo can be resolved.
@@ -5860,11 +6055,20 @@ async def get_source_logo(domain: str = ""):
 @app.get("/api/home/news")
 async def get_home_news():
     now = datetime.now(timezone.utc)
-    items_48h = await query_incidents(
+    items_raw = await query_incidents(
         limit=300,
         sort_by="newest",
         start_date=now - timedelta(hours=120),
     )
+    # News tab is Albany-County only and credible-source only — no scraped
+    # facebook posts, no out-of-county (Troy/Saratoga/Coxsackie) noise.
+    items_48h = [
+        it for it in items_raw
+        if not it.get("_gap_fill")
+        and not _is_low_quality_source(it)
+        and not _is_false_local_incident(it)
+        and _locality_confidence(it) >= 1
+    ]
 
     def _score(it: dict) -> float:
         sev = {"critical": 50, "high": 35, "medium": 18, "low": 6}.get(
@@ -5916,38 +6120,73 @@ async def get_home_news():
             "priority_score": round(_score(it), 1),
         }
 
-    major_stories: list[dict[str, Any]] = []
-    developing_stories: list[dict[str, Any]] = []
-    headlines: list[dict[str, Any]] = []
+    # Pull real Albany-County news (law enforcement / emergency / courts /
+    # local) and blend it with verified incidents so the News tab reads like
+    # an actual local-news desk, not a crime-incident mirror.
+    try:
+        news_entries = await _fetch_albany_news()
+    except Exception:
+        logger.exception("albany news fetch failed")
+        news_entries = []
+
+    def _entry_freshness(e: dict) -> float:
+        ver = {"official": 28, "multi_source": 24, "media": 16, "scanner": 8, "inferred": 5}.get(
+            str(e.get("verification_level") or "").lower(), 12
+        )
+        sev = {"critical": 24, "high": 16, "medium": 8, "low": 3}.get(
+            str(e.get("severity") or "").lower(), 5
+        )
+        recency = 0.0
+        raw = e.get("published_at") or e.get("occurred_at")
+        if raw:
+            try:
+                dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                hrs = max(0.0, (now - dt).total_seconds() / 3600.0)
+                recency = max(0.0, 36 - hrs)
+            except Exception:
+                pass
+        return ver + sev + recency
+
+    incident_entries = [_entry(it) for it in scored]
+
     seen_titles: set[str] = set()
+
+    def _take(entry: dict) -> bool:
+        key = str(entry.get("title") or "").lower()[:60]
+        if not key or key in seen_titles:
+            return False
+        seen_titles.add(key)
+        return True
+
+    # Developing: live/scanner/active incidents (kept distinct + first dibs).
+    developing_stories: list[dict[str, Any]] = []
     for it in scored:
-        title = str(it.get("short_title") or it.get("title") or "").strip()
-        title_key = title.lower()[:60]
-        if title_key in seen_titles:
-            continue
-        seen_titles.add(title_key)
-        entry = _entry(it)
         ver_lev = str(it.get("verification_level") or "").lower()
         status = str(it.get("status") or "").lower()
         if ver_lev in ("scanner", "inferred") or status == "active":
-            if len(developing_stories) < 5:
-                developing_stories.append(entry)
-        else:
-            if len(major_stories) < 5:
-                major_stories.append(entry)
-        if len(major_stories) >= 5 and len(developing_stories) >= 5:
+            e = _entry(it)
+            if _take(e):
+                developing_stories.append(e)
+        if len(developing_stories) >= 5:
             break
 
-    # Headlines: chronological, all stories (deduped)
-    chrono = sorted(items_48h, key=lambda x: x.get("published_at") or x.get("occurred_at") or "", reverse=True)
-    for it in chrono:
-        title = str(it.get("short_title") or it.get("title") or "").strip()
-        title_key = title.lower()[:60]
-        if title_key in seen_titles:
-            continue
-        seen_titles.add(title_key)
-        headlines.append(_entry(it))
-        if len(headlines) >= 15:
+    # Top stories: freshest, most credible mix of real news + verified incidents.
+    combined = news_entries + incident_entries
+    combined_sorted = sorted(combined, key=_entry_freshness, reverse=True)
+    major_stories: list[dict[str, Any]] = []
+    for e in combined_sorted:
+        if _take(e):
+            major_stories.append(e)
+        if len(major_stories) >= 6:
+            break
+
+    # Headlines: everything else, most-recent first.
+    chrono = sorted(combined, key=lambda x: str(x.get("published_at") or x.get("occurred_at") or ""), reverse=True)
+    headlines: list[dict[str, Any]] = []
+    for e in chrono:
+        if _take(e):
+            headlines.append(e)
+        if len(headlines) >= 20:
             break
 
     summary_24h = await summarize_incidents(window="24h")

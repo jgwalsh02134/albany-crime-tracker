@@ -1062,6 +1062,7 @@
     html += '</div>';
     if (item.summary) html += '<div class="home-story-desc">' + esc(item.summary) + '</div>';
     html += '<div class="home-story-meta">';
+    if (item.topic) html += '<span class="home-story-pill home-story-pill--topic">' + esc(item.topic) + '</span>';
     if (item.municipality) html += '<span class="home-story-pill"><span class="material-icons" style="font-size:11px;margin-right:2px;">location_on</span>' + esc(item.municipality) + '</span>';
     if (item.source_name) html += '<span class="home-story-pill home-story-pill--source">' + esc(item.source_name) + '</span>';
     if (sev && sev !== "unknown") html += '<span class="home-story-pill' + sevCls + '">' + esc(sev) + '</span>';
