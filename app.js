@@ -1020,12 +1020,13 @@
     return "";
   }
 
-  // Real publisher logo via Google's favicon service (reliable, no hotlink
-  // blocking). Falls back to the letter-avatar via onerror in the card.
+  // Real publisher logo served through our own origin (/api/logo). Going
+  // same-origin avoids Safari ITP / privacy blockers that silently drop
+  // third-party favicon requests. Falls back to letter-avatar via onerror.
   function _sourceLogoUrl(sourceName, sourceUrl) {
     var d = _sourceDomain(sourceName, sourceUrl);
     if (!d) return "";
-    return "https://www.google.com/s2/favicons?sz=128&domain=" + encodeURIComponent(d);
+    return API + "/api/logo?domain=" + encodeURIComponent(d);
   }
 
   function _storyCard(item, cls) {

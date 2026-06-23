@@ -51,7 +51,7 @@ from sources.nws_alerts import fetch_nws_alerts
 from sources.nws_alerts import nws_runtime_status
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, HTMLResponse, PlainTextResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from app.api.health import router as health_router
 from app.core.config import get_settings
@@ -5795,6 +5795,66 @@ async def get_incidents_summary(window: str = "7d"):
 @app.get("/api/incidents/trends")
 async def get_incidents_trends(window: str = "30d"):
     return {"status": "ok", "source": incident_store_backend(), **(await incident_trends(window=window))}
+
+
+_LOGO_CACHE: dict[str, tuple[bytes, str]] = {}
+_LOGO_CACHE_MAX = 400
+# Tiny transparent 1x1 PNG used when no logo can be resolved.
+_LOGO_BLANK = bytes.fromhex(
+    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4"
+    "890000000d4944415478da6364f80f00010101005a4d6f000000000049454e44"
+    "ae426082"
+)
+_LOGO_DOMAIN_RE = re.compile(r"^[a-z0-9.-]+\.[a-z]{2,}$")
+
+
+@app.get("/api/logo")
+async def get_source_logo(domain: str = ""):
+    """Same-origin publisher-logo proxy.
+
+    Safari ITP / privacy blockers drop third-party favicon requests
+    (google.com/gstatic.com/duckduckgo.com), so logos never rendered in the
+    browser. Proxying through our own origin makes them load reliably.
+    """
+    d = (domain or "").strip().lower().lstrip(".")
+    if not d or not _LOGO_DOMAIN_RE.match(d) or len(d) > 100:
+        return Response(content=_LOGO_BLANK, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
+    if d in _LOGO_CACHE:
+        body, ctype = _LOGO_CACHE[d]
+        return Response(content=body, media_type=ctype,
+                        headers={"Cache-Control": "public, max-age=604800"})
+
+    providers = [
+        f"https://www.google.com/s2/favicons?sz=128&domain={quote(d)}",
+        f"https://icons.duckduckgo.com/ip3/{quote(d)}.ico",
+        f"https://logo.clearbit.com/{quote(d)}?size=128",
+    ]
+    body, ctype = b"", ""
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=6.0) as client:
+            for url in providers:
+                try:
+                    r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+                    if r.status_code == 200 and r.content and len(r.content) > 70:
+                        ct = r.headers.get("content-type", "")
+                        if ct.startswith("image/"):
+                            body, ctype = r.content, ct
+                            break
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    if not body:
+        return Response(content=_LOGO_BLANK, media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=3600"})
+
+    if len(_LOGO_CACHE) >= _LOGO_CACHE_MAX:
+        _LOGO_CACHE.pop(next(iter(_LOGO_CACHE)), None)
+    _LOGO_CACHE[d] = (body, ctype)
+    return Response(content=body, media_type=ctype,
+                    headers={"Cache-Control": "public, max-age=604800"})
 
 
 @app.get("/api/home/news")
