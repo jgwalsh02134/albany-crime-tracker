@@ -7470,6 +7470,8 @@ _whisper_semaphore = asyncio.Semaphore(3)
 # so the pipeline stops calling Whisper, then auto-recovers when quota frees up.
 _whisper_429_until: float = 0.0
 _WHISPER_429_COOLDOWN_S = 300.0  # 5 min backoff after a 429
+# Last transcription failure (for /api/scanner/stream-status diagnostics).
+_LAST_TRANSCRIBE_ERROR: dict[str, Any] = {"provider": "", "status": 0, "body": "", "at": ""}
 
 
 def _whisper_breaker_open() -> bool:
@@ -7534,19 +7536,25 @@ def _build_transcription_files(provider: str, model: str, filename: str, mime: s
                                audio_bytes: bytes, hint: str = "") -> dict:
     """Build the multipart payload for the chosen STT provider.
     xAI STT uses `format`/`keyterm`; OpenAI-compatible uses `prompt`."""
-    files: dict = {
+    if provider == "xai":
+        # xAI STT — match the official docs payload exactly (no `model` field;
+        # the endpoint defaults to grok-stt). Sending unexpected fields can 400.
+        files: dict = {
+            "file": (filename, io.BytesIO(audio_bytes), mime),
+            "format": (None, "true"),
+            "language": (None, "en"),
+        }
+        kt = (hint or "Albany County police fire EMS dispatch")[:200]
+        files["keyterm"] = (None, kt)
+        return files
+    # OpenAI-compatible (OpenAI / Groq)
+    files = {
         "file": (filename, io.BytesIO(audio_bytes), mime),
         "model": (None, model),
         "language": (None, "en"),
     }
-    if provider == "xai":
-        # xAI STT: enable text formatting; bias toward Albany dispatch terms.
-        files["format"] = (None, "true")
-        kt = (hint or "Albany County police fire EMS dispatch")[:200]
-        files["keyterm"] = (None, kt)
-    else:
-        if hint:
-            files["prompt"] = (None, hint)
+    if hint:
+        files["prompt"] = (None, hint)
     return files
 
 
@@ -8354,11 +8362,22 @@ async def _transcribe_audio_bytes(audio_bytes: bytes) -> Optional[str]:
             _trip_whisper_breaker(resp.headers.get("Retry-After"))
             return None
         if resp.status_code != 200:
-            logger.debug("transcription_non200 provider=%s status=%s", provider, resp.status_code)
+            # Surface the provider's error body so format issues are visible.
+            body = ""
+            try:
+                body = resp.text[:300]
+            except Exception:
+                pass
+            logger.warning("transcription_non200 provider=%s status=%s body=%s",
+                           provider, resp.status_code, body)
+            _LAST_TRANSCRIBE_ERROR.update(provider=provider, status=resp.status_code, body=body,
+                                          at=datetime.now(timezone.utc).isoformat())
             return None
         return (resp.json().get("text") or "").strip()
     except Exception as e:
         logger.warning("Stream transcription error: %s", e)
+        _LAST_TRANSCRIBE_ERROR.update(provider=provider, status=0, body=str(e)[:300],
+                                      at=datetime.now(timezone.utc).isoformat())
         return None
 
 
@@ -8541,6 +8560,7 @@ async def get_stream_status():
         "transcription_provider": _transcription_provider()[3],
         "whisper_rate_limited": _whisper_breaker_open(),
         "whisper_cooldown_remaining_s": max(0, int(_whisper_429_until - time.time())),
+        "last_transcribe_error": _LAST_TRANSCRIBE_ERROR,
         "alert_count": len(_stream_alerts),
     }
 
