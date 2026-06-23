@@ -978,9 +978,16 @@
     var tag = link ? "a" : "div";
     var linkAttrs = link ? ' href="' + escAttr(link) + '" target="_blank" rel="noopener noreferrer"' : "";
     var html = '<' + tag + ' class="home-story-card ' + cls + '"' + linkAttrs + '>';
-    // Source letter-avatar acts as the News visual anchor in place of a
-    // publisher image (which the backend does not expose today).
+    // Real media thumbnail when the source RSS provided one; fall back to a
+    // source letter-avatar so the layout never breaks.
     var srcName = item.source_name || item.source || "";
+    var img = item.image_url || "";
+    if (img) {
+      html += '<div class="home-story-thumb">'
+        + '<img src="' + escAttr(img) + '" alt="" loading="lazy" referrerpolicy="no-referrer"'
+        + ' onerror="this.closest(\'.home-story-card\').classList.add(\'no-thumb\');this.remove();">'
+        + '</div>';
+    }
     html += '<div class="home-story-avatar" aria-hidden="true">' + esc(_sourceInitials(srcName)) + '</div>';
     html += '<div class="home-story-body">';
     html += '<div class="home-story-head">';
@@ -1044,18 +1051,31 @@
     var src = item.source_name || "";
     var sev = (item.severity || "").toLowerCase();
 
-    var html = '<a class="news-headline" href="' + (link ? escAttr(link) : '#') + '"'
+    var img = item.image_url || "";
+    var html = '<a class="news-headline' + (img ? ' news-headline--thumb' : '') + '" href="' + (link ? escAttr(link) : '#') + '"'
       + (link ? ' target="_blank" rel="noopener noreferrer"' : '') + '>';
+    if (img) {
+      html += '<div class="news-headline-thumb">'
+        + '<img src="' + escAttr(img) + '" alt="" loading="lazy" referrerpolicy="no-referrer"'
+        + ' onerror="this.closest(\'.news-headline\').classList.remove(\'news-headline--thumb\');this.closest(\'.news-headline-thumb\').remove();">'
+        + '</div>';
+    }
+    html += '<div class="news-headline-body">';
     html += '<div class="news-headline-top">';
     if (sev === "critical" || sev === "high") {
       html += '<span class="news-headline-sev news-headline-sev--' + esc(sev) + '"></span>';
     }
     html += '<span class="news-headline-title">' + esc(item.title || "Untitled") + '</span>';
     html += '</div>';
+    var snip = (item.summary || "").trim();
+    if (snip && snip.toLowerCase() !== (item.title || "").toLowerCase()) {
+      html += '<div class="news-headline-snippet">' + esc(snip) + '</div>';
+    }
     html += '<div class="news-headline-meta">';
     if (muni) html += '<span>' + esc(muni) + '</span>';
     if (src) html += '<span>' + esc(src) + '</span>';
     if (time) html += '<span>' + esc(time) + '</span>';
+    html += '</div>';
     html += '</div>';
     html += '</a>';
     return html;

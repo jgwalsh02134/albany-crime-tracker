@@ -79,6 +79,12 @@ def article_to_incident(article: dict[str, Any]) -> IncidentRecord:
     tags = list(incident.get("operational_badges") or [])
     if article.get("_scanner_call"):
         tags.append("scanner_call")
+    # Carry a real media thumbnail (extracted from the RSS item) on the
+    # provenance JSONB so the News surface can render article images.
+    prov = dict(article.get("provenance") or article.get("_provenance") or {})
+    img = article.get("image_url") or ""
+    if img:
+        prov["image_url"] = img
     return IncidentRecord(
         id=str(article.get("id") or incident.get("id") or article.get("external_id") or article.get("guid") or ""),
         title=str(article.get("title") or incident.get("title") or ""),
@@ -98,7 +104,7 @@ def article_to_incident(article: dict[str, Any]) -> IncidentRecord:
         confidence_score=float(article.get("confidence") or incident.get("confidence_score") or 0.0),
         verification_level=verification,  # type: ignore[arg-type]
         tags=sorted(set(t for t in tags if t)),
-        provenance=article.get("provenance") or article.get("_provenance") or {},
+        provenance=prov,
         responding_agency_id=_resolve_responding_agency_id(article),
         geom_wkt=None,
         external_ref=str(article.get("external_ref") or article.get("external_id") or article.get("guid") or ""),

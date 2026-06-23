@@ -1912,6 +1912,50 @@ def _pubdate_within_max_age(article: dict) -> bool:
     return age_h <= _FEED_MAX_AGE_HOURS
 
 
+# Media RSS namespace URIs (media:content / media:thumbnail).
+_MEDIA_NS = "{http://search.yahoo.com/mrss/}"
+# Reject tracking pixels / spacers / logos that aren't real article art.
+_BAD_IMG_MARKERS = ("spacer", "pixel", "1x1", "transparent", "feedburner",
+                    "doubleclick", "/ads/", "blank.gif", "icon", "favicon")
+
+
+def _is_real_image(url: str) -> bool:
+    low = (url or "").lower()
+    if not low.startswith("http"):
+        return False
+    if any(b in low for b in _BAD_IMG_MARKERS):
+        return False
+    return any(low.split("?")[0].endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp", ".gif")) \
+        or "image" in low or "/media/" in low or "/photo" in low or "wp-content" in low or "cdn" in low
+
+
+def _extract_rss_image(item, raw_desc: str, content_encoded: str = "") -> str:
+    """Pull a real article thumbnail from an RSS <item>.
+    Checks media:content, media:thumbnail, enclosure, then <img> in the
+    description / content:encoded HTML. Returns "" when none is usable."""
+    # 1. media:content / media:thumbnail (Media RSS — most feeds with images)
+    for tag in (_MEDIA_NS + "content", _MEDIA_NS + "thumbnail", "media:content", "media:thumbnail"):
+        for el in item.iter():
+            t = el.tag
+            if t == tag or t.endswith("}content") or t.endswith("}thumbnail"):
+                u = el.get("url") or ""
+                if _is_real_image(u):
+                    return u
+    # 2. <enclosure type="image/..." url="...">
+    for enc in item.findall("enclosure"):
+        et = (enc.get("type") or "").lower()
+        u = enc.get("url") or ""
+        if (et.startswith("image") or _is_real_image(u)) and u.startswith("http"):
+            if _is_real_image(u):
+                return u
+    # 3. <img src="..."> inside content:encoded or description HTML
+    for html in (content_encoded or "", raw_desc or ""):
+        m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', html, re.I)
+        if m and _is_real_image(m.group(1)):
+            return m.group(1)
+    return ""
+
+
 def parse_rss(xml_text, default_source=None):
     articles = []
     try:
@@ -1922,6 +1966,7 @@ def parse_rss(xml_text, default_source=None):
             pub_el = item.find("pubDate")
             desc_el = item.find("description")
             source_el = item.find("source")
+            content_el = item.find("{http://purl.org/rss/1.0/modules/content/}encoded")
 
             title = title_el.text.strip() if title_el is not None and title_el.text else ""
             link = link_el.text.strip() if link_el is not None and link_el.text else ""
@@ -1945,6 +1990,10 @@ def parse_rss(xml_text, default_source=None):
                 # Google News <source url="https://..."> — capture for LOCAL_DOMAINS check
                 source_url = source_el.get("url", "") or ""
 
+            raw_desc_html = desc  # keep HTML before stripping for <img> extraction
+            content_encoded = content_el.text if (content_el is not None and content_el.text) else ""
+            image_url = _extract_rss_image(item, raw_desc_html, content_encoded)
+
             desc = re.sub(r"<[^>]+>", "", desc).strip()
             desc = desc.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
             desc = re.sub(r"\s{2,}", " ", desc).strip()
@@ -1966,6 +2015,7 @@ def parse_rss(xml_text, default_source=None):
                     "source": source or "Local News",
                     "source_url": source_url,
                     "guid": guid_txt,
+                    "image_url": image_url,
                 })
     except ET.ParseError:
         pass
@@ -5713,10 +5763,12 @@ async def get_home_news():
         muni = it.get("municipality") or ""
         if muni.lower() == "albany":
             muni = "City of Albany"
+        prov = it.get("provenance") if isinstance(it.get("provenance"), dict) else {}
+        image_url = prov.get("image_url") or ""
         return {
             "id": it.get("id"),
             "title": title,
-            "summary": str(it.get("description") or "")[:200],
+            "summary": str(it.get("description") or "")[:240],
             "municipality": muni,
             "occurred_at": it.get("occurred_at") or it.get("published_at"),
             "published_at": it.get("published_at"),
@@ -5728,6 +5780,7 @@ async def get_home_news():
             "source_type": it.get("source_type") or "",
             "verification_level": it.get("verification_level") or "unknown",
             "coordinate_quality": it.get("coordinate_quality") or "missing",
+            "image_url": image_url,
             "priority_score": round(_score(it), 1),
         }
 
