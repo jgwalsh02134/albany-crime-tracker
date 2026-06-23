@@ -5336,3 +5336,28 @@ a.home-story-card:active {
 .sc-note { font-family: var(--font-body); color: var(--text-3); }
 .sc-search-row { border-radius: 12px; }
 .sc-search-input { font-family: var(--font-body); }
+
+/* ── Broadcastify feed provenance panel (who/where) ── */
+.sc-feed-info {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex; flex-direction: column; gap: 7px;
+}
+.sc-feed-info-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-family: var(--font-body); font-size: 11.5px; line-height: 1.35;
+}
+.sc-feed-info-row .material-icons { font-size: 14px; color: var(--accent); margin-top: 1px; flex-shrink: 0; }
+.sc-feed-info-label {
+  color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em;
+  font-size: 9.5px; font-weight: 700; width: 64px; flex-shrink: 0; margin-top: 1px;
+}
+.sc-feed-info-val { color: var(--text-2); flex: 1; min-width: 0; }
+.sc-feed-info-link {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-top: 2px; font-family: var(--font-body); font-size: 11px; font-weight: 600;
+  color: var(--accent); text-decoration: none;
+}
+.sc-feed-info-link:hover { text-decoration: underline; }
+.sc-feed-info-link .material-icons { font-size: 13px; }

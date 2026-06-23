@@ -352,6 +352,28 @@
               <input type="range" id="liveRadioVolume" class="sc-live-vol" min="0" max="100" value="80" aria-label="Volume">
             </div>
           </div>
+
+          <!-- Feed provenance: who/where this feed is broadcast from (Broadcastify) -->
+          <div class="sc-feed-info" id="liveRadioFeedInfo">
+            <div class="sc-feed-info-row">
+              <span class="material-icons">place</span>
+              <span class="sc-feed-info-label">Coverage</span>
+              <span class="sc-feed-info-val" id="feedInfoCoverage">—</span>
+            </div>
+            <div class="sc-feed-info-row">
+              <span class="material-icons">settings_input_antenna</span>
+              <span class="sc-feed-info-label">System</span>
+              <span class="sc-feed-info-val" id="feedInfoSystem">—</span>
+            </div>
+            <div class="sc-feed-info-row">
+              <span class="material-icons">badge</span>
+              <span class="sc-feed-info-label">Source</span>
+              <span class="sc-feed-info-val" id="feedInfoSource">—</span>
+            </div>
+            <a class="sc-feed-info-link" id="feedInfoLink" href="#" target="_blank" rel="noopener noreferrer">
+              <span class="material-icons">open_in_new</span> View feed on Broadcastify
+            </a>
+          </div>
         </div>
 
         <!-- AI Transcriptions: the live intelligence feed (Grok STT) -->

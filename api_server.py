@@ -8248,12 +8248,47 @@ async def scanner_transcribe(request: Request):
 
 # Configurable feeds — Albany County area
 BROADCASTIFY_FEEDS = [
-    {"id": "3626", "name": "Albany City & Colonie Police/Fire/EMS", "priority": "high", "type": "police"},
-    {"id": "1440", "name": "Albany City Fire", "priority": "medium", "type": "fire"},
-    {"id": "37206", "name": "Albany County Volunteer Fire", "priority": "medium", "type": "fire"},
-    # Feed 7581 (Colonie EMS/Fire) removed — its CDN URLs 401 (premium/auth
-    # required), so it can't be captured or played publicly.
-    {"id": "21216", "name": "NYS Thruway - Albany Division", "priority": "low", "type": "other"},
+    {
+        "id": "3626",
+        "name": "Albany City & Colonie Police/Fire/EMS",
+        "bcfy_name": "Albany City and Colonie, Police, Fire and EMS",
+        "priority": "high", "type": "police",
+        "county": "Albany County, NY",
+        "coverage": "City of Albany + Town of Colonie",
+        "system": "Albany City Fire P25 (Phase 1) + Colonie public safety — Gre PSR600 scanner",
+        "genre": "Public Safety",
+    },
+    {
+        "id": "1440",
+        "name": "Albany City Fire",
+        "bcfy_name": "Albany City Fire",
+        "priority": "medium", "type": "fire",
+        "county": "Albany County, NY",
+        "coverage": "City of Albany",
+        "system": "Albany Fire Department P25 trunked radio system",
+        "genre": "Public Safety",
+    },
+    {
+        "id": "37206",
+        "name": "Albany County Volunteer Fire",
+        "bcfy_name": "Albany County Volunteer Fire Departments",
+        "priority": "medium", "type": "fire",
+        "county": "Albany County, NY",
+        "coverage": "Bethlehem, Colonie, Coeymans, Green Island, Guilderland, Hilltowns, New Scotland, Watervliet, Cohoes",
+        "system": "Albany-Schenectady P25 Phase II trunk (county + metro sites)",
+        "genre": "Public Safety",
+    },
+    # Feed 7581 (Colonie EMS/Fire) removed — its CDN URLs 401 (premium/auth required).
+    {
+        "id": "21216",
+        "name": "NYS Thruway - Albany Division",
+        "bcfy_name": "New York State Thruway Authority - Albany Division",
+        "priority": "low", "type": "other",
+        "county": "Albany / Capital Region, NY",
+        "coverage": "NYSTA Zone 2 · I-90 Exits 19 (Kingston)–29 (Canajoharie) + Berkshire Connector",
+        "system": "NYS Thruway Authority Albany Division (Zone 2) radio",
+        "genre": "Public Safety",
+    },
 ]
 
 # Stream alerts buffer — most recent keyword-flagged transcriptions
@@ -8574,8 +8609,14 @@ async def get_scanner_live_feeds():
             {
                 "id": f["id"],
                 "name": f["name"],
+                "bcfy_name": f.get("bcfy_name", f["name"]),
                 "type": f.get("type", "other"),
                 "priority": f["priority"],
+                "county": f.get("county", "Albany County, NY"),
+                "coverage": f.get("coverage", ""),
+                "system": f.get("system", ""),
+                "genre": f.get("genre", "Public Safety"),
+                "provider": "Broadcastify",
                 "stream_url": f"https://broadcastify.cdnstream1.com/{f['id']}",
                 "page_url": f"https://www.broadcastify.com/listen/feed/{f['id']}",
             }

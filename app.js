@@ -4959,8 +4959,41 @@
     { id: "21216", name: "Thruway",            type: "other" },
   ];
 
+  // Rich Broadcastify feed provenance (who/where/system), fetched from
+  // /api/scanner/live-feeds and keyed by feed id.
+  var _bcfyFeedMeta = {};
+
   function _bcfyStreamUrl(feedId) {
     return "https://broadcastify.cdnstream1.com/" + encodeURIComponent(feedId);
+  }
+
+  function _fetchLiveFeedMeta() {
+    fetch(API + "/api/scanner/live-feeds").then(ok)
+      .then(function (d) {
+        if (!d || d.status !== "ok" || !Array.isArray(d.feeds)) return;
+        d.feeds.forEach(function (f) { _bcfyFeedMeta[f.id] = f; });
+        // Render info for the initially-active feed.
+        _renderFeedInfo(_liveRadioFeedId || "3626");
+      })
+      .catch(function () {});
+  }
+
+  function _renderFeedInfo(feedId) {
+    var m = _bcfyFeedMeta[feedId];
+    var cov = document.getElementById("feedInfoCoverage");
+    var sys = document.getElementById("feedInfoSystem");
+    var src = document.getElementById("feedInfoSource");
+    var link = document.getElementById("feedInfoLink");
+    if (!m) {
+      if (cov) cov.textContent = "—";
+      if (sys) sys.textContent = "—";
+      if (src) src.textContent = "—";
+      return;
+    }
+    if (cov) cov.textContent = (m.county ? m.county + " · " : "") + (m.coverage || "");
+    if (sys) sys.textContent = m.system || "—";
+    if (src) src.textContent = "Broadcastify #" + m.id + " · " + (m.genre || "Public Safety");
+    if (link && m.page_url) link.setAttribute("href", m.page_url);
   }
 
   function initLiveRadio() {
@@ -4969,6 +5002,7 @@
     var muteBtn = document.getElementById("liveRadioMuteBtn");
     var volSlider = document.getElementById("liveRadioVolume");
     if (!feedHost || !playBtn) return;
+    _fetchLiveFeedMeta();
 
     feedHost.addEventListener("click", function (e) {
       var btn = e.target.closest && e.target.closest("[data-feed-id]");
@@ -4980,6 +5014,7 @@
         b.setAttribute("aria-selected", active ? "true" : "false");
       });
       _liveRadioSelectFeed(fid);
+      _renderFeedInfo(fid);
     });
 
     playBtn.addEventListener("click", function () {
