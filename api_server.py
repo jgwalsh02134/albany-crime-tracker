@@ -5501,6 +5501,66 @@ def _incident_signature(it: dict) -> str:
     return f"{loc}|{itype}"
 
 
+_EVENT_STOP = frozenset({
+    "the", "a", "an", "in", "on", "at", "to", "of", "and", "or", "for", "after",
+    "with", "from", "is", "was", "were", "as", "by", "near", "into", "over",
+    "man", "woman", "men", "albany", "county", "new", "york", "ny", "city",
+    "police", "arrested", "charged", "accused", "suspect", "year", "old",
+    "former", "two", "three", "one", "his", "her", "their", "who", "that",
+    "this", "are", "has", "had", "will", "more", "than", "out", "off",
+})
+
+
+def _event_words(it: dict) -> frozenset:
+    blob = (str(it.get("short_title") or it.get("title") or "") + " "
+            + str(it.get("description") or "")[:160]).lower()
+    blob = re.sub(r"[^a-z0-9\s]", " ", blob)
+    return frozenset(w for w in blob.split() if len(w) > 3 and w not in _EVENT_STOP)
+
+
+def _collapse_same_event(items: list[dict]) -> list[dict]:
+    """Final pass: fold the SAME real event reported by multiple outlets into a
+    single card (e.g. 5 stories about one fatal Rt. 9 motorcycle crash). Distinct
+    blotter arrests (unique NYSP ids, name-bearing titles) have low word overlap
+    and are left alone."""
+    kept: list[dict] = []
+    kept_meta: list[tuple[frozenset, float, str]] = []
+    for it in items:
+        if it.get("_gap_fill"):
+            kept.append(it)
+            kept_meta.append((frozenset(), 0.0, ""))
+            continue
+        words = _event_words(it)
+        ts = 0.0
+        raw = it.get("published_at") or it.get("occurred_at")
+        if raw:
+            try:
+                ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+            except Exception:
+                ts = 0.0
+        nid = str(it.get("id") or "")
+        placed = False
+        if words:
+            for idx, (kw, kts, kid) in enumerate(kept_meta):
+                if not kw:
+                    continue
+                # Two distinct NYSP blotter arrests never merge.
+                if nid.startswith("nysp_") and kid.startswith("nysp_"):
+                    continue
+                inter = len(words & kw)
+                union = len(words | kw)
+                jac = inter / union if union else 0.0
+                hrs = abs(ts - kts) / 3600.0 if (ts and kts) else 999.0
+                if jac >= 0.5 and inter >= 3 and hrs <= 48.0:
+                    _merge_duplicate_source(kept[idx], it)
+                    placed = True
+                    break
+        if not placed:
+            kept.append(it)
+            kept_meta.append((words, ts, nid))
+    return kept
+
+
 def _merge_duplicate_source(kept: dict, dupe: dict) -> None:
     """Fold a duplicate's source attribution into the kept incident."""
     linked = kept.get("linked_sources")
@@ -5695,6 +5755,9 @@ async def get_incidents(
                     key=lambda x: str(x.get("published_at") or x.get("occurred_at") or ""),
                     reverse=True,
                 )
+        # Collapse the same real event reported by multiple outlets into one
+        # card (kills the "7 motorcycle-crash stories" padding).
+        items = _collapse_same_event(items)
 
     # Merge gap-fill cards when the feed is quiet (keeps Live feed alive)
     gap_cards = list(_gap_fill_cards) if _gap_fill_cards else []
