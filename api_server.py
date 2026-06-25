@@ -5337,7 +5337,10 @@ _LOW_QUALITY_SOURCES = frozenset([
     "theunionstar.com", "union star",
     "philomath news", "philomath",   # Albany, OREGON area
     "wfmz", "wfmz.com",      # Allentown, PA
-    "lehigh valley", "morning call",
+    "lehigh valley", "lehighvalleylive", "morning call",
+    "wyomingnewsnow", "kgab", "cap city news", "county 10",  # Albany County, WYOMING
+    "world israel news",     # "Bethlehem"/IDF West Bank
+    "wyoming tribune", "laramie",
 ])
 
 # Albany-County primary/credible source markers — these always pass the
@@ -5862,23 +5865,78 @@ def _relative_time(dt: Optional[datetime]) -> str:
     return f"{int(secs // 86400)}d ago"
 
 
+# "Albany" and "Bethlehem" are NOT unique to NY — there's an Albany County in
+# WYOMING, an Albany in GEORGIA and OREGON, a Bethlehem in PA and the West Bank.
+# Google News returns all of them. These terms hard-disqualify an article.
+_NEWS_BLOCK_TERMS = (
+    "wyoming", "laramie", "snowy range", "reservoir lake", "albany, wy",
+    "northampton", "lehigh", "allentown", "bethlehem, pa", "whitehall",
+    "west bank", "idf", "palestin", "gaza", "hamas",
+    "williamstown", "berkshire", "albany, ga", "albany georgia",
+    "albany, or", "albany oregon", "linn county", "dougherty county",
+)
+# Names that are effectively unique to Albany County, NY.
+_ALBANY_NY_UNIQUE = frozenset({
+    "colonie", "guilderland", "cohoes", "watervliet", "menands", "green island",
+    "coeymans", "ravena", "voorheesville", "altamont", "loudonville",
+    "slingerlands", "glenmont", "selkirk", "new scotland", "feura bush",
+    "clarksville", "westmere", "mckownville", "delmar", "latham",
+    "troop g", "albany county sheriff", "albany police department",
+    "colonie police", "guilderland police", "bethlehem police",
+    "town of bethlehem", "capital region", "albany med",
+})
+_NY_CONTEXT_MARKERS = (
+    "new york", " ny ", " ny.", ",ny", ", ny", "n.y", " nys ", "upstate",
+    "hudson valley", "capital district", "capital region",
+)
+
+
+def _is_albany_ny(title: str, desc: str, source: str) -> bool:
+    """Strict Albany County, NY gate — rejects Wyoming/GA/OR/PA/West-Bank lookalikes."""
+    title_l = str(title or "").lower()
+    body = title_l + " " + str(desc or "").lower()
+    src = str(source or "").lower()
+    blob = body + " " + src
+    if any(b in blob for b in _NEWS_BLOCK_TERMS):
+        return False
+    if any(m in blob for m in _ALBANY_NY_UNIQUE):
+        return True
+    credible = any(c in src for c in _CREDIBLE_SOURCE_MARKERS)
+    if "albany" in body and (credible or any(c in blob for c in _NY_CONTEXT_MARKERS)):
+        return True
+    return False
+
+
 def _news_article_ok(article: dict) -> bool:
     """Albany-County locality + credibility gate for news articles."""
     src = str(article.get("source") or "").lower()
     if not any(c in src for c in _CREDIBLE_SOURCE_MARKERS):
         if any(bad and bad in src for bad in _LOW_QUALITY_SOURCES):
             return False
+    if not _is_albany_ny(article.get("title") or "", article.get("description") or "", article.get("source") or ""):
+        return False
     title = str(article.get("title") or "").lower()
     blob = title + " " + str(article.get("description") or "").lower()
-    names_albany = any(t in blob for t in _ALBANY_TITLE_TOKENS)
-    if not names_albany:
-        return False
     names_other = any(p in title for p in _OTHER_COUNTY_PLACES)
-    names_albany_muni = any(m in blob for m in _ALBANY_MUNI_SET) or "albany county" in blob
-    # Title dominated by another county and no Albany municipality present.
+    names_albany_muni = any(m in blob for m in _ALBANY_NY_UNIQUE) or (
+        "albany county" in blob and any(c in blob for c in _NY_CONTEXT_MARKERS)
+    )
     if names_other and not names_albany_muni:
         return False
     return True
+
+
+def _news_incident_ok(it: dict) -> bool:
+    """Strict Albany-County gate for incidents shown on the News tab."""
+    title = str(it.get("short_title") or it.get("title") or "")
+    desc = str(it.get("description") or "")
+    src = str(it.get("source_name") or "")
+    if any(b in (title + " " + desc).lower() for b in _NEWS_BLOCK_TERMS):
+        return False
+    muni = str(it.get("municipality") or "").strip().lower()
+    if muni in _ALBANY_MUNI_SET:
+        return True
+    return _is_albany_ny(title, desc, src)
 
 
 _NEWS_FEED_CACHE: dict[str, Any] = {"ts": 0.0, "items": []}
@@ -6067,7 +6125,7 @@ async def get_home_news():
         if not it.get("_gap_fill")
         and not _is_low_quality_source(it)
         and not _is_false_local_incident(it)
-        and _locality_confidence(it) >= 1
+        and _news_incident_ok(it)
     ]
 
     def _score(it: dict) -> float:
