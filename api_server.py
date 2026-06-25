@@ -5508,6 +5508,11 @@ _EVENT_STOP = frozenset({
     "police", "arrested", "charged", "accused", "suspect", "year", "old",
     "former", "two", "three", "one", "his", "her", "their", "who", "that",
     "this", "are", "has", "had", "will", "more", "than", "out", "off",
+    # Street/location-type and filler words that wrongly inflate overlap
+    # (so two different shootings on different streets don't merge).
+    "street", "avenue", "road", "drive", "lane", "place", "boulevard",
+    "route", "highway", "terrace", "court", "blvd", "incident", "reported",
+    "involving", "area", "local", "update", "identified", "investigation",
 })
 
 
@@ -5515,7 +5520,12 @@ def _event_words(it: dict) -> frozenset:
     blob = (str(it.get("short_title") or it.get("title") or "") + " "
             + str(it.get("description") or "")[:160]).lower()
     blob = re.sub(r"[^a-z0-9\s]", " ", blob)
-    return frozenset(w for w in blob.split() if len(w) > 3 and w not in _EVENT_STOP)
+    # 5-char prefix stem so variants collapse: motorcycle/motorcyclist -> motor,
+    # crash/crashing -> crash, shoot/shooting -> shoot.
+    return frozenset(
+        w[:5] for w in blob.split()
+        if len(w) > 3 and w not in _EVENT_STOP
+    )
 
 
 def _collapse_same_event(items: list[dict]) -> list[dict]:
@@ -5548,10 +5558,11 @@ def _collapse_same_event(items: list[dict]) -> list[dict]:
                 if nid.startswith("nysp_") and kid.startswith("nysp_"):
                     continue
                 inter = len(words & kw)
-                union = len(words | kw)
-                jac = inter / union if union else 0.0
+                # Overlap coefficient handles short headline vs long one (one
+                # outlet's terse title vs another's detailed one).
+                overlap = inter / min(len(words), len(kw)) if min(len(words), len(kw)) else 0.0
                 hrs = abs(ts - kts) / 3600.0 if (ts and kts) else 999.0
-                if jac >= 0.5 and inter >= 3 and hrs <= 48.0:
+                if overlap >= 0.62 and inter >= 2 and hrs <= 36.0:
                     _merge_duplicate_source(kept[idx], it)
                     placed = True
                     break
