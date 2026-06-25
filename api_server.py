@@ -4925,6 +4925,13 @@ async def _background_crime_ingest_loop(interval_s: float) -> None:
                     await fuse_recent_incidents(limit=15)
                 except Exception as fexc:
                     logger.debug("fusion_tick_skipped: %s", fexc)
+                # Warm the news-desk + NYSP blotter caches so the Live feed
+                # (which merges them) never blocks on a cold fetch.
+                try:
+                    await _fetch_albany_news()
+                    await _get_albany_nysp_cards()
+                except Exception as wexc:
+                    logger.debug("feed_cache_warm_skipped: %s", wexc)
             except Exception as exc:
                 _BACKGROUND_INGEST_STATS["crime"]["last_error"] = f"{type(exc).__name__}: {exc}"
                 logger.warning("background_crime_ingest_tick_error error=%s", exc)
@@ -5624,7 +5631,11 @@ async def get_incidents(
             news_items = await _fetch_albany_news()
         except Exception:
             news_items = []
-        if news_items:
+        try:
+            nysp_cards = await _get_albany_nysp_cards()
+        except Exception:
+            nysp_cards = []
+        if news_items or nysp_cards:
             now_n = datetime.now(timezone.utc)
 
             def _tkey(t: str) -> str:
@@ -5668,6 +5679,16 @@ async def get_incidents(
                 if uk:
                     existing_urls.add(uk)
                 added.append(_news_to_incident_card(e))
+
+            # NYSP Troop G blotter arrests (individual incidents) — the real
+            # volume source. Deduped against DB incidents + each other.
+            for card in nysp_cards:
+                key = _tkey(card.get("title"))
+                if not key or key in existing_keys:
+                    continue
+                existing_keys.add(key)
+                added.append(card)
+
             if added:
                 items = list(items) + added
                 items.sort(
@@ -6072,6 +6093,99 @@ def _news_to_incident_card(e: dict) -> dict:
         "status": "reported",
         "_from_news_desk": True,
     }
+
+
+_ALBANY_NYSP_TOWNS = frozenset({
+    "albany", "city of albany", "colonie", "guilderland", "bethlehem", "cohoes",
+    "watervliet", "green island", "menands", "coeymans", "ravena",
+    "voorheesville", "altamont", "new scotland", "berne", "knox", "westerlo",
+    "rensselaerville", "selkirk", "slingerlands", "delmar", "latham",
+    "loudonville", "glenmont", "feura bush", "clarksville",
+})
+
+_NYSP_CARD_CACHE: dict[str, Any] = {"ts": 0.0, "items": []}
+_NYSP_CARD_TTL = 900  # 15 min
+_NYSP_CARD_LOCK = asyncio.Lock()
+
+
+def _nysp_to_card(it: dict) -> dict:
+    pub = it.get("pubDate")
+    dt = None
+    if pub:
+        try:
+            dt = parsedate_to_datetime(pub)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            dt = None
+    iso = dt.astimezone(timezone.utc).isoformat() if dt else ""
+    inc = it.get("_nysp_incident_number") or hashlib.md5((it.get("title") or "").encode()).hexdigest()[:10]
+    return {
+        "id": "nysp_" + str(inc),
+        "title": it.get("title") or "NYSP Incident",
+        "short_title": it.get("title") or "",
+        "description": it.get("description") or "",
+        "severity": it.get("severity") or "medium",
+        "incident_type": it.get("crime_type") or "police_activity",
+        "municipality": it.get("municipality") or "Albany County",
+        "source_name": "NYSP Troop G Blotter",
+        "source_url": it.get("link") or "",
+        "source_type": "official",
+        "verification_level": "official",
+        "occurred_at": iso,
+        "published_at": iso,
+        "human_time": _relative_time(dt),
+        "status": "reported",
+        "responding_agency_id": "nysp_troop_g",
+        "_from_nysp_blotter": True,
+    }
+
+
+async def _get_albany_nysp_cards() -> list[dict]:
+    """Cached Albany-County NYSP Troop G blotter arrests as Live-feed cards.
+
+    The standard ingestion path wasn't persisting these (they route through a
+    separate fetch that doesn't reach the incident store), so we surface them
+    directly on the feed — deduped against DB incidents by the caller."""
+    now_ts = time.time()
+    if (now_ts - float(_NYSP_CARD_CACHE.get("ts") or 0)) < _NYSP_CARD_TTL and _NYSP_CARD_CACHE.get("items"):
+        return list(_NYSP_CARD_CACHE["items"])
+    async with _NYSP_CARD_LOCK:
+        now_ts = time.time()
+        if (now_ts - float(_NYSP_CARD_CACHE.get("ts") or 0)) < _NYSP_CARD_TTL and _NYSP_CARD_CACHE.get("items"):
+            return list(_NYSP_CARD_CACHE["items"])
+        try:
+            raw = await fetch_nysp_blotter_pdfs()
+        except Exception:
+            logger.exception("nysp blotter card fetch failed")
+            raw = []
+        now_dt = datetime.now(timezone.utc)
+        cards: list[dict] = []
+        seen_inc: set[str] = set()
+        for it in raw:
+            muni = str(it.get("municipality") or "").strip().lower()
+            if muni not in _ALBANY_NYSP_TOWNS:
+                continue
+            inc = str(it.get("_nysp_incident_number") or "")
+            if inc and inc in seen_inc:
+                continue
+            if inc:
+                seen_inc.add(inc)
+            pub = it.get("pubDate")
+            if pub:
+                try:
+                    dt = parsedate_to_datetime(pub)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if (now_dt - dt) > timedelta(hours=168):
+                        continue
+                except Exception:
+                    pass
+            cards.append(_nysp_to_card(it))
+        _NYSP_CARD_CACHE["items"] = cards
+        _NYSP_CARD_CACHE["ts"] = time.time()
+        logger.info("nysp_cards_built albany=%d from_raw=%d", len(cards), len(raw))
+        return list(cards)
 
 
 def _has_block_terms(it: dict) -> bool:
