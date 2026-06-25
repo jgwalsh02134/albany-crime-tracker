@@ -5858,28 +5858,61 @@ _NEWS_TOPIC_KEYWORDS = (
     ("emergency_services", "Emergency Services", (
         "fire", "firefighter", " ems", "paramedic", "rescue", "crash", "wreck",
         "accident", "hazmat", "evacuat", "ambulance", "first responder",
-        "rollover", "collision", "injured", "blaze",
+        "rollover", "collision", "injured", "blaze", "drowning", "missing person",
+        "search and rescue", "swatting", "lockdown", "carbon monoxide",
     )),
     ("courts_law", "Courts & Law", (
         "court", "sentenc", "lawsuit", "trial", "verdict", "district attorney",
         "pleads", "plead", "conviction", "convicted", "indict", "arraign",
         "legislation", "new law", "bill ", "judge", "grand jury", "lawsuit",
+        "appeal", "ruling", "felony", "misdemeanor", "prosecut", "settlement",
+        "attorney general", "subpoena", "testif", "u.s. attorney", "us attorney",
+        "attorney's office", "guilty", "acquit", "probation", "parole",
     )),
     ("law_enforcement", "Law Enforcement", (
         "police", "sheriff", "state police", "trooper", "arrest", "charged",
         "investigation", "suspect", "stabbing", "shooting", "robbery",
         "burglary", "theft", "assault", "drug", "homicide", "fatal", "fbi",
-        "detective", "warrant", "manhunt", "standoff",
+        "detective", "warrant", "manhunt", "standoff", "officer", "patrol",
+        "swat", "weapon", "gun", "overdose", "fentanyl", "trafficking",
+        "fraud", "scheme", "embezzle", "scam", "stolen", "larceny",
+        "kidnap", "abduct", "arson", "vandal", "dwi", "dui", "crime",
+    )),
+    ("civic", "Government & Civic", (
+        "mayor", "city council", "common council", "county executive",
+        "county legislature", "town board", "village board", "public safety",
+        "school board", "budget", "tax", "election", "vote", "polling",
+        "ordinance", "zoning", "public health", "opioid", "housing",
+        "commissioner", "press conference", "state of the city", "recall",
+        "red flag", "gun law", "policy", "department of", "task force",
+        "city hall", "legislator", "referendum", "ethics", "audit",
     )),
 )
 
+# Entertainment / lifestyle / sports fluff — dropped from the News desk so it
+# stays focused on public safety + civic affairs.
+_NEWS_FLUFF_TERMS = (
+    "things to do", "this weekend", "concert", "festival", "alive at five",
+    "afrobeats", " dj ", "to perform", "performs", "recipe", "menu", "dining",
+    "review:", "horoscope", "lottery", "best places", "where to eat",
+    "happy hour", "game recap", "playoff", "final score", "box score",
+    "movie review", "celebrity", "fashion", "shopping", "deal of the",
+    "giveaway", "raising cane", "hooters", "grand opening", "now open",
+    "coming soon", "broadway", "winery", "brewery", "food truck", "tailgate",
+    "season opener", "highlights", "tony award", "taste test", "staycation",
+    "things you", "must-try", "ribbon cutting", "farmers market", "art exhibit",
+)
 
-def _classify_news_topic(title: str, desc: str) -> tuple[str, str]:
+
+def _classify_news_topic(title: str, desc: str):
+    """Return (slug, label) for public-safety/civic news, or None for fluff."""
     blob = (str(title or "") + " " + str(desc or "")).lower()
+    if any(f in blob for f in _NEWS_FLUFF_TERMS):
+        return None
     for slug, label, kws in _NEWS_TOPIC_KEYWORDS:
         if any(k in blob for k in kws):
             return slug, label
-    return "local_news", "Local News"
+    return None
 
 
 def _build_news_feed_url(cfg: dict) -> str:
@@ -6023,9 +6056,10 @@ async def _fetch_albany_news() -> list[dict]:
                 return []
             out = []
             for a in parse_rss(resp.text, default_source=label):
-                slug, lbl = _classify_news_topic(a.get("title"), a.get("description"))
-                a["_topic"] = slug
-                a["_topic_label"] = lbl
+                cls = _classify_news_topic(a.get("title"), a.get("description"))
+                if cls is None:
+                    continue
+                a["_topic"], a["_topic_label"] = cls
                 out.append(a)
             return out
 
@@ -6046,8 +6080,15 @@ async def _fetch_albany_news() -> list[dict]:
                 return []
             out = []
             for a in parse_rss(resp.text):
-                a["_topic"] = topic
-                a["_topic_label"] = cfg["label"]
+                cls = _classify_news_topic(a.get("title"), a.get("description"))
+                if cls is None:
+                    # Trust the query bucket if it's one of the core topics.
+                    if topic in ("law_enforcement", "emergency_services", "courts_law"):
+                        a["_topic"], a["_topic_label"] = topic, cfg["label"]
+                    else:
+                        continue
+                else:
+                    a["_topic"], a["_topic_label"] = cls
                 out.append(a)
             return out
 
