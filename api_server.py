@@ -5582,6 +5582,53 @@ async def get_incidents(
     # filter is active so we don't reorder targeted results).
     if not q and not municipality:
         items = _polish_incidents(items)
+
+    # Densify the default Live feed: the ingester only stores a slice of what
+    # credible local outlets publish, so the feed looked sparse. Merge in the
+    # news-desk's recent public-safety reporting (same direct outlet feeds,
+    # deduped against DB incidents) so the tracker reflects the real volume of
+    # Albany County police/court/emergency activity.
+    if (not q and not municipality and not incident_type and not status
+            and not source_type and not severity and not tags):
+        try:
+            news_items = await _fetch_albany_news()
+        except Exception:
+            news_items = []
+        if news_items:
+            now_n = datetime.now(timezone.utc)
+            existing_keys: set[str] = set()
+            for it in items:
+                k = re.sub(r"\s+", " ", (it.get("short_title") or it.get("title") or "").lower()).strip()[:60]
+                if k:
+                    existing_keys.add(k)
+                sig = _incident_signature(it)
+                if sig:
+                    existing_keys.add(sig)
+            added: list[dict] = []
+            for e in news_items:
+                if e.get("incident_type") not in ("law_enforcement", "emergency_services", "courts_law"):
+                    continue
+                raw = e.get("published_at") or e.get("occurred_at")
+                dt = None
+                if raw:
+                    try:
+                        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                    except Exception:
+                        dt = None
+                if dt and (now_n - dt) > timedelta(hours=72):
+                    continue
+                key = re.sub(r"\s+", " ", (e.get("title") or "").lower()).strip()[:60]
+                if not key or key in existing_keys:
+                    continue
+                existing_keys.add(key)
+                added.append(_news_to_incident_card(e))
+            if added:
+                items = list(items) + added
+                items.sort(
+                    key=lambda x: str(x.get("published_at") or x.get("occurred_at") or ""),
+                    reverse=True,
+                )
+
     # Merge gap-fill cards when the feed is quiet (keeps Live feed alive)
     gap_cards = list(_gap_fill_cards) if _gap_fill_cards else []
     if gap_cards and not q:
@@ -5924,6 +5971,61 @@ _NEWS_SOFT_FLUFF = (
 def _is_news_fluff(title: str, desc: str = "") -> bool:
     blob = (str(title or "") + " " + str(desc or "")).lower()
     return any(f in blob for f in _NEWS_HARD_FLUFF) or any(f in blob for f in _NEWS_SOFT_FLUFF)
+
+
+_NEWS_TOPIC_TO_TYPE = {
+    "law_enforcement": "police_activity",
+    "emergency_services": "emergency",
+    "courts_law": "police_activity",
+    "civic": "police_activity",
+}
+
+
+def _muni_from_text(text: str) -> str:
+    t = (text or "").lower()
+    for m in (
+        "city of albany", "colonie", "guilderland", "cohoes", "watervliet",
+        "menands", "green island", "coeymans", "ravena", "voorheesville",
+        "altamont", "latham", "loudonville", "delmar", "slingerlands",
+        "glenmont", "selkirk", "new scotland", "bethlehem",
+    ):
+        if m in t:
+            return "City of Albany" if m in ("city of albany",) else m.title()
+    if "albany" in t:
+        return "City of Albany"
+    return "Albany County"
+
+
+def _news_to_incident_card(e: dict) -> dict:
+    """Convert a news-desk article into a Live-feed incident card so credible
+    public-safety reporting (that the ingester didn't store as an incident)
+    still surfaces on the tracker."""
+    title = e.get("title") or ""
+    summary = e.get("summary") or ""
+    topic = e.get("incident_type") or ""
+    sev = "high" if topic == "law_enforcement" and any(
+        w in (title + " " + summary).lower()
+        for w in ("shooting", "shot", "homicide", "murder", "stabbing", "fatal", "armed")
+    ) else "medium"
+    return {
+        "id": e.get("id") or ("news_" + hashlib.md5((e.get("source_url") or title).encode()).hexdigest()[:12]),
+        "title": title,
+        "short_title": title,
+        "description": summary,
+        "severity": sev,
+        "incident_type": _NEWS_TOPIC_TO_TYPE.get(topic, "police_activity"),
+        "municipality": _muni_from_text(title + " " + summary),
+        "source_name": e.get("source_name") or "Local News",
+        "source_url": e.get("source_url") or "",
+        "source_type": "local_news",
+        "verification_level": "media",
+        "occurred_at": e.get("occurred_at") or e.get("published_at"),
+        "published_at": e.get("published_at"),
+        "human_time": e.get("human_time") or "",
+        "image_url": e.get("image_url") or "",
+        "status": "reported",
+        "_from_news_desk": True,
+    }
 
 
 def _is_non_incident_fluff(it: dict) -> bool:
