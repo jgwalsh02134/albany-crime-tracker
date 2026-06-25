@@ -6263,6 +6263,7 @@ async def get_home_news():
     return {
         "status": "ok",
         "source": incident_store_backend(),
+        "news_feed_count": len(news_entries),
         "major_stories": major_stories,
         "developing_stories": developing_stories,
         "headlines": headlines,
