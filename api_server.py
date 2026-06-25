@@ -5891,44 +5891,53 @@ _NEWS_TOPIC_KEYWORDS = (
 
 # Entertainment / lifestyle / sports fluff — dropped from the News desk so it
 # stays focused on public safety + civic affairs.
-_NEWS_FLUFF_TERMS = (
+# HARD fluff — events/lifestyle that are NEVER public safety. Checked before
+# topic keywords so 'fireworks' can't slip through on the 'fire' substring.
+_NEWS_HARD_FLUFF = (
     "things to do", "this weekend", "concert", "festival", "alive at five",
-    "afrobeats", " dj ", "to perform", "performs", "recipe", "menu", "dining",
-    "review:", "horoscope", "lottery", "best places", "where to eat",
+    "afrobeats", " dj ", "to perform", "performs", "performing", "recipe",
+    "horoscope", "lottery", "best places", "where to eat", "where to watch",
     "happy hour", "game recap", "playoff", "final score", "box score",
-    "movie review", "celebrity", "fashion", "shopping", "deal of the",
-    "giveaway", "raising cane", "hooters", "grand opening", "now open",
-    "coming soon", "broadway", "winery", "brewery", "food truck", "tailgate",
-    "season opener", "highlights", "tony award", "taste test", "staycation",
-    "things you", "must-try", "ribbon cutting", "farmers market", "art exhibit",
-    "fireworks", "where to watch", "championship", "tournament", "idol",
-    "the voice", "got talent", "pageant", "contestant", "fresh off winning",
-    "gold medal", "restaurant", "closes after", "best of the",
+    "movie review", "celebrity", "fashion", "deal of the", "giveaway",
+    "broadway", "tailgate", "season opener", "tony award", "taste test",
+    "staycation", "things you", "must-try", "art exhibit", "fireworks",
+    "championship", "tournament", "idol", "the voice", "got talent", "pageant",
+    "contestant", "fresh off winning", "gold medal", "best of the",
+    "fair season", "county fair", "fair schedule", "concert series",
+    "things to know about", "summer guide", "bucket list",
+)
+# SOFT fluff — venues/biz items that should drop ONLY when there is no
+# public-safety hook (so 'robbery at a restaurant' is still kept).
+_NEWS_SOFT_FLUFF = (
+    "menu", "dining", "review:", "shopping", "raising cane", "hooters",
+    "grand opening", "now open", "coming soon", "winery", "brewery",
+    "food truck", "ribbon cutting", "farmers market", "restaurant",
+    "closes after", "reopens", "new location", "expansion", "highlights",
 )
 
 
 def _is_news_fluff(title: str, desc: str = "") -> bool:
     blob = (str(title or "") + " " + str(desc or "")).lower()
-    return any(f in blob for f in _NEWS_FLUFF_TERMS)
+    return any(f in blob for f in _NEWS_HARD_FLUFF) or any(f in blob for f in _NEWS_SOFT_FLUFF)
 
 
 def _classify_news_topic(title: str, desc: str):
     """Return (slug, label) for public-safety/civic news, or None for fluff.
 
-    Public-safety topics (law enforcement / emergency / courts) win first so a
-    'shooting outside a restaurant' is kept; fluff terms only drop items that
-    have no public-safety hook.
+    Hard fluff (events/lifestyle) drops first. Then public-safety topics win
+    over soft fluff so 'shooting outside a restaurant' is kept while
+    'restaurant grand opening' is dropped.
     """
     blob = (str(title or "") + " " + str(desc or "")).lower()
-    # Core public-safety buckets take priority over any fluff term.
+    if any(f in blob for f in _NEWS_HARD_FLUFF):
+        return None
     for slug, label, kws in _NEWS_TOPIC_KEYWORDS:
         if slug == "civic":
             continue
         if any(k in blob for k in kws):
             return slug, label
-    if _is_news_fluff(title, desc):
+    if any(f in blob for f in _NEWS_SOFT_FLUFF):
         return None
-    # Civic/government news (only after fluff is excluded).
     for slug, label, kws in _NEWS_TOPIC_KEYWORDS:
         if slug == "civic" and any(k in blob for k in kws):
             return slug, label
