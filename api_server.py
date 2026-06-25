@@ -5517,8 +5517,8 @@ _EVENT_STOP = frozenset({
 
 
 def _event_words(it: dict) -> frozenset:
-    blob = (str(it.get("short_title") or it.get("title") or "") + " "
-            + str(it.get("description") or "")[:160]).lower()
+    # Title only — outlet descriptions diverge too much and defeat the overlap.
+    blob = str(it.get("short_title") or it.get("title") or "").lower()
     blob = re.sub(r"[^a-z0-9\s]", " ", blob)
     # 5-char prefix stem so variants collapse: motorcycle/motorcyclist -> motor,
     # crash/crashing -> crash, shoot/shooting -> shoot.
