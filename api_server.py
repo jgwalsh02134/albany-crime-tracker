@@ -5568,9 +5568,14 @@ async def get_incidents(
     # Filter out false-local (wrong-state) + low-credibility/scraped sources
     # so the Live feed shows trustworthy Albany County reporting, not Google
     # News junk (facebook scrapes, out-of-area aggregators, content farms).
+    # Also drop non-public-safety fluff (e.g. "Hooters closes after 15 years")
+    # that the ingester mis-tagged as police activity — the Live feed is a
+    # police/crime tracker, not a local-business newsletter.
     items = [
         it for it in items
-        if not _is_false_local_incident(it) and not _is_low_quality_source(it)
+        if not _is_false_local_incident(it)
+        and not _is_low_quality_source(it)
+        and not _is_non_incident_fluff(it)
     ]
     # Output-quality polish: dedup repeats, normalize City of Albany, demote
     # clearly-out-of-county items (skip when a specific query/municipality
@@ -5919,6 +5924,23 @@ _NEWS_SOFT_FLUFF = (
 def _is_news_fluff(title: str, desc: str = "") -> bool:
     blob = (str(title or "") + " " + str(desc or "")).lower()
     return any(f in blob for f in _NEWS_HARD_FLUFF) or any(f in blob for f in _NEWS_SOFT_FLUFF)
+
+
+def _is_non_incident_fluff(it: dict) -> bool:
+    """True when an 'incident' is really non-public-safety fluff that the
+    ingester mis-tagged (e.g. a restaurant closing). Public-safety hooks always
+    win so real incidents at fluffy venues ('robbery at a restaurant') stay."""
+    title = str(it.get("short_title") or it.get("title") or "")
+    desc = str(it.get("description") or "")
+    blob = (title + " " + desc).lower()
+    if any(f in blob for f in _NEWS_HARD_FLUFF):
+        return True
+    for slug, label, kws in _NEWS_TOPIC_KEYWORDS:
+        if slug == "civic":
+            continue
+        if any(k in blob for k in kws):
+            return False
+    return any(f in blob for f in _NEWS_SOFT_FLUFF)
 
 
 def _classify_news_topic(title: str, desc: str):
