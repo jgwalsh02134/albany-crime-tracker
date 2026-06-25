@@ -1908,8 +1908,14 @@ def _pubdate_within_max_age(article: dict) -> bool:
     except Exception:
         return True
     age_h = (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
+    # Official blotter entries (NYSP Troop G) are inherently a few days delayed;
+    # give them a wider window so a week of real arrests can surface instead of
+    # just the last 72h.
+    max_age = _FEED_MAX_AGE_HOURS
+    if str(article.get("guid", "")).startswith("nysp-") or "blotter" in str(article.get("source_name", "")).lower():
+        max_age = max(max_age, 168.0)
     # Allow small future skew; drop anything older than the backstop.
-    return age_h <= _FEED_MAX_AGE_HOURS
+    return age_h <= max_age
 
 
 # Article thumbnail cache: link/guid -> image_url. Populated in parse_rss on
@@ -3884,6 +3890,19 @@ def _build_nysp_title(category: str, status: str, municipality: str, fields: dic
 
     if municipality and municipality != "Albany County":
         label = f"{label} — {municipality}"
+    # Distinguishing detail so multiple same-type arrests in the same town
+    # aren't visually identical (and read as informative blotter entries).
+    detail = ""
+    name = (fields.get("defendant_name") or "").strip()
+    if name and name.lower() not in ("", "n/a", "none", "unknown"):
+        age = (fields.get("defendant_age") or "").strip()
+        detail = f"{name}, {age}" if age else name
+    elif fields.get("charges"):
+        detail = str(fields["charges"][0])
+    elif (fields.get("road") or "").strip():
+        detail = fields["road"].strip()
+    if detail:
+        label = f"{label} ({detail})"
     return label[:200]
 
 
@@ -4423,6 +4442,16 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
 
     def _same_incident(art: dict, rep: dict) -> bool:
         """Same story if titles match strongly OR shared critical incident signals in time window."""
+        # Blotter entries (NYSP Troop G) are individually distinct arrests with
+        # unique incident numbers. Their titles look identical ("NYSP DWI Arrest
+        # — Albany"), so generic title-similarity wrongly collapsed ~240 real
+        # arrests down to a handful. Treat them as the same ONLY when the
+        # incident number matches exactly.
+        ga_raw = str(art.get("guid", "") or "")
+        gb_raw = str(rep.get("guid", "") or "")
+        if ga_raw.startswith("nysp-") or gb_raw.startswith("nysp-"):
+            return bool(ga_raw) and ga_raw == gb_raw
+
         t1 = art.get("title", "") or ""
         t2 = rep.get("title", "") or ""
         full_a = (t1 + " " + (art.get("description", "") or ""))[:1200]
@@ -5576,6 +5605,7 @@ async def get_incidents(
         if not _is_false_local_incident(it)
         and not _is_low_quality_source(it)
         and not _is_non_incident_fluff(it)
+        and not _has_block_terms(it)
     ]
     # Output-quality polish: dedup repeats, normalize City of Albany, demote
     # clearly-out-of-county items (skip when a specific query/municipality
@@ -6044,6 +6074,18 @@ def _news_to_incident_card(e: dict) -> dict:
     }
 
 
+def _has_block_terms(it: dict) -> bool:
+    """True when an incident mentions a hard out-of-area marker (Albany County
+    WYOMING, Bethlehem PA / West Bank, Albany GA/OR, Lehigh Valley, etc.) that
+    Google News conflated with Albany County, NY."""
+    blob = (
+        str(it.get("short_title") or it.get("title") or "") + " "
+        + str(it.get("description") or "") + " "
+        + str(it.get("source_name") or "")
+    ).lower()
+    return any(b in blob for b in _NEWS_BLOCK_TERMS)
+
+
 def _is_non_incident_fluff(it: dict) -> bool:
     """True when an 'incident' is really non-public-safety fluff that the
     ingester mis-tagged (e.g. a restaurant closing). Public-safety hooks always
@@ -6118,6 +6160,7 @@ _NEWS_BLOCK_TERMS = (
     "west bank", "idf", "palestin", "gaza", "hamas",
     "williamstown", "berkshire", "albany, ga", "albany georgia",
     "albany, or", "albany oregon", "linn county", "dougherty county",
+    "cheyenne", "casper", "k2 radio", "your wyoming", "wyoming life",
 )
 # Names that are effectively unique to Albany County, NY.
 _ALBANY_NY_UNIQUE = frozenset({
