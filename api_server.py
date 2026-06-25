@@ -6103,6 +6103,16 @@ _ALBANY_NYSP_TOWNS = frozenset({
     "loudonville", "glenmont", "feura bush", "clarksville",
 })
 
+# Administrative / non-incident blotter categories that aren't meaningful
+# police activity for the tracker (vehicle admin, property logs, civil matters).
+_NYSP_SKIP_CATEGORIES = (
+    "impound", "repossess", "disabled", "lost/stolen plate", "lost plate",
+    "abandoned vehicle", "vehicle - lost", "vehicle - found", "lockout",
+    "motorist", "found property", "lost property", "civil", "non-criminal",
+    "directed patrol", "escort", "relay", "vehicle - tow", "vehicle - parking",
+    "license plate", "vin", "property - found", "property - lost",
+)
+
 _NYSP_CARD_CACHE: dict[str, Any] = {"ts": 0.0, "items": []}
 _NYSP_CARD_TTL = 900  # 15 min
 _NYSP_CARD_LOCK = asyncio.Lock()
@@ -6165,6 +6175,9 @@ async def _get_albany_nysp_cards() -> list[dict]:
         for it in raw:
             muni = str(it.get("municipality") or "").strip().lower()
             if muni not in _ALBANY_NYSP_TOWNS:
+                continue
+            cat = str(it.get("_nysp_incident_category") or "").lower()
+            if any(s in cat for s in _NYSP_SKIP_CATEGORIES):
                 continue
             inc = str(it.get("_nysp_incident_number") or "")
             if inc and inc in seen_inc:
