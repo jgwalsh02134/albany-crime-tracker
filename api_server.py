@@ -5596,14 +5596,27 @@ async def get_incidents(
             news_items = []
         if news_items:
             now_n = datetime.now(timezone.utc)
+
+            def _tkey(t: str) -> str:
+                return re.sub(r"\s+", " ", (t or "").lower()).strip()[:60]
+
+            def _ukey(u: str) -> str:
+                return (u or "").split("?")[0].rstrip("/").lower()
+
             existing_keys: set[str] = set()
+            existing_urls: set[str] = set()
             for it in items:
-                k = re.sub(r"\s+", " ", (it.get("short_title") or it.get("title") or "").lower()).strip()[:60]
-                if k:
-                    existing_keys.add(k)
+                for fld in (it.get("title"), it.get("short_title")):
+                    k = _tkey(fld)
+                    if k:
+                        existing_keys.add(k)
                 sig = _incident_signature(it)
                 if sig:
                     existing_keys.add(sig)
+                for u in (it.get("source_url"), it.get("external_ref")):
+                    uk = _ukey(u)
+                    if uk:
+                        existing_urls.add(uk)
             added: list[dict] = []
             for e in news_items:
                 if e.get("incident_type") not in ("law_enforcement", "emergency_services", "courts_law"):
@@ -5617,10 +5630,13 @@ async def get_incidents(
                         dt = None
                 if dt and (now_n - dt) > timedelta(hours=72):
                     continue
-                key = re.sub(r"\s+", " ", (e.get("title") or "").lower()).strip()[:60]
-                if not key or key in existing_keys:
+                key = _tkey(e.get("title"))
+                uk = _ukey(e.get("source_url"))
+                if not key or key in existing_keys or (uk and uk in existing_urls):
                     continue
                 existing_keys.add(key)
+                if uk:
+                    existing_urls.add(uk)
                 added.append(_news_to_incident_card(e))
             if added:
                 items = list(items) + added
