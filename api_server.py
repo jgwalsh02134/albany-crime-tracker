@@ -5840,6 +5840,48 @@ NEWS_TOPIC_FEEDS = {
 }
 
 
+# Direct outlet RSS feeds — these are the reliable backbone (Google News
+# rate-limits the server IP, so we can't depend on it). These WordPress / CMS
+# feeds return Albany-area news across all topics without throttling.
+NEWS_DIRECT_FEEDS = [
+    ("https://www.news10.com/news/albany-county/feed/", "News10 ABC"),
+    ("https://www.news10.com/news/local-news/feed/", "News10 ABC"),
+    ("https://www.news10.com/news/crime/feed/", "News10 ABC Crime"),
+    ("https://www.news10.com/news/your-local-election-hq/feed/", "News10 ABC"),
+    ("https://wnyt.com/feed/", "WNYT"),
+    ("https://cbs6albany.com/news/local.rss", "CBS6 Albany"),
+    ("https://www.dailygazette.com/spotlightnews/news/crime/feed/", "Daily Gazette"),
+    ("https://www.spotlightnews.com/feed/", "Spotlight News"),
+]
+
+_NEWS_TOPIC_KEYWORDS = (
+    ("emergency_services", "Emergency Services", (
+        "fire", "firefighter", " ems", "paramedic", "rescue", "crash", "wreck",
+        "accident", "hazmat", "evacuat", "ambulance", "first responder",
+        "rollover", "collision", "injured", "blaze",
+    )),
+    ("courts_law", "Courts & Law", (
+        "court", "sentenc", "lawsuit", "trial", "verdict", "district attorney",
+        "pleads", "plead", "conviction", "convicted", "indict", "arraign",
+        "legislation", "new law", "bill ", "judge", "grand jury", "lawsuit",
+    )),
+    ("law_enforcement", "Law Enforcement", (
+        "police", "sheriff", "state police", "trooper", "arrest", "charged",
+        "investigation", "suspect", "stabbing", "shooting", "robbery",
+        "burglary", "theft", "assault", "drug", "homicide", "fatal", "fbi",
+        "detective", "warrant", "manhunt", "standoff",
+    )),
+)
+
+
+def _classify_news_topic(title: str, desc: str) -> tuple[str, str]:
+    blob = (str(title or "") + " " + str(desc or "")).lower()
+    for slug, label, kws in _NEWS_TOPIC_KEYWORDS:
+        if any(k in blob for k in kws):
+            return slug, label
+    return "local_news", "Local News"
+
+
 def _build_news_feed_url(cfg: dict) -> str:
     q = f"{_ALBANY_GEO} {cfg['terms']} when:{cfg.get('when', '3d')}"
     return (
@@ -5963,13 +6005,31 @@ async def _fetch_albany_news() -> list[dict]:
         if http_client is None:
             return list(_NEWS_FEED_CACHE.get("items") or [])
 
-        gnews_headers = {
+        browser_headers = {
             "User-Agent": _GNEWS_BROWSER_UA,
             "Accept": "application/rss+xml, application/xml, text/xml, */*",
             "Accept-Language": "en-US,en;q=0.9",
         }
 
-        async def _one(topic: str, cfg: dict) -> list[dict]:
+        async def _direct(url: str, label: str) -> list[dict]:
+            try:
+                resp = await fetch_with_retry(
+                    http_client, url, timeout=settings.external_timeout_seconds,
+                    retries=2, headers=browser_headers,
+                )
+            except Exception:
+                return []
+            if not resp or resp.status_code != 200:
+                return []
+            out = []
+            for a in parse_rss(resp.text, default_source=label):
+                slug, lbl = _classify_news_topic(a.get("title"), a.get("description"))
+                a["_topic"] = slug
+                a["_topic_label"] = lbl
+                out.append(a)
+            return out
+
+        async def _gnews(topic: str, cfg: dict) -> list[dict]:
             url = _build_news_feed_url(cfg)
             if _check_gnews_blocked(url):
                 return []
@@ -5977,7 +6037,7 @@ async def _fetch_albany_news() -> list[dict]:
                 async with _GNEWS_SEMAPHORE:
                     resp = await fetch_with_retry(
                         http_client, url, timeout=settings.external_timeout_seconds,
-                        retries=1, headers=gnews_headers,
+                        retries=1, headers=browser_headers,
                     )
                     await asyncio.sleep(0.2)
             except Exception:
@@ -5991,11 +6051,10 @@ async def _fetch_albany_news() -> list[dict]:
                 out.append(a)
             return out
 
+        tasks = [_direct(u, lbl) for u, lbl in NEWS_DIRECT_FEEDS]
+        tasks += [_gnews(t, c) for t, c in NEWS_TOPIC_FEEDS.items()]
         try:
-            batches = await asyncio.gather(
-                *[_one(t, c) for t, c in NEWS_TOPIC_FEEDS.items()],
-                return_exceptions=True,
-            )
+            batches = await asyncio.gather(*tasks, return_exceptions=True)
         except Exception:
             batches = []
 
