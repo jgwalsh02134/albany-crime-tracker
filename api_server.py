@@ -5901,16 +5901,36 @@ _NEWS_FLUFF_TERMS = (
     "coming soon", "broadway", "winery", "brewery", "food truck", "tailgate",
     "season opener", "highlights", "tony award", "taste test", "staycation",
     "things you", "must-try", "ribbon cutting", "farmers market", "art exhibit",
+    "fireworks", "where to watch", "championship", "tournament", "idol",
+    "the voice", "got talent", "pageant", "contestant", "fresh off winning",
+    "gold medal", "restaurant", "closes after", "best of the",
 )
 
 
-def _classify_news_topic(title: str, desc: str):
-    """Return (slug, label) for public-safety/civic news, or None for fluff."""
+def _is_news_fluff(title: str, desc: str = "") -> bool:
     blob = (str(title or "") + " " + str(desc or "")).lower()
-    if any(f in blob for f in _NEWS_FLUFF_TERMS):
-        return None
+    return any(f in blob for f in _NEWS_FLUFF_TERMS)
+
+
+def _classify_news_topic(title: str, desc: str):
+    """Return (slug, label) for public-safety/civic news, or None for fluff.
+
+    Public-safety topics (law enforcement / emergency / courts) win first so a
+    'shooting outside a restaurant' is kept; fluff terms only drop items that
+    have no public-safety hook.
+    """
+    blob = (str(title or "") + " " + str(desc or "")).lower()
+    # Core public-safety buckets take priority over any fluff term.
     for slug, label, kws in _NEWS_TOPIC_KEYWORDS:
+        if slug == "civic":
+            continue
         if any(k in blob for k in kws):
+            return slug, label
+    if _is_news_fluff(title, desc):
+        return None
+    # Civic/government news (only after fluff is excluded).
+    for slug, label, kws in _NEWS_TOPIC_KEYWORDS:
+        if slug == "civic" and any(k in blob for k in kws):
             return slug, label
     return None
 
@@ -6226,6 +6246,7 @@ async def get_home_news():
         and not _is_low_quality_source(it)
         and not _is_false_local_incident(it)
         and _news_incident_ok(it)
+        and _classify_news_topic(it.get("short_title") or it.get("title"), it.get("description")) is not None
     ]
 
     def _score(it: dict) -> float:
