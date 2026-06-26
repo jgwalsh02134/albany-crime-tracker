@@ -30,6 +30,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from email.utils import format_datetime, parsedate_to_datetime
 from urllib.parse import quote, quote_plus, urlparse
 from typing import Any, Optional
@@ -3783,10 +3784,13 @@ def _extract_nysp_fields(block: str) -> dict[str, Any]:
 
 
 def _parse_nysp_datetime(raw: str) -> Optional[datetime]:
-    """Parse NYSP date/time strings in the formats found in blotter PDFs."""
+    """Parse NYSP date/time strings in the formats found in blotter PDFs.
+
+    Blotter timestamps are local Eastern time; normalize to UTC for storage."""
     if not raw:
         return None
     raw = raw.strip()
+    ny_tz = ZoneInfo("America/New_York")
     for fmt in (
         "%B %d, %Y %I:%M %p",
         "%B %d, %Y %H:%M",
@@ -3797,7 +3801,8 @@ def _parse_nysp_datetime(raw: str) -> Optional[datetime]:
         "%m/%d/%y %H:%M",
     ):
         try:
-            return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+            local = datetime.strptime(raw, fmt).replace(tzinfo=ny_tz)
+            return local.astimezone(timezone.utc)
         except ValueError:
             continue
     return None
@@ -5795,6 +5800,8 @@ async def get_incidents(
         # card (kills the "7 motorcycle-crash stories" padding).
         items = _collapse_same_event(items)
 
+    _refresh_incident_human_times(items)
+
     # Merge gap-fill cards when the feed is quiet (keeps Live feed alive)
     gap_cards = list(_gap_fill_cards) if _gap_fill_cards else []
     if gap_cards and not q:
@@ -6226,7 +6233,7 @@ _NYSP_SKIP_CATEGORIES = (
 )
 
 _NYSP_CARD_CACHE: dict[str, Any] = {"ts": 0.0, "items": [], "ver": 0}
-_NYSP_CARD_CACHE_VER = 2  # bump when card/dedup logic changes
+_NYSP_CARD_CACHE_VER = 3  # bump when card/dedup/timezone logic changes
 _NYSP_CARD_TTL = 900  # 15 min
 _NYSP_CARD_LOCK = asyncio.Lock()
 
@@ -6404,6 +6411,22 @@ def _relative_time(dt: Optional[datetime]) -> str:
     if secs < 86400:
         return f"{int(secs // 3600)}h ago"
     return f"{int(secs // 86400)}d ago"
+
+
+def _refresh_incident_human_times(items: list[dict]) -> None:
+    """Recompute human_time from published_at on every response — never serve
+    stale relative strings baked into NYSP cache or DB projections."""
+    for it in items:
+        raw = it.get("published_at") or it.get("occurred_at")
+        if not raw:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            it["human_time"] = _relative_time(dt)
+        except Exception:
+            pass
 
 
 # "Albany" and "Bethlehem" are NOT unique to NY — there's an Albany County in

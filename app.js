@@ -2426,7 +2426,8 @@
     var sourceName = item.source || item.source_name || "Unknown source";
     var verify = item.verification_level || "unknown";
     var title = item.short_title || item.title || "Untitled";
-    var ta = item.human_time || feedAgeCompact(item);
+    var ta = item.pubDate ? feedAgeCompact(item) : (item.human_time || "");
+    if (!ta && item.human_time) ta = item.human_time;
     var area = _resolveDisplayMunicipality(item);
     var summary = item.summary || item.description || "";
     var sev = (item.severity || "unknown").toLowerCase();
@@ -2987,7 +2988,8 @@
     var area = _resolveDisplayMunicipality(item);
     var sourceName = item.source || item.source_name || "";
     var desc = item.description || item.summary || "";
-    var ta = item.human_time || feedAgeCompact(item);
+    var ta = item.pubDate ? feedAgeCompact(item) : (item.human_time || "");
+    if (!ta && item.human_time) ta = item.human_time;
     var link = resolveIncidentCardHref(item);
     var reportType = _reportTypeLabel(type, sev, item);
     var dept = _agencyDisplayName(item.responding_agency_id) || _deptFromSource(sourceName, item);
