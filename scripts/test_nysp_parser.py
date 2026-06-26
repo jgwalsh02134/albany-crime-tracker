@@ -144,8 +144,14 @@ def test_municipality_extraction():
 
 
 def test_datetime_parsing():
+    from zoneinfo import ZoneInfo
+    ny = ZoneInfo("America/New_York")
     dt1 = _parse_nysp_datetime("March 27, 2026 08:58 PM")
-    _report("datetime_long_format", dt1 is not None and dt1.hour == 20 and dt1.minute == 58)
+    local1 = dt1.astimezone(ny) if dt1 else None
+    _report(
+        "datetime_long_format",
+        local1 is not None and local1.hour == 20 and local1.minute == 58,
+    )
     dt2 = _parse_nysp_datetime("03/28/2026 01:43 PM")
     _report("datetime_short_format", dt2 is not None and dt2.day == 28)
     _report("datetime_empty", _parse_nysp_datetime("") is None)
