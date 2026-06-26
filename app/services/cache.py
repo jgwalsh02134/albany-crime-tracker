@@ -24,6 +24,7 @@ DEFAULT_TTLS: dict[str, int] = {
     "monthly_summary": 1800,
     "daily_summary": 600,
     "social_intel": 900,
+    "social_intel_v2": 900,
     "grok_official_x_posts_v2": 90,
     "nitter_official_x_v2": 180,
     "official_x_combined_v2": 120,

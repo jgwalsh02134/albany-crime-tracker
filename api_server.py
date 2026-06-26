@@ -5578,6 +5578,11 @@ _OTHER_COUNTY_PLACES = frozenset({
     "malta", "wilton", "greenwich", "cambridge", "fonda", "broadalbin",
     "northumberland", "stillwater", "halfmoon", "waterford", "scotia",
     "cobleskill", "schoharie", "philomath", "allentown", "corvallis",
+    # Adjacent / Capital Region counties outside Albany County
+    "dutchess", "dutchess county", "ulster", "ulster county", "orange county",
+    "putnam", "rockland", "westchester", "sullivan", "greene county",
+    "columbia county", "montgomery county", "fulton county", "herkimer",
+    "niskayuna",  # Schenectady Co. — only demote when no Albany anchor in title
 })
 
 _ALBANY_TITLE_TOKENS = (
@@ -5601,9 +5606,17 @@ def _locality_confidence(it: dict) -> int:
     if muni in _ALBANY_MUNI_SET:
         return 2
     title = (it.get("short_title") or it.get("title") or "").lower()
-    names_albany = any(t in title for t in _ALBANY_TITLE_TOKENS)
+    desc = (it.get("description") or "").lower()
+    blob = f"{title} {desc}"
+    names_albany = any(t in title for t in _ALBANY_TITLE_TOKENS) or "albany county" in blob
     names_other = any(p in title for p in _OTHER_COUNTY_PLACES)
+    # Title names another county (e.g. Dutchess County) — drop unless Albany muni also named
+    if re.search(r"\b(dutchess|ulster|orange|putnam|rockland|westchester|sullivan|greene|columbia)\s+county\b", title):
+        if not names_albany:
+            return 0
     if names_other and not names_albany:
+        return 0
+    if muni == "albany county" and names_other and not names_albany:
         return 0
     if muni == "albany county" or names_albany:
         return 1
@@ -6002,13 +6015,14 @@ async def _densify_live_feed_items(items: list[dict]) -> list[dict]:
 
 
 def _filter_live_incidents(items: list[dict]) -> list[dict]:
-    return [
+    filtered = [
         it for it in items
         if not _is_false_local_incident(it)
         and not _is_low_quality_source(it)
         and not _is_non_incident_fluff(it)
         and not _has_block_terms(it)
     ]
+    return [it for it in filtered if _locality_confidence(it) >= 1 or it.get("_gap_fill")]
 
 
 async def _build_live_incident_feed(
@@ -6788,6 +6802,12 @@ def _classify_news_topic(title: str, desc: str):
     blob = (str(title or "") + " " + str(desc or "")).lower()
     if any(f in blob for f in _NEWS_HARD_FLUFF):
         return None
+    # Violent crime before emergency_services — avoids "shots fired" → fire
+    if any(k in blob for k in (
+        "shots fired", "shooting", "shot and killed", "person shot", "gunshot",
+        "stabbing", "stabbed", "homicide", "murder",
+    )):
+        return "law_enforcement", "Law Enforcement"
     for slug, label, kws in _NEWS_TOPIC_KEYWORDS:
         if slug == "civic":
             continue
@@ -7974,7 +7994,7 @@ async def get_social_intel():
     """
     Recent Albany County law-enforcement posts on X.com — Nitter RSS + xAI x_search.
     """
-    cached = get_cached("social_intel")
+    cached = get_cached("social_intel_v2")
     if cached is not None:
         return {"status": "ok", "source": "cache", "items": cached}
 
@@ -8010,7 +8030,7 @@ async def get_social_intel():
         return {"status": "error", "items": [], "message": "AI not configured"}
 
     if items:
-        set_cached("social_intel", items)
+        set_cached("social_intel_v2", items)
         return {"status": "ok", "source": "live", "items": items}
 
     return {"status": "ok", "source": "live", "items": [], "message": "No recent X posts found"}

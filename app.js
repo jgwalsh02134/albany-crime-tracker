@@ -2590,14 +2590,14 @@
     var cat = (item.category || item._nysp_incident_category || "").toLowerCase();
     if (item._gap_fill) return "Monitoring";
     if (sev === "critical") return "CRITICAL INCIDENT";
-    if (/\bshoot/i.test(cat) || /\bshoot/i.test(item.title || "")) return "Shooting";
+    if (/\bshoot|shots fired|gunfire/i.test(cat) || /\bshoot|shots fired|gunfire/i.test(item.title || "")) return "Shooting";
     if (/\bstab/i.test(cat) || /\bstab/i.test(item.title || "")) return "Stabbing";
     if (/\bassault/i.test(cat)) return "Assault";
     if (/\brobbery/i.test(cat)) return "Robbery";
     if (/\bburglary/i.test(cat)) return "Burglary";
     if (/\barrest/i.test(cat) || /\barrest/i.test(item.title || "")) return "Arrest";
     if (/\bcrash|mva|accident|collision/i.test(cat) || /\bcrash/i.test(item.title || "")) return "Crash";
-    if (/\bfire/i.test(cat) || /\bfire/i.test(item.title || "")) return "Fire";
+    if (/\bfire/i.test(cat) || (/\bfire/i.test(item.title || "") && !/\bfired\b/i.test(item.title || ""))) return "Fire";
     if (/\bmissing/i.test(cat)) return "Missing Person";
     if (/\bpursuit|chase/i.test(cat)) return "Pursuit";
     if (/\bdwi|dui/i.test(cat)) return "DWI Arrest";
