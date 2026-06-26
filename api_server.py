@@ -2383,6 +2383,12 @@ def evaluate_strict_albany_county(article: dict) -> tuple[bool, str]:
     if article.get("_scanner_call") or article.get("_scanner_feed_link"):
         return True, "albany_county_scanner_feed"
 
+    if article.get("_official_x_post"):
+        if not _official_x_post_local_ok(article):
+            return False, "official_x_not_local"
+        h = _official_x_handle_from_article(article)
+        return True, f"official_x_whitelist:{h or 'unknown'}"
+
     if _is_nysp_blotter_article(article):
         raw_muni = (article.get("municipality") or "").strip()
         if not raw_muni:
@@ -2676,6 +2682,8 @@ def is_real_local_incident(article: dict) -> bool:
         return False
 
     if article.get("_official_x_post"):
+        if not _official_x_post_local_ok(article):
+            return False
         if live_safety_signal_match(article) or ongoing_public_safety_relevance(article):
             return True
         if any(k in combined for k in URGENT_KEYWORDS):
@@ -3078,6 +3086,8 @@ def is_crime_related(article) -> bool:
         return len(blob.strip()) > 8
 
     if article.get("_official_x_post"):
+        if not _official_x_post_local_ok(article):
+            return False
         if any(m in blob for m in _RT_REPOST_MARKERS):
             return False
         for w in _DISTANT_OR_NATIONAL_HUMAN_INTEREST:
@@ -6888,7 +6898,7 @@ def _capital_region_live_ok(title: str, desc: str, source: str) -> bool:
 def _live_rss_article_ok(article: dict) -> bool:
     """Gate for RSS rows merged into the Live feed (broader than News tab)."""
     if article.get("_official_x_post"):
-        return True
+        return _official_x_post_local_ok(article)
     title = str(article.get("title") or "")
     desc = str(article.get("description") or "")
     src = str(article.get("source") or "")
@@ -6922,7 +6932,12 @@ def _rss_article_to_live_entry(a: dict) -> dict:
     iso = pub_dt.astimezone(timezone.utc).isoformat() if pub_dt else ""
     muni = _muni_from_text(title + " " + desc)
     is_official_x = bool(a.get("_official_x_post"))
-    if _capital_region_live_ok(title, desc, a.get("source") or ""):
+    if is_official_x:
+        h = _official_x_handle_from_article(a)
+        muni = _muni_from_text(title + " " + desc)
+        if muni == "Albany County" and h in _OFFICIAL_X_HANDLE_MUNI:
+            muni = _OFFICIAL_X_HANDLE_MUNI[h]
+    elif _capital_region_live_ok(title, desc, a.get("source") or ""):
         for marker in _CAPITAL_REGION_LIVE_MARKERS:
             if marker in (title + " " + desc).lower():
                 muni = marker.title() + " · Capital Region"
@@ -10661,17 +10676,42 @@ async def fetch_nixle_directory_articles() -> list[dict[str, Any]]:
     return collected
 
 
-_OFFICIAL_X_HANDLES_CORE = [
-    "albanypolice",
-    "ACSOTWEET",
-    "colonie_police",
-    "PdBethlehem",
-    "guilderlandpd",
-    "VlietPolice",
-    "nyspolice",
-    "albanypd",
-    "FBIAlbany",
-]
+_OFFICIAL_X_HANDLES_ALBANY = frozenset({
+    "acsotweet",       # Albany County Sheriff's Office
+    "craigdapplesr",   # Sheriff Craig D. Apple Sr.
+    "albanypolice",    # City of Albany PD
+    "colonie_police",  # Town of Colonie PD
+    "pdbethlehem",     # Town of Bethlehem PD
+    "guilderlandpd",   # Town of Guilderland PD
+    "vlietpolice",     # City of Watervliet PD
+    "fbialbany",       # FBI Albany Field Office
+    "fd_albanyny",     # City of Albany Fire / EMS
+})
+
+# Legacy alias — do not expand from le_directory (that pulled @ICEgov, @CBP, etc.)
+_OFFICIAL_X_HANDLES_CORE = sorted(_OFFICIAL_X_HANDLES_ALBANY, key=str.lower)
+
+_OFFICIAL_X_HANDLE_MUNI: dict[str, str] = {
+    "acsotweet": "Albany County",
+    "craigdapplesr": "Albany County",
+    "albanypolice": "City of Albany",
+    "colonie_police": "Colonie",
+    "pdbethlehem": "Bethlehem",
+    "guilderlandpd": "Guilderland",
+    "vlietpolice": "Watervliet",
+    "fbialbany": "Albany County",
+    "fd_albanyny": "City of Albany",
+}
+
+# Post-body phrases that indicate national/federal PR unrelated to Albany County
+_OFFICIAL_X_NATIONAL_NOISE = (
+    "global entry", "frontline magazine", "nationwide", "nation wide",
+    "southern border", "northern border", "across the country",
+    "los angeles", "pennsylvania man", "romanian national",
+    "fireworks safety", "summer safety", "fiscal year", "year in review",
+    "now hiring", "join our team", "career fair",
+    "skimming device", "news release:", "read more:",
+)
 
 # Status URLs must use real snowflake IDs (typically 18–19 digits). Short IDs are rejected → profile fallback.
 _OFFICIAL_X_STATUS_RE = re.compile(
@@ -10708,27 +10748,76 @@ _SOCIAL_GROK_SYSTEM = (
     "CRITICAL: Prefer real post links. tweet_id must be the true status id (18–19 digits) when known; "
     "otherwise omit tweet_id. url must be the exact https://x.com/{handle}/status/{tweet_id} permalink "
     "or null. tweet_id / status id must be a real 18–19 digit snowflake — never invent or shorten. "
-    "Only Albany County NY or immediate Capital District law-enforcement / public-safety posts."
+    "Only Albany County NY law-enforcement / public-safety posts from these handles ONLY: "
+    "@ACSOTWEET, @CraigDApplesr, @albanypolice, @colonie_police, @PdBethlehem, "
+    "@guilderlandpd, @VlietPolice, @FBIAlbany, @FD_AlbanyNY. "
+    "Reject national/federal PR and out-of-county incidents."
 )
 
 
+def _official_x_handles_whitelist() -> list[str]:
+    """Albany County NY local X accounts only — never ICE/CBP/SSA/national feeds."""
+    return list(_OFFICIAL_X_HANDLES_CORE)
+
+
+def _official_x_handle_from_article(article: dict) -> str:
+    src = (article.get("source") or "").lower()
+    m = re.search(r"official @([a-z0-9_]+)", src)
+    if m:
+        return m.group(1).lower()
+    for u in (article.get("link"), article.get("x_post_url"), article.get("source_url")):
+        if not u:
+            continue
+        m2 = re.search(r"x\.com/([a-z0-9_]+)", str(u).lower())
+        if m2:
+            return m2.group(1).lower()
+    return ""
+
+
+def _official_x_post_local_ok(article: dict) -> bool:
+    """True when an X post is from a whitelisted local handle and Albany-relevant."""
+    h = _official_x_handle_from_article(article)
+    if not h or h not in _OFFICIAL_X_HANDLES_ALBANY:
+        return False
+
+    title, desc, combined = _live_plain_text(article)
+    blob = combined.lower()
+    if len(combined) < 15:
+        return False
+    if any(m in blob for m in _RT_REPOST_MARKERS):
+        return False
+    for p in _NON_INCIDENT_PROMO_SOCIAL + _OFFICIAL_X_NATIONAL_NOISE:
+        if p in blob:
+            return False
+    for m in _DISTANT_OR_NATIONAL_HUMAN_INTEREST:
+        if m in blob:
+            return False
+    for m in OUT_OF_AREA_GEO_MARKERS:
+        if m in blob:
+            return False
+
+    if not (
+        live_safety_signal_match(article)
+        or ongoing_public_safety_relevance(article)
+        or any(k in blob for k in _LIVE_SUBSTANCE_KEYWORDS)
+    ):
+        return False
+
+    # FBI Albany: require explicit Capital District / county anchor in post text
+    if h == "fbialbany":
+        return bool(_strong_albany_county_anchor(blob)) or any(
+            p in blob
+            for p in (
+                "albany county", "city of albany", "capital region", "capital district",
+                "colonie", "latham", "guilderland", "watervliet", "cohoes", "bethlehem",
+            )
+        )
+
+    return True
+
+
 def _official_x_handles_from_directory() -> list[str]:
-    found: set[str] = set(_OFFICIAL_X_HANDLES_CORE)
-    try:
-        data = _load_le_directory()
-        for ag in data.get("agencies") or []:
-            if ag.get("active") is False:
-                continue
-            for acct in ag.get("socialAccounts") or []:
-                plat = (acct.get("platform") or "").lower()
-                if plat not in ("twitter", "x"):
-                    continue
-                h = (acct.get("handle") or "").strip().lstrip("@")
-                if h:
-                    found.add(h)
-    except Exception:
-        pass
-    return sorted(found, key=str.lower)
+    return _official_x_handles_whitelist()
 
 
 def _grok_x_json_to_articles(items: list, allow_h: set[str]) -> list[dict[str, Any]]:
@@ -10788,7 +10877,7 @@ def _grok_x_json_to_articles(items: list, allow_h: set[str]) -> list[dict[str, A
 
 async def fetch_official_social_posts() -> list[dict[str, Any]]:
     """xAI x_search over official LE X handles → Live-feed article dicts."""
-    cached = get_cached("grok_official_x_posts")
+    cached = get_cached("grok_official_x_posts_v2")
     if cached:
         return cached
     out: list[dict[str, Any]] = []
@@ -10796,7 +10885,7 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
         return out
 
     handles = _official_x_handles_from_directory()
-    allow_h = {x.lower() for x in handles}
+    allow_h = {x.lower() for x in _OFFICIAL_X_HANDLES_ALBANY}
     from_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
     to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     seen_links: set[str] = set()
@@ -10827,6 +10916,8 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
             if not isinstance(items, list):
                 continue
             for article in _grok_x_json_to_articles(items, allow_h):
+                if not _official_x_post_local_ok(article):
+                    continue
                 lk = (article.get("link") or "").split("?")[0].rstrip("/").lower()
                 if lk and lk in seen_links:
                     continue
@@ -10837,7 +10928,7 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
             logger.warning("fetch_official_social_posts batch=%s: %s", batch[:3], exc)
 
     if out:
-        set_cached("grok_official_x_posts", out)
+        set_cached("grok_official_x_posts_v2", out)
     return out
 
 
@@ -10854,23 +10945,12 @@ async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
     Best-effort real X permalinks via public Nitter mirrors (no API key).
     Cached; failures return [] without breaking the feed.
     """
-    cached = get_cached("nitter_official_x")
+    cached = get_cached("nitter_official_x_v2")
     if cached is not None:
         return cached
     out: list[dict[str, Any]] = []
     hosts = ("nitter.poast.org", "nitter.net", "nitter.it", "nitter.privacydev.net")
-    handles_ordered: list[str] = []
-    seen_h: set[str] = set()
-    for h in list(_OFFICIAL_X_HANDLES_CORE) + sorted(
-        _official_x_handles_from_directory(), key=str.lower
-    ):
-        key = h.lower()
-        if key in seen_h:
-            continue
-        seen_h.add(key)
-        handles_ordered.append(h)
-        if len(handles_ordered) >= 40:
-            break
+    handles_ordered = _official_x_handles_whitelist()
 
     async def _pull_one(handle: str) -> list[dict[str, Any]]:
         got: list[dict[str, Any]] = []
@@ -10885,22 +10965,23 @@ async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
                     xu = _nitter_link_to_x_status(a.get("link", "") or "")
                     if not xu:
                         continue
-                    got.append(
-                        {
-                            "title": (a.get("title") or "").strip() or "Post",
-                            "link": xu,
-                            "x_post_url": xu,
-                            "pubDate": a.get("pubDate")
-                            or format_datetime(datetime.now(timezone.utc), usegmt=True),
-                            "description": ((a.get("description") or "")[:400]),
-                            "source": f"Official @{handle}",
-                            "source_priority": SOURCE_PRIORITY_OFFICIAL_X_GROK,
-                            "_official_x_post": True,
-                            "_official_x_nitter_rss": True,
-                            "_feed_reliability": 0.95,
-                            "source_url": "",
-                        }
-                    )
+                    row = {
+                        "title": (a.get("title") or "").strip() or "Post",
+                        "link": xu,
+                        "x_post_url": xu,
+                        "pubDate": a.get("pubDate")
+                        or format_datetime(datetime.now(timezone.utc), usegmt=True),
+                        "description": ((a.get("description") or "")[:400]),
+                        "source": f"Official @{handle}",
+                        "source_priority": SOURCE_PRIORITY_OFFICIAL_X_GROK,
+                        "_official_x_post": True,
+                        "_official_x_nitter_rss": True,
+                        "_feed_reliability": 0.95,
+                        "source_url": "",
+                    }
+                    if not _official_x_post_local_ok(row):
+                        continue
+                    got.append(row)
                 if got:
                     break
             except Exception:
@@ -10913,7 +10994,7 @@ async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
             out.extend(b)
     except Exception as e:
         logger.warning("fetch_nitter_official_x_rss_posts: %s", e)
-    set_cached("nitter_official_x", out)
+    set_cached("nitter_official_x_v2", out)
     return out
 
 
@@ -10922,7 +11003,7 @@ async def fetch_official_x_articles() -> list[dict[str, Any]]:
     Combined x.com sourcing: Nitter RSS mirrors (direct permalinks) + xAI x_search.
     Used by ingestion and Live feed supplement.
     """
-    cached = get_cached("official_x_combined")
+    cached = get_cached("official_x_combined_v2")
     if cached is not None:
         return cached
     merged: list[dict[str, Any]] = []
@@ -10947,12 +11028,14 @@ async def fetch_official_x_articles() -> list[dict[str, Any]]:
                 continue
             if lk:
                 seen.add(lk)
+            if not _official_x_post_local_ok(a):
+                continue
             merged.append(a)
     merged.sort(
         key=lambda x: str(x.get("pubDate") or ""),
         reverse=True,
     )
-    set_cached("official_x_combined", merged)
+    set_cached("official_x_combined_v2", merged)
     return merged
 
 
