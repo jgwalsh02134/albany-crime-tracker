@@ -4981,7 +4981,10 @@ async def stop_background_crime_ingest() -> None:
 # generates lightweight "ongoing activity" incident cards from scanner
 # intelligence so the Live feed never appears dead.
 
-_GAP_FILL_THRESHOLD_S = int(os.getenv("GAP_FILL_THRESHOLD_SECONDS", "14400"))  # 4 hours
+_GAP_FILL_THRESHOLD_S = max(
+    14400,
+    int(os.getenv("GAP_FILL_THRESHOLD_SECONDS", "14400")),
+)  # never gap-fill unless feed is quiet 4+ hours
 _gap_fill_task: Optional[asyncio.Task] = None
 _last_real_incident_ts: float = time.time()
 _gap_fill_cards: list[dict[str, Any]] = []
@@ -5843,7 +5846,21 @@ async def get_incidents(
 
     # Only inject gap-fill cards when the merged feed is genuinely quiet.
     gap_cards = list(_gap_fill_cards) if _gap_fill_cards else []
-    if gap_cards and not q and real_gap_s >= _GAP_FILL_THRESHOLD_S:
+    now_utc = datetime.now(timezone.utc)
+    recent_substantive = 0
+    for it in items:
+        if it.get("_gap_fill") or it.get("_nysp_routine_summary"):
+            continue
+        raw_dt = it.get("published_at") or it.get("occurred_at")
+        if not raw_dt:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
+            if (now_utc - dt).total_seconds() < 6 * 3600:
+                recent_substantive += 1
+        except Exception:
+            pass
+    if gap_cards and not q and real_gap_s >= _GAP_FILL_THRESHOLD_S and recent_substantive < 3:
         items = list(items) + gap_cards
     else:
         gap_cards = []
