@@ -5840,7 +5840,19 @@ async def incidents_stream():
         last_gap_state = ""
         while True:
             try:
-                current_items = await query_incidents(limit=5, sort_by="newest")
+                raw_items = await query_incidents(limit=30, sort_by="newest")
+                # Apply the same gates as /api/incidents so the "new activity"
+                # banner never announces out-of-county / low-quality / fluff
+                # items (e.g. a Poughkeepsie story) that aren't in the feed.
+                current_items = [
+                    it for it in raw_items
+                    if not it.get("_gap_fill")
+                    and not _is_false_local_incident(it)
+                    and not _is_low_quality_source(it)
+                    and not _is_non_incident_fluff(it)
+                    and not _has_block_terms(it)
+                    and _locality_confidence(it) >= 1
+                ]
                 current_count = len(current_items)
                 gap_s = _seconds_since_last_real_incident()
                 gap_state = "live" if gap_s < 300 else ("aging" if gap_s < 900 else "quiet")
