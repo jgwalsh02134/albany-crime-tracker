@@ -5712,16 +5712,29 @@ async def get_incidents(
             def _tkey(t: str) -> str:
                 return re.sub(r"\s+", " ", (t or "").lower()).strip()[:60]
 
+            def _nysp_id(it: dict) -> str:
+                iid = str(it.get("id") or "")
+                if iid.startswith("nysp_"):
+                    return iid
+                inc = str(it.get("_nysp_incident_number") or "")
+                if inc:
+                    return "nysp_" + inc
+                return ""
+
             def _ukey(u: str) -> str:
                 return (u or "").split("?")[0].rstrip("/").lower()
 
             existing_keys: set[str] = set()
+            existing_nysp_ids: set[str] = set()
             existing_urls: set[str] = set()
             for it in items:
                 for fld in (it.get("title"), it.get("short_title")):
                     k = _tkey(fld)
                     if k:
                         existing_keys.add(k)
+                nid = _nysp_id(it)
+                if nid:
+                    existing_nysp_ids.add(nid)
                 sig = _incident_signature(it)
                 if sig:
                     existing_keys.add(sig)
@@ -5752,12 +5765,24 @@ async def get_incidents(
                 added.append(_news_to_incident_card(e))
 
             # NYSP Troop G blotter arrests (individual incidents) — the real
-            # volume source. Deduped against DB incidents + each other.
-            for card in nysp_cards:
-                key = _tkey(card.get("title"))
-                if not key or key in existing_keys:
+            # volume source. Dedupe by incident id (NOT truncated title — many
+            # distinct Albany accidents share the same first 60 chars).
+            nysp_sorted = sorted(
+                nysp_cards,
+                key=lambda c: str(c.get("published_at") or c.get("occurred_at") or ""),
+                reverse=True,
+            )
+            for card in nysp_sorted:
+                nid = _nysp_id(card)
+                if nid and nid in existing_nysp_ids:
                     continue
-                existing_keys.add(key)
+                key = _tkey(card.get("title"))
+                if not nid and (not key or key in existing_keys):
+                    continue
+                if key:
+                    existing_keys.add(key)
+                if nid:
+                    existing_nysp_ids.add(nid)
                 added.append(card)
 
             if added:
@@ -5804,6 +5829,7 @@ async def get_incidents(
             "gap_fill_active": bool(gap_cards),
             "sources_active": _total_source_count(),
             "scanner_pipeline_active": _stream_monitor_task is not None and not _stream_monitor_task.done(),
+            "nysp_cards_merged": sum(1 for it in items if it.get("_from_nysp_blotter")),
         },
     }
     return payload
@@ -6199,7 +6225,8 @@ _NYSP_SKIP_CATEGORIES = (
     "license plate", "vin", "property - found", "property - lost",
 )
 
-_NYSP_CARD_CACHE: dict[str, Any] = {"ts": 0.0, "items": []}
+_NYSP_CARD_CACHE: dict[str, Any] = {"ts": 0.0, "items": [], "ver": 0}
+_NYSP_CARD_CACHE_VER = 2  # bump when card/dedup logic changes
 _NYSP_CARD_TTL = 900  # 15 min
 _NYSP_CARD_LOCK = asyncio.Lock()
 
@@ -6244,11 +6271,21 @@ async def _get_albany_nysp_cards() -> list[dict]:
     separate fetch that doesn't reach the incident store), so we surface them
     directly on the feed — deduped against DB incidents by the caller."""
     now_ts = time.time()
-    if (now_ts - float(_NYSP_CARD_CACHE.get("ts") or 0)) < _NYSP_CARD_TTL and _NYSP_CARD_CACHE.get("items"):
+    cache_ok = (
+        (now_ts - float(_NYSP_CARD_CACHE.get("ts") or 0)) < _NYSP_CARD_TTL
+        and _NYSP_CARD_CACHE.get("items")
+        and int(_NYSP_CARD_CACHE.get("ver") or 0) == _NYSP_CARD_CACHE_VER
+    )
+    if cache_ok:
         return list(_NYSP_CARD_CACHE["items"])
     async with _NYSP_CARD_LOCK:
         now_ts = time.time()
-        if (now_ts - float(_NYSP_CARD_CACHE.get("ts") or 0)) < _NYSP_CARD_TTL and _NYSP_CARD_CACHE.get("items"):
+        cache_ok = (
+            (now_ts - float(_NYSP_CARD_CACHE.get("ts") or 0)) < _NYSP_CARD_TTL
+            and _NYSP_CARD_CACHE.get("items")
+            and int(_NYSP_CARD_CACHE.get("ver") or 0) == _NYSP_CARD_CACHE_VER
+        )
+        if cache_ok:
             return list(_NYSP_CARD_CACHE["items"])
         try:
             raw = await fetch_nysp_blotter_pdfs()
@@ -6281,8 +6318,13 @@ async def _get_albany_nysp_cards() -> list[dict]:
                 except Exception:
                     pass
             cards.append(_nysp_to_card(it))
+        cards.sort(
+            key=lambda c: str(c.get("published_at") or c.get("occurred_at") or ""),
+            reverse=True,
+        )
         _NYSP_CARD_CACHE["items"] = cards
         _NYSP_CARD_CACHE["ts"] = time.time()
+        _NYSP_CARD_CACHE["ver"] = _NYSP_CARD_CACHE_VER
         logger.info("nysp_cards_built albany=%d from_raw=%d", len(cards), len(raw))
         return list(cards)
 

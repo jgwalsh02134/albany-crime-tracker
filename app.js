@@ -2783,6 +2783,12 @@
   var _LIVE_CLUSTER_SMALL_MUNI_MIN_SHARED = 2;
 
   function _liveClusterSameEvent(a, b) {
+    var idA = String(a.id || "");
+    var idB = String(b.id || "");
+    // Distinct NYSP blotter rows share generic titles ("Property check — Albany")
+    // but are separate incidents — never collapse them on the client.
+    if (idA.startsWith("nysp_") && idB.startsWith("nysp_") && idA !== idB) return false;
+
     var muniA = String(a.municipality || a.matched_location || "").toLowerCase().trim();
     var muniB = String(b.municipality || b.matched_location || "").toLowerCase().trim();
     if (muniA && muniB && muniA !== muniB) return false;
