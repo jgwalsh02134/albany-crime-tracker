@@ -2108,7 +2108,7 @@
   }
 
   function _toFeedItemFromIncident(r) {
-    var pub = r.occurred_at || r.published_at || "";
+    var pub = r.published_at || r.occurred_at || "";
     var tags = Array.isArray(r.badges) && r.badges.length ? r.badges : (r.tags || []);
     var feedTab = _feedTabFromRecord(r);
     return {
@@ -2191,13 +2191,13 @@
     // becomes incident-first instead of strictly chronological.
     var params = {
       limit: 300,
-      sort_by: "operational",
+      sort_by: "newest",
       start_date: homeWindowStartIso()
     };
     (apiClient && apiClient.getPersistedIncidents
       ? apiClient.getPersistedIncidents(params)
       : fetch(
-          API + "/api/incidents?limit=300&sort_by=operational&start_date=" + encodeURIComponent(params.start_date),
+          API + "/api/incidents?limit=300&sort_by=newest&start_date=" + encodeURIComponent(params.start_date),
           { signal: ctrl.signal }
         ).then(ok))
       .finally(function () {

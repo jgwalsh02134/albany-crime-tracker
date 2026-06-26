@@ -4981,7 +4981,7 @@ async def stop_background_crime_ingest() -> None:
 # generates lightweight "ongoing activity" incident cards from scanner
 # intelligence so the Live feed never appears dead.
 
-_GAP_FILL_THRESHOLD_S = int(os.getenv("GAP_FILL_THRESHOLD_SECONDS", "300"))  # 5 minutes
+_GAP_FILL_THRESHOLD_S = int(os.getenv("GAP_FILL_THRESHOLD_SECONDS", "14400"))  # 4 hours
 _gap_fill_task: Optional[asyncio.Task] = None
 _last_real_incident_ts: float = time.time()
 _gap_fill_cards: list[dict[str, Any]] = []
@@ -5007,6 +5007,43 @@ async def _newest_incident_age_seconds() -> float:
     except Exception:
         pass
     return _seconds_since_last_real_incident()
+
+
+async def _newest_feed_age_seconds() -> float:
+    """Age of the newest item across DB incidents and cached NYSP blotter cards."""
+    gap_s = await _newest_incident_age_seconds()
+    try:
+        cards = await _get_albany_nysp_cards()
+        now = datetime.now(timezone.utc)
+        for c in cards[:20]:
+            raw = c.get("published_at") or c.get("occurred_at")
+            if not raw:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                gap_s = min(gap_s, max(0, (now - dt).total_seconds()))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return gap_s
+
+
+def _compute_feed_gap_seconds(items: list[dict]) -> int:
+    """Youngest non-synthetic item age in seconds."""
+    now_utc = datetime.now(timezone.utc)
+    ages: list[int] = []
+    for it in items:
+        if it.get("_gap_fill") or it.get("_nysp_routine_summary"):
+            continue
+        raw_dt = it.get("published_at") or it.get("occurred_at") or it.get("pubDate")
+        if raw_dt:
+            try:
+                dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
+                ages.append(max(0, int((now_utc - dt).total_seconds())))
+            except Exception:
+                pass
+    return min(ages) if ages else 0
 
 
 def _seconds_since_last_real_incident() -> float:
@@ -5110,7 +5147,7 @@ async def _gap_fill_loop() -> None:
     await asyncio.sleep(20.0)
     while True:
         try:
-            gap_s = await _newest_incident_age_seconds()
+            gap_s = await _newest_feed_age_seconds()
             if gap_s >= _GAP_FILL_THRESHOLD_S:
                 async with _stream_alerts_lock:
                     recent_alerts = list(_stream_alerts[:10])
@@ -5158,7 +5195,7 @@ async def start_gap_fill_monitor() -> None:
         _stream_alerts[:] = [a for a in _stream_alerts if (a.get("timestamp") or 0) > cutoff]
     # Generate an initial gap-fill card immediately if there's a gap
     try:
-        gap_s = await _newest_incident_age_seconds()
+        gap_s = await _newest_feed_age_seconds()
         if gap_s >= _GAP_FILL_THRESHOLD_S:
             stream_status = {
                 "monitor_running": _stream_monitor_task is not None and not _stream_monitor_task.done(),
@@ -5802,30 +5839,16 @@ async def get_incidents(
 
     _refresh_incident_human_times(items)
 
-    # Merge gap-fill cards when the feed is quiet (keeps Live feed alive)
+    real_gap_s = _compute_feed_gap_seconds(items)
+
+    # Only inject gap-fill cards when the merged feed is genuinely quiet.
     gap_cards = list(_gap_fill_cards) if _gap_fill_cards else []
-    if gap_cards and not q:
+    if gap_cards and not q and real_gap_s >= _GAP_FILL_THRESHOLD_S:
         items = list(items) + gap_cards
+    else:
+        gap_cards = []
 
-    # Compute real gap from the TRUE newest non-gap-fill item (min age across
-    # all items — not the first, since operational sort puts the highest-
-    # severity item first, which may be older than the actual newest).
-    real_gap_s = 0
-    now_utc = datetime.now(timezone.utc)
-    ages: list[int] = []
-    for it in items:
-        if it.get("_gap_fill"):
-            continue
-        raw_dt = it.get("published_at") or it.get("occurred_at") or it.get("pubDate")
-        if raw_dt:
-            try:
-                dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
-                ages.append(max(0, int((now_utc - dt).total_seconds())))
-            except Exception:
-                pass
-    if ages:
-        real_gap_s = min(ages)
-
+    # Compute pulse from the TRUE newest non-synthetic item.
     payload = {
         "status": "ok",
         "source": incident_store_backend(),
@@ -6232,8 +6255,20 @@ _NYSP_SKIP_CATEGORIES = (
     "license plate", "vin", "property - found", "property - lost",
 )
 
+_NYSP_LIVE_ROUTINE_SKIP = (
+    "property check",
+    "aid - assist",
+    "welfare check",
+    "vehicle - v&t",
+    "directed patrol",
+    "motorist",
+    "escort",
+    "relay",
+    "parking",
+)
+
 _NYSP_CARD_CACHE: dict[str, Any] = {"ts": 0.0, "items": [], "ver": 0}
-_NYSP_CARD_CACHE_VER = 3  # bump when card/dedup/timezone logic changes
+_NYSP_CARD_CACHE_VER = 4  # bump when card/dedup/timezone/routine-filter logic changes
 _NYSP_CARD_TTL = 900  # 15 min
 _NYSP_CARD_LOCK = asyncio.Lock()
 
@@ -6300,8 +6335,10 @@ async def _get_albany_nysp_cards() -> list[dict]:
             logger.exception("nysp blotter card fetch failed")
             raw = []
         now_dt = datetime.now(timezone.utc)
+        ny_tz = ZoneInfo("America/New_York")
         cards: list[dict] = []
         seen_inc: set[str] = set()
+        routine_by_day: dict[str, tuple[int, datetime]] = {}
         for it in raw:
             muni = str(it.get("municipality") or "").strip().lower()
             if muni not in _ALBANY_NYSP_TOWNS:
@@ -6314,17 +6351,53 @@ async def _get_albany_nysp_cards() -> list[dict]:
                 continue
             if inc:
                 seen_inc.add(inc)
+            incident_dt = None
             pub = it.get("pubDate")
             if pub:
                 try:
-                    dt = parsedate_to_datetime(pub)
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    if (now_dt - dt) > timedelta(hours=168):
+                    incident_dt = parsedate_to_datetime(pub)
+                    if incident_dt.tzinfo is None:
+                        incident_dt = incident_dt.replace(tzinfo=timezone.utc)
+                    if (now_dt - incident_dt) > timedelta(hours=168):
                         continue
                 except Exception:
-                    pass
+                    incident_dt = None
+            if any(s in cat for s in _NYSP_LIVE_ROUTINE_SKIP):
+                if incident_dt:
+                    day = incident_dt.astimezone(ny_tz).date().isoformat()
+                    prev = routine_by_day.get(day)
+                    if prev:
+                        routine_by_day[day] = (prev[0] + 1, max(prev[1], incident_dt))
+                    else:
+                        routine_by_day[day] = (1, incident_dt)
+                continue
             cards.append(_nysp_to_card(it))
+        for day, (cnt, newest_dt) in routine_by_day.items():
+            if cnt < 6:
+                continue
+            iso = newest_dt.astimezone(timezone.utc).isoformat()
+            cards.append({
+                "id": f"nysp_routine_{day}",
+                "title": f"NYSP — {cnt} routine patrol calls across Albany County",
+                "short_title": f"NYSP — {cnt} routine patrol calls",
+                "description": (
+                    "Property checks, welfare checks, and other patrol activity "
+                    "from the Troop G blotter."
+                ),
+                "severity": "low",
+                "incident_type": "police_activity",
+                "municipality": "Albany County",
+                "source_name": "NYSP Troop G Blotter",
+                "source_url": "",
+                "source_type": "official",
+                "verification_level": "official",
+                "occurred_at": iso,
+                "published_at": iso,
+                "status": "reported",
+                "responding_agency_id": "nysp_troop_g",
+                "_from_nysp_blotter": True,
+                "_nysp_routine_summary": True,
+            })
         cards.sort(
             key=lambda c: str(c.get("published_at") or c.get("occurred_at") or ""),
             reverse=True,
