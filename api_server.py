@@ -5851,7 +5851,7 @@ async def incidents_stream():
                     and not _is_low_quality_source(it)
                     and not _is_non_incident_fluff(it)
                     and not _has_block_terms(it)
-                    and _locality_confidence(it) >= 1
+                    and _news_incident_ok(it)
                 ]
                 current_count = len(current_items)
                 gap_s = _seconds_since_last_real_incident()
@@ -6374,6 +6374,7 @@ _NEWS_BLOCK_TERMS = (
     "williamstown", "berkshire", "albany, ga", "albany georgia",
     "albany, or", "albany oregon", "linn county", "dougherty county",
     "cheyenne", "casper", "k2 radio", "your wyoming", "wyoming life",
+    "bennington", "vermont", "rutland", "brattleboro", "montpelier",
 )
 # Names that are effectively unique to Albany County, NY.
 _ALBANY_NY_UNIQUE = frozenset({
