@@ -2190,14 +2190,14 @@
     // the backend ranks actionable incidents first and the timeline
     // becomes incident-first instead of strictly chronological.
     var params = {
-      limit: 300,
+      limit: 500,
       sort_by: "newest",
       start_date: homeWindowStartIso()
     };
     (apiClient && apiClient.getPersistedIncidents
       ? apiClient.getPersistedIncidents(params)
       : fetch(
-          API + "/api/incidents?limit=300&sort_by=newest&start_date=" + encodeURIComponent(params.start_date),
+          API + "/api/incidents?limit=500&sort_by=newest&start_date=" + encodeURIComponent(params.start_date),
           { signal: ctrl.signal }
         ).then(ok))
       .finally(function () {

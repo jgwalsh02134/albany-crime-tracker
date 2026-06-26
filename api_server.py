@@ -4071,7 +4071,7 @@ async def fetch_nysp_blotter_pdfs() -> list[dict]:
     """Fetch and parse NYSP Troop G blotter PDFs for the last 3 days.
     Extended to 3 days because blotters are not always posted on time."""
     all_items: list[dict] = []
-    urls = _nysp_blotter_urls_for_window(days_back=3)
+    urls = _nysp_blotter_urls_for_window(days_back=4)
     logger.info("nysp_blotter_fetching urls=%d", len(urls))
 
     async def _fetch_one(url: str) -> list[dict]:
@@ -5492,6 +5492,8 @@ _TITLE_KEY_STOP = frozenset({
 def _locality_confidence(it: dict) -> int:
     """2 = specific Albany-County municipality; 1 = Albany-tied; 0 = clearly elsewhere."""
     muni = (it.get("municipality") or "").strip().lower()
+    if "capital region" in muni:
+        return 1
     if muni in _ALBANY_MUNI_SET:
         return 2
     title = (it.get("short_title") or it.get("title") or "").lower()
@@ -5748,10 +5750,14 @@ async def get_incidents(
         except Exception:
             news_items = []
         try:
+            live_supplement = await _fetch_live_supplement()
+        except Exception:
+            live_supplement = []
+        try:
             nysp_cards = await _get_albany_nysp_cards()
         except Exception:
             nysp_cards = []
-        if news_items or nysp_cards:
+        if news_items or nysp_cards or live_supplement:
             now_n = datetime.now(timezone.utc)
 
             def _tkey(t: str) -> str:
@@ -5788,8 +5794,12 @@ async def get_incidents(
                     if uk:
                         existing_urls.add(uk)
             added: list[dict] = []
-            for e in news_items:
-                if e.get("incident_type") not in ("law_enforcement", "emergency_services", "courts_law"):
+            _LIVE_NEWS_TOPICS = frozenset({
+                "law_enforcement", "emergency_services", "courts_law",
+            })
+            for e in list(news_items) + list(live_supplement):
+                topic = e.get("incident_type") or ""
+                if topic and topic not in _LIVE_NEWS_TOPICS:
                     continue
                 raw = e.get("published_at") or e.get("occurred_at")
                 dt = None
@@ -5798,13 +5808,16 @@ async def get_incidents(
                         dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
                     except Exception:
                         dt = None
-                if dt and (now_n - dt) > timedelta(hours=72):
+                if dt and (now_n - dt) > timedelta(hours=48):
+                    continue
+                uk = _ukey(e.get("source_url"))
+                if uk and uk in existing_urls:
                     continue
                 key = _tkey(e.get("title"))
-                uk = _ukey(e.get("source_url"))
-                if not key or key in existing_keys or (uk and uk in existing_urls):
+                if key and key in existing_keys:
                     continue
-                existing_keys.add(key)
+                if key:
+                    existing_keys.add(key)
                 if uk:
                     existing_urls.add(uk)
                 added.append(_news_to_incident_card(e))
@@ -6130,7 +6143,20 @@ NEWS_DIRECT_FEEDS = [
     ("https://cbs6albany.com/news/local.rss", "CBS6 Albany"),
     ("https://www.dailygazette.com/spotlightnews/news/crime/feed/", "Daily Gazette"),
     ("https://www.spotlightnews.com/feed/", "Spotlight News"),
+    # Times Union blocks direct RSS — Google News site: search works reliably.
+    ("https://news.google.com/rss/search?q=site:timesunion.com+(albany+OR+colonie+OR+guilderland+OR+cohoes+OR+watervliet)+(crime+OR+arrest+OR+shooting+OR+police+OR+stabbing)+when:2d&hl=en-US&gl=US&ceid=US:en", "Times Union"),
+    ("https://news.google.com/rss/search?q=site:timesunion.com+(\"albany+county\"+OR+\"city+of+albany\"+OR+colonie+OR+guilderland+OR+bethlehem+OR+cohoes)+when:2d&hl=en-US&gl=US&ceid=US:en", "Times Union"),
+    ("https://news.google.com/rss/search?q=site:fox23news.com+(albany+OR+colonie+OR+cohoes+OR+watervliet+OR+guilderland)+(crime+OR+arrest+OR+police+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en", "Fox23"),
 ]
+
+# Adjacent Capital District counties — shown on Live with clear labeling when
+# a credible local outlet reports police/emergency activity (Rotterdam stabbing,
+# Schenectady arrests, etc.) that Albany County residents care about.
+_CAPITAL_REGION_LIVE_MARKERS = (
+    "schenectady", "rotterdam", "niskayuna", "glenville", "clifton park",
+    "saratoga springs", "saratoga", "troy", "rensselaer", "east greenbush",
+    "halfmoon", "malta", "wilton", "ballston spa", "mechanicville",
+)
 
 _NEWS_TOPIC_KEYWORDS = (
     ("emergency_services", "Emergency Services", (
@@ -6240,7 +6266,7 @@ def _news_to_incident_card(e: dict) -> dict:
         "description": summary,
         "severity": sev,
         "incident_type": _NEWS_TOPIC_TO_TYPE.get(topic, "police_activity"),
-        "municipality": _muni_from_text(title + " " + summary),
+        "municipality": e.get("municipality") or _muni_from_text(title + " " + summary),
         "source_name": e.get("source_name") or "Local News",
         "source_url": e.get("source_url") or "",
         "source_type": "local_news",
@@ -6272,20 +6298,10 @@ _NYSP_SKIP_CATEGORIES = (
     "license plate", "vin", "property - found", "property - lost",
 )
 
-_NYSP_LIVE_ROUTINE_SKIP = (
-    "property check",
-    "aid - assist",
-    "welfare check",
-    "vehicle - v&t",
-    "directed patrol",
-    "motorist",
-    "escort",
-    "relay",
-    "parking",
-)
+_NYSP_LIVE_ROUTINE_SKIP: tuple[str, ...] = ()  # Live shows every blotter row
 
 _NYSP_CARD_CACHE: dict[str, Any] = {"ts": 0.0, "items": [], "ver": 0}
-_NYSP_CARD_CACHE_VER = 4  # bump when card/dedup/timezone/routine-filter logic changes
+_NYSP_CARD_CACHE_VER = 5  # full blotter + live supplement merge
 _NYSP_CARD_TTL = 900  # 15 min
 _NYSP_CARD_LOCK = asyncio.Lock()
 
@@ -6352,10 +6368,8 @@ async def _get_albany_nysp_cards() -> list[dict]:
             logger.exception("nysp blotter card fetch failed")
             raw = []
         now_dt = datetime.now(timezone.utc)
-        ny_tz = ZoneInfo("America/New_York")
         cards: list[dict] = []
         seen_inc: set[str] = set()
-        routine_by_day: dict[str, tuple[int, datetime]] = {}
         for it in raw:
             muni = str(it.get("municipality") or "").strip().lower()
             if muni not in _ALBANY_NYSP_TOWNS:
@@ -6368,53 +6382,17 @@ async def _get_albany_nysp_cards() -> list[dict]:
                 continue
             if inc:
                 seen_inc.add(inc)
-            incident_dt = None
             pub = it.get("pubDate")
             if pub:
                 try:
-                    incident_dt = parsedate_to_datetime(pub)
-                    if incident_dt.tzinfo is None:
-                        incident_dt = incident_dt.replace(tzinfo=timezone.utc)
-                    if (now_dt - incident_dt) > timedelta(hours=168):
+                    dt = parsedate_to_datetime(pub)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if (now_dt - dt) > timedelta(hours=168):
                         continue
                 except Exception:
-                    incident_dt = None
-            if any(s in cat for s in _NYSP_LIVE_ROUTINE_SKIP):
-                if incident_dt:
-                    day = incident_dt.astimezone(ny_tz).date().isoformat()
-                    prev = routine_by_day.get(day)
-                    if prev:
-                        routine_by_day[day] = (prev[0] + 1, max(prev[1], incident_dt))
-                    else:
-                        routine_by_day[day] = (1, incident_dt)
-                continue
+                    pass
             cards.append(_nysp_to_card(it))
-        for day, (cnt, newest_dt) in routine_by_day.items():
-            if cnt < 6:
-                continue
-            iso = newest_dt.astimezone(timezone.utc).isoformat()
-            cards.append({
-                "id": f"nysp_routine_{day}",
-                "title": f"NYSP — {cnt} routine patrol calls across Albany County",
-                "short_title": f"NYSP — {cnt} routine patrol calls",
-                "description": (
-                    "Property checks, welfare checks, and other patrol activity "
-                    "from the Troop G blotter."
-                ),
-                "severity": "low",
-                "incident_type": "police_activity",
-                "municipality": "Albany County",
-                "source_name": "NYSP Troop G Blotter",
-                "source_url": "",
-                "source_type": "official",
-                "verification_level": "official",
-                "occurred_at": iso,
-                "published_at": iso,
-                "status": "reported",
-                "responding_agency_id": "nysp_troop_g",
-                "_from_nysp_blotter": True,
-                "_nysp_routine_summary": True,
-            })
         cards.sort(
             key=lambda c: str(c.get("published_at") or c.get("occurred_at") or ""),
             reverse=True,
@@ -6563,6 +6541,175 @@ def _is_albany_ny(title: str, desc: str, source: str) -> bool:
     return False
 
 
+def _capital_region_live_ok(title: str, desc: str, source: str) -> bool:
+    """Allow adjacent Capital District police/emergency stories on Live."""
+    blob = (str(title or "") + " " + str(desc or "")).lower()
+    if not any(m in blob for m in _CAPITAL_REGION_LIVE_MARKERS):
+        return False
+    src = str(source or "").lower()
+    return any(c in src for c in _CREDIBLE_SOURCE_MARKERS)
+
+
+def _live_rss_article_ok(article: dict) -> bool:
+    """Gate for RSS rows merged into the Live feed (broader than News tab)."""
+    title = str(article.get("title") or "")
+    desc = str(article.get("description") or "")
+    src = str(article.get("source") or "")
+    if _is_news_fluff(title, desc):
+        return False
+    if article.get("_nixle_item") or article.get("_511_incident"):
+        return True
+    if _classify_news_topic(title, desc):
+        return True
+    if is_crime_related(article):
+        return True
+    if _news_article_ok(article):
+        return True
+    return _capital_region_live_ok(title, desc, src)
+
+
+def _rss_article_to_live_entry(a: dict) -> dict:
+    """Normalize a parsed RSS article into the news-desk entry shape for Live merge."""
+    title = str(a.get("title") or "").strip()
+    desc = str(a.get("description") or "")
+    cls = _classify_news_topic(title, desc)
+    topic = cls[0] if cls else "law_enforcement"
+    pub_dt = None
+    try:
+        if a.get("pubDate"):
+            pub_dt = parsedate_to_datetime(a["pubDate"])
+            if pub_dt and pub_dt.tzinfo is None:
+                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        pub_dt = None
+    iso = pub_dt.astimezone(timezone.utc).isoformat() if pub_dt else ""
+    muni = _muni_from_text(title + " " + desc)
+    if _capital_region_live_ok(title, desc, a.get("source") or ""):
+        for marker in _CAPITAL_REGION_LIVE_MARKERS:
+            if marker in (title + " " + desc).lower():
+                muni = marker.title() + " · Capital Region"
+                break
+    return {
+        "id": "live_" + hashlib.md5((a.get("link") or title).encode()).hexdigest()[:12],
+        "title": title,
+        "summary": desc[:280],
+        "municipality": muni,
+        "occurred_at": iso,
+        "published_at": iso,
+        "human_time": _relative_time(pub_dt),
+        "severity": "medium",
+        "incident_type": topic,
+        "topic": cls[1] if cls else "Law Enforcement",
+        "source_name": a.get("source") or "Local News",
+        "source_url": a.get("link") or "",
+        "source_type": "official" if a.get("_nixle_item") else "news",
+        "verification_level": "official" if a.get("_nixle_item") else "media",
+        "coordinate_quality": "missing",
+        "image_url": a.get("image_url") or "",
+        "is_news": True,
+        "_from_live_supplement": True,
+    }
+
+
+_LIVE_SUPPLEMENT_CACHE: dict[str, Any] = {"ts": 0.0, "items": []}
+_LIVE_SUPPLEMENT_TTL = 300  # 5 min
+_LIVE_SUPPLEMENT_LOCK = asyncio.Lock()
+
+
+def _511_row_to_live_entry(row: dict) -> dict:
+    """Convert a 511NY API row into a Live-feed entry."""
+    title = str(row.get("title") or "511NY Traffic Event")
+    desc = str(row.get("description") or row.get("summary") or "")
+    pub_dt = None
+    try:
+        if row.get("pubDate"):
+            pub_dt = parsedate_to_datetime(row["pubDate"])
+            if pub_dt and pub_dt.tzinfo is None:
+                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        pub_dt = None
+    iso = pub_dt.astimezone(timezone.utc).isoformat() if pub_dt else ""
+    return {
+        "id": row.get("id") or ("live_511_" + hashlib.md5(title.encode()).hexdigest()[:12]),
+        "title": title,
+        "summary": desc[:280],
+        "municipality": row.get("municipality") or "Albany County",
+        "occurred_at": iso,
+        "published_at": iso,
+        "human_time": _relative_time(pub_dt),
+        "severity": "medium",
+        "incident_type": "emergency_services",
+        "topic": "Emergency Services",
+        "source_name": row.get("source_name") or "511NY",
+        "source_url": row.get("link") or "",
+        "source_type": "official",
+        "verification_level": "official",
+        "coordinate_quality": "missing",
+        "image_url": "",
+        "is_news": True,
+        "_from_live_supplement": True,
+    }
+
+
+async def _fetch_live_supplement() -> list[dict]:
+    """Nixle alerts + 511NY traffic incidents for the Live feed (cached)."""
+    now_ts = time.time()
+    if (now_ts - float(_LIVE_SUPPLEMENT_CACHE.get("ts") or 0)) < _LIVE_SUPPLEMENT_TTL:
+        if _LIVE_SUPPLEMENT_CACHE.get("items"):
+            return list(_LIVE_SUPPLEMENT_CACHE["items"])
+    async with _LIVE_SUPPLEMENT_LOCK:
+        now_ts = time.time()
+        if (now_ts - float(_LIVE_SUPPLEMENT_CACHE.get("ts") or 0)) < _LIVE_SUPPLEMENT_TTL:
+            if _LIVE_SUPPLEMENT_CACHE.get("items"):
+                return list(_LIVE_SUPPLEMENT_CACHE["items"])
+
+        seen_urls: set[str] = set()
+        entries: list[dict] = []
+        now_n = datetime.now(timezone.utc)
+
+        def _maybe_add(entry: dict) -> None:
+            link = (entry.get("source_url") or "").split("?")[0].rstrip("/").lower()
+            if link and link in seen_urls:
+                return
+            raw = entry.get("published_at") or entry.get("occurred_at")
+            if raw:
+                try:
+                    dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                    if (now_n - dt) > timedelta(hours=72):
+                        return
+                except Exception:
+                    pass
+            if link:
+                seen_urls.add(link)
+            entries.append(entry)
+
+        try:
+            for a in await fetch_nixle_directory_articles():
+                a["_nixle_item"] = True
+                a["source"] = a.get("source") or "Nixle Alert"
+                if not _live_rss_article_ok(a):
+                    continue
+                _maybe_add(_rss_article_to_live_entry(a))
+        except Exception:
+            logger.debug("live_supplement_nixle_failed", exc_info=True)
+
+        try:
+            rows = await get_511_adapter().fetch_rows(limit_per_source=40)
+            for row in rows:
+                county = str(row.get("municipality") or row.get("matched_location") or "").lower()
+                if county and "albany" not in county and "capital" not in county:
+                    continue
+                row["_511_incident"] = True
+                _maybe_add(_511_row_to_live_entry(row))
+        except Exception:
+            logger.debug("live_supplement_511_failed", exc_info=True)
+
+        entries.sort(key=lambda e: e.get("published_at") or "", reverse=True)
+        _LIVE_SUPPLEMENT_CACHE["items"] = entries
+        _LIVE_SUPPLEMENT_CACHE["ts"] = time.time()
+        return list(entries)
+
+
 def _news_article_ok(article: dict) -> bool:
     """Albany-County locality + credibility gate for news articles."""
     src = str(article.get("source") or "").lower()
@@ -6689,8 +6836,8 @@ async def _fetch_albany_news() -> list[dict]:
                 if not _news_article_ok(a):
                     continue
                 title = str(a.get("title") or "").strip()
-                key = title.lower()[:60]
-                if not title or key in seen:
+                link_key = (a.get("link") or title).split("?")[0].rstrip("/").lower()
+                if not title or link_key in seen:
                     continue
                 # Freshness backstop (drop republished/stale items).
                 pub_dt = None
@@ -6703,7 +6850,7 @@ async def _fetch_albany_news() -> list[dict]:
                     pub_dt = None
                 if pub_dt and (datetime.now(timezone.utc) - pub_dt) > timedelta(hours=120):
                     continue
-                seen.add(key)
+                seen.add(link_key)
                 iso = pub_dt.astimezone(timezone.utc).isoformat() if pub_dt else ""
                 entries.append({
                     "id": "news_" + hashlib.md5((a.get("link") or title).encode()).hexdigest()[:12],
