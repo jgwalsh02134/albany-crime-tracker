@@ -2208,6 +2208,8 @@
       verification_label: _verificationLabel(r.verification_level || ""),
       verification_explanation: r.verification_explanation || "",
       severity: r.severity || "unknown",
+      _official_x_post: r._official_x_post === true,
+      _x_incident_label: r._x_incident_label || "",
       // Canonical responding agency id, resolved at write time and
       // backfilled across legacy rows in commit f56a205. Used by the
       // v7 redesign to lead the Live card meta row with operational
@@ -2587,6 +2589,7 @@
   }
 
   function _reportTypeLabel(type, sev, item) {
+    if (item && item._x_incident_label) return item._x_incident_label;
     var cat = (item.category || item._nysp_incident_category || "").toLowerCase();
     if (item._gap_fill) return "Monitoring";
     if (sev === "critical") return "CRITICAL INCIDENT";

@@ -5963,7 +5963,7 @@ async def _densify_live_feed_items(items: list[dict]) -> list[dict]:
     added: list[dict] = []
     for e in list(news_items) + list(live_supplement):
         topic = e.get("incident_type") or ""
-        if topic and topic not in _LIVE_NEWS_TOPICS:
+        if topic and topic not in _LIVE_NEWS_TOPICS and not e.get("_official_x_post"):
             continue
         raw = e.get("published_at") or e.get("occurred_at")
         dt = None
@@ -6227,6 +6227,8 @@ async def get_incidents_pulse():
         "x_scan_active": bool(XAI_API_KEY),
         "x_scan_model": XAI_RESPONSES_MODEL if XAI_API_KEY else "",
         "x_handles_monitored": len(_official_x_handles_from_directory()),
+        "x_scan_window_hours": _OFFICIAL_X_SCAN_WINDOW_HOURS,
+        "x_posts_cached": len(get_cached("official_x_combined_v3") or []),
         "feed_state": "live" if gap_s < 300 else ("aging" if gap_s < 900 else "quiet"),
     }
 
@@ -6612,19 +6614,21 @@ def _news_to_incident_card(e: dict) -> dict:
     public-safety reporting (that the ingester didn't store as an incident)
     still surfaces on the tracker."""
     title = e.get("title") or ""
-    summary = e.get("summary") or ""
+    summary = e.get("summary") or e.get("description") or ""
     topic = e.get("incident_type") or ""
-    sev = "high" if topic == "law_enforcement" and any(
+    sev = str(e.get("severity") or "medium")
+    if sev == "medium" and topic == "law_enforcement" and any(
         w in (title + " " + summary).lower()
         for w in ("shooting", "shot", "homicide", "murder", "stabbing", "fatal", "armed")
-    ) else "medium"
-    return {
+    ):
+        sev = "high"
+    card = {
         "id": e.get("id") or ("news_" + hashlib.md5((e.get("source_url") or title).encode()).hexdigest()[:12]),
         "title": title,
         "short_title": title,
         "description": summary,
         "severity": sev,
-        "incident_type": _NEWS_TOPIC_TO_TYPE.get(topic, "police_activity"),
+        "incident_type": _NEWS_TOPIC_TO_TYPE.get(topic, topic or "police_activity"),
         "municipality": e.get("municipality") or _muni_from_text(title + " " + summary),
         "source_name": e.get("source_name") or "Local News",
         "source_url": e.get("source_url") or "",
@@ -6637,6 +6641,13 @@ def _news_to_incident_card(e: dict) -> dict:
         "status": "reported",
         "_from_news_desk": True,
     }
+    if e.get("_official_x_post"):
+        card["_official_x_post"] = True
+        card["_x_incident_label"] = e.get("_x_incident_label")
+        card["source_type"] = "official"
+        card["verification_level"] = "official"
+        card["_from_live_supplement"] = e.get("_from_live_supplement", True)
+    return card
 
 
 _ALBANY_NYSP_TOWNS = frozenset({
@@ -6939,8 +6950,14 @@ def _rss_article_to_live_entry(a: dict) -> dict:
     """Normalize a parsed RSS article into the news-desk entry shape for Live merge."""
     title = str(a.get("title") or "").strip()
     desc = str(a.get("description") or "")
+    is_official_x = bool(a.get("_official_x_post"))
     cls = _classify_news_topic(title, desc)
     topic = cls[0] if cls else "law_enforcement"
+    sev = "medium"
+    if is_official_x and a.get("incident_type"):
+        topic = str(a.get("incident_type"))
+    if is_official_x and a.get("severity"):
+        sev = str(a.get("severity"))
     pub_dt = None
     try:
         if a.get("pubDate"):
@@ -6951,7 +6968,6 @@ def _rss_article_to_live_entry(a: dict) -> dict:
         pub_dt = None
     iso = pub_dt.astimezone(timezone.utc).isoformat() if pub_dt else ""
     muni = _muni_from_text(title + " " + desc)
-    is_official_x = bool(a.get("_official_x_post"))
     if is_official_x:
         h = _official_x_handle_from_article(a)
         muni = _muni_from_text(title + " " + desc)
@@ -6970,7 +6986,7 @@ def _rss_article_to_live_entry(a: dict) -> dict:
         "occurred_at": iso,
         "published_at": iso,
         "human_time": _relative_time(pub_dt),
-        "severity": "medium",
+        "severity": sev,
         "incident_type": topic,
         "topic": cls[1] if cls else "Law Enforcement",
         "source_name": a.get("source") or "Local News",
@@ -6982,6 +6998,7 @@ def _rss_article_to_live_entry(a: dict) -> dict:
         "is_news": True,
         "_from_live_supplement": True,
         "_official_x_post": is_official_x,
+        "_x_incident_label": a.get("_x_incident_label") if is_official_x else None,
     }
 
 
@@ -7994,7 +8011,7 @@ async def get_social_intel():
     """
     Recent Albany County law-enforcement posts on X.com — Nitter RSS + xAI x_search.
     """
-    cached = get_cached("social_intel_v2")
+    cached = get_cached("social_intel_v3")
     if cached is not None:
         return {"status": "ok", "source": "cache", "items": cached}
 
@@ -8030,7 +8047,7 @@ async def get_social_intel():
         return {"status": "error", "items": [], "message": "AI not configured"}
 
     if items:
-        set_cached("social_intel_v2", items)
+        set_cached("social_intel_v3", items)
         return {"status": "ok", "source": "live", "items": items}
 
     return {"status": "ok", "source": "live", "items": [], "message": "No recent X posts found"}
@@ -10733,6 +10750,36 @@ _OFFICIAL_X_NATIONAL_NOISE = (
     "skimming device", "news release:", "read more:",
 )
 
+# Incident signals for whitelisted local accounts (broader than generic news keywords)
+_OFFICIAL_X_INCIDENT_SIGNALS = frozenset({
+    "arrest", "arrested", "charged", "warrant", "suspect", "wanted", "investigation",
+    "investigating", "shooting", "shots fired", "shot ", "stabbing", "robbery",
+    "burglary", "assault", "homicide", "domestic", "pursuit", "chase", "standoff",
+    "barricade", "swat", "crash", "collision", "mvc", "mva", "rollover",
+    "road closed", "lane closed", "closure", "detour", "avoid", "traffic advisory",
+    "heavy police", "police activity", "structure fire", "working fire", "house fire",
+    "box alarm", "mutual aid", "fire department", "fire dept", "smoke", "hazmat",
+    "ems", "medic", "ambulance", "overdose", "unconscious", "cardiac",
+    "missing", "amber", "silver alert", "shelter", "lockdown", "evacuat", "advisory",
+    "alert", "seeking", "public assist", "hit and run", "dui", "dwi", "fatal",
+    "pedestrian struck", "vehicle vs", "multi-vehicle",
+})
+
+_OFFICIAL_X_WELLNESS_NOISE = frozenset({
+    "be well", "resilience", "you are strong", "you're stronger", "mental health",
+    "wellness", "self-care", "take a minute", "name one thing", "congratulations",
+    "proud to announce", "community day", "coffee with a cop", "tip of the day",
+    "#bewell", "#mentalhealth", "stronger than you might think",
+})
+
+_OFFICIAL_X_SCAN_WINDOW_HOURS = 48
+_NITTER_POSTS_PER_HANDLE = 12
+_X_NITTER_CONCURRENCY = 6
+_NITTER_HOSTS = (
+    "nitter.poast.org", "nitter.net", "nitter.it", "nitter.privacydev.net",
+    "nitter.cz", "nitter.unixfox.eu",
+)
+
 # Status URLs must use real snowflake IDs (typically 18–19 digits). Short IDs are rejected → profile fallback.
 _OFFICIAL_X_STATUS_RE = re.compile(
     r"^https?://(?:www\.)?(?:twitter\.com|x\.com)/([^/]+)/status/(\d+)",
@@ -10794,6 +10841,104 @@ def _official_x_handle_from_article(article: dict) -> str:
     return ""
 
 
+def _x_tweet_id_from_url(url: str) -> str:
+    m = re.search(r"/status/(\d{18,})", url or "", re.I)
+    return m.group(1) if m else ""
+
+
+def _x_pub_ts(article: dict) -> float:
+    raw = article.get("pubDate") or article.get("published_at") or ""
+    try:
+        dt = parsedate_to_datetime(str(raw))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except Exception:
+        return 0.0
+
+
+def _official_x_classify_incident(blob: str) -> tuple[str, str, str]:
+    """Return (incident_type, severity, label) for Live card rendering."""
+    b = blob.lower()
+    if any(k in b for k in ("structure fire", "working fire", "house fire", "box alarm", "fully engulfed")):
+        return "emergency_services", "high", "Structure Fire"
+    if any(k in b for k in ("shooting", "shots fired", "homicide", "stabbing", "standoff", "barricade", "hostage")):
+        return "law_enforcement", "critical", "Active Incident"
+    if any(k in b for k in ("fire", "smoke", "hazmat")) and "fired" not in b and "shots fired" not in b:
+        return "emergency_services", "high", "Fire"
+    if any(k in b for k in ("mvc", "mva", "crash", "collision", "rollover", "road closed", "closure", "detour")):
+        return "emergency_services", "medium", "Traffic / Crash"
+    if any(k in b for k in ("overdose", "cardiac", "unconscious", "medic", "ambulance", "ems")):
+        return "emergency_services", "medium", "EMS"
+    if any(k in b for k in ("missing", "amber", "silver alert", "wanted", "warrant")):
+        return "law_enforcement", "high", "Alert"
+    if any(k in b for k in ("arrest", "arrested", "charged", "dui", "dwi")):
+        return "law_enforcement", "medium", "Arrest"
+    return "law_enforcement", "medium", "Police Activity"
+
+
+def _score_x_post(article: dict) -> float:
+    score = 40.0
+    link = (article.get("link") or article.get("x_post_url") or "")
+    if "/status/" in link:
+        score += 25.0
+    if article.get("_official_x_nitter_rss"):
+        score += 15.0
+    blob = ((article.get("title") or "") + " " + (article.get("description") or "")).lower()
+    if any(k in blob for k in ("shooting", "shots fired", "structure fire", "road closed", "missing person")):
+        score += 30.0
+    elif any(k in blob for k in _OFFICIAL_X_INCIDENT_SIGNALS):
+        score += 12.0
+    age_h = None
+    try:
+        ts = _x_pub_ts(article)
+        if ts:
+            age_h = (datetime.now(timezone.utc).timestamp() - ts) / 3600.0
+    except Exception:
+        age_h = None
+    if age_h is not None:
+        if age_h <= 2:
+            score += 20.0
+        elif age_h <= 6:
+            score += 12.0
+        elif age_h <= 12:
+            score += 6.0
+        elif age_h > 36:
+            score -= 15.0
+    return score
+
+
+def _enrich_official_x_article(article: dict) -> dict:
+    h = _official_x_handle_from_article(article)
+    title = (article.get("title") or "").strip()
+    desc = (article.get("description") or "").strip()
+    blob = f"{title} {desc}"
+    itype, sev, label = _official_x_classify_incident(blob)
+    out = dict(article)
+    out["incident_type"] = itype
+    out["severity"] = sev
+    out["_x_incident_label"] = label
+    out["municipality"] = _OFFICIAL_X_HANDLE_MUNI.get(h) or _muni_from_text(blob)
+    tid = _x_tweet_id_from_url(out.get("link") or out.get("x_post_url") or "")
+    if tid:
+        out["_x_tweet_id"] = tid
+    link = out.get("link") or out.get("x_post_url") or ""
+    if link and "/status/" in link:
+        out["source_url"] = link
+    out["_x_scan_score"] = _score_x_post(out)
+    return out
+
+
+def _official_x_has_incident_signal(combined: str) -> bool:
+    blob = combined.lower()
+    if any(w in blob for w in _OFFICIAL_X_WELLNESS_NOISE):
+        return False
+    if any(k in blob for k in _OFFICIAL_X_INCIDENT_SIGNALS):
+        return True
+    pseudo = {"title": combined, "description": ""}
+    return live_safety_signal_match(pseudo) or ongoing_public_safety_relevance(pseudo)
+
+
 def _official_x_post_local_ok(article: dict) -> bool:
     """True when an X post is from a whitelisted local handle and Albany-relevant."""
     h = _official_x_handle_from_article(article)
@@ -10802,12 +10947,15 @@ def _official_x_post_local_ok(article: dict) -> bool:
 
     title, desc, combined = _live_plain_text(article)
     blob = combined.lower()
-    if len(combined) < 15:
+    if len(combined.strip()) < 10:
         return False
     if any(m in blob for m in _RT_REPOST_MARKERS):
         return False
     for p in _NON_INCIDENT_PROMO_SOCIAL + _OFFICIAL_X_NATIONAL_NOISE:
         if p in blob:
+            return False
+    for w in _OFFICIAL_X_WELLNESS_NOISE:
+        if w in blob:
             return False
     for m in _DISTANT_OR_NATIONAL_HUMAN_INTEREST:
         if m in blob:
@@ -10816,11 +10964,7 @@ def _official_x_post_local_ok(article: dict) -> bool:
         if m in blob:
             return False
 
-    if not (
-        live_safety_signal_match(article)
-        or ongoing_public_safety_relevance(article)
-        or any(k in blob for k in _LIVE_SUBSTANCE_KEYWORDS)
-    ):
+    if not _official_x_has_incident_signal(combined):
         return False
 
     # FBI Albany: require explicit Capital District / county anchor in post text
@@ -10877,7 +11021,7 @@ def _grok_x_json_to_articles(items: list, allow_h: set[str]) -> list[dict[str, A
             pstr = format_datetime(dt, usegmt=True)
         except Exception:
             pstr = format_datetime(datetime.now(timezone.utc), usegmt=True)
-        out.append(
+        out.append(_enrich_official_x_article(
             {
                 "title": title,
                 "link": link,
@@ -10891,64 +11035,95 @@ def _grok_x_json_to_articles(items: list, allow_h: set[str]) -> list[dict[str, A
                 "_feed_reliability": 0.96,
                 "source_url": link if "/status/" in link else "",
             }
-        )
+        ))
     return out
 
 
+async def _xai_fetch_x_posts_for_focus(focus: str) -> list[dict[str, Any]]:
+    """One xAI x_search pass tuned for law-enforcement vs fire/EMS."""
+    if not XAI_API_KEY:
+        return []
+    handles = _official_x_handles_whitelist()
+    allow_h = {x.lower() for x in _OFFICIAL_X_HANDLES_ALBANY}
+    from_dt = datetime.now(timezone.utc) - timedelta(hours=_OFFICIAL_X_SCAN_WINDOW_HOURS)
+    from_date = from_dt.strftime("%Y-%m-%d")
+    to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    prompt = (
+        f"Search X for public-safety posts from ONLY these Albany County NY accounts: "
+        + ", ".join("@" + h for h in handles)
+        + f". Window: last {_OFFICIAL_X_SCAN_WINDOW_HOURS} hours. {focus} "
+        "Return up to 2 substantive posts per account (JSON array). "
+        "Include real https://x.com/handle/status/SNOWFLAKE permalinks. "
+        "Skip hiring, wellness, national PR, and out-of-county stories."
+    )
+    try:
+        text = await call_grok_x_search(
+            prompt,
+            system_prompt=_SOCIAL_GROK_SYSTEM,
+            allowed_handles=handles,
+            from_date=from_date,
+            to_date=to_date,
+            max_tokens=4000,
+            timeout=90.0,
+        )
+        if not text:
+            return []
+        m = re.search(r"\[[\s\S]*\]", text)
+        raw = m.group(0) if m else text
+        items = json.loads(raw)
+        if not isinstance(items, list):
+            return []
+        out: list[dict[str, Any]] = []
+        for article in _grok_x_json_to_articles(items, allow_h):
+            if _official_x_post_local_ok(article):
+                out.append(article)
+        return out
+    except Exception as exc:
+        logger.warning("xai_fetch_x_posts focus=%s: %s", focus[:40], exc)
+        return []
+
+
 async def fetch_official_social_posts() -> list[dict[str, Any]]:
-    """xAI x_search over official LE X handles → Live-feed article dicts."""
-    cached = get_cached("grok_official_x_posts_v2")
+    """xAI x_search — parallel LE + fire/EMS scans over whitelisted local handles."""
+    cached = get_cached("grok_official_x_posts_v3")
     if cached:
         return cached
-    out: list[dict[str, Any]] = []
     if not XAI_API_KEY:
-        return out
+        return []
 
-    handles = _official_x_handles_from_directory()
-    allow_h = {x.lower() for x in _OFFICIAL_X_HANDLES_ALBANY}
-    from_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
-    to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    seen_links: set[str] = set()
-
-    for i in range(0, len(handles), 10):
-        batch = handles[i : i + 10]
-        prompt = (
-            "Search X for up to 1 substantive public-safety post per account from ONLY these handles: "
-            + ", ".join("@" + h for h in batch)
-            + ". Last 24 hours. Topics: arrests, investigations, safety alerts, wanted/missing, "
-            "crashes, fires, major police activity in Albany County NY or the immediate Capital District. "
-            "Return a JSON array only (see system format). Include real x.com/status permalinks when found."
-        )
-        try:
-            text = await call_grok_x_search(
-                prompt,
-                system_prompt=_SOCIAL_GROK_SYSTEM,
-                allowed_handles=batch,
-                from_date=from_date,
-                to_date=to_date,
-                max_tokens=3500,
+    le_focus = (
+        "Focus: police/sheriff arrests, investigations, pursuits, shootings, stabbings, "
+        "robberies, warrants, missing persons, road closures, shelter-in-place, heavy police activity."
+    )
+    fire_focus = (
+        "Focus: structure/working fires, box alarms, hazmat, EMS/medical, mutual aid, "
+        "Albany Fire Department responses, traffic crashes with fire/EMS units."
+    )
+    batches = await asyncio.gather(
+        _xai_fetch_x_posts_for_focus(le_focus),
+        _xai_fetch_x_posts_for_focus(fire_focus),
+        return_exceptions=True,
+    )
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for batch in batches:
+        if isinstance(batch, Exception):
+            logger.warning("fetch_official_social_posts_batch: %s", batch)
+            continue
+        for article in batch:
+            tid = article.get("_x_tweet_id") or _x_tweet_id_from_url(
+                article.get("link") or article.get("x_post_url") or ""
             )
-            if not text:
+            lk = (article.get("link") or "").split("?")[0].rstrip("/").lower()
+            dedupe_key = tid or lk
+            if dedupe_key and dedupe_key in seen:
                 continue
-            m = re.search(r"\[[\s\S]*\]", text)
-            raw = m.group(0) if m else text
-            items = json.loads(raw)
-            if not isinstance(items, list):
-                continue
-            for article in _grok_x_json_to_articles(items, allow_h):
-                if not _official_x_post_local_ok(article):
-                    continue
-                lk = (article.get("link") or "").split("?")[0].rstrip("/").lower()
-                if lk and lk in seen_links:
-                    continue
-                if lk:
-                    seen_links.add(lk)
-                out.append(article)
-        except Exception as exc:
-            logger.warning("fetch_official_social_posts batch=%s: %s", batch[:3], exc)
-
+            if dedupe_key:
+                seen.add(dedupe_key)
+            out.append(article)
+    out.sort(key=lambda a: (-float(a.get("_x_scan_score") or 0), -_x_pub_ts(a)))
     if out:
-        set_cached("grok_official_x_posts_v2", out)
+        set_cached("grok_official_x_posts_v3", out)
     return out
 
 
@@ -10962,72 +11137,81 @@ def _nitter_link_to_x_status(url: str) -> str:
 
 async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
     """
-    Best-effort real X permalinks via public Nitter mirrors (no API key).
-    Cached; failures return [] without breaking the feed.
+    Real X permalinks via Nitter mirrors — primary fast path (no API key).
+    Pulls recent timeline rows in parallel, filters to incident signals only.
     """
-    cached = get_cached("nitter_official_x_v2")
+    cached = get_cached("nitter_official_x_v3")
     if cached is not None:
         return cached
     out: list[dict[str, Any]] = []
-    hosts = ("nitter.poast.org", "nitter.net", "nitter.it", "nitter.privacydev.net")
     handles_ordered = _official_x_handles_whitelist()
+    sem = asyncio.Semaphore(_X_NITTER_CONCURRENCY)
 
     async def _pull_one(handle: str) -> list[dict[str, Any]]:
-        got: list[dict[str, Any]] = []
-        for host in hosts:
-            try:
-                rss_url = f"https://{host}/{handle}/rss"
-                resp = await http_client.get(rss_url, timeout=9.0, follow_redirects=True)
-                if resp.status_code != 200:
+        async with sem:
+            got: list[dict[str, Any]] = []
+            for host in _NITTER_HOSTS:
+                try:
+                    rss_url = f"https://{host}/{handle}/rss"
+                    resp = await http_client.get(rss_url, timeout=10.0, follow_redirects=True)
+                    if resp.status_code != 200:
+                        continue
+                    parsed = parse_rss(resp.text, default_source=f"Official @{handle}")
+                    for a in parsed[:_NITTER_POSTS_PER_HANDLE]:
+                        xu = _nitter_link_to_x_status(a.get("link", "") or "")
+                        if not xu:
+                            continue
+                        row = _enrich_official_x_article({
+                            "title": (a.get("title") or "").strip() or "Post",
+                            "link": xu,
+                            "x_post_url": xu,
+                            "pubDate": a.get("pubDate")
+                            or format_datetime(datetime.now(timezone.utc), usegmt=True),
+                            "description": ((a.get("description") or "")[:500]),
+                            "source": f"Official @{handle}",
+                            "source_priority": SOURCE_PRIORITY_OFFICIAL_X_GROK,
+                            "_official_x_post": True,
+                            "_official_x_nitter_rss": True,
+                            "_feed_reliability": 0.97,
+                            "source_url": xu,
+                        })
+                        if not _official_x_post_local_ok(row):
+                            continue
+                        got.append(row)
+                    if got:
+                        break
+                except Exception:
                     continue
-                parsed = parse_rss(resp.text, default_source=f"Official @{handle}")
-                for a in parsed[:6]:
-                    xu = _nitter_link_to_x_status(a.get("link", "") or "")
-                    if not xu:
-                        continue
-                    row = {
-                        "title": (a.get("title") or "").strip() or "Post",
-                        "link": xu,
-                        "x_post_url": xu,
-                        "pubDate": a.get("pubDate")
-                        or format_datetime(datetime.now(timezone.utc), usegmt=True),
-                        "description": ((a.get("description") or "")[:400]),
-                        "source": f"Official @{handle}",
-                        "source_priority": SOURCE_PRIORITY_OFFICIAL_X_GROK,
-                        "_official_x_post": True,
-                        "_official_x_nitter_rss": True,
-                        "_feed_reliability": 0.95,
-                        "source_url": "",
-                    }
-                    if not _official_x_post_local_ok(row):
-                        continue
-                    got.append(row)
-                if got:
-                    break
-            except Exception:
-                continue
-        return got
+            return got
 
     try:
         batches = await asyncio.gather(*[_pull_one(h) for h in handles_ordered])
+        seen: set[str] = set()
         for b in batches:
-            out.extend(b)
+            for row in b:
+                tid = row.get("_x_tweet_id") or _x_tweet_id_from_url(row.get("link") or "")
+                if tid and tid in seen:
+                    continue
+                if tid:
+                    seen.add(tid)
+                out.append(row)
     except Exception as e:
         logger.warning("fetch_nitter_official_x_rss_posts: %s", e)
-    set_cached("nitter_official_x_v2", out)
+    out.sort(key=lambda a: (-float(a.get("_x_scan_score") or 0), -_x_pub_ts(a)))
+    set_cached("nitter_official_x_v3", out)
     return out
 
 
 async def fetch_official_x_articles() -> list[dict[str, Any]]:
     """
-    Combined x.com sourcing: Nitter RSS mirrors (direct permalinks) + xAI x_search.
-    Used by ingestion and Live feed supplement.
+    Combined x.com sourcing: Nitter RSS (fast) + dual xAI x_search (LE + fire/EMS).
+    Dedupes by tweet snowflake, ranks by incident score + recency.
     """
-    cached = get_cached("official_x_combined_v2")
+    cached = get_cached("official_x_combined_v3")
     if cached is not None:
         return cached
     merged: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    seen_ids: set[str] = set()
     batches = await asyncio.gather(
         fetch_nitter_official_x_rss_posts(),
         fetch_official_social_posts(),
@@ -11038,24 +11222,28 @@ async def fetch_official_x_articles() -> list[dict[str, Any]]:
             logger.warning("official_x_combined_batch_error: %s", batch)
             continue
         for a in batch:
-            lk = (
-                (a.get("link") or a.get("x_post_url") or "")
-                .split("?")[0]
-                .rstrip("/")
-                .lower()
-            )
-            if lk and lk in seen:
-                continue
-            if lk:
-                seen.add(lk)
             if not _official_x_post_local_ok(a):
                 continue
-            merged.append(a)
-    merged.sort(
-        key=lambda x: str(x.get("pubDate") or ""),
-        reverse=True,
-    )
-    set_cached("official_x_combined_v2", merged)
+            tid = a.get("_x_tweet_id") or _x_tweet_id_from_url(
+                a.get("link") or a.get("x_post_url") or ""
+            )
+            if tid:
+                if tid in seen_ids:
+                    continue
+                seen_ids.add(tid)
+            else:
+                lk = (a.get("link") or "").split("?")[0].rstrip("/").lower()
+                if lk and lk in seen_ids:
+                    continue
+                if lk:
+                    seen_ids.add(lk)
+            merged.append(a if a.get("_x_scan_score") else _enrich_official_x_article(a))
+    merged.sort(key=lambda a: (-float(a.get("_x_scan_score") or 0), -_x_pub_ts(a)))
+    set_cached("official_x_combined_v3", merged)
+    logger.info("official_x_scan count=%d nitter=%d xai=%d",
+                len(merged),
+                sum(1 for x in merged if x.get("_official_x_nitter_rss")),
+                sum(1 for x in merged if x.get("_official_x_xai")))
     return merged
 
 
