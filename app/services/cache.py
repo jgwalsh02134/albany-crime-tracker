@@ -26,6 +26,7 @@ DEFAULT_TTLS: dict[str, int] = {
     "social_intel": 900,
     "grok_official_x_posts": 90,
     "nitter_official_x": 180,
+    "official_x_combined": 120,
     "scanner_talkgroups": 3600,
     "scanner_calls": 12,
     "incidents_query": 45,

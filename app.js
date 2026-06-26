@@ -393,6 +393,7 @@
     startClock();
 
     fetchIncidents();
+    fetchActivityByArea();
     setTimeout(fetchScannerCalls, 900);
     setTimeout(initScannerChannelChips, 1100);
     setTimeout(initOpenMhzRealtime, 2000);  // Start real-time after initial fetch
@@ -402,6 +403,8 @@
 
     setInterval(function () {
       fetchIncidents();
+      fetchActivityByArea();
+      fetchSocialIntel();
       fetchSummarySnapshot();
       fetchSituation();
     }, REFRESH_MS);
@@ -785,15 +788,77 @@
     return { severities: sevs, municipalities: munis };
   }
 
-  // ── QUICK FILTER CHIPS ────────────────────────────────────────
+  // ── QUICK FILTER CHIPS (activity-by-area strip) ───────────────
   var _activeChipFilter = "all";
+  var _activityAreas = [];
+
+  function _itemAreaSlug(item) {
+    if (item && item.area_slug) return item.area_slug;
+    if (item && item.incident && item.incident.area_slug) return item.incident.area_slug;
+    var muni = ((item && (item.municipality || item.matched_location)) || "").toLowerCase();
+    if (muni.indexOf("colonie") !== -1) return "colonie";
+    if (muni.indexOf("guilderland") !== -1) return "guilderland";
+    if (muni.indexOf("bethlehem") !== -1) return "bethlehem";
+    if (muni.indexOf("cohoes") !== -1) return "cohoes";
+    if (muni.indexOf("watervliet") !== -1) return "watervliet";
+    if (muni.indexOf("albany") !== -1) return "city of albany";
+    return "albany county";
+  }
+
+  function renderActivityStrip(areas, windowHours) {
+    var wrap = document.getElementById("activityByArea");
+    var chipsEl = document.getElementById("activityAreaChips");
+    var windowEl = document.getElementById("activityByAreaWindow");
+    if (!wrap || !chipsEl) return;
+    _activityAreas = Array.isArray(areas) ? areas : [];
+    if (windowEl) {
+      windowEl.textContent = "last " + (windowHours || 24) + "h";
+    }
+    if (!_activityAreas.length) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    var html = '<button type="button" class="filter-chip' +
+      (_activeChipFilter === "all" ? " active" : "") +
+      '" data-filter="all" role="tab" aria-selected="' +
+      (_activeChipFilter === "all" ? "true" : "false") + '">All areas</button>';
+    _activityAreas.forEach(function (a) {
+      var slug = a.slug || "";
+      var active = _activeChipFilter === slug;
+      html += '<button type="button" class="filter-chip' + (active ? " active" : "") +
+        '" data-filter="' + slug + '" role="tab" aria-selected="' + (active ? "true" : "false") +
+        '" title="' + (a.newest_title || "").replace(/"/g, "&quot;") + '">' +
+        (a.label || slug) +
+        '<span class="filter-chip-count">' + (a.count || 0) + "</span></button>";
+    });
+    chipsEl.innerHTML = html;
+    initFilterChips();
+  }
+
+  function fetchActivityByArea() {
+    fetch(API + "/api/incidents/activity-by-area?window_hours=24")
+      .then(ok)
+      .then(function (data) {
+        if (!data || data.status !== "ok") return;
+        renderActivityStrip(data.areas || [], data.window_hours || 24);
+      })
+      .catch(function (err) {
+        console.warn("Activity-by-area fetch failed:", err);
+      });
+  }
+
   function initFilterChips() {
-    var chips = document.querySelectorAll(".filter-chip[data-filter]");
+    var chips = document.querySelectorAll("#activityAreaChips .filter-chip[data-filter]");
     chips.forEach(function (chip) {
       chip.addEventListener("click", function () {
         _activeChipFilter = chip.getAttribute("data-filter") || "all";
-        chips.forEach(function (c) { c.classList.toggle("active", c === chip); });
-        renderUnifiedFeed(allIncidentData);
+        chips.forEach(function (c) {
+          var isActive = c === chip;
+          c.classList.toggle("active", isActive);
+          c.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+        renderUnifiedFeed(allIncidentData.filter(function (x) { return x.feed_tab !== "scanner_only"; }));
       });
     });
   }
@@ -824,6 +889,7 @@
           }, 300);
           // Refresh data
           fetchIncidents();
+          fetchActivityByArea();
         }
       }, { passive: true });
       scrollEl.addEventListener("touchend", function () { pulling = false; }, { passive: true });
@@ -2134,6 +2200,7 @@
       latitude: r.latitude,
       longitude: r.longitude,
       municipality: r.municipality || "",
+      area_slug: r.area_slug || "",
       neighborhood: r.municipality || "",
       matched_location: r.address_text || "",
       confidence: typeof r.confidence_score === "number" ? r.confidence_score : 0,
@@ -2602,15 +2669,14 @@
       if (blob.indexOf(needle) === -1) return false;
     }
 
-    // Quick-filter chip
+    // Quick-filter chip (activity-by-area strip)
     if (_activeChipFilter && _activeChipFilter !== "all") {
       if (_activeChipFilter === "high") {
         var sev = ((item && item.severity) || "").toLowerCase();
         if (sev !== "critical" && sev !== "high") return false;
       } else {
-        // Municipality chip
-        var muni = ((item && (item.municipality || item.matched_location)) || "").toLowerCase();
-        if (muni.indexOf(_activeChipFilter) === -1) return false;
+        var slug = _itemAreaSlug(item);
+        if (slug !== _activeChipFilter) return false;
       }
     }
 
@@ -3287,6 +3353,9 @@
     html += '<span class="material-icons" style="font-size:11px;vertical-align:-1px;margin-right:3px;">' + icon + '</span>';
     html += esc(item.source || item.handle || "Law Enforcement") + '</div>';
     html += '<div class="social-intel-text">' + esc(item.text || "") + '</div>';
+    if (item.url) {
+      html += '<a class="social-intel-link" href="' + esc(item.url) + '" target="_blank" rel="noopener">View on X</a>';
+    }
     if (item.time) html += '<div class="social-intel-time">' + esc(item.time) + '</div>';
     html += '</div></div>';
     return html;

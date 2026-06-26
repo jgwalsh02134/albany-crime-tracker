@@ -147,6 +147,17 @@
             </div>
           </div>
 
+          <!-- Activity by area: tap a town to filter the Live feed -->
+          <div class="activity-by-area" id="activityByArea" hidden>
+            <div class="activity-by-area-header">
+              <span class="activity-by-area-title">Activity by area</span>
+              <span class="activity-by-area-window" id="activityByAreaWindow">last 24h</span>
+            </div>
+            <div class="filter-chips" id="activityAreaChips" role="tablist" aria-label="Filter by area">
+              <button type="button" class="filter-chip active" data-filter="all" role="tab" aria-selected="true">All areas</button>
+            </div>
+          </div>
+
           <!-- New activity sliding banner -->
           <div class="new-activity-banner" id="newActivityBanner" hidden>
             <span class="material-icons" style="font-size:14px;">notifications_active</span>

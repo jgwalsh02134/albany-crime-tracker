@@ -92,6 +92,7 @@ logger = logging.getLogger("albany-crime-tracker")
 XAI_API_KEY = settings.xai_api_key
 XAI_BASE = "https://api.x.ai/v1"
 XAI_MODEL = "grok-3"  # Strongest full xAI reasoning model (not mini / fast variants)
+XAI_RESPONSES_MODEL = (os.getenv("XAI_RESPONSES_MODEL") or "grok-4-1-fast").strip()
 
 ASCII_PUNCT_TRANSLATION = str.maketrans({
     "“": '"',
@@ -1114,11 +1115,12 @@ RSS_FEEDS_SOCIAL = {
 
 def _total_source_count() -> int:
     """Count of all configured RSS/news/activity sources for status display."""
-    return (
+    base = (
         len(RSS_FEEDS_LOCAL) + len(RSS_FEEDS_GNEWS) + len(RSS_FEEDS_OFFICIAL)
         + len(RSS_FEEDS_EXTENDED) + len(RSS_FEEDS_POLICE_ACTIVITY)
         + len(RSS_FEEDS_SOCIAL) + len(RSS_FEEDS_COMMUNITY)
     )
+    return base + len(_official_x_handles_from_directory())
 
 
 def build_operational_rss_feeds() -> dict[str, dict]:
@@ -3516,6 +3518,99 @@ async def post_xai_chat(body: dict, timeout: float = 20.0):
     )
 
 
+def _extract_xai_responses_text(data: dict) -> str:
+    """Pull assistant text from xAI Responses API (/v1/responses) payload."""
+    if not isinstance(data, dict):
+        return ""
+    ot = data.get("output_text")
+    if isinstance(ot, str) and ot.strip():
+        return ot.strip()
+    parts: list[str] = []
+    for block in data.get("output") or []:
+        if not isinstance(block, dict):
+            continue
+        btype = str(block.get("type") or "")
+        if btype == "message":
+            for chunk in block.get("content") or []:
+                if not isinstance(chunk, dict):
+                    continue
+                if chunk.get("type") in ("output_text", "text"):
+                    txt = (chunk.get("text") or "").strip()
+                    if txt:
+                        parts.append(txt)
+        elif btype in ("output_text", "text"):
+            txt = (block.get("text") or "").strip()
+            if txt:
+                parts.append(txt)
+    return "\n".join(parts).strip()
+
+
+async def post_xai_responses(body: dict, timeout: float = 120.0):
+    """xAI Responses API — required for x_search / web_search agent tools."""
+    headers = {
+        "Authorization": f"Bearer {XAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    safe_body = _to_ascii_safe_json(body)
+    payload = json.dumps(safe_body, ensure_ascii=True).encode("ascii")
+    return await http_client.post(
+        f"{XAI_BASE}/responses",
+        headers=headers,
+        content=payload,
+        timeout=timeout,
+    )
+
+
+async def call_grok_x_search(
+    user_prompt: str,
+    *,
+    system_prompt: str,
+    allowed_handles: Optional[list[str]] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    max_tokens: int = 4500,
+    temperature: float = 0.08,
+    timeout: float = 120.0,
+) -> Optional[str]:
+    """Scan X.com via xAI Responses API x_search tool (replaces deprecated search_parameters)."""
+    if not XAI_API_KEY:
+        return None
+    if not to_date:
+        to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if not from_date:
+        from_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    tool: dict[str, Any] = {
+        "type": "x_search",
+        "from_date": from_date,
+        "to_date": to_date,
+    }
+    if allowed_handles:
+        tool["allowed_x_handles"] = [h.lstrip("@") for h in allowed_handles[:10]]
+    body = {
+        "model": XAI_RESPONSES_MODEL,
+        "input": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "tools": [tool],
+        "temperature": temperature,
+        "max_output_tokens": max_tokens,
+    }
+    try:
+        resp = await post_xai_responses(body, timeout=timeout)
+        if resp.status_code != 200:
+            logger.warning(
+                "xai_x_search_http status=%s body=%s",
+                resp.status_code,
+                (resp.text or "")[:400],
+            )
+            return None
+        return _extract_xai_responses_text(resp.json())
+    except Exception as exc:
+        logger.warning("xai_x_search_error: %s", exc)
+        return None
+
+
 SITUATION_SYSTEM = (
     "Albany County, NY Crime Tracker — lead analyst. Geography: City of Albany + Albany County towns/villages "
     "(Colonie, Guilderland, Bethlehem, Cohoes, Watervliet, etc.) only; reject other 'Albany' cities.\n"
@@ -4288,11 +4383,10 @@ async def fetch_all_feeds(strict_live_sources: bool = False):
     for feed_articles in results:
         articles.extend(feed_articles)
 
-    # Real-time layers from directory + OpenMHz / Nixle / Bluesky / Grok mirrors (parallel)
+    # Real-time layers from directory + OpenMHz / Nixle / Bluesky / X.com / Grok (parallel)
     _extra_batches = await asyncio.gather(
         fetch_nixle_directory_articles(),
-        # fetch_official_social_posts(),
-        # fetch_nitter_official_x_rss_posts(),
+        fetch_official_x_articles(),
         fetch_scanner_directory_items(),
         fetch_tier1_sources(limit_per_source=80, strict_live_sources=strict_live_sources),
         fetch_nysp_blotter_pdfs(),
@@ -5683,6 +5777,314 @@ def _polish_incidents(items: list[dict]) -> list[dict]:
     return in_area + out_area
 
 
+_LIVE_NEWS_TOPICS = frozenset({"law_enforcement", "emergency_services", "courts_law"})
+
+# Municipality centroids for map placement when only town-level location is known
+# (NYSP blotter rows, many news items). Jitter is applied per incident id.
+_ALBANY_MUNI_CENTROIDS: dict[str, tuple[float, float]] = {
+    "city of albany": (42.6526, -73.7562),
+    "albany": (42.6526, -73.7562),
+    "colonie": (42.7179, -73.8340),
+    "latham": (42.7470, -73.7570),
+    "loudonville": (42.7000, -73.7680),
+    "guilderland": (42.6970, -73.9070),
+    "bethlehem": (42.5870, -73.8290),
+    "delmar": (42.6270, -73.8330),
+    "slingerlands": (42.6420, -73.8650),
+    "glenmont": (42.6010, -73.7910),
+    "cohoes": (42.7743, -73.7001),
+    "watervliet": (42.7301, -73.7013),
+    "green island": (42.7440, -73.6920),
+    "menands": (42.6900, -73.7240),
+    "new scotland": (42.6080, -73.8890),
+    "coeymans": (42.4760, -73.7960),
+    "ravena": (42.4810, -73.8110),
+    "voorheesville": (42.6520, -73.9290),
+    "altamont": (42.7010, -74.0340),
+    "berne": (42.6210, -74.1390),
+    "knox": (42.6610, -74.1230),
+    "westerlo": (42.5210, -74.0410),
+    "rensselaerville": (42.5230, -74.1530),
+    "selkirk": (42.5470, -73.7920),
+    "feura bush": (42.5680, -73.8830),
+    "clarksville": (42.5510, -73.9210),
+    "westmere": (42.6900, -73.8810),
+    "mckownville": (42.6850, -73.8520),
+    "albany county": (42.6526, -73.7562),
+}
+
+_AREA_LABELS: dict[str, str] = {
+    "city of albany": "Albany",
+    "colonie": "Colonie",
+    "guilderland": "Guilderland",
+    "bethlehem": "Bethlehem",
+    "cohoes": "Cohoes",
+    "watervliet": "Watervliet",
+    "green island": "Green Island",
+    "menands": "Menands",
+    "new scotland": "New Scotland",
+    "coeymans": "Coeymans",
+    "berne": "Berne",
+    "knox": "Knox",
+    "westerlo": "Westerlo",
+    "rensselaerville": "Rensselaerville",
+    "latham": "Latham",
+    "loudonville": "Loudonville",
+    "delmar": "Delmar",
+    "ravena": "Ravena",
+    "voorheesville": "Voorheesville",
+    "altamont": "Altamont",
+    "selkirk": "Selkirk",
+    "albany county": "Albany County",
+}
+
+
+def _area_slug(it: dict) -> str:
+    """Normalize an incident to an Albany-County area bucket for filtering/map."""
+    muni = str(it.get("municipality") or "").strip().lower()
+    if "·" in muni:
+        muni = muni.split("·", 1)[0].strip()
+    if muni in ("city of albany", "albany"):
+        return "city of albany"
+    for key in sorted(_ALBANY_MUNI_SET, key=len, reverse=True):
+        if key in muni or muni == key:
+            return key
+    blob = (str(it.get("title") or "") + " " + str(it.get("description") or "")).lower()
+    if "city of albany" in blob or re.search(r"\balbany\b", blob):
+        if not any(p in blob for p in _OTHER_COUNTY_PLACES):
+            return "city of albany"
+    for tok in _ALBANY_TITLE_TOKENS:
+        if tok in blob and tok != "albany":
+            return tok
+    return "albany county"
+
+
+def _attach_area_coordinates(it: dict) -> dict:
+    """Pin incidents without lat/lon to a municipality centroid (map + area view)."""
+    lat = it.get("latitude")
+    lon = it.get("longitude")
+    if lat is not None and lon is not None:
+        try:
+            if float(lat) != 0.0 and float(lon) != 0.0:
+                return it
+        except (TypeError, ValueError):
+            pass
+    slug = _area_slug(it)
+    base = _ALBANY_MUNI_CENTROIDS.get(slug) or _ALBANY_MUNI_CENTROIDS.get("albany county")
+    if not base:
+        return it
+    iid = str(it.get("id") or it.get("title") or "")
+    h = int(hashlib.md5(iid.encode()).hexdigest()[:8], 16)
+    jitter_lat = ((h % 1000) - 500) / 80000.0
+    jitter_lon = (((h // 1000) % 1000) - 500) / 80000.0
+    out = dict(it)
+    out["latitude"] = base[0] + jitter_lat
+    out["longitude"] = base[1] + jitter_lon
+    out["coordinate_quality"] = "municipality_centroid"
+    return out
+
+
+async def _densify_live_feed_items(items: list[dict]) -> list[dict]:
+    """Merge NYSP blotter + news desk + Nixle/511 into the DB incident list."""
+    try:
+        news_items = await _fetch_albany_news()
+    except Exception:
+        news_items = []
+    try:
+        live_supplement = await _fetch_live_supplement()
+    except Exception:
+        live_supplement = []
+    try:
+        nysp_cards = await _get_albany_nysp_cards()
+    except Exception:
+        nysp_cards = []
+    if not (news_items or nysp_cards or live_supplement):
+        return items
+
+    now_n = datetime.now(timezone.utc)
+
+    def _tkey(t: str) -> str:
+        return re.sub(r"\s+", " ", (t or "").lower()).strip()[:60]
+
+    def _nysp_id(it: dict) -> str:
+        iid = str(it.get("id") or "")
+        if iid.startswith("nysp_"):
+            return iid
+        inc = str(it.get("_nysp_incident_number") or "")
+        if inc:
+            return "nysp_" + inc
+        return ""
+
+    def _ukey(u: str) -> str:
+        return (u or "").split("?")[0].rstrip("/").lower()
+
+    existing_keys: set[str] = set()
+    existing_nysp_ids: set[str] = set()
+    existing_urls: set[str] = set()
+    for it in items:
+        for fld in (it.get("title"), it.get("short_title")):
+            k = _tkey(fld)
+            if k:
+                existing_keys.add(k)
+        nid = _nysp_id(it)
+        if nid:
+            existing_nysp_ids.add(nid)
+        sig = _incident_signature(it)
+        if sig:
+            existing_keys.add(sig)
+        for u in (it.get("source_url"), it.get("external_ref")):
+            uk = _ukey(u)
+            if uk:
+                existing_urls.add(uk)
+
+    added: list[dict] = []
+    for e in list(news_items) + list(live_supplement):
+        topic = e.get("incident_type") or ""
+        if topic and topic not in _LIVE_NEWS_TOPICS:
+            continue
+        raw = e.get("published_at") or e.get("occurred_at")
+        dt = None
+        if raw:
+            try:
+                dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            except Exception:
+                dt = None
+        if dt and (now_n - dt) > timedelta(hours=48):
+            continue
+        uk = _ukey(e.get("source_url"))
+        if uk and uk in existing_urls:
+            continue
+        key = _tkey(e.get("title"))
+        if key and key in existing_keys:
+            continue
+        if key:
+            existing_keys.add(key)
+        if uk:
+            existing_urls.add(uk)
+        added.append(_news_to_incident_card(e))
+
+    nysp_sorted = sorted(
+        nysp_cards,
+        key=lambda c: str(c.get("published_at") or c.get("occurred_at") or ""),
+        reverse=True,
+    )
+    for card in nysp_sorted:
+        nid = _nysp_id(card)
+        if nid and nid in existing_nysp_ids:
+            continue
+        key = _tkey(card.get("title"))
+        if not nid and (not key or key in existing_keys):
+            continue
+        if key:
+            existing_keys.add(key)
+        if nid:
+            existing_nysp_ids.add(nid)
+        added.append(card)
+
+    if not added:
+        return items
+    merged = list(items) + added
+    merged.sort(
+        key=lambda x: str(x.get("published_at") or x.get("occurred_at") or ""),
+        reverse=True,
+    )
+    return merged
+
+
+def _filter_live_incidents(items: list[dict]) -> list[dict]:
+    return [
+        it for it in items
+        if not _is_false_local_incident(it)
+        and not _is_low_quality_source(it)
+        and not _is_non_incident_fluff(it)
+        and not _has_block_terms(it)
+    ]
+
+
+async def _build_live_incident_feed(
+    *,
+    limit: int = 500,
+    offset: int = 0,
+    sort_by: str = "newest",
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    municipality: Optional[str] = None,
+    q: Optional[str] = None,
+    densify: bool = True,
+    polish: bool = True,
+    collapse_events: bool = True,
+) -> list[dict]:
+    """Unified Live feed: DB incidents + NYSP + news + dispatch, filtered and sorted."""
+    items = await query_incidents(
+        limit=limit,
+        offset=offset,
+        municipality=municipality,
+        start_date=start_date,
+        end_date=end_date,
+        q=q,
+        sort_by=sort_by,
+    )
+    items = _filter_live_incidents(items)
+    if polish and not q and not municipality:
+        items = _polish_incidents(items)
+    if densify and not q and not municipality:
+        items = await _densify_live_feed_items(items)
+        if collapse_events:
+            items = _collapse_same_event(items)
+    for i, it in enumerate(items):
+        enriched = dict(it)
+        enriched["area_slug"] = _area_slug(it)
+        items[i] = enriched
+    _refresh_incident_human_times(items)
+    return items
+
+
+def _compute_activity_by_area(items: list[dict], window_hours: int = 24) -> list[dict]:
+    """Per-municipality activity summary for the Live area strip."""
+    now = datetime.now(timezone.utc)
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    for it in items:
+        if it.get("_gap_fill"):
+            continue
+        raw = it.get("published_at") or it.get("occurred_at")
+        if not raw:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            age_h = (now - dt).total_seconds() / 3600.0
+        except Exception:
+            continue
+        if age_h > window_hours:
+            continue
+        buckets[_area_slug(it)].append(it)
+
+    areas: list[dict] = []
+    for slug, group in buckets.items():
+        if not group:
+            continue
+        newest = max(
+            group,
+            key=lambda x: str(x.get("published_at") or x.get("occurred_at") or ""),
+        )
+        raw_n = newest.get("published_at") or newest.get("occurred_at")
+        dt_n = None
+        try:
+            dt_n = datetime.fromisoformat(str(raw_n).replace("Z", "+00:00"))
+            newest_s = max(0, int((now - dt_n).total_seconds()))
+        except Exception:
+            newest_s = 999999
+        areas.append({
+            "slug": slug,
+            "label": _AREA_LABELS.get(slug, slug.title()),
+            "count": len(group),
+            "newest_age_seconds": newest_s,
+            "newest_human": _relative_time(dt_n) if dt_n else "",
+            "newest_title": (newest.get("short_title") or newest.get("title") or "")[:80],
+        })
+    areas.sort(key=lambda a: (a["newest_age_seconds"], -a["count"]))
+    return areas
+
+
 @app.get("/api/incidents")
 async def get_incidents(
     limit: int = 100,
@@ -5703,157 +6105,42 @@ async def get_incidents(
     sort_mode = (sort_by or "newest").lower()
     if sort_mode not in ("newest", "severity", "verification", "priority", "operational"):
         sort_mode = "newest"
-    items = await query_incidents(
-        limit=limit,
-        offset=offset,
-        municipality=municipality,
-        incident_type=incident_type,
-        status=status,
-        source_type=source_type,
-        start_date=_parse_iso_dt(start_date),
-        end_date=_parse_iso_dt(end_date),
-        has_coordinates=_parse_optional_bool(has_coordinates),
-        verification_level=verification_level,
-        severity=severity,
-        tags=_parse_tags(tags),
-        q=q,
-        sort_by=sort_mode,
+    densify = (
+        not q and not municipality and not incident_type and not status
+        and not source_type and not severity and not tags
     )
-    # Filter out false-local (wrong-state) + low-credibility/scraped sources
-    # so the Live feed shows trustworthy Albany County reporting, not Google
-    # News junk (facebook scrapes, out-of-area aggregators, content farms).
-    # Also drop non-public-safety fluff (e.g. "Hooters closes after 15 years")
-    # that the ingester mis-tagged as police activity — the Live feed is a
-    # police/crime tracker, not a local-business newsletter.
-    items = [
-        it for it in items
-        if not _is_false_local_incident(it)
-        and not _is_low_quality_source(it)
-        and not _is_non_incident_fluff(it)
-        and not _has_block_terms(it)
-    ]
-    # Output-quality polish: dedup repeats, normalize City of Albany, demote
-    # clearly-out-of-county items (skip when a specific query/municipality
-    # filter is active so we don't reorder targeted results).
-    if not q and not municipality:
-        items = _polish_incidents(items)
-
-    # Densify the default Live feed: the ingester only stores a slice of what
-    # credible local outlets publish, so the feed looked sparse. Merge in the
-    # news-desk's recent public-safety reporting (same direct outlet feeds,
-    # deduped against DB incidents) so the tracker reflects the real volume of
-    # Albany County police/court/emergency activity.
-    if (not q and not municipality and not incident_type and not status
-            and not source_type and not severity and not tags):
-        try:
-            news_items = await _fetch_albany_news()
-        except Exception:
-            news_items = []
-        try:
-            live_supplement = await _fetch_live_supplement()
-        except Exception:
-            live_supplement = []
-        try:
-            nysp_cards = await _get_albany_nysp_cards()
-        except Exception:
-            nysp_cards = []
-        if news_items or nysp_cards or live_supplement:
-            now_n = datetime.now(timezone.utc)
-
-            def _tkey(t: str) -> str:
-                return re.sub(r"\s+", " ", (t or "").lower()).strip()[:60]
-
-            def _nysp_id(it: dict) -> str:
-                iid = str(it.get("id") or "")
-                if iid.startswith("nysp_"):
-                    return iid
-                inc = str(it.get("_nysp_incident_number") or "")
-                if inc:
-                    return "nysp_" + inc
-                return ""
-
-            def _ukey(u: str) -> str:
-                return (u or "").split("?")[0].rstrip("/").lower()
-
-            existing_keys: set[str] = set()
-            existing_nysp_ids: set[str] = set()
-            existing_urls: set[str] = set()
-            for it in items:
-                for fld in (it.get("title"), it.get("short_title")):
-                    k = _tkey(fld)
-                    if k:
-                        existing_keys.add(k)
-                nid = _nysp_id(it)
-                if nid:
-                    existing_nysp_ids.add(nid)
-                sig = _incident_signature(it)
-                if sig:
-                    existing_keys.add(sig)
-                for u in (it.get("source_url"), it.get("external_ref")):
-                    uk = _ukey(u)
-                    if uk:
-                        existing_urls.add(uk)
-            added: list[dict] = []
-            _LIVE_NEWS_TOPICS = frozenset({
-                "law_enforcement", "emergency_services", "courts_law",
-            })
-            for e in list(news_items) + list(live_supplement):
-                topic = e.get("incident_type") or ""
-                if topic and topic not in _LIVE_NEWS_TOPICS:
-                    continue
-                raw = e.get("published_at") or e.get("occurred_at")
-                dt = None
-                if raw:
-                    try:
-                        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-                    except Exception:
-                        dt = None
-                if dt and (now_n - dt) > timedelta(hours=48):
-                    continue
-                uk = _ukey(e.get("source_url"))
-                if uk and uk in existing_urls:
-                    continue
-                key = _tkey(e.get("title"))
-                if key and key in existing_keys:
-                    continue
-                if key:
-                    existing_keys.add(key)
-                if uk:
-                    existing_urls.add(uk)
-                added.append(_news_to_incident_card(e))
-
-            # NYSP Troop G blotter arrests (individual incidents) — the real
-            # volume source. Dedupe by incident id (NOT truncated title — many
-            # distinct Albany accidents share the same first 60 chars).
-            nysp_sorted = sorted(
-                nysp_cards,
-                key=lambda c: str(c.get("published_at") or c.get("occurred_at") or ""),
-                reverse=True,
-            )
-            for card in nysp_sorted:
-                nid = _nysp_id(card)
-                if nid and nid in existing_nysp_ids:
-                    continue
-                key = _tkey(card.get("title"))
-                if not nid and (not key or key in existing_keys):
-                    continue
-                if key:
-                    existing_keys.add(key)
-                if nid:
-                    existing_nysp_ids.add(nid)
-                added.append(card)
-
-            if added:
-                items = list(items) + added
-                items.sort(
-                    key=lambda x: str(x.get("published_at") or x.get("occurred_at") or ""),
-                    reverse=True,
-                )
-        # Collapse the same real event reported by multiple outlets into one
-        # card (kills the "7 motorcycle-crash stories" padding).
-        items = _collapse_same_event(items)
-
-    _refresh_incident_human_times(items)
+    if densify:
+        items = await _build_live_incident_feed(
+            limit=limit,
+            offset=offset,
+            sort_by=sort_mode,
+            start_date=_parse_iso_dt(start_date),
+            end_date=_parse_iso_dt(end_date),
+            municipality=municipality,
+            q=q,
+            densify=True,
+            polish=not q and not municipality,
+            collapse_events=True,
+        )
+    else:
+        items = await query_incidents(
+            limit=limit,
+            offset=offset,
+            municipality=municipality,
+            incident_type=incident_type,
+            status=status,
+            source_type=source_type,
+            start_date=_parse_iso_dt(start_date),
+            end_date=_parse_iso_dt(end_date),
+            has_coordinates=_parse_optional_bool(has_coordinates),
+            verification_level=verification_level,
+            severity=severity,
+            tags=_parse_tags(tags),
+            q=q,
+            sort_by=sort_mode,
+        )
+        items = _filter_live_incidents(items)
+        _refresh_incident_human_times(items)
 
     real_gap_s = _compute_feed_gap_seconds(items)
 
@@ -5890,6 +6177,8 @@ async def get_incidents(
             "sources_active": _total_source_count(),
             "scanner_pipeline_active": _stream_monitor_task is not None and not _stream_monitor_task.done(),
             "nysp_cards_merged": sum(1 for it in items if it.get("_from_nysp_blotter")),
+            "x_scan_active": bool(XAI_API_KEY),
+            "x_posts_merged": sum(1 for it in items if it.get("_official_x_post")),
         },
     }
     return payload
@@ -5911,7 +6200,31 @@ async def get_incidents_pulse():
         "gnews_status": gnews_status.get("status", "unknown"),
         "scanner_pipeline_active": scanner_running,
         "scanner_alert_count": len(_stream_alerts),
+        "x_scan_active": bool(XAI_API_KEY),
+        "x_scan_model": XAI_RESPONSES_MODEL if XAI_API_KEY else "",
+        "x_handles_monitored": len(_official_x_handles_from_directory()),
         "feed_state": "live" if gap_s < 300 else ("aging" if gap_s < 900 else "quiet"),
+    }
+
+
+@app.get("/api/incidents/activity-by-area")
+async def get_activity_by_area(window_hours: int = 24):
+    """Per-municipality activity summary for the Live area strip (last N hours)."""
+    window_hours = max(1, min(window_hours, 168))
+    items = await _build_live_incident_feed(
+        limit=500,
+        sort_by="newest",
+        start_date=datetime.now(timezone.utc) - timedelta(hours=window_hours),
+        densify=True,
+        polish=True,
+        collapse_events=True,
+    )
+    areas = _compute_activity_by_area(items, window_hours=window_hours)
+    return {
+        "status": "ok",
+        "window_hours": window_hours,
+        "total_recent": sum(a["count"] for a in areas),
+        "areas": areas,
     }
 
 
@@ -6024,25 +6337,46 @@ async def get_incidents_map(
     sort_mode = (sort_by or "newest").lower()
     if sort_mode not in ("newest", "severity", "verification", "priority", "operational"):
         sort_mode = "newest"
-    items = await query_incidents(
-        limit=map_limit,
-        offset=max(0, offset),
-        municipality=municipality,
-        incident_type=incident_type,
-        status=status,
-        source_type=source_type,
-        start_date=_parse_iso_dt(start_date),
-        end_date=_parse_iso_dt(end_date),
-        has_coordinates=_parse_optional_bool(has_coordinates),
-        verification_level=verification_level,
-        severity=severity,
-        tags=_parse_tags(tags),
-        q=q,
-        sort_by=sort_mode,
+    densify = (
+        not q and not municipality and not incident_type and not status
+        and not source_type and not severity and not tags
     )
+    if densify:
+        items = await _build_live_incident_feed(
+            limit=map_limit,
+            offset=max(0, offset),
+            sort_by=sort_mode,
+            start_date=_parse_iso_dt(start_date),
+            end_date=_parse_iso_dt(end_date),
+            municipality=municipality,
+            q=q,
+            densify=True,
+            polish=not q and not municipality,
+            collapse_events=True,
+        )
+    else:
+        items = await query_incidents(
+            limit=map_limit,
+            offset=max(0, offset),
+            municipality=municipality,
+            incident_type=incident_type,
+            status=status,
+            source_type=source_type,
+            start_date=_parse_iso_dt(start_date),
+            end_date=_parse_iso_dt(end_date),
+            has_coordinates=_parse_optional_bool(has_coordinates),
+            verification_level=verification_level,
+            severity=severity,
+            tags=_parse_tags(tags),
+            q=q,
+            sort_by=sort_mode,
+        )
+        items = _filter_live_incidents(items)
+        _refresh_incident_human_times(items)
     albany_bounds = (42.4, 42.85, -74.1, -73.55)
     markers = []
     for it in items:
+        it = _attach_area_coordinates(it)
         lat = it.get("latitude")
         lon = it.get("longitude")
         cq = str(it.get("coordinate_quality") or "missing").lower()
@@ -6062,6 +6396,7 @@ async def get_incidents_map(
             "severity": it.get("severity"),
             "status": it.get("status"),
             "municipality": it.get("municipality"),
+            "area_slug": it.get("area_slug") or _area_slug(it),
             "latitude": lat_f,
             "longitude": lon_f,
             "occurred_at": it.get("occurred_at") or it.get("published_at"),
@@ -6552,6 +6887,8 @@ def _capital_region_live_ok(title: str, desc: str, source: str) -> bool:
 
 def _live_rss_article_ok(article: dict) -> bool:
     """Gate for RSS rows merged into the Live feed (broader than News tab)."""
+    if article.get("_official_x_post"):
+        return True
     title = str(article.get("title") or "")
     desc = str(article.get("description") or "")
     src = str(article.get("source") or "")
@@ -6584,6 +6921,7 @@ def _rss_article_to_live_entry(a: dict) -> dict:
         pub_dt = None
     iso = pub_dt.astimezone(timezone.utc).isoformat() if pub_dt else ""
     muni = _muni_from_text(title + " " + desc)
+    is_official_x = bool(a.get("_official_x_post"))
     if _capital_region_live_ok(title, desc, a.get("source") or ""):
         for marker in _CAPITAL_REGION_LIVE_MARKERS:
             if marker in (title + " " + desc).lower():
@@ -6601,13 +6939,14 @@ def _rss_article_to_live_entry(a: dict) -> dict:
         "incident_type": topic,
         "topic": cls[1] if cls else "Law Enforcement",
         "source_name": a.get("source") or "Local News",
-        "source_url": a.get("link") or "",
-        "source_type": "official" if a.get("_nixle_item") else "news",
-        "verification_level": "official" if a.get("_nixle_item") else "media",
+        "source_url": a.get("link") or a.get("x_post_url") or "",
+        "source_type": "official" if (a.get("_nixle_item") or is_official_x) else "news",
+        "verification_level": "official" if (a.get("_nixle_item") or is_official_x) else "media",
         "coordinate_quality": "missing",
         "image_url": a.get("image_url") or "",
         "is_news": True,
         "_from_live_supplement": True,
+        "_official_x_post": is_official_x,
     }
 
 
@@ -6703,6 +7042,14 @@ async def _fetch_live_supplement() -> list[dict]:
                 _maybe_add(_511_row_to_live_entry(row))
         except Exception:
             logger.debug("live_supplement_511_failed", exc_info=True)
+
+        try:
+            for a in await fetch_official_x_articles():
+                if not _live_rss_article_ok(a):
+                    continue
+                _maybe_add(_rss_article_to_live_entry(a))
+        except Exception:
+            logger.debug("live_supplement_x_failed", exc_info=True)
 
         entries.sort(key=lambda e: e.get("published_at") or "", reverse=True)
         _LIVE_SUPPLEMENT_CACHE["items"] = entries
@@ -7610,62 +7957,48 @@ async def get_daily_summary():
 @app.get("/api/social_intel")
 async def get_social_intel():
     """
-    Use xAI Grok live search to pull recent Albany County law enforcement
-    social media posts from X (@AlbanyPolice, @NYSP_TroopG, Sheriff, Colonie PD).
+    Recent Albany County law-enforcement posts on X.com — Nitter RSS + xAI x_search.
     """
     cached = get_cached("social_intel")
     if cached is not None:
         return {"status": "ok", "source": "cache", "items": cached}
 
-    if not XAI_API_KEY:
+    items: list[dict] = []
+    try:
+        for a in await fetch_official_x_articles():
+            handle = (a.get("source") or "").replace("Official @", "").strip()
+            text = (a.get("description") or a.get("title") or "").strip()
+            if not text:
+                continue
+            low = text.lower()
+            itype = "general"
+            if any(k in low for k in ("fire", "smoke", "arson")):
+                itype = "fire"
+            elif any(k in low for k in ("ems", "ambulance", "medical")):
+                itype = "ems"
+            elif any(k in low for k in ("police", "arrest", "investigation", "sheriff", "trooper")):
+                itype = "police"
+            items.append({
+                "source": a.get("source") or f"@{handle}",
+                "handle": f"@{handle}" if handle else "",
+                "text": text,
+                "time": a.get("pubDate") or "",
+                "type": itype,
+                "url": a.get("link") or a.get("x_post_url") or "",
+                "_from_xai": bool(a.get("_official_x_xai")),
+                "_from_nitter": bool(a.get("_official_x_nitter_rss")),
+            })
+    except Exception as exc:
+        logger.warning("social_intel_fetch: %s", exc)
+
+    if not items and not XAI_API_KEY:
         return {"status": "error", "items": [], "message": "AI not configured"}
 
-    # xAI live search (search_parameters) is deprecated as of 2025.
-    # We use the tools-based approach: ask Grok for law enforcement X/social
-    # intelligence using its up-to-date knowledge.
-    payload = {
-        "model": XAI_MODEL,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a real-time law enforcement social media monitor for Albany County, NY. "
-                    "Based on your most recent knowledge, report what @AlbanyPolice, @NYSP_TroopG "
-                    "(NY State Police Troop G), Albany County Sheriff, and Colonie Police have "
-                    "recently posted about on X/Twitter regarding public safety incidents. "
-                    "Focus on: active incidents, arrests, road closures, missing persons, public alerts. "
-                    'Return ONLY valid JSON: {"items": [{"source": "account name", "handle": "@handle", '
-                    '"text": "post content", "time": "time description", "type": "police|fire|ems|general"}]}. '
-                    "If you have no specific recent posts, return {\"items\": []}."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    "What are the most recent public safety posts from Albany County NY law enforcement "
-                    "accounts? Include any active incidents, alerts, or notable activity from "
-                    "@AlbanyPolice, @NYSP_TroopG, Albany County Sheriff, Colonie Police."
-                ),
-            },
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.1,
-        "max_tokens": 1000,
-    }
+    if items:
+        set_cached("social_intel", items)
+        return {"status": "ok", "source": "live", "items": items}
 
-    try:
-        resp = await post_xai_chat(payload)
-        if resp.status_code == 200:
-            content = resp.json()["choices"][0]["message"]["content"]
-            result = json.loads(content)
-            items = result.get("items", [])
-            set_cached("social_intel", items)
-            return {"status": "ok", "source": "live", "items": items}
-        print(f"Social intel HTTP error: {resp.status_code} {resp.text[:200]}")
-    except Exception as e:
-        print(f"Social intel error: {e}")
-
-    return {"status": "error", "items": [], "message": "Unable to fetch social intel"}
+    return {"status": "ok", "source": "live", "items": [], "message": "No recent X posts found"}
 
 
 @app.get("/api/sources")
@@ -10398,7 +10731,63 @@ def _official_x_handles_from_directory() -> list[str]:
     return sorted(found, key=str.lower)
 
 
+def _grok_x_json_to_articles(items: list, allow_h: set[str]) -> list[dict[str, Any]]:
+    """Convert Grok x_search JSON array into normalized X post article dicts."""
+    out: list[dict[str, Any]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        h = (it.get("handle") or "").strip().lstrip("@")
+        if h.lower() not in allow_h:
+            continue
+        title = (it.get("title") or it.get("summary") or "").strip()
+        if not title:
+            continue
+        raw_u = it.get("url")
+        if raw_u is not None and isinstance(raw_u, str):
+            raw_u = raw_u.strip()
+        else:
+            raw_u = None
+        tid_raw = it.get("tweet_id")
+        if tid_raw is not None and isinstance(tid_raw, (int, float)):
+            tid_s = str(int(tid_raw))
+        elif isinstance(tid_raw, str):
+            tid_s = tid_raw.strip()
+        else:
+            tid_s = ""
+        if tid_s.isdigit() and len(tid_s) >= 18 and h:
+            raw_u = raw_u or f"https://x.com/{h}/status/{tid_s}"
+        link = _resolve_official_x_post_url(h, raw_u)
+        x_post = link if "/status/" in link else ""
+        desc = (it.get("summary") or "")[:400]
+        pub_raw = (it.get("published_iso") or "").strip()
+        try:
+            dt = datetime.fromisoformat(pub_raw.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            pstr = format_datetime(dt, usegmt=True)
+        except Exception:
+            pstr = format_datetime(datetime.now(timezone.utc), usegmt=True)
+        out.append(
+            {
+                "title": title,
+                "link": link,
+                "x_post_url": x_post,
+                "pubDate": pstr,
+                "description": desc,
+                "source": f"Official @{h}" if h else "Official X",
+                "source_priority": SOURCE_PRIORITY_OFFICIAL_X_GROK,
+                "_official_x_post": True,
+                "_official_x_xai": True,
+                "_feed_reliability": 0.96,
+                "source_url": link if "/status/" in link else "",
+            }
+        )
+    return out
+
+
 async def fetch_official_social_posts() -> list[dict[str, Any]]:
+    """xAI x_search over official LE X handles → Live-feed article dicts."""
     cached = get_cached("grok_official_x_posts")
     if cached:
         return cached
@@ -10407,85 +10796,45 @@ async def fetch_official_social_posts() -> list[dict[str, Any]]:
         return out
 
     handles = _official_x_handles_from_directory()
-    prompt = (
-        "Using live X (Twitter) knowledge, list up to 1 substantive public post per account "
-        f"(max {min(48, len(handles) or 1)} items total) from ONLY these handles — do not add any other account: "
-        + ", ".join("@" + h for h in handles)
-        + ". Time window: last 24 hours only. Topics: arrests, investigations, safety alerts, "
-        "wanted/missing, crashes, fires, major police activity in Albany County NY or the immediate Capital District. "
-        "Each item's url MUST be the real https://x.com/{handle}/status/{snowflake_id} for that exact post "
-        "(snowflake ~18–19 digits), and/or include tweet_id with that same snowflake. "
-        "If you cannot confirm the real id, set url and tweet_id to null (omit fake short IDs). "
-        "handle must match one of the listed handles (case-insensitive). JSON array only."
-    )
-    try:
-        text = await call_grok(
-            [
-                {"role": "system", "content": _SOCIAL_GROK_SYSTEM},
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=4500,
-            temperature=0.08,
-            timeout=120.0,
+    allow_h = {x.lower() for x in handles}
+    from_date = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    to_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    seen_links: set[str] = set()
+
+    for i in range(0, len(handles), 10):
+        batch = handles[i : i + 10]
+        prompt = (
+            "Search X for up to 1 substantive public-safety post per account from ONLY these handles: "
+            + ", ".join("@" + h for h in batch)
+            + ". Last 24 hours. Topics: arrests, investigations, safety alerts, wanted/missing, "
+            "crashes, fires, major police activity in Albany County NY or the immediate Capital District. "
+            "Return a JSON array only (see system format). Include real x.com/status permalinks when found."
         )
-        if not text:
-            return out
-        m = re.search(r"\[[\s\S]*\]", text)
-        raw = m.group(0) if m else text
-        items = json.loads(raw)
-        if not isinstance(items, list):
-            items = []
-        allow_h = {x.lower() for x in handles}
-        for it in items:
-            if not isinstance(it, dict):
-                continue
-            h = (it.get("handle") or "").strip().lstrip("@")
-            if h.lower() not in allow_h:
-                continue
-            title = (it.get("title") or it.get("summary") or "").strip()
-            if not title:
-                continue
-            raw_u = it.get("url")
-            if raw_u is not None and isinstance(raw_u, str):
-                raw_u = raw_u.strip()
-            else:
-                raw_u = None
-            tid_raw = it.get("tweet_id")
-            if tid_raw is not None and isinstance(tid_raw, (int, float)):
-                tid_s = str(int(tid_raw))
-            elif isinstance(tid_raw, str):
-                tid_s = tid_raw.strip()
-            else:
-                tid_s = ""
-            if tid_s.isdigit() and len(tid_s) >= 18 and h:
-                raw_u = raw_u or f"https://x.com/{h}/status/{tid_s}"
-            link = _resolve_official_x_post_url(h, raw_u)
-            x_post = link if "/status/" in link else ""
-            desc = (it.get("summary") or "")[:400]
-            pub_raw = (it.get("published_iso") or "").strip()
-            try:
-                dt = datetime.fromisoformat(pub_raw.replace("Z", "+00:00"))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                pstr = format_datetime(dt, usegmt=True)
-            except Exception:
-                pstr = format_datetime(datetime.now(timezone.utc), usegmt=True)
-            out.append(
-                {
-                    "title": title,
-                    "link": link,
-                    "x_post_url": x_post,
-                    "pubDate": pstr,
-                    "description": desc,
-                    "source": f"Official @{h}" if h else "Official X",
-                    "source_priority": SOURCE_PRIORITY_OFFICIAL_X_GROK,
-                    "_official_x_post": True,
-                    "_feed_reliability": 0.96,
-                    "source_url": "",
-                }
+        try:
+            text = await call_grok_x_search(
+                prompt,
+                system_prompt=_SOCIAL_GROK_SYSTEM,
+                allowed_handles=batch,
+                from_date=from_date,
+                to_date=to_date,
+                max_tokens=3500,
             )
-    except Exception as e:
-        print(f"fetch_official_social_posts: {e}")
+            if not text:
+                continue
+            m = re.search(r"\[[\s\S]*\]", text)
+            raw = m.group(0) if m else text
+            items = json.loads(raw)
+            if not isinstance(items, list):
+                continue
+            for article in _grok_x_json_to_articles(items, allow_h):
+                lk = (article.get("link") or "").split("?")[0].rstrip("/").lower()
+                if lk and lk in seen_links:
+                    continue
+                if lk:
+                    seen_links.add(lk)
+                out.append(article)
+        except Exception as exc:
+            logger.warning("fetch_official_social_posts batch=%s: %s", batch[:3], exc)
 
     if out:
         set_cached("grok_official_x_posts", out)
@@ -10563,9 +10912,48 @@ async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
         for b in batches:
             out.extend(b)
     except Exception as e:
-        print(f"fetch_nitter_official_x_rss_posts: {e}")
+        logger.warning("fetch_nitter_official_x_rss_posts: %s", e)
     set_cached("nitter_official_x", out)
     return out
+
+
+async def fetch_official_x_articles() -> list[dict[str, Any]]:
+    """
+    Combined x.com sourcing: Nitter RSS mirrors (direct permalinks) + xAI x_search.
+    Used by ingestion and Live feed supplement.
+    """
+    cached = get_cached("official_x_combined")
+    if cached is not None:
+        return cached
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    batches = await asyncio.gather(
+        fetch_nitter_official_x_rss_posts(),
+        fetch_official_social_posts(),
+        return_exceptions=True,
+    )
+    for batch in batches:
+        if isinstance(batch, Exception):
+            logger.warning("official_x_combined_batch_error: %s", batch)
+            continue
+        for a in batch:
+            lk = (
+                (a.get("link") or a.get("x_post_url") or "")
+                .split("?")[0]
+                .rstrip("/")
+                .lower()
+            )
+            if lk and lk in seen:
+                continue
+            if lk:
+                seen.add(lk)
+            merged.append(a)
+    merged.sort(
+        key=lambda x: str(x.get("pubDate") or ""),
+        reverse=True,
+    )
+    set_cached("official_x_combined", merged)
+    return merged
 
 
 def _openmhz_call_age_hours(t_raw: str) -> Optional[float]:
