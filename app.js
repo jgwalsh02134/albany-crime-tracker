@@ -58,6 +58,8 @@
   // content existed. Newest-first sort keeps the top current; older items
   // fill the depth below so the feed never feels starved.
   var HOME_WINDOW_HOURS = 168;
+  var LIVE_FETCH_WINDOW_HOURS = 24;
+  var LIVE_NOW_DISPLAY_HOURS = 3;
 
   // Law enforcement directory (lazy-loaded from /api/directory/*)
   var leDirectory = null;
@@ -2219,6 +2221,10 @@
       // projection time. Tells _feedTabFromRecord whether a scanner row
       // is allowed onto Live or stays in scanner_only.
       is_actionable_live: r.is_actionable_live === true,
+      live_priority_tier: typeof r.live_priority_tier === "number" ? r.live_priority_tier : null,
+      live_bucket: r.live_bucket || "",
+      _live_delayed: r._live_delayed === true,
+      _nysp_routine: r._nysp_routine === true,
       source_type: r.source_type || "",
       source_type_label: _sourceTypeLabel(r.source_type || ""),
       source_type_explanation: r.source_type_explanation || "",
@@ -2246,7 +2252,7 @@
   }
 
   function homeWindowStartIso() {
-    return new Date(Date.now() - HOME_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
+    return new Date(Date.now() - LIVE_FETCH_WINDOW_HOURS * 60 * 60 * 1000).toISOString();
   }
 
   function fetchIncidents() {
@@ -2255,18 +2261,16 @@
     var tid = setTimeout(function () {
       ctrl.abort();
     }, CRIMES_FETCH_MS);
-    // Live tab requests sort_by=operational (commit landing this pass) so
-    // the backend ranks actionable incidents first and the timeline
-    // becomes incident-first instead of strictly chronological.
+    // Live tab: backend ranks actionable incidents first (not pure chronology).
     var params = {
       limit: 500,
-      sort_by: "newest",
+      sort_by: "live",
       start_date: homeWindowStartIso()
     };
     (apiClient && apiClient.getPersistedIncidents
       ? apiClient.getPersistedIncidents(params)
       : fetch(
-          API + "/api/incidents?limit=500&sort_by=newest&start_date=" + encodeURIComponent(params.start_date),
+          API + "/api/incidents?limit=500&sort_by=live&start_date=" + encodeURIComponent(params.start_date),
           { signal: ctrl.signal }
         ).then(ok))
       .finally(function () {
@@ -2980,7 +2984,10 @@
     if (!items || !items.length) { el.hidden = true; el.innerHTML = ""; return; }
     var newestMs = 0;
     items.forEach(function (x) {
-      var t = x && x.pubDate ? new Date(x.pubDate).getTime() : 0;
+      if (!x || x._nysp_routine) return;
+      var blob = ((x.title || "") + " " + (x.description || "") + " " + (x.summary || "")).toLowerCase();
+      if (/fire pit|falling into|airlifted to hospital after/.test(blob) && !/arrest|shooting|stabbing/.test(blob)) return;
+      var t = x.pubDate ? new Date(x.pubDate).getTime() : 0;
       if (t > newestMs) newestMs = t;
     });
     if (!newestMs) { el.hidden = true; el.innerHTML = ""; return; }
@@ -3001,6 +3008,20 @@
     el.hidden = false;
   }
 
+  function _liveFeedSortKey(item) {
+    var tier = typeof item.live_priority_tier === "number" ? item.live_priority_tier : 42;
+    var actionable = item.is_actionable_live ? 1 : 0;
+    var t = item.pubDate ? new Date(item.pubDate).getTime() : 0;
+    if (typeof item.live_priority_tier !== "number") {
+      var blob = ((item.title || "") + " " + (item.description || "") + " " + (item.summary || "")).toLowerCase();
+      if (item._nysp_routine) tier = 22;
+      else if (/fire pit|falling into|airlifted to hospital after/.test(blob) && !/arrest|shooting|stabbing/.test(blob)) tier = 25;
+      else if (actionable) tier = 55;
+      else if (/arrest|dwi|dui|shooting|stabbing|road blocked/.test(blob)) tier = 68;
+    }
+    return [tier, actionable, t];
+  }
+
   function renderUnifiedFeed(allItems) {
     var list = getLiveFeedListEl();
     if (!list) return;
@@ -3012,19 +3033,41 @@
       return;
     }
 
-    // Sort newest first
+    // Backend ranks actionable incidents first — preserve that order, with
+    // client-side fallback when older API responses omit live_priority_tier.
     items.sort(function (a, b) {
-      var ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
-      var tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
-      return tb - ta;
+      var ka = _liveFeedSortKey(a);
+      var kb = _liveFeedSortKey(b);
+      for (var i = 0; i < 3; i++) {
+        if (ka[i] !== kb[i]) return kb[i] - ka[i];
+      }
+      return 0;
     });
 
     renderLiveFreshness(items);
 
+    var nowItems = [];
+    var todayItems = [];
+    items.forEach(function (item) {
+      if (item.live_bucket === "today" || item._live_delayed) todayItems.push(item);
+      else nowItems.push(item);
+    });
+    if (!nowItems.length && todayItems.length) {
+      nowItems = todayItems;
+      todayItems = [];
+    }
+
     var html = "";
-    items.forEach(function (item) { html += buildIncidentCard(item); });
+    if (nowItems.length) {
+      html += '<div class="live-feed-section-label">Live now</div>';
+      nowItems.forEach(function (item) { html += buildIncidentCard(item); });
+    }
+    if (todayItems.length) {
+      html += '<div class="live-feed-section-label live-feed-section-label--delayed">Earlier today (3–12h)</div>';
+      todayItems.forEach(function (item) { html += buildIncidentCard(item); });
+    }
     list.innerHTML = html;
-    _bindIncidentCardClicks(list, items);
+    _bindIncidentCardClicks(list, nowItems.concat(todayItems));
   }
 
   // ── INCIDENT DETAIL SHEET ─────────────────────────────────────────────

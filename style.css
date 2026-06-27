@@ -1615,6 +1615,23 @@ a:hover { text-decoration: underline; }
   color: var(--property);
 }
 
+.live-feed-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3, rgba(255, 255, 255, 0.45));
+  padding: 12px 0 6px;
+  margin-top: 4px;
+}
+.live-feed-section-label:first-child { margin-top: 0; padding-top: 0; }
+.live-feed-section-label--delayed {
+  color: var(--text-3, rgba(255, 255, 255, 0.35));
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 8px;
+  padding-top: 14px;
+}
+
 /* ===== NEWS FRESHNESS BANNER =====
    Sits above News major stories for the same trust reason as the Live
    freshness banner — show honestly how current the News surface is. Less

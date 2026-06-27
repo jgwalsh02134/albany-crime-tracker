@@ -1229,6 +1229,9 @@ URGENT_KEYWORDS = [
 
 # Live tab: max parsed age (hours) for pipeline; classify_feed_tab uses 12h cutoff separately.
 LIVE_MAX_AGE_HOURS = 24.0
+# Live tab display: "now" bucket (real-time expectation) vs max age on the Live tab itself.
+LIVE_NOW_MAX_AGE_HOURS = float(os.getenv("LIVE_NOW_MAX_AGE_HOURS", "3"))
+LIVE_TAB_MAX_AGE_HOURS = float(os.getenv("LIVE_TAB_MAX_AGE_HOURS", "12"))
 # Legacy name: max age (hours) for including OpenMHz calls in the merge pipeline (critical may span up to this).
 LIVE_CUTOFF_HOURS = 24
 # OpenMHz: routine calls in this window are eligible for the crime feed / Live (with classify rules).
@@ -1357,8 +1360,133 @@ def _arrest_gloss_title(title_lower: str) -> bool:
 
 
 def _article_combined_text(article: dict) -> str:
-    t = (article.get("title", "") or "") + " " + (article.get("description", "") or "")
+    t = " ".join(
+        str(article.get(k) or "")
+        for k in ("short_title", "title", "description", "summary")
+    )
     return t.lower()
+
+
+_NYSP_ROUTINE_BLOTTER_PATTERNS = (
+    "property check",
+    "welfare check",
+    "welfare",
+    "dmv suspension",
+    "dmv revocation",
+    "suspicious person",
+    "suspicious vehicle",
+    "suspicious activity",
+    "agency assist",
+    "aid assist",
+    "assist citizen",
+    "citizen assist",
+    "found property",
+    "lost property",
+    "traffic hazard",
+    "vehicle stop",
+    "motor vehicle stop",
+    "accident - property damage",
+    "property damage -",
+    "directed patrol",
+    "assist other agency",
+    "assist agency",
+    "landlord-tenant",
+    "civil dispute",
+    "animal complaint",
+    "noise complaint",
+    "parking complaint",
+    "missing person - located",
+    "alarm -",
+)
+
+_SOFT_PERSONAL_INJURY_PATTERNS = (
+    "fire pit",
+    "falling into",
+    "fall into",
+    "airlifted to hospital after",
+)
+
+
+def _incident_age_hours(it: dict) -> Optional[float]:
+    cached = it.get("age_hours")
+    if isinstance(cached, (int, float)):
+        return float(cached)
+    for fld in ("pubDate", "published_at", "occurred_at"):
+        val = it.get(fld)
+        if not val:
+            continue
+        try:
+            if fld == "pubDate":
+                dt = parsedate_to_datetime(str(val))
+            else:
+                dt = datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - dt).total_seconds() / 3600.0
+        except Exception:
+            continue
+    return None
+
+
+def _incident_age_minutes(it: dict) -> Optional[float]:
+    cached = it.get("age_minutes")
+    if isinstance(cached, (int, float)):
+        return float(cached)
+    ah = _incident_age_hours(it)
+    return ah * 60.0 if ah is not None else None
+
+
+def _is_nysp_routine_blotter(it: dict) -> bool:
+    if it.get("_nysp_routine"):
+        return True
+    blob = _article_combined_text(it)
+    src = str(it.get("source_name") or it.get("source") or "").lower()
+    is_nysp = bool(
+        it.get("_from_nysp_blotter")
+        or blob.startswith("nysp:")
+        or "nysp:" in blob
+        or "troop g" in src
+        or "state police" in src
+    )
+    if not is_nysp:
+        return False
+    if any(k in blob for k in (" arrest", "arrest ", " dwi", " dui", "warrant")):
+        return False
+    return any(p in blob for p in _NYSP_ROUTINE_BLOTTER_PATTERNS)
+
+
+def _is_soft_personal_injury_news(it: dict) -> bool:
+    if it.get("_soft_injury_news"):
+        return True
+    if it.get("_from_nysp_blotter"):
+        return False
+    blob = _article_combined_text(it)
+    if not any(p in blob for p in _SOFT_PERSONAL_INJURY_PATTERNS):
+        return False
+    return not any(
+        k in blob
+        for k in (
+            "arrest",
+            "shooting",
+            "stabbing",
+            "homicide",
+            "robbery",
+            "assault",
+            "structure fire",
+            "house fire",
+            "working fire",
+        )
+    )
+
+
+def _is_substantive_live_row(it: dict) -> bool:
+    if it.get("_gap_fill") or it.get("_nysp_routine_summary"):
+        return False
+    if _is_nysp_routine_blotter(it):
+        return False
+    if _is_soft_personal_injury_news(it):
+        return False
+    return True
 
 
 def is_realtime_public_safety(article: dict) -> bool:
@@ -2946,10 +3074,16 @@ def live_presentation_priority_tier(x: dict) -> int:
       2) Road closures / missing persons / ongoing alerts (incl. Nixle)
       3) Recent local arrests / crashes / investigations
       4) Other clearly relevant rows
+      5) Routine NYSP blotter + soft personal-injury news demoted to bottom
     """
-    blob = _article_combined_text(x).lower()
-    age_h = x.get("age_hours")
-    age_h = float(age_h) if isinstance(age_h, (int, float)) else 999.0
+    blob = _article_combined_text(x)
+    age_h = _incident_age_hours(x)
+    age_h = float(age_h) if age_h is not None else 999.0
+
+    if _is_nysp_routine_blotter(x):
+        return 22
+    if _is_soft_personal_injury_news(x):
+        return 25
 
     ongoing = ongoing_public_safety_relevance(x)
     crit = bool(x.get("_scanner_critical_live"))
@@ -2960,6 +3094,8 @@ def live_presentation_priority_tier(x: dict) -> int:
         for k in (
             "road closed",
             "road closure",
+            "road - blocked",
+            "road blocked",
             "lane closed",
             "lanes closed",
             "missing person",
@@ -2975,15 +3111,17 @@ def live_presentation_priority_tier(x: dict) -> int:
         "arrest",
         "arrested",
         "charged",
-        "crash",
-        "collision",
-        "investigation",
         "shooting",
         "stabbing",
-        "fire",
         "robbery",
         "burglary",
         "assault",
+        "structure fire",
+        "house fire",
+        "working fire",
+        "apartment fire",
+        "fatal crash",
+        "pedestrian struck",
     )
 
     if sc:
@@ -3005,13 +3143,31 @@ def live_presentation_priority_tier(x: dict) -> int:
     if x.get("_nixle_item") and age_h <= LIVE_OFFICIAL_SOCIAL_MAX_AGE_HOURS:
         return 80
 
-    if x.get("_official_x_post") and live_safety_signal_match(x) and age_h <= 6.0:
-        return 72
+    if x.get("_official_x_post") and live_safety_signal_match(x) and age_h <= 24.0:
+        return 76 if age_h <= 6.0 else 68
 
-    if age_h <= 8.0 and any(k in blob for k in tier3_kw):
-        return 65
-    if age_h <= 12.0 and any(k in blob for k in tier3_kw):
-        return 52
+    is_nysp = x.get("_from_nysp_blotter") or blob.startswith("nysp:") or "nysp:" in blob
+    if is_nysp:
+        if any(k in blob for k in (" arrest", "arrest ", " dwi", " dui", "warrant")):
+            return 74 if age_h <= 24.0 else 60
+        if "road - blocked" in blob or "road blocked" in blob:
+            return 78 if age_h <= 12.0 else 66
+
+    if age_h <= 8.0:
+        if any(k in blob for k in ("crash", "collision")) and "property damage" not in blob:
+            return 65
+        if any(k in blob for k in tier3_kw):
+            return 65
+        if "investigation" in blob and "property check" not in blob:
+            return 62
+    if age_h <= 12.0:
+        if any(k in blob for k in tier3_kw):
+            return 52
+        if "investigation" in blob and "property check" not in blob:
+            return 48
+
+    if x.get("is_actionable_live"):
+        return 55 if age_h <= 12.0 else 45
 
     return 42
 
@@ -3020,13 +3176,34 @@ def live_presentation_sort_key(x: dict) -> tuple:
     """
     Sort Live descending: tier, ongoing boost, freshness (newer first), then live_score.
     """
-    tier = live_presentation_priority_tier(x)
+    tier = x.get("live_priority_tier")
+    if not isinstance(tier, (int, float)):
+        tier = live_presentation_priority_tier(x)
     ongoing = 1 if ongoing_public_safety_relevance(x) else 0
     crit = 1 if x.get("_scanner_critical_live") else 0
-    am = x.get("age_minutes")
-    am = float(am) if isinstance(am, (int, float)) else 99999.0
+    am = _incident_age_minutes(x)
+    am = float(am) if am is not None else 99999.0
     score = float(x.get("live_score") or 0.0)
     return (tier, ongoing, crit, -am, score)
+
+
+def _stamp_live_feed_age_fields(items: list[dict]) -> None:
+    for it in items:
+        ah = _incident_age_hours(it)
+        am = _incident_age_minutes(it)
+        if ah is not None:
+            it["age_hours"] = round(ah, 1)
+        if am is not None:
+            it["age_minutes"] = round(am, 1)
+        if _is_nysp_routine_blotter(it):
+            it["_nysp_routine"] = True
+        if _is_soft_personal_injury_news(it):
+            it["_soft_injury_news"] = True
+        it["live_priority_tier"] = live_presentation_priority_tier(it)
+
+
+def _sort_live_feed_items(items: list[dict]) -> list[dict]:
+    return sorted(items, key=live_presentation_sort_key, reverse=True)
 
 
 def compute_article_confidence(article) -> float:
@@ -5137,16 +5314,21 @@ async def _newest_feed_age_seconds() -> float:
 
 
 def _compute_feed_gap_seconds(items: list[dict]) -> int:
-    """Youngest non-synthetic item age in seconds."""
+    """Youngest substantive (non-routine) item age in seconds."""
     now_utc = datetime.now(timezone.utc)
     ages: list[int] = []
     for it in items:
-        if it.get("_gap_fill") or it.get("_nysp_routine_summary"):
+        if not _is_substantive_live_row(it):
             continue
         raw_dt = it.get("published_at") or it.get("occurred_at") or it.get("pubDate")
         if raw_dt:
             try:
-                dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
+                try:
+                    dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
+                except ValueError:
+                    dt = parsedate_to_datetime(str(raw_dt))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
                 ages.append(max(0, int((now_utc - dt).total_seconds())))
             except Exception:
                 pass
@@ -5963,7 +6145,12 @@ async def _densify_live_feed_items(items: list[dict]) -> list[dict]:
     added: list[dict] = []
     for e in list(news_items) + list(live_supplement):
         topic = e.get("incident_type") or ""
-        if topic and topic not in _LIVE_NEWS_TOPICS and not e.get("_official_x_post"):
+        if (
+            topic
+            and topic not in _LIVE_NEWS_TOPICS
+            and not e.get("_official_x_post")
+            and not e.get("_scanner_call")
+        ):
             continue
         raw = e.get("published_at") or e.get("occurred_at")
         dt = None
@@ -5972,7 +6159,8 @@ async def _densify_live_feed_items(items: list[dict]) -> list[dict]:
                 dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
             except Exception:
                 dt = None
-        if dt and (now_n - dt) > timedelta(hours=48):
+        max_age_h = SCANNER_OPENMHZ_RECENT_HOURS if e.get("_scanner_call") else 48.0
+        if dt and (now_n - dt) > timedelta(hours=max_age_h):
             continue
         uk = _ukey(e.get("source_url"))
         if uk and uk in existing_urls:
@@ -6006,12 +6194,7 @@ async def _densify_live_feed_items(items: list[dict]) -> list[dict]:
 
     if not added:
         return items
-    merged = list(items) + added
-    merged.sort(
-        key=lambda x: str(x.get("published_at") or x.get("occurred_at") or ""),
-        reverse=True,
-    )
-    return merged
+    return list(items) + added
 
 
 def _filter_live_incidents(items: list[dict]) -> list[dict]:
@@ -6060,6 +6243,11 @@ async def _build_live_incident_feed(
         enriched["area_slug"] = _area_slug(it)
         items[i] = enriched
     _refresh_incident_human_times(items)
+    if not q and not municipality:
+        _stamp_live_feed_age_fields(items)
+        if sort_by in ("newest", "operational", "live"):
+            items = _sort_live_feed_items(items)
+        items = _apply_live_tab_recency_window(items)
     return items
 
 
@@ -6127,7 +6315,7 @@ async def get_incidents(
     sort_by: str = "newest",
 ):
     sort_mode = (sort_by or "newest").lower()
-    if sort_mode not in ("newest", "severity", "verification", "priority", "operational"):
+    if sort_mode not in ("newest", "severity", "verification", "priority", "operational", "live"):
         sort_mode = "newest"
     densify = (
         not q and not municipality and not incident_type and not status
@@ -6173,7 +6361,7 @@ async def get_incidents(
     now_utc = datetime.now(timezone.utc)
     recent_substantive = 0
     for it in items:
-        if it.get("_gap_fill") or it.get("_nysp_routine_summary"):
+        if not _is_substantive_live_row(it):
             continue
         raw_dt = it.get("published_at") or it.get("occurred_at")
         if not raw_dt:
@@ -6190,6 +6378,7 @@ async def get_incidents(
         gap_cards = []
 
     # Compute pulse from the TRUE newest non-synthetic item.
+    live_now_count = sum(1 for it in items if it.get("live_bucket") == "now" and _is_substantive_live_row(it))
     payload = {
         "status": "ok",
         "source": incident_store_backend(),
@@ -6203,6 +6392,8 @@ async def get_incidents(
             "nysp_cards_merged": sum(1 for it in items if it.get("_from_nysp_blotter")),
             "x_scan_active": bool(XAI_API_KEY),
             "x_posts_merged": sum(1 for it in items if it.get("_official_x_post")),
+            "live_now_count": live_now_count,
+            "live_now_max_age_hours": LIVE_NOW_MAX_AGE_HOURS,
         },
     }
     return payload
@@ -6211,7 +6402,18 @@ async def get_incidents(
 @app.get("/api/incidents/pulse")
 async def get_incidents_pulse():
     """Real-time feed health/freshness status for the Albany Pulse bar."""
-    gap_s = await _newest_incident_age_seconds()
+    gap_s = 0
+    try:
+        feed = await _build_live_incident_feed(
+            limit=200,
+            sort_by="newest",
+            densify=True,
+            polish=True,
+            collapse_events=True,
+        )
+        gap_s = _compute_feed_gap_seconds(feed)
+    except Exception:
+        gap_s = int(await _newest_feed_age_seconds())
     total_sources = _total_source_count()
     gnews_status = gnews_runtime_status()
     scanner_running = _stream_monitor_task is not None and not _stream_monitor_task.done()
@@ -6228,7 +6430,7 @@ async def get_incidents_pulse():
         "x_scan_model": XAI_RESPONSES_MODEL if XAI_API_KEY else "",
         "x_handles_monitored": len(_official_x_handles_from_directory()),
         "x_scan_window_hours": _OFFICIAL_X_SCAN_WINDOW_HOURS,
-        "x_posts_cached": len(get_cached("official_x_combined_v3") or []),
+        "x_posts_cached": len(get_cached("official_x_combined_v4") or []),
         "feed_state": "live" if gap_s < 300 else ("aging" if gap_s < 900 else "quiet"),
     }
 
@@ -6361,7 +6563,7 @@ async def get_incidents_map(
 ):
     map_limit = max(1, min(limit, 1000))
     sort_mode = (sort_by or "newest").lower()
-    if sort_mode not in ("newest", "severity", "verification", "priority", "operational"):
+    if sort_mode not in ("newest", "severity", "verification", "priority", "operational", "live"):
         sort_mode = "newest"
     densify = (
         not q and not municipality and not incident_type and not status
@@ -6647,6 +6849,17 @@ def _news_to_incident_card(e: dict) -> dict:
         card["source_type"] = "official"
         card["verification_level"] = "official"
         card["_from_live_supplement"] = e.get("_from_live_supplement", True)
+    if e.get("_scanner_call"):
+        card["_scanner_call"] = True
+        card["_scanner_critical_live"] = bool(e.get("_scanner_critical_live"))
+        card["_scanner_recent_live"] = bool(e.get("_scanner_recent_live"))
+        card["_from_stream_monitor"] = bool(e.get("_from_stream_monitor"))
+        card["source_type"] = "scanner"
+        card["verification_level"] = "scanner"
+    if e.get("live_bucket"):
+        card["live_bucket"] = e.get("live_bucket")
+    if e.get("_live_delayed"):
+        card["_live_delayed"] = True
     return card
 
 
@@ -6929,7 +7142,7 @@ def _capital_region_live_ok(title: str, desc: str, source: str) -> bool:
 def _live_rss_article_ok(article: dict) -> bool:
     """Gate for RSS rows merged into the Live feed (broader than News tab)."""
     if article.get("_official_x_post"):
-        return _official_x_post_local_ok(article)
+        return _official_x_post_local_ok(article, live=True)
     title = str(article.get("title") or "")
     desc = str(article.get("description") or "")
     src = str(article.get("source") or "")
@@ -7003,8 +7216,147 @@ def _rss_article_to_live_entry(a: dict) -> dict:
 
 
 _LIVE_SUPPLEMENT_CACHE: dict[str, Any] = {"ts": 0.0, "items": []}
-_LIVE_SUPPLEMENT_TTL = 300  # 5 min
+_LIVE_SUPPLEMENT_TTL = 120  # 2 min — Live supplement must stay fresh
 _LIVE_SUPPLEMENT_LOCK = asyncio.Lock()
+
+
+def _stream_alert_to_live_entry(alert: dict) -> Optional[dict]:
+    """Convert a fresh stream-monitor alert into a Live-feed incident row."""
+    analysis = alert.get("analysis") if isinstance(alert.get("analysis"), dict) else {}
+    cand = analysis.get("incident_candidate") if isinstance(analysis.get("incident_candidate"), dict) else {}
+    text = str(analysis.get("summary") or alert.get("text") or "").strip()
+    if len(text) < 12:
+        return None
+    level = str(alert.get("alert_level") or "none").lower()
+    keywords = alert.get("keywords") or []
+    if (
+        level not in ("critical", "high", "medium")
+        and not keywords
+        and not analysis.get("is_actionable")
+    ):
+        return None
+    iso = str(alert.get("iso_time") or datetime.now(timezone.utc).isoformat())
+    muni = str(cand.get("municipality") or "Albany County")
+    if muni.lower() == "albany":
+        muni = "City of Albany"
+    itype = str(cand.get("incident_type") or "Police activity")
+    title = str(analysis.get("headline") or f"Live scanner: {itype} — {muni}")[:200]
+    feed_name = str(alert.get("feed_name") or "Scanner")
+    sev = "high" if level in ("critical", "high") else "medium"
+    aid = f"stream_{int(alert.get('timestamp') or time.time())}_{hashlib.md5(text[:80].encode()).hexdigest()[:10]}"
+    return {
+        "id": aid,
+        "title": title,
+        "short_title": title,
+        "description": text[:500],
+        "severity": sev,
+        "incident_type": _NEWS_TOPIC_TO_TYPE.get("law_enforcement", "police_activity"),
+        "municipality": muni,
+        "source_name": f"Scanner · {feed_name}",
+        "source_url": "",
+        "source_type": "scanner",
+        "verification_level": "scanner",
+        "occurred_at": iso,
+        "published_at": iso,
+        "human_time": _relative_time(
+            datetime.fromisoformat(iso.replace("Z", "+00:00"))
+            if iso else None
+        ),
+        "status": "active",
+        "_from_stream_monitor": True,
+        "_scanner_call": True,
+        "_scanner_critical_live": level == "critical",
+        "_scanner_recent_live": level in ("high", "medium"),
+        "_from_live_supplement": True,
+        "live_bucket": "now",
+    }
+
+
+def _scanner_signal_to_live_entry(article: dict) -> dict:
+    """Normalize a priority-P25 scanner article into a Live-feed incident row."""
+    title = str(article.get("title") or "Scanner activity")
+    desc = str(article.get("description") or article.get("summary") or "")
+    pub_dt = None
+    try:
+        raw = article.get("pubDate") or article.get("published_at")
+        if raw:
+            if isinstance(raw, str) and raw.isdigit():
+                n = int(raw)
+                if n > 10_000_000_000:
+                    n = n // 1000
+                pub_dt = datetime.fromtimestamp(n, tz=timezone.utc)
+            elif isinstance(raw, str) and "T" in raw:
+                pub_dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            else:
+                pub_dt = parsedate_to_datetime(str(raw))
+            if pub_dt and pub_dt.tzinfo is None:
+                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        pub_dt = None
+    iso = pub_dt.astimezone(timezone.utc).isoformat() if pub_dt else ""
+    muni = str(article.get("municipality") or "Albany County")
+    sev = "high" if article.get("_scanner_critical_live") else "medium"
+    return {
+        "id": article.get("id") or article.get("guid") or f"scanner_{hashlib.md5(title.encode()).hexdigest()[:12]}",
+        "title": title,
+        "short_title": title,
+        "description": desc[:500],
+        "severity": sev,
+        "incident_type": "police_activity",
+        "municipality": muni,
+        "source_name": str(article.get("source_name") or article.get("source") or "Scanner"),
+        "source_url": str(article.get("link") or article.get("source_url") or ""),
+        "source_type": "scanner",
+        "verification_level": "scanner",
+        "occurred_at": iso,
+        "published_at": iso,
+        "human_time": _relative_time(pub_dt),
+        "status": "active" if article.get("_scanner_critical_live") else "recent",
+        "_scanner_call": True,
+        "_scanner_critical_live": bool(article.get("_scanner_critical_live")),
+        "_scanner_recent_live": bool(article.get("_scanner_recent_live")),
+        "_from_live_supplement": True,
+        "live_bucket": "now",
+    }
+
+
+def _apply_live_tab_recency_window(items: list[dict]) -> list[dict]:
+    """
+    Live tab is real-time first:
+      • now  — ≤ LIVE_NOW_MAX_AGE_HOURS (default 3h)
+      • today — ≤ LIVE_TAB_MAX_AGE_HOURS (default 12h), non-blotter only
+      • NYSP blotter rows older than LIVE_NOW_MAX_AGE_HOURS are excluded from Live
+        (still available on All / Map with a longer window).
+    """
+    now_bucket: list[dict] = []
+    today_bucket: list[dict] = []
+    for it in items:
+        if it.get("_gap_fill"):
+            it["live_bucket"] = "now"
+            now_bucket.append(it)
+            continue
+        ah = _incident_age_hours(it)
+        if ah is None:
+            continue
+        if ah > LIVE_TAB_MAX_AGE_HOURS:
+            continue
+        if it.get("_from_nysp_blotter"):
+            if ah > LIVE_NOW_MAX_AGE_HOURS:
+                continue
+            it["live_bucket"] = "now"
+            it["_live_delayed"] = False
+            now_bucket.append(it)
+            continue
+        if ah <= LIVE_NOW_MAX_AGE_HOURS:
+            it["live_bucket"] = "now"
+            now_bucket.append(it)
+        else:
+            it["live_bucket"] = "today"
+            it["_live_delayed"] = True
+            today_bucket.append(it)
+    today_bucket.sort(key=live_presentation_sort_key, reverse=True)
+    now_bucket.sort(key=live_presentation_sort_key, reverse=True)
+    return now_bucket + today_bucket
 
 
 def _511_row_to_live_entry(row: dict) -> dict:
@@ -7102,6 +7454,32 @@ async def _fetch_live_supplement() -> list[dict]:
                 _maybe_add(_rss_article_to_live_entry(a))
         except Exception:
             logger.debug("live_supplement_x_failed", exc_info=True)
+
+        try:
+            merged_calls, _, rr_map = await _merge_scanner_calls_from_sources()
+            pri_articles = await _priority_p25_scanner_signal_articles(
+                merged_calls, merged_tg_index=rr_map if isinstance(rr_map, dict) else None,
+            )
+            for a in pri_articles:
+                age_h = get_article_age_hours(a)
+                if age_h is not None and age_h > SCANNER_OPENMHZ_RECENT_HOURS:
+                    continue
+                _maybe_add(_scanner_signal_to_live_entry(a))
+        except Exception:
+            logger.debug("live_supplement_scanner_failed", exc_info=True)
+
+        try:
+            async with _stream_alerts_lock:
+                recent_alerts = list(_stream_alerts[:25])
+            for alert in recent_alerts:
+                age_s = time.time() - float(alert.get("timestamp") or 0)
+                if age_s > LIVE_NOW_MAX_AGE_HOURS * 3600:
+                    continue
+                entry = _stream_alert_to_live_entry(alert)
+                if entry:
+                    _maybe_add(entry)
+        except Exception:
+            logger.debug("live_supplement_stream_failed", exc_info=True)
 
         entries.sort(key=lambda e: e.get("published_at") or "", reverse=True)
         _LIVE_SUPPLEMENT_CACHE["items"] = entries
@@ -8011,7 +8389,7 @@ async def get_social_intel():
     """
     Recent Albany County law-enforcement posts on X.com — Nitter RSS + xAI x_search.
     """
-    cached = get_cached("social_intel_v3")
+    cached = get_cached("social_intel_v4")
     if cached is not None:
         return {"status": "ok", "source": "cache", "items": cached}
 
@@ -8047,7 +8425,7 @@ async def get_social_intel():
         return {"status": "error", "items": [], "message": "AI not configured"}
 
     if items:
-        set_cached("social_intel_v3", items)
+        set_cached("social_intel_v4", items)
         return {"status": "ok", "source": "live", "items": items}
 
     return {"status": "ok", "source": "live", "items": [], "message": "No recent X posts found"}
@@ -10742,6 +11120,8 @@ _OFFICIAL_X_HANDLE_MUNI: dict[str, str] = {
 
 # Post-body phrases that indicate national/federal PR unrelated to Albany County
 _OFFICIAL_X_NATIONAL_NOISE = (
+    "#icymi", "health care fraud", "healthcare fraud", "medicare fraud",
+    "medicaid fraud", "national health care", "national healthcare",
     "global entry", "frontline magazine", "nationwide", "nation wide",
     "southern border", "northern border", "across the country",
     "los angeles", "pennsylvania man", "romanian national",
@@ -10839,6 +11219,24 @@ def _official_x_handle_from_article(article: dict) -> str:
         if m2:
             return m2.group(1).lower()
     return ""
+
+
+def _official_x_permalink_matches_handle(article: dict, handle: str) -> bool:
+    """Reject Nitter rows where x.com/OTHER/status/ slipped in from an RT."""
+    h = (handle or "").lower().strip()
+    if not h:
+        return False
+    for u in (article.get("link"), article.get("x_post_url"), article.get("source_url")):
+        if not u:
+            continue
+        m = re.search(r"x\.com/([a-z0-9_]+)/status/", str(u).lower())
+        if m and m.group(1) != h:
+            return False
+    return True
+
+
+def _official_x_max_age_hours(article: dict, *, live: bool = False) -> float:
+    return 36.0 if live else 168.0
 
 
 def _x_tweet_id_from_url(url: str) -> str:
@@ -10939,10 +11337,17 @@ def _official_x_has_incident_signal(combined: str) -> bool:
     return live_safety_signal_match(pseudo) or ongoing_public_safety_relevance(pseudo)
 
 
-def _official_x_post_local_ok(article: dict) -> bool:
+def _official_x_post_local_ok(article: dict, *, live: bool = False) -> bool:
     """True when an X post is from a whitelisted local handle and Albany-relevant."""
     h = _official_x_handle_from_article(article)
     if not h or h not in _OFFICIAL_X_HANDLES_ALBANY:
+        return False
+    if not _official_x_permalink_matches_handle(article, h):
+        return False
+
+    age_h = get_article_age_hours(article)
+    max_age = _official_x_max_age_hours(article, live=live)
+    if age_h is not None and age_h > max_age:
         return False
 
     title, desc, combined = _live_plain_text(article)
@@ -11140,7 +11545,7 @@ async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
     Real X permalinks via Nitter mirrors — primary fast path (no API key).
     Pulls recent timeline rows in parallel, filters to incident signals only.
     """
-    cached = get_cached("nitter_official_x_v3")
+    cached = get_cached("nitter_official_x_v4")
     if cached is not None:
         return cached
     out: list[dict[str, Any]] = []
@@ -11177,6 +11582,8 @@ async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
                         })
                         if not _official_x_post_local_ok(row):
                             continue
+                        if not _official_x_permalink_matches_handle(row, handle):
+                            continue
                         got.append(row)
                     if got:
                         break
@@ -11198,7 +11605,7 @@ async def fetch_nitter_official_x_rss_posts() -> list[dict[str, Any]]:
     except Exception as e:
         logger.warning("fetch_nitter_official_x_rss_posts: %s", e)
     out.sort(key=lambda a: (-float(a.get("_x_scan_score") or 0), -_x_pub_ts(a)))
-    set_cached("nitter_official_x_v3", out)
+    set_cached("nitter_official_x_v4", out)
     return out
 
 
@@ -11207,7 +11614,7 @@ async def fetch_official_x_articles() -> list[dict[str, Any]]:
     Combined x.com sourcing: Nitter RSS (fast) + dual xAI x_search (LE + fire/EMS).
     Dedupes by tweet snowflake, ranks by incident score + recency.
     """
-    cached = get_cached("official_x_combined_v3")
+    cached = get_cached("official_x_combined_v4")
     if cached is not None:
         return cached
     merged: list[dict[str, Any]] = []
@@ -11222,7 +11629,7 @@ async def fetch_official_x_articles() -> list[dict[str, Any]]:
             logger.warning("official_x_combined_batch_error: %s", batch)
             continue
         for a in batch:
-            if not _official_x_post_local_ok(a):
+            if not _official_x_post_local_ok(a, live=True):
                 continue
             tid = a.get("_x_tweet_id") or _x_tweet_id_from_url(
                 a.get("link") or a.get("x_post_url") or ""
@@ -11239,7 +11646,7 @@ async def fetch_official_x_articles() -> list[dict[str, Any]]:
                     seen_ids.add(lk)
             merged.append(a if a.get("_x_scan_score") else _enrich_official_x_article(a))
     merged.sort(key=lambda a: (-float(a.get("_x_scan_score") or 0), -_x_pub_ts(a)))
-    set_cached("official_x_combined_v3", merged)
+    set_cached("official_x_combined_v4", merged)
     logger.info("official_x_scan count=%d nitter=%d xai=%d",
                 len(merged),
                 sum(1 for x in merged if x.get("_official_x_nitter_rss")),
