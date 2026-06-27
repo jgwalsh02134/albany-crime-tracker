@@ -7322,41 +7322,41 @@ def _scanner_signal_to_live_entry(article: dict) -> dict:
 
 def _apply_live_tab_recency_window(items: list[dict]) -> list[dict]:
     """
-    Live tab is real-time first:
-      • now  — ≤ LIVE_NOW_MAX_AGE_HOURS (default 3h)
-      • today — ≤ LIVE_TAB_MAX_AGE_HOURS (default 12h), non-blotter only
-      • NYSP blotter rows older than LIVE_NOW_MAX_AGE_HOURS are excluded from Live
-        (still available on All / Map with a longer window).
+    Tag recency buckets and return the full ≤24h Live feed.
+    Ranking (not hard cutoffs) keeps the feed useful: fresh scanner/news first,
+    delayed NYSP blotter included but tagged and sorted down.
     """
-    now_bucket: list[dict] = []
-    today_bucket: list[dict] = []
+    kept: list[dict] = []
     for it in items:
         if it.get("_gap_fill"):
             it["live_bucket"] = "now"
-            now_bucket.append(it)
+            it["_live_delayed"] = False
+            kept.append(it)
             continue
         ah = _incident_age_hours(it)
-        if ah is None:
+        if ah is not None and ah > LIVE_MAX_AGE_HOURS:
             continue
-        if ah > LIVE_TAB_MAX_AGE_HOURS:
+        if ah is None:
+            it["live_bucket"] = "today"
+            it["_live_delayed"] = False
+            kept.append(it)
             continue
         if it.get("_from_nysp_blotter"):
-            if ah > LIVE_NOW_MAX_AGE_HOURS:
-                continue
+            if ah <= LIVE_NOW_MAX_AGE_HOURS:
+                it["live_bucket"] = "now"
+                it["_live_delayed"] = False
+            else:
+                it["live_bucket"] = "blotter"
+                it["_live_delayed"] = True
+        elif ah <= LIVE_NOW_MAX_AGE_HOURS:
             it["live_bucket"] = "now"
             it["_live_delayed"] = False
-            now_bucket.append(it)
-            continue
-        if ah <= LIVE_NOW_MAX_AGE_HOURS:
-            it["live_bucket"] = "now"
-            now_bucket.append(it)
         else:
             it["live_bucket"] = "today"
-            it["_live_delayed"] = True
-            today_bucket.append(it)
-    today_bucket.sort(key=live_presentation_sort_key, reverse=True)
-    now_bucket.sort(key=live_presentation_sort_key, reverse=True)
-    return now_bucket + today_bucket
+            it["_live_delayed"] = ah > LIVE_NOW_MAX_AGE_HOURS
+        kept.append(it)
+    kept.sort(key=live_presentation_sort_key, reverse=True)
+    return kept
 
 
 def _511_row_to_live_entry(row: dict) -> dict:

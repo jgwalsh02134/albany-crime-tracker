@@ -58,7 +58,7 @@
   // content existed. Newest-first sort keeps the top current; older items
   // fill the depth below so the feed never feels starved.
   var HOME_WINDOW_HOURS = 168;
-  var LIVE_FETCH_WINDOW_HOURS = 24;
+  var LIVE_FETCH_WINDOW_HOURS = 48;
   var LIVE_NOW_DISPLAY_HOURS = 3;
 
   // Law enforcement directory (lazy-loaded from /api/directory/*)
@@ -3046,28 +3046,10 @@
 
     renderLiveFreshness(items);
 
-    var nowItems = [];
-    var todayItems = [];
-    items.forEach(function (item) {
-      if (item.live_bucket === "today" || item._live_delayed) todayItems.push(item);
-      else nowItems.push(item);
-    });
-    if (!nowItems.length && todayItems.length) {
-      nowItems = todayItems;
-      todayItems = [];
-    }
-
     var html = "";
-    if (nowItems.length) {
-      html += '<div class="live-feed-section-label">Live now</div>';
-      nowItems.forEach(function (item) { html += buildIncidentCard(item); });
-    }
-    if (todayItems.length) {
-      html += '<div class="live-feed-section-label live-feed-section-label--delayed">Earlier today (3–12h)</div>';
-      todayItems.forEach(function (item) { html += buildIncidentCard(item); });
-    }
+    items.forEach(function (item) { html += buildIncidentCard(item); });
     list.innerHTML = html;
-    _bindIncidentCardClicks(list, nowItems.concat(todayItems));
+    _bindIncidentCardClicks(list, items);
   }
 
   // ── INCIDENT DETAIL SHEET ─────────────────────────────────────────────
