@@ -3085,6 +3085,12 @@ def live_presentation_priority_tier(x: dict) -> int:
     if _is_soft_personal_injury_news(x):
         return 25
 
+    if x.get("_511_incident") or "511ny" in str(x.get("source_name") or x.get("source") or "").lower():
+        if any(k in blob for k in ("roadwork", "construction", "maintenance", "paving")):
+            return 14
+        if any(k in blob for k in ("closure", "closed", "detour")):
+            return 28
+
     ongoing = ongoing_public_safety_relevance(x)
     crit = bool(x.get("_scanner_critical_live"))
     sc = bool(x.get("_scanner_call"))
@@ -5957,6 +5963,10 @@ def _polish_incidents(items: list[dict]) -> list[dict]:
         if it.get("_gap_fill"):
             deduped.append(it)
             continue
+        # Each NYSP blotter row is a distinct arrest/event — never merge away.
+        if it.get("_from_nysp_blotter"):
+            deduped.append(it)
+            continue
         tkey = _title_dedup_key(it.get("short_title") or it.get("title") or "")
         skey = _incident_signature(it)
         # A duplicate if EITHER the title signature OR the location+type
@@ -6159,7 +6169,7 @@ async def _densify_live_feed_items(items: list[dict]) -> list[dict]:
                 dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
             except Exception:
                 dt = None
-        max_age_h = SCANNER_OPENMHZ_RECENT_HOURS if e.get("_scanner_call") else 48.0
+        max_age_h = SCANNER_OPENMHZ_RECENT_HOURS if e.get("_scanner_call") else 72.0
         if dt and (now_n - dt) > timedelta(hours=max_age_h):
             continue
         uk = _ukey(e.get("source_url"))
@@ -6372,7 +6382,7 @@ async def get_incidents(
                 recent_substantive += 1
         except Exception:
             pass
-    if gap_cards and not q and real_gap_s >= _GAP_FILL_THRESHOLD_S and recent_substantive < 3:
+    if gap_cards and not q and len(items) < 5 and recent_substantive < 2:
         items = list(items) + gap_cards
     else:
         gap_cards = []
@@ -6860,6 +6870,8 @@ def _news_to_incident_card(e: dict) -> dict:
         card["live_bucket"] = e.get("live_bucket")
     if e.get("_live_delayed"):
         card["_live_delayed"] = True
+    if e.get("_511_incident"):
+        card["_511_incident"] = True
     return card
 
 
@@ -7322,10 +7334,11 @@ def _scanner_signal_to_live_entry(article: dict) -> dict:
 
 def _apply_live_tab_recency_window(items: list[dict]) -> list[dict]:
     """
-    Tag recency buckets and return the full ≤24h Live feed.
-    Ranking (not hard cutoffs) keeps the feed useful: fresh scanner/news first,
-    delayed NYSP blotter included but tagged and sorted down.
+    Tag recency buckets and return the ranked Live feed.
+    NYSP blotter rows are never age-dropped here (cache already caps at 168h).
+    News/scanner/511 use a 72h display window so the feed stays comprehensive.
     """
+    display_max_h = float(os.getenv("LIVE_DISPLAY_MAX_HOURS", "72"))
     kept: list[dict] = []
     for it in items:
         if it.get("_gap_fill"):
@@ -7333,27 +7346,26 @@ def _apply_live_tab_recency_window(items: list[dict]) -> list[dict]:
             it["_live_delayed"] = False
             kept.append(it)
             continue
+        if it.get("_from_nysp_blotter"):
+            ah = _incident_age_hours(it)
+            it["live_bucket"] = "blotter" if (ah and ah > LIVE_NOW_MAX_AGE_HOURS) else "now"
+            it["_live_delayed"] = bool(ah and ah > LIVE_NOW_MAX_AGE_HOURS)
+            kept.append(it)
+            continue
         ah = _incident_age_hours(it)
-        if ah is not None and ah > LIVE_MAX_AGE_HOURS:
+        if ah is not None and ah > display_max_h:
             continue
         if ah is None:
             it["live_bucket"] = "today"
             it["_live_delayed"] = False
             kept.append(it)
             continue
-        if it.get("_from_nysp_blotter"):
-            if ah <= LIVE_NOW_MAX_AGE_HOURS:
-                it["live_bucket"] = "now"
-                it["_live_delayed"] = False
-            else:
-                it["live_bucket"] = "blotter"
-                it["_live_delayed"] = True
-        elif ah <= LIVE_NOW_MAX_AGE_HOURS:
+        if ah <= LIVE_NOW_MAX_AGE_HOURS:
             it["live_bucket"] = "now"
             it["_live_delayed"] = False
         else:
             it["live_bucket"] = "today"
-            it["_live_delayed"] = ah > LIVE_NOW_MAX_AGE_HOURS
+            it["_live_delayed"] = True
         kept.append(it)
     kept.sort(key=live_presentation_sort_key, reverse=True)
     return kept
@@ -7391,6 +7403,7 @@ def _511_row_to_live_entry(row: dict) -> dict:
         "image_url": "",
         "is_news": True,
         "_from_live_supplement": True,
+        "_511_incident": True,
     }
 
 
