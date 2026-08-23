@@ -137,6 +137,9 @@ export function verificationWhy(inc: Incident): string {
   }
   const hasNews = inc.sources.some((s) => s.kind === "news");
   const hasScan = inc.sources.some((s) => s.kind === "scanner");
+  if (inc.origin === "live" || (hasNews && !hasScan && official.length === 0)) {
+    return "Newsroom report only — not a confirmed CAD / blotter incident. Treat as developing.";
+  }
   if (hasNews && hasScan) return "Newsroom plus scanner traffic — treat as developing until an official source posts.";
   if (hasScan) return "Scanner only. Radio traffic is not a confirmed incident.";
   if (hasNews) return "Newsroom reporting only. No official blotter on this item yet.";
@@ -275,16 +278,6 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
   });
 }
 
-export function mergeLiveFeed(seed: Incident[], wire: LiveWireItem[]): Incident[] {
-  const live = wireToIncidents(wire);
-  const fused = fuseLiveWire(
-    seed.map((s) => ({ ...s, origin: s.origin ?? "snapshot" })),
-    wire,
-  );
-  const liveKeys = new Set(live.map((i) => i.title.toLowerCase().slice(0, 40)));
-  const rest = fused.filter((inc) => {
-    const key = inc.title.toLowerCase().slice(0, 40);
-    return !liveKeys.has(key);
-  });
-  return [...live, ...rest];
+export function mergeLiveFeed(_seed: Incident[], wire: LiveWireItem[]): Incident[] {
+  return wireToIncidents(wire);
 }

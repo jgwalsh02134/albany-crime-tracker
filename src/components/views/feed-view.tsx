@@ -2,7 +2,7 @@ import { IncidentCard } from "@/components/incident-card";
 import { Badge } from "@/components/ui/badge";
 import { areaCounts, lastHours, topCategory } from "@/lib/data";
 import { compactFromMinutes, relativeTime } from "@/lib/format";
-import { SOURCE_LENSES, sourceMix, type LiveWireItem } from "@/lib/sources";
+import { SOURCE_LENSES, type LiveWireItem } from "@/lib/sources";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import type { Incident, NewsStory } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -39,12 +39,9 @@ export function FeedView({
   const day = lastHours(visible, 24);
   const week = lastHours(visible, 24 * 7);
   const areas = areaCounts(lastHours(areaVisible, 24));
-  const mix = sourceMix(lastHours(areaVisible, 24));
   const critical = day.filter((i) => i.severity === "critical").length;
   const active = day.filter((i) => i.status === "active").length;
   const liveItems = visible.filter((i) => i.origin === "live");
-  const snapshot = visible.filter((i) => i.origin !== "live");
-  const groups = groupIncidents(snapshot);
   const newest = liveItems[0] ?? visible[0];
   const topWire = wire[0];
 
@@ -87,10 +84,9 @@ export function FeedView({
             </div>
             <p className="mt-3 text-xs text-subtle">
               {wireLive
-                ? `${liveItems.length} live headlines${wireOutlets.length ? ` · ${wireOutlets.join(" · ")}` : ""}`
-                : "Pulling newsrooms…"}
-              {" · "}
-              {mix.official} official snapshot
+                ? `${liveItems.length} newsroom headlines${wireOutlets.length ? ` · ${wireOutlets.join(" · ")}` : ""}`
+                : "Pulling Capital Region newsrooms…"}
+              . Not a live CAD dump.
             </p>
             {topWire ? (
               <a
@@ -145,21 +141,20 @@ export function FeedView({
             </div>
           </div>
 
-          {liveItems.length === 0 && snapshot.length === 0 ? (
+          {liveItems.length === 0 ? (
             <p className="mt-6 rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
-              No incidents match these filters. Clear the source or area filter.
+              {wireLive
+                ? "No incidents match these filters."
+                : "Waiting on News10, CBS6, and Google News. Sample CAD cards are no longer shown here."}
             </p>
           ) : (
             <div className="mt-2 flex flex-col gap-5">
               <FeedSection
                 title="Live wire"
-                hint="Headlines pulled from Capital Region newsrooms"
+                hint="Headlines pulled from Capital Region newsrooms — not official CAD"
                 items={liveItems}
                 onSelect={select}
               />
-              <FeedSection title="Now" hint="County snapshot — last 30 minutes or still active" items={groups.now} onSelect={select} />
-              <FeedSection title="Last 6 hours" items={groups.recent} onSelect={select} />
-              <FeedSection title="County snapshot" items={groups.earlier} onSelect={select} />
             </div>
           )}
         </div>

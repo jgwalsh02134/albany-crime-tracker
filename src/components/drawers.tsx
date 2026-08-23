@@ -157,9 +157,15 @@ export function IncidentDrawer({ incident }: { incident: Incident | null }) {
             {clockTime(incident.occurredAt)} · {relativeTime(incident.occurredAt)}
           </p>
           <p className="mt-4 text-sm leading-relaxed text-muted">{incident.description}</p>
-          <p className="mt-3 rounded-lg bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
-            {verificationWhy(incident)}
-          </p>
+          {incident.origin === "live" ? (
+            <p className="mt-3 rounded-lg border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs leading-relaxed text-muted">
+              Newsroom report — not a confirmed police CAD call. Open the source for the original story.
+            </p>
+          ) : (
+            <p className="mt-3 rounded-lg bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
+              {verificationWhy(incident)}
+            </p>
+          )}
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div>
               <dt className="text-xs uppercase tracking-wide text-subtle">Agency</dt>

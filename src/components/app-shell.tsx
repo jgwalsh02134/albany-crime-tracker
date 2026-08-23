@@ -19,9 +19,9 @@ import { FeedView } from "@/components/views/feed-view";
 import { MapView } from "@/components/views/map-view";
 import { MoreView } from "@/components/views/more-view";
 import { ScannerView } from "@/components/views/scanner-view";
-import { hydrateCalls, hydrateIncidents, hydrateNews } from "@/lib/data";
+import { hydrateCalls } from "@/lib/data";
 import { getLiveWire } from "@/lib/live-sources";
-import { mergeLiveFeed, type LiveWireItem } from "@/lib/sources";
+import { wireToIncidents, type LiveWireItem } from "@/lib/sources";
 import { useAppStore } from "@/lib/store";
 import type { NewsStory, ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -38,11 +38,9 @@ export function AppShell() {
   const [wire, setWire] = useState<LiveWireItem[]>([]);
   const [wireLive, setWireLive] = useState(false);
   const [wireOutlets, setWireOutlets] = useState<string[]>([]);
-  const seedIncidents = useMemo(() => hydrateIncidents(now), [now]);
-  const seedNews = useMemo(() => hydrateNews(now), [now]);
   const calls = useMemo(() => hydrateCalls(now), [now]);
-  const incidents = useMemo(() => mergeLiveFeed(seedIncidents, wire), [seedIncidents, wire]);
-  const news = useMemo(() => mergeWireNews(seedNews, wire), [seedNews, wire]);
+  const incidents = useMemo(() => wireToIncidents(wire), [wire]);
+  const news = useMemo(() => mergeWireNews([], wire), [wire]);
 
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
@@ -75,8 +73,17 @@ export function AppShell() {
     let cancelled = false;
     async function pull() {
       try {
-        const res = await getLiveWire();
-        if (cancelled || !res.ok) return;
+        let res: { ok: boolean; items: LiveWireItem[]; outlets?: string[] } | null = null;
+        try {
+          res = await getLiveWire();
+        } catch {
+          res = null;
+        }
+        if (!res?.ok) {
+          const r = await fetch("/api/wire", { headers: { Accept: "application/json" } });
+          if (r.ok) res = (await r.json()) as { ok: boolean; items: LiveWireItem[]; outlets?: string[] };
+        }
+        if (cancelled || !res?.ok) return;
         setWire(res.items);
         setWireLive(res.items.length > 0);
         setWireOutlets(res.outlets ?? []);

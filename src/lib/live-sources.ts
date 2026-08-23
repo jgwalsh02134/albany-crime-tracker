@@ -100,7 +100,7 @@ function parseRss(xml: string, outlet: string, now: number): LiveWireItem[] {
   return out;
 }
 
-export const getLiveWire = createServerFn({ method: "POST" }).handler(async () => {
+async function collectWire() {
   const now = Date.now();
   const batches = await Promise.all(
     FEEDS.map(async (feed) => {
@@ -136,4 +136,10 @@ export const getLiveWire = createServerFn({ method: "POST" }).handler(async () =
   }
   items.sort((a, b) => a.minutesAgo - b.minutesAgo);
   return { ok: true as const, at: now, items: items.slice(0, 16), outlets: liveOutlets };
-});
+}
+
+export async function fetchLiveWire() {
+  return collectWire();
+}
+
+export const getLiveWire = createServerFn({ method: "POST" }).handler(async () => collectWire());

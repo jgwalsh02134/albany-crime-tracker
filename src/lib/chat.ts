@@ -1,26 +1,21 @@
 import { createServerFn } from "@tanstack/react-start";
-import { hydrateIncidents, lastHours } from "./data";
+import { fetchLiveWire } from "./live-sources";
+import { wireToIncidents } from "./sources";
 
 const MAX_PROMPT = 800;
 const MAX_HISTORY = 8;
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
 
-function snapshot(): string {
+async function snapshot(): Promise<string> {
   const now = Date.now();
-  const all = hydrateIncidents(now);
-  const day = lastHours(all, 24, now);
-  const lines = day.slice(0, 18).map((i) => {
+  const wire = await fetchLiveWire();
+  const all = wireToIncidents(wire.items);
+  const lines = all.slice(0, 18).map((i) => {
     const mins = Math.round((now - new Date(i.occurredAt).getTime()) / 60000);
-    return `- ${i.severity.toUpperCase()} | ${i.title} | ${i.municipality} | ${mins}m ago | ${i.agencyAbbr} | via ${i.sources.map((s) => s.name).join(", ")}`;
+    return `- ${i.severity.toUpperCase()} | ${i.title} | ${i.municipality} | ${mins}m ago | ${i.agency} | ${i.sources[0]?.url ?? ""}`;
   });
-  const byArea = new Map<string, number>();
-  for (const i of day) byArea.set(i.municipality, (byArea.get(i.municipality) ?? 0) + 1);
-  const areas = [...byArea.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([n, c]) => `${n}:${c}`)
-    .join(", ");
-  return `Last 24h incidents (${day.length}):\n${lines.join("\n")}\nCounts by area: ${areas || "n/a"}`;
+  return `Live newsroom wire only (not a CAD dump). ${all.length} Capital Region public-safety headlines:\n${lines.join("\n") || "(none right now)"}`;
 }
 
 export const askCrimeAi = createServerFn({ method: "POST" })
@@ -55,11 +50,11 @@ export const askCrimeAi = createServerFn({ method: "POST" })
           {
             role: "system",
             content:
-              "You are the Albany County Crime Tracker assistant. Answer only about public-safety activity in Albany County, NY (city of Albany, Colonie, Bethlehem, Guilderland, Cohoes, Watervliet, hilltowns, and county sheriff/NYSP Troop G). Be precise, calm, and source-aware. Never invent arrests, names of victims, or charges that are not in the snapshot. If the snapshot is a composite intelligence set rather than a live CAD dump, say so briefly. Distinguish scanner traffic (unconfirmed) from blotter/news (higher confidence). Do not give tactical advice for committing crimes. If asked something off-topic, steer back to county public safety.",
+              "You are the Albany County Crime Tracker assistant. Answer only about public-safety activity in Albany County, NY. The snapshot is a live newsroom wire (News10, CBS6, Google News), NOT a live police CAD feed. Never treat those headlines as confirmed blotter incidents. Never invent arrests, names of victims, or charges that are not in the snapshot. If asked something off-topic, steer back to county public safety.",
           },
           {
             role: "system",
-            content: snapshot(),
+            content: await snapshot(),
           },
           ...data.history,
           { role: "user", content: data.prompt },
