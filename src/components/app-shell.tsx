@@ -19,7 +19,6 @@ import { FeedView } from "@/components/views/feed-view";
 import { MapView } from "@/components/views/map-view";
 import { MoreView } from "@/components/views/more-view";
 import { ScannerView } from "@/components/views/scanner-view";
-import { hydrateCalls } from "@/lib/data";
 import { getLiveWire } from "@/lib/live-sources";
 import { wireToIncidents, type LiveWireItem } from "@/lib/sources";
 import { useAppStore } from "@/lib/store";
@@ -34,11 +33,9 @@ const TABS: { id: ViewId; label: string; icon: typeof Bolt }[] = [
 ];
 
 export function AppShell() {
-  const [now, setNow] = useState(() => Date.now());
   const [wire, setWire] = useState<LiveWireItem[]>([]);
   const [wireLive, setWireLive] = useState(false);
   const [wireOutlets, setWireOutlets] = useState<string[]>([]);
-  const calls = useMemo(() => hydrateCalls(now), [now]);
   const incidents = useMemo(() => wireToIncidents(wire), [wire]);
   const news = useMemo(() => mergeWireNews([], wire), [wire]);
 
@@ -62,11 +59,6 @@ export function AppShell() {
       /* ignore */
     }
     document.documentElement.dataset.theme = useAppStore.getState().theme;
-  }, []);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -186,7 +178,7 @@ export function AppShell() {
           <MapView incidents={incidents} active={view === "map"} />
         </div>
         <div className={cn("absolute inset-0", view === "scanner" ? "block" : "hidden")}>
-          <ScannerView calls={calls} />
+          <ScannerView calls={[]} />
         </div>
         <div className={cn("absolute inset-0", view === "chat" ? "block" : "hidden")}>
           <ChatView />

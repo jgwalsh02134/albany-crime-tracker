@@ -241,12 +241,26 @@ function hashId(s: string): string {
 }
 
 export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
-  return wire.map((item) => {
-    const hay = `${item.title} ${item.summary}`;
+  return clusterWire(wire).map((group) => {
+    const item = group[0]!;
+    const hay = group.map((g) => `${g.title} ${g.summary}`).join(" ");
     const place = placeOf(hay);
     const kind = classify(item.title);
     const muni = place.name === "Albany County" ? "Albany" : place.name;
     const jitter = (item.title.length % 7) * 0.0018;
+    const seen = new Set<string>();
+    const sources: IncidentSource[] = [];
+    for (const g of group) {
+      if (seen.has(g.url)) continue;
+      seen.add(g.url);
+      sources.push({
+        kind: "news",
+        name: g.outlet,
+        tier: "context",
+        url: g.url,
+        excerpt: g.summary || g.title,
+      });
+    }
     return {
       id: hashId(item.url),
       minutesAgo: item.minutesAgo,
@@ -255,7 +269,7 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       type: kind.type,
       category: kind.category,
       severity: kind.severity,
-      status: item.minutesAgo <= 360 ? "active" : "developing",
+      status: item.minutesAgo <= 180 ? "active" : item.minutesAgo <= 24 * 60 ? "developing" : "closed",
       municipality: muni,
       address: place.name === "Albany County" ? "Countywide" : place.name,
       lat: place.lat + jitter,
@@ -263,19 +277,30 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       agency: item.outlet,
       agencyAbbr: item.outlet.replace(/\s+/g, "").slice(0, 6).toUpperCase(),
       description: item.summary || item.title,
-      sources: [
-        {
-          kind: "news",
-          name: item.outlet,
-          tier: "context",
-          url: item.url,
-          excerpt: item.summary || item.title,
-        },
-      ],
+      sources,
       verification: "developing",
       origin: "live",
     } satisfies Incident;
   });
+}
+
+function clusterWire(items: LiveWireItem[]): LiveWireItem[][] {
+  const groups: LiveWireItem[][] = [];
+  for (const item of items) {
+    const kind = classify(item.title);
+    const words = tokens(item.title);
+    const found = groups.find((g) => {
+      const head = g[0]!;
+      if (classify(head.title).type !== kind.type) return false;
+      if (Math.abs(item.minutesAgo - head.minutesAgo) > 36 * 60) return false;
+      const other = tokens(head.title);
+      const hit = words.filter((w) => other.includes(w)).length;
+      return hit >= 3;
+    });
+    if (found) found.push(item);
+    else groups.push([item]);
+  }
+  return groups;
 }
 
 export function mergeLiveFeed(_seed: Incident[], wire: LiveWireItem[]): Incident[] {

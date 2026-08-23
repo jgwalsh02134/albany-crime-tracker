@@ -167,10 +167,13 @@ export function FeedView({
             <Stat value={areas[0]?.name ?? "—"} label="Top area" />
           </div>
 
-          {wire.length ? <NewsSection title="Live wire" items={news.filter((n) => n.kicker === "Live wire")} /> : null}
-          <NewsSection title="Top stories" items={news.filter((n) => n.kicker !== "Live wire").slice(0, 3)} />
-          <NewsSection title="Developing" items={news.filter((n) => n.kicker === "Developing")} />
-          <NewsSection title="Latest headlines" items={news.filter((n) => n.kicker !== "Live wire")} />
+          {news.length ? (
+            <NewsSection title="Live wire" items={news} />
+          ) : (
+            <p className="mt-6 rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
+              Waiting on Capital Region newsrooms.
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -60,7 +60,7 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
   const [disc, setDisc] = useState<Discipline | "all">("all");
   const [channel, setChannel] = useState("");
   const [q, setQ] = useState("");
-  const [panel, setPanel] = useState<Panel>("traffic");
+  const [panel, setPanel] = useState<Panel>("captions");
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [online, setOnline] = useState<Record<string, boolean>>({});
@@ -657,12 +657,12 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
           </div>
 
           <p className="mt-3 text-xs text-subtle">
-            Raw P25 dispatch — not confirmed incidents. {filtered.length} calls.
+            Live radio only. There is no sample CAD log.
           </p>
 
           {filtered.length === 0 ? (
             <p className="mt-4 rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
-              No transmissions match these filters.
+              No recorded talkgroups. Play a feed and start captions to see real traffic.
             </p>
           ) : (
             <div className="mt-3 flex flex-col gap-5">

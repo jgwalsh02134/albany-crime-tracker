@@ -12,11 +12,11 @@ const FEEDS: { url: string; outlet: string; official?: boolean }[] = [
 ];
 
 const LOCAL =
-  /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|capital region|troop g)\b/i;
+  /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g)\b/i;
 const CRIME =
-  /\b(police|sheriff|apd|crash|shot|shooting|robbery|arrest|stab|homicide|fire|killed|injured|burglary|assault|fatal|charged|vandal|blaze)\b/i;
+  /\b(crash|collision|shot|shooting|homicide|murder|stab|robbery|arrest|fire|blaze|killed|injured|fatal|burglary|assault|charged|vandal|carjack|wanted|bomb|arson|hit-and-run)\b/i;
 const DROP =
-  /\b(weather forecast|sports|football|baseball|soccer|high school|seasonably|rain chances|speedway|autism|op-ed|letter to the editor|stock|recipe|police chief position)\b/i;
+  /\b(weather forecast|sports|football|baseball|soccer|high school|seasonably|rain chances|speedway|autism|op-ed|letter to the editor|stock|recipe|police chief|job posting|retired before|common council|initiative|camera expansion|suspended without pay|k9|hiring|season preview)\b/i;
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://albanypulse.com)";
 
