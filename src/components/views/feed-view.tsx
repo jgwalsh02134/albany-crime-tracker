@@ -12,11 +12,13 @@ export function FeedView({
   news,
   wire,
   wireLive,
+  wireOutlets = [],
 }: {
   incidents: Incident[];
   news: NewsStory[];
   wire: LiveWireItem[];
   wireLive: boolean;
+  wireOutlets?: string[];
 }) {
   const homeMode = useAppStore((s) => s.homeMode);
   const setHomeMode = useAppStore((s) => s.setHomeMode);
@@ -40,8 +42,10 @@ export function FeedView({
   const mix = sourceMix(lastHours(areaVisible, 24));
   const critical = day.filter((i) => i.severity === "critical").length;
   const active = day.filter((i) => i.status === "active").length;
-  const groups = groupIncidents(visible);
-  const newest = visible[0];
+  const liveItems = visible.filter((i) => i.origin === "live");
+  const snapshot = visible.filter((i) => i.origin !== "live");
+  const groups = groupIncidents(snapshot);
+  const newest = liveItems[0] ?? visible[0];
   const topWire = wire[0];
 
   return (
@@ -82,8 +86,11 @@ export function FeedView({
               <PulseStat value={active} label="Active now" />
             </div>
             <p className="mt-3 text-xs text-subtle">
-              {mix.official} official · {mix.scanner} scanner · {mix.news} news
-              {wireLive ? " · wire live" : ""}
+              {wireLive
+                ? `${liveItems.length} live headlines${wireOutlets.length ? ` · ${wireOutlets.join(" · ")}` : ""}`
+                : "Pulling newsrooms…"}
+              {" · "}
+              {mix.official} official snapshot
             </p>
             {topWire ? (
               <a
@@ -138,15 +145,21 @@ export function FeedView({
             </div>
           </div>
 
-          {visible.length === 0 ? (
+          {liveItems.length === 0 && snapshot.length === 0 ? (
             <p className="mt-6 rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
               No incidents match these filters. Clear the source or area filter.
             </p>
           ) : (
             <div className="mt-2 flex flex-col gap-5">
-              <FeedSection title="Now" hint="Last 30 minutes or still active" items={groups.now} onSelect={select} />
+              <FeedSection
+                title="Live wire"
+                hint="Headlines pulled from Capital Region newsrooms"
+                items={liveItems}
+                onSelect={select}
+              />
+              <FeedSection title="Now" hint="County snapshot — last 30 minutes or still active" items={groups.now} onSelect={select} />
               <FeedSection title="Last 6 hours" items={groups.recent} onSelect={select} />
-              <FeedSection title="Earlier" items={groups.earlier} onSelect={select} />
+              <FeedSection title="County snapshot" items={groups.earlier} onSelect={select} />
             </div>
           )}
         </div>

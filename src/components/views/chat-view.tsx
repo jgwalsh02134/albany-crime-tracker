@@ -34,16 +34,21 @@ export function ChatView() {
     setMessages((m) => [...m, user]);
     setInput("");
     setBusy(true);
-    const history = [...messages, user]
+    const history = messages
       .filter((m) => m.id !== "hello")
       .map((m) => ({ role: m.role, content: m.content }));
-    const res = await askCrimeAi({ data: { prompt: text, history } });
-    setBusy(false);
-    if (!res.ok) {
-      setError(res.error);
-      return;
+    try {
+      const res = await askCrimeAi({ data: { prompt: text, history } });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: res.text }]);
+    } catch {
+      setError("Could not reach the assistant. Try again.");
+    } finally {
+      setBusy(false);
     }
-    setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: res.text }]);
   }
 
   return (

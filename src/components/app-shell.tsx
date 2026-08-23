@@ -21,7 +21,7 @@ import { MoreView } from "@/components/views/more-view";
 import { ScannerView } from "@/components/views/scanner-view";
 import { hydrateCalls, hydrateIncidents, hydrateNews } from "@/lib/data";
 import { getLiveWire } from "@/lib/live-sources";
-import { fuseLiveWire, type LiveWireItem } from "@/lib/sources";
+import { mergeLiveFeed, type LiveWireItem } from "@/lib/sources";
 import { useAppStore } from "@/lib/store";
 import type { NewsStory, ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -37,10 +37,11 @@ export function AppShell() {
   const [now, setNow] = useState(() => Date.now());
   const [wire, setWire] = useState<LiveWireItem[]>([]);
   const [wireLive, setWireLive] = useState(false);
+  const [wireOutlets, setWireOutlets] = useState<string[]>([]);
   const seedIncidents = useMemo(() => hydrateIncidents(now), [now]);
   const seedNews = useMemo(() => hydrateNews(now), [now]);
   const calls = useMemo(() => hydrateCalls(now), [now]);
-  const incidents = useMemo(() => fuseLiveWire(seedIncidents, wire), [seedIncidents, wire]);
+  const incidents = useMemo(() => mergeLiveFeed(seedIncidents, wire), [seedIncidents, wire]);
   const news = useMemo(() => mergeWireNews(seedNews, wire), [seedNews, wire]);
 
   const view = useAppStore((s) => s.view);
@@ -72,13 +73,22 @@ export function AppShell() {
 
   useEffect(() => {
     let cancelled = false;
-    void getLiveWire().then((res) => {
-      if (cancelled || !res.ok) return;
-      setWire(res.items);
-      setWireLive(res.items.length > 0);
-    });
+    async function pull() {
+      try {
+        const res = await getLiveWire();
+        if (cancelled || !res.ok) return;
+        setWire(res.items);
+        setWireLive(res.items.length > 0);
+        setWireOutlets(res.outlets ?? []);
+      } catch {
+        /* keep last good wire */
+      }
+    }
+    void pull();
+    const id = window.setInterval(pull, 45_000);
     return () => {
       cancelled = true;
+      window.clearInterval(id);
     };
   }, []);
 
@@ -157,7 +167,13 @@ export function AppShell() {
 
       <main className="relative min-h-0 flex-1">
         <div className={cn("absolute inset-0", view === "feed" ? "block" : "hidden")}>
-          <FeedView incidents={incidents} news={news} wire={wire} wireLive={wireLive} />
+          <FeedView
+            incidents={incidents}
+            news={news}
+            wire={wire}
+            wireLive={wireLive}
+            wireOutlets={wireOutlets}
+          />
         </div>
         <div className={cn("absolute inset-0", view === "map" ? "block" : "hidden")}>
           <MapView incidents={incidents} active={view === "map"} />

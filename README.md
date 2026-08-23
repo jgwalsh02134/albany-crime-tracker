@@ -2,21 +2,17 @@
 
 Mobile-first public-safety dashboard for Albany County, NY.
 
-Live feed, map, scanner with HLS + transcription, directory, trends, and a Grok assistant. Incidents are sourced from official blotters/CAD, scanner, and newsrooms. A live News10 wire overlays public-safety headlines when the RSS feed is reachable.
+Live feed (newsroom wire + county snapshot), map, Broadcastify scanner with captions, directory, trends, and a Grok assistant.
 
-## Run
+## Run locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-App listens on `0.0.0.0:8080`.
+Optional: set `XAI_API_KEY` for scanner captions and AI chat.
 
-Optional:
+## Railway
 
-- `XAI_API_KEY` — scanner transcription and AI chat
-
-## Stack
-
-Vite 6, TanStack Start, React 19, Tailwind v4, Leaflet, HLS.js, Zustand.
+The service builds from `Dockerfile` (Node 22, Nitro `node-server`) and listens on `PORT` (8080). Set `XAI_API_KEY` in the Railway service variables so transcription and chat work in production.

@@ -198,11 +198,6 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
       }
       setOnline((prev) => ({ ...prev, [feedId]: res.online }));
       playlistUrlsRef.current = res.candidates.length ? res.candidates : [res.hlsUrl];
-      if (!res.online) {
-        setPlaying(false);
-        setPlayerError("This feed is idle on Broadcastify right now.");
-        return;
-      }
       const urls = playlistUrlsRef.current;
       let lastErr: unknown;
       for (const url of urls) {
@@ -504,6 +499,18 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
               <span className="viz-bar" />
             </span>
           ) : null}
+          <button
+            type="button"
+            onClick={toggleTranscribe}
+            aria-label={transcribing ? "Stop captions" : "Start captions"}
+            aria-pressed={transcribing}
+            className={cn(
+              "flex size-11 shrink-0 items-center justify-center rounded-full",
+              transcribing ? "bg-cyan text-accent-fg" : "text-muted",
+            )}
+          >
+            {transcribing ? <CaptionsOff className="size-5" /> : <Captions className="size-5" />}
+          </button>
           <button
             type="button"
             onClick={() => setMuted((m) => !m)}

@@ -6,7 +6,8 @@ dist
 *.log
 .env
 .env.local
-.grok
+.grok/*
+!.grok/app-env.json
 screenshots
 artifacts
 .DS_Store

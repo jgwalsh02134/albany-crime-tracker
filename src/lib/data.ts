@@ -33,6 +33,7 @@ export function hydrateIncidents(now = Date.now()): Incident[] {
         occurredAt: new Date(now - row.minutesAgo * 60_000).toISOString(),
         sources,
         verification: deriveVerification(sources, row.verification),
+        origin: "snapshot" as const,
       };
     })
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));

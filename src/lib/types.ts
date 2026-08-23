@@ -35,6 +35,7 @@ export type Incident = {
   description: string;
   sources: IncidentSource[];
   verification: Verification;
+  origin?: "live" | "snapshot";
 };
 
 export type NewsStory = {

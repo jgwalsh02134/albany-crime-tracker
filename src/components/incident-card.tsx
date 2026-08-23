@@ -60,6 +60,7 @@ export function IncidentCard({
           {incident.verification}
         </Badge>
         {incident.status === "active" ? <Badge tone="accent">active</Badge> : null}
+        {incident.origin === "live" ? <Badge tone="cyan">live wire</Badge> : null}
       </div>
       {sourceNames.length ? (
         <p className="mt-2 truncate text-xs text-subtle">

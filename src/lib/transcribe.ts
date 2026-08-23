@@ -34,12 +34,13 @@ const KEYTERMS = [
 
 type ResolvedFeed = {
   hlsUrl: string;
+  candidates: string[];
   online: boolean;
   at: number;
 };
 
 const resolveCache = new Map<string, ResolvedFeed>();
-const RESOLVE_TTL_MS = 90_000;
+const RESOLVE_TTL_MS = 45_000;
 
 function unescapeJsString(raw: string): string {
   return raw.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/\\\//g, "/");
@@ -54,37 +55,57 @@ function fleetVariants(url: string): string[] {
   return urls;
 }
 
+async function playlistLive(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": LISTEN_UA,
+        Accept: "application/vnd.apple.mpegurl,application/x-mpegURL,*/*",
+      },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return false;
+    const text = await res.text();
+    return text.includes("#EXTM3U") && /#EXTINF:/i.test(text);
+  } catch {
+    return false;
+  }
+}
+
 async function resolveHls(feedId: string): Promise<ResolvedFeed> {
   const hit = resolveCache.get(feedId);
   if (hit && Date.now() - hit.at < RESOLVE_TTL_MS) return hit;
 
   const feed = getScannerFeed(feedId);
-  const fallback: ResolvedFeed = {
-    hlsUrl: feed?.hlsFallback ?? "",
-    online: true,
-    at: Date.now(),
-  };
+  const extracted: string[] = [];
 
   try {
     const res = await fetch(`https://www.broadcastify.com/listen/feed/${feedId}`, {
       headers: { "User-Agent": LISTEN_UA, Accept: "text/html" },
+      redirect: "follow",
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) {
-      resolveCache.set(feedId, fallback);
-      return fallback;
+    if (res.ok) {
+      const html = await res.text();
+      const raw = html.match(/hlsUrl:\s*"((?:\\.|[^"])*)"/)?.[1] ?? "";
+      const hlsUrl = unescapeJsString(raw).split("?")[0] ?? "";
+      if (hlsUrl.startsWith("http")) extracted.push(hlsUrl);
     }
-    const html = await res.text();
-    const raw = html.match(/hlsUrl:\s*"((?:\\.|[^"])*)"/)?.[1] ?? "";
-    const hlsUrl = unescapeJsString(raw).split("?")[0] ?? "";
-    const online = /isOnline:\s*true/.test(html);
-    const entry: ResolvedFeed = { hlsUrl: hlsUrl || fallback.hlsUrl, online, at: Date.now() };
-    resolveCache.set(feedId, entry);
-    return entry;
   } catch {
-    resolveCache.set(feedId, fallback);
-    return fallback;
+    /* HTML probe is optional — playlist probe is source of truth */
   }
+
+  const urls = [...new Set([...extracted.flatMap(fleetVariants), ...(feed ? fleetVariants(feed.hlsFallback) : [])])];
+  const checks = await Promise.all(urls.map(async (url) => ({ url, live: await playlistLive(url) })));
+  const liveUrls = checks.filter((c) => c.live).map((c) => c.url);
+  const entry: ResolvedFeed = {
+    hlsUrl: liveUrls[0] ?? urls[0] ?? feed?.hlsFallback ?? "",
+    candidates: liveUrls.length ? liveUrls : urls,
+    online: liveUrls.length > 0,
+    at: Date.now(),
+  };
+  resolveCache.set(feedId, entry);
+  return entry;
 }
 
 function looksBlank(text: string): boolean {
@@ -142,7 +163,7 @@ export const getScannerPlaylist = createServerFn({ method: "POST" })
     return {
       ok: true as const,
       hlsUrl: resolved.hlsUrl,
-      candidates: fleetVariants(resolved.hlsUrl),
+      candidates: resolved.candidates,
       online: resolved.online,
     };
   });
