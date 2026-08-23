@@ -55,11 +55,16 @@ export const SOURCES = [
   {
     name: "Agency directory",
     tier: "Reference",
-    detail: "Real Albany County departments, phones, and coverage areas. Not incident records.",
+    detail: "Real Albany County departments with official seals, phones, and coverage. Not incident records.",
   },
   {
-    name: "FBI CDE / NYS DCJS",
+    name: "FBI NIBRS 2025",
     tier: "Official",
-    detail: "Linked out. Annual crime tables are not invented in this app.",
+    detail: "Reported Crimes in the Nation, 2025 (released Aug 14, 2026) and the NIBRS agency map at nibrs.fbi.gov/2025.",
+  },
+  {
+    name: "NYS DCJS index crimes",
+    tier: "Official",
+    detail: "Albany County agency counts (latest published year) via Open NY.",
   },
 ];

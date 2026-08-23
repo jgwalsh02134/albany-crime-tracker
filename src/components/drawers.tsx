@@ -240,7 +240,7 @@ export function IncidentDrawer({ incident }: { incident: Incident | null }) {
 
 const MORE_ITEMS: { view: ViewId; label: string; hint: string }[] = [
   { view: "chat", label: "AI assistant", hint: "Ask about the last 48 hours" },
-  { view: "more", label: "Trends", hint: "Last 24 hours from newsrooms · FBI / DCJS links" },
+  { view: "more", label: "Trends", hint: "FBI NIBRS 2025 · Albany DCJS 2024" },
 ];
 
 export function MoreDrawer() {
@@ -281,7 +281,7 @@ export function MoreDrawer() {
             </span>
           </button>
           <a
-            href="https://nibrs.fbi.gov/2024/"
+            href="https://nibrs.fbi.gov/2025/"
             target="_blank"
             rel="noopener noreferrer"
             className="flex min-h-12 items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-3 text-sm"

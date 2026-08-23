@@ -1,0 +1,298 @@
+{
+  "source": "NYS DCJS Index, Crimes by County and Agency (Socrata ca8h-8gjq)",
+  "sourceUrl": "https://data.ny.gov/Public-Safety/Index-Crimes-by-County-and-Agency-Beginning-1990/ca8h-8gjq",
+  "county": "Albany",
+  "year": 2024,
+  "note": "Latest published county-agency file. FBI NIBRS 2025 agency incident tables are on nibrs.fbi.gov/2025.",
+  "agencies": [
+    {
+      "agency": "Albany City PD",
+      "months": 12,
+      "violent": 985,
+      "property": 3072,
+      "total": 4057,
+      "murder": 13,
+      "robbery": 233,
+      "assault": 649,
+      "burglary": 409,
+      "larceny": 2360,
+      "auto": 303
+    },
+    {
+      "agency": "Colonie Town PD",
+      "months": 12,
+      "violent": 104,
+      "property": 2913,
+      "total": 3017,
+      "murder": 0,
+      "robbery": 27,
+      "assault": 72,
+      "burglary": 203,
+      "larceny": 2647,
+      "auto": 63
+    },
+    {
+      "agency": "Guilderland Town PD",
+      "months": 12,
+      "violent": 39,
+      "property": 587,
+      "total": 626,
+      "murder": 0,
+      "robbery": 6,
+      "assault": 27,
+      "burglary": 55,
+      "larceny": 523,
+      "auto": 9
+    },
+    {
+      "agency": "Bethlehem Town PD",
+      "months": 12,
+      "violent": 13,
+      "property": 359,
+      "total": 372,
+      "murder": 1,
+      "robbery": 1,
+      "assault": 5,
+      "burglary": 33,
+      "larceny": 321,
+      "auto": 5
+    },
+    {
+      "agency": "Watervliet City PD",
+      "months": 12,
+      "violent": 36,
+      "property": 215,
+      "total": 251,
+      "murder": 1,
+      "robbery": 9,
+      "assault": 19,
+      "burglary": 37,
+      "larceny": 161,
+      "auto": 17
+    },
+    {
+      "agency": "Cohoes City PD",
+      "months": 12,
+      "violent": 34,
+      "property": 201,
+      "total": 235,
+      "murder": 0,
+      "robbery": 9,
+      "assault": 22,
+      "burglary": 17,
+      "larceny": 168,
+      "auto": 16
+    },
+    {
+      "agency": "Albany County State Police",
+      "months": 11,
+      "violent": 58,
+      "property": 123,
+      "total": 181,
+      "murder": 1,
+      "robbery": 1,
+      "assault": 44,
+      "burglary": 4,
+      "larceny": 112,
+      "auto": 7
+    },
+    {
+      "agency": "SUNY Police - Albany",
+      "months": 12,
+      "violent": 12,
+      "property": 130,
+      "total": 142,
+      "murder": 0,
+      "robbery": 4,
+      "assault": 7,
+      "burglary": 11,
+      "larceny": 119,
+      "auto": 0
+    },
+    {
+      "agency": "Menands Vg PD",
+      "months": 12,
+      "violent": 7,
+      "property": 72,
+      "total": 79,
+      "murder": 0,
+      "robbery": 1,
+      "assault": 4,
+      "burglary": 9,
+      "larceny": 56,
+      "auto": 7
+    },
+    {
+      "agency": "Albany County Sheriff",
+      "months": 12,
+      "violent": 8,
+      "property": 50,
+      "total": 58,
+      "murder": 0,
+      "robbery": 1,
+      "assault": 6,
+      "burglary": 7,
+      "larceny": 40,
+      "auto": 3
+    },
+    {
+      "agency": "Coeymans Town PD",
+      "months": 12,
+      "violent": 5,
+      "property": 24,
+      "total": 29,
+      "murder": 0,
+      "robbery": 2,
+      "assault": 2,
+      "burglary": 2,
+      "larceny": 21,
+      "auto": 1
+    },
+    {
+      "agency": "Altamont Vg PD",
+      "months": 12,
+      "violent": 0,
+      "property": 5,
+      "total": 5,
+      "murder": 0,
+      "robbery": 0,
+      "assault": 0,
+      "burglary": 0,
+      "larceny": 5,
+      "auto": 0
+    },
+    {
+      "agency": "SUNY Police - SUNY Plaza",
+      "months": 12,
+      "violent": 0,
+      "property": 1,
+      "total": 1,
+      "murder": 0,
+      "robbery": 0,
+      "assault": 0,
+      "burglary": 0,
+      "larceny": 1,
+      "auto": 0
+    },
+    {
+      "agency": "Albany County Park PD",
+      "months": 12,
+      "violent": 0,
+      "property": 0,
+      "total": 0,
+      "murder": 0,
+      "robbery": 0,
+      "assault": 0,
+      "burglary": 0,
+      "larceny": 0,
+      "auto": 0
+    }
+  ],
+  "yearly": [
+    {
+      "year": "2010",
+      "violent": 1182,
+      "property": 9855,
+      "total": 11037,
+      "murder": 3
+    },
+    {
+      "year": "2011",
+      "violent": 1166,
+      "property": 9561,
+      "total": 10727,
+      "murder": 7
+    },
+    {
+      "year": "2012",
+      "violent": 1011,
+      "property": 8963,
+      "total": 9974,
+      "murder": 6
+    },
+    {
+      "year": "2013",
+      "violent": 1005,
+      "property": 8451,
+      "total": 9456,
+      "murder": 9
+    },
+    {
+      "year": "2014",
+      "violent": 1003,
+      "property": 8183,
+      "total": 9186,
+      "murder": 14
+    },
+    {
+      "year": "2015",
+      "violent": 1041,
+      "property": 7603,
+      "total": 8644,
+      "murder": 6
+    },
+    {
+      "year": "2016",
+      "violent": 1099,
+      "property": 7671,
+      "total": 8770,
+      "murder": 5
+    },
+    {
+      "year": "2017",
+      "violent": 1163,
+      "property": 7630,
+      "total": 8793,
+      "murder": 8
+    },
+    {
+      "year": "2018",
+      "violent": 1096,
+      "property": 7254,
+      "total": 8350,
+      "murder": 15
+    },
+    {
+      "year": "2019",
+      "violent": 997,
+      "property": 7007,
+      "total": 8004,
+      "murder": 8
+    },
+    {
+      "year": "2020",
+      "violent": 1099,
+      "property": 6309,
+      "total": 7408,
+      "murder": 17
+    },
+    {
+      "year": "2021",
+      "violent": 1148,
+      "property": 6755,
+      "total": 7903,
+      "murder": 21
+    },
+    {
+      "year": "2022",
+      "violent": 1283,
+      "property": 8577,
+      "total": 9860,
+      "murder": 17
+    },
+    {
+      "year": "2023",
+      "violent": 1354,
+      "property": 8476,
+      "total": 9830,
+      "murder": 19
+    },
+    {
+      "year": "2024",
+      "violent": 1301,
+      "property": 7752,
+      "total": 9053,
+      "murder": 16
+    }
+  ]
+}
