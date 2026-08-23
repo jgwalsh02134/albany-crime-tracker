@@ -136,14 +136,14 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
       <div ref={el} className="absolute inset-0" role="region" aria-label="Incident map" />
 
       <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-4">
-        <div className="pointer-events-auto flex gap-1 overflow-x-auto rounded-full border border-border bg-surface/95 p-1 shadow-md">
+        <div className="pointer-events-auto flex gap-1 overflow-x-auto rounded-full border border-border bg-surface/95 p-1 shadow-md scrollbar-none">
           {FILTERS.map((f) => (
             <button
               key={f.id}
               type="button"
               onClick={() => setMapCategory(f.id)}
               className={cn(
-                "h-10 rounded-full px-3 text-sm font-semibold",
+                "h-10 min-w-11 rounded-full px-3.5 text-sm font-semibold",
                 mapCategory === f.id ? "bg-accent text-accent-fg" : "text-muted",
               )}
             >
@@ -154,7 +154,7 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
             type="button"
             onClick={() => setHeatmap(!heatmap)}
             className={cn(
-              "h-10 rounded-full px-3 text-sm font-semibold",
+              "h-10 min-w-11 rounded-full px-3.5 text-sm font-semibold",
               heatmap ? "bg-cyan text-accent-fg" : "text-muted",
             )}
           >
@@ -164,13 +164,13 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
       </div>
 
       <div className="pointer-events-none absolute right-3 top-16 z-10">
-        <Button size="icon" variant="secondary" className="pointer-events-auto shadow-md" onClick={locate}>
-          <LocateFixed className="size-4" />
+        <Button size="icon" variant="secondary" className="pointer-events-auto size-12 rounded-full shadow-md" onClick={locate} aria-label="Locate me">
+          <LocateFixed className="size-5" />
         </Button>
       </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-4">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border bg-surface/95 px-3 py-2 shadow-md">
+      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-3">
+        <div className="pointer-events-auto flex min-h-11 items-center gap-3 rounded-full border border-border bg-surface/95 px-3.5 py-1.5 shadow-md">
           <span className="font-mono text-xs tabular-nums text-muted">{visible.length} shown</span>
           <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-subtle">
             {mapHours}h

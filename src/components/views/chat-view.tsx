@@ -79,7 +79,7 @@ export function ChatView() {
                 key={s.label}
                 type="button"
                 onClick={() => send(s.prompt)}
-                className="h-8 rounded-full border border-border bg-surface px-3 text-xs font-medium text-muted"
+                className="h-11 rounded-full border border-border bg-surface px-4 text-sm font-medium text-muted"
               >
                 {s.label}
               </button>
@@ -89,7 +89,7 @@ export function ChatView() {
         {error ? <p className="mt-3 text-sm text-sev-high">{error}</p> : null}
       </div>
       <form
-        className="flex gap-2 border-t border-border bg-bg px-4 py-3"
+        className="flex gap-2 border-t border-border bg-bg px-3 py-2"
         onSubmit={(e) => {
           e.preventDefault();
           void send(input);

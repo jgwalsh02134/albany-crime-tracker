@@ -23,8 +23,8 @@ function SheetFrame({
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-bg/70" />
-        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-xl border border-border bg-surface pb-[env(safe-area-inset-bottom)] outline-none">
-          <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-border" />
+        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-xl border border-border bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
+          <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-border" />
           {children}
         </Drawer.Content>
       </Drawer.Portal>
@@ -240,7 +240,7 @@ export function IncidentDrawer({ incident }: { incident: Incident | null }) {
 
 const MORE_ITEMS: { view: ViewId; label: string; hint: string }[] = [
   { view: "chat", label: "AI assistant", hint: "Ask about the last 48 hours" },
-  { view: "more", label: "Trends & analytics", hint: "DCJS and NIBRS" },
+  { view: "more", label: "Trends", hint: "Last 24 hours from newsrooms · FBI / DCJS links" },
 ];
 
 export function MoreDrawer() {

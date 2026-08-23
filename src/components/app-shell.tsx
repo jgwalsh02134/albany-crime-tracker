@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bolt,
   Map as MapIcon,
-  Menu,
   Moon,
   MoreHorizontal,
   Radio,
@@ -28,8 +27,8 @@ import { cn } from "@/lib/utils";
 const TABS: { id: ViewId; label: string; icon: typeof Bolt }[] = [
   { id: "feed", label: "Live", icon: Bolt },
   { id: "map", label: "Map", icon: MapIcon },
-  { id: "scanner", label: "Scanner", icon: Radio },
-  { id: "directory", label: "Directory", icon: Shield },
+  { id: "scanner", label: "Radio", icon: Radio },
+  { id: "directory", label: "Agencies", icon: Shield },
 ];
 
 export function AppShell() {
@@ -37,6 +36,7 @@ export function AppShell() {
   const [wireLive, setWireLive] = useState(false);
   const [wireOutlets, setWireOutlets] = useState<string[]>([]);
   const [stories, setStories] = useState<LiveWireItem[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const incidents = useMemo(() => wireToIncidents(wire), [wire]);
   const news = useMemo(() => mergeWireNews([], stories.length ? stories : wire), [stories, wire]);
 
@@ -48,6 +48,7 @@ export function AppShell() {
   const setMoreOpen = useAppStore((s) => s.setMoreOpen);
   const selectedId = useAppStore((s) => s.selectedId);
   const selected = incidents.find((i) => i.id === selectedId) ?? null;
+  const moreOpen = view === "chat" || view === "more";
 
   useEffect(() => {
     try {
@@ -62,67 +63,74 @@ export function AppShell() {
     document.documentElement.dataset.theme = useAppStore.getState().theme;
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function pull() {
+  const pullWire = useCallback(async () => {
+    try {
+      let res: { ok: boolean; items: LiveWireItem[]; stories?: LiveWireItem[]; outlets?: string[] } | null = null;
       try {
-        let res: { ok: boolean; items: LiveWireItem[]; stories?: LiveWireItem[]; outlets?: string[] } | null = null;
-        try {
-          res = await getLiveWire();
-        } catch {
-          res = null;
-        }
-        if (!res?.ok) {
-          const r = await fetch("/api/wire", { headers: { Accept: "application/json" } });
-          if (r.ok) {
-            res = (await r.json()) as {
-              ok: boolean;
-              items: LiveWireItem[];
-              stories?: LiveWireItem[];
-              outlets?: string[];
-            };
-          }
-        }
-        if (cancelled || !res?.ok) return;
-        setWire(res.items);
-        setStories(res.stories?.length ? res.stories : res.items);
-        setWireLive(res.items.length > 0 || (res.stories?.length ?? 0) > 0);
-        setWireOutlets(res.outlets ?? []);
+        res = await getLiveWire();
       } catch {
-        /* keep last good wire */
+        res = null;
       }
+      if (!res?.ok) {
+        const r = await fetch("/api/wire", { headers: { Accept: "application/json" } });
+        if (r.ok) {
+          res = (await r.json()) as {
+            ok: boolean;
+            items: LiveWireItem[];
+            stories?: LiveWireItem[];
+            outlets?: string[];
+          };
+        }
+      }
+      if (!res?.ok) return;
+      setWire(res.items);
+      setStories(res.stories?.length ? res.stories : res.items);
+      setWireLive(res.items.length > 0 || (res.stories?.length ?? 0) > 0);
+      setWireOutlets(res.outlets ?? []);
+    } catch {
+      /* keep last good wire */
     }
-    void pull();
-    const id = window.setInterval(pull, 45_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
   }, []);
+
+  useEffect(() => {
+    void pullWire();
+    const id = window.setInterval(() => void pullWire(), 45_000);
+    return () => window.clearInterval(id);
+  }, [pullWire]);
+
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      await pullWire();
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg">
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-4 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <ShieldLogo className="size-8 shrink-0" />
+      <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3 pb-1 pt-[max(0.35rem,env(safe-area-inset-top))]">
+        <div className="flex min-w-0 items-center gap-2">
+          <ShieldLogo className="size-7 shrink-0" />
           <div className="min-w-0 leading-tight">
             <p className="truncate text-sm font-semibold tracking-tight">Albany County</p>
-            <p className="text-xs text-subtle">Crime Tracker</p>
+            <p className="flex items-center gap-1.5 text-xs text-subtle">
+              <span className="size-1.5 rounded-full bg-accent" />
+              Crime Tracker
+            </p>
           </div>
-          <span className="ml-1 hidden items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 sm:flex">
-            <span className="live-dot" />
-            <span className="text-xs font-semibold uppercase tracking-wide">Live</span>
-          </span>
         </div>
-        <div className="flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Filter incidents"
-            onClick={() => setFilterOpen(true)}
-          >
-            <SlidersHorizontal className="size-5" />
-          </Button>
+        <div className="flex items-center">
+          {view === "feed" || view === "map" ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Filter"
+              onClick={() => setFilterOpen(true)}
+            >
+              <SlidersHorizontal className="size-5" />
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="icon"
@@ -131,15 +139,6 @@ export function AppShell() {
             onClick={toggleTheme}
           >
             {theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Open menu"
-            className="md:hidden"
-            onClick={() => setMoreOpen(true)}
-          >
-            <Menu className="size-5" />
           </Button>
         </div>
       </header>
@@ -181,6 +180,8 @@ export function AppShell() {
             wire={wire}
             wireLive={wireLive}
             wireOutlets={wireOutlets}
+            refreshing={refreshing}
+            onRefresh={refresh}
           />
         </div>
         <div className={cn("absolute inset-0", view === "map" ? "block" : "hidden")}>
@@ -201,7 +202,7 @@ export function AppShell() {
       </main>
 
       <nav
-        className="flex shrink-0 border-t border-border bg-bg pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:hidden"
+        className="flex shrink-0 border-t border-border bg-bg/90 pt-1 backdrop-blur-md md:hidden pb-[max(0.35rem,env(safe-area-inset-bottom))]"
         role="tablist"
         aria-label="Main navigation"
       >
@@ -216,11 +217,12 @@ export function AppShell() {
               aria-selected={on}
               onClick={() => setView(tab.id)}
               className={cn(
-                "flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-semibold",
+                "relative flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-semibold active:opacity-70",
                 on ? "text-accent" : "text-subtle",
               )}
             >
-              <Icon className="size-5" />
+              {on ? <span className="absolute inset-x-6 top-0 h-0.5 rounded-full bg-accent" /> : null}
+              <Icon className="size-5" strokeWidth={on ? 2.4 : 2} />
               {tab.label}
             </button>
           );
@@ -228,14 +230,15 @@ export function AppShell() {
         <button
           type="button"
           role="tab"
-          aria-selected={view === "chat" || view === "more"}
+          aria-selected={moreOpen}
           onClick={() => setMoreOpen(true)}
           className={cn(
-            "flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-semibold",
-            view === "chat" || view === "more" ? "text-accent" : "text-subtle",
+            "relative flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-semibold active:opacity-70",
+            moreOpen ? "text-accent" : "text-subtle",
           )}
         >
-          <MoreHorizontal className="size-5" />
+          {moreOpen ? <span className="absolute inset-x-6 top-0 h-0.5 rounded-full bg-accent" /> : null}
+          <MoreHorizontal className="size-5" strokeWidth={moreOpen ? 2.4 : 2} />
           More
         </button>
       </nav>

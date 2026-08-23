@@ -73,6 +73,7 @@
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;
     text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
   }
 
   html,
@@ -92,9 +93,16 @@
   }
 
   button:not(:disabled),
-  [role="button"]:not(:disabled) {
+  [role="button"]:not(:disabled),
+  a {
     cursor: pointer;
     touch-action: manipulation;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px;
   }
 
   h1,
@@ -168,6 +176,12 @@
   .viz-bar {
     animation: none;
   }
+
+  button,
+  a,
+  [role="button"] {
+    transition: none !important;
+  }
 }
 
 .leaflet-container {
@@ -191,6 +205,18 @@
 .scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklab, var(--fg) 22%, transparent) transparent;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+.leaflet-bottom.leaflet-right {
+  bottom: 4.75rem;
+}
+
+.leaflet-control-zoom a {
+  width: 44px !important;
+  height: 44px !important;
+  line-height: 44px !important;
 }
 
 .scrollbar-none {

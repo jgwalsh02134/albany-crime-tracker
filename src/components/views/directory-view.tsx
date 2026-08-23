@@ -31,7 +31,7 @@ export function DirectoryView() {
   }, [q, tier]);
 
   return (
-    <div className="h-full overflow-y-auto overscroll-y-contain px-4 pb-8 pt-3 scrollbar-thin">
+    <div className="h-full overflow-y-auto overscroll-y-contain px-3 pb-6 pt-3 scrollbar-thin">
       <div className="rounded-xl border border-border bg-surface p-3">
         <h2 className="text-base font-semibold">Law enforcement directory</h2>
         <p className="mt-1 text-xs text-muted">
@@ -60,7 +60,7 @@ export function DirectoryView() {
             type="button"
             onClick={() => setTier(t.id)}
             className={cn(
-              "h-8 shrink-0 rounded-full border px-3 text-xs font-semibold",
+              "h-10 shrink-0 rounded-full border px-4 text-sm font-semibold",
               tier === t.id ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
             )}
           >
@@ -177,8 +177,8 @@ function AgencyCard({ agency }: { agency: Agency }) {
         <Badge tone="muted">{agency.type}</Badge>
       </div>
       {agency.phone ? (
-        <a href={`tel:${agency.phone}`} className="mt-2 flex items-center gap-1.5 text-xs text-muted">
-          <Phone className="size-3" />
+        <a href={`tel:${agency.phone}`} className="mt-2 inline-flex min-h-11 items-center gap-1.5 text-sm text-muted">
+          <Phone className="size-4" />
           {agency.phone}
           <span className="text-subtle">non-emergency</span>
         </a>
