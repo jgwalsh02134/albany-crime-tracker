@@ -154,6 +154,7 @@ export type LiveWireItem = {
   summary: string;
   publishedAt: string;
   minutesAgo: number;
+  image?: string;
 };
 
 function tokens(s: string): string[] {

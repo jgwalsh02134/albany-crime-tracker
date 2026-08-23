@@ -49,6 +49,7 @@ export type NewsStory = {
   municipality: string;
   url: string;
   category: Category | "other";
+  image?: string;
 };
 
 export type ScannerCall = {

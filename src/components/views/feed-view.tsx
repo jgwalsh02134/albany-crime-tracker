@@ -1,7 +1,7 @@
 import { IncidentCard } from "@/components/incident-card";
-import { Badge } from "@/components/ui/badge";
-import { areaCounts, lastHours, topCategory } from "@/lib/data";
-import { compactFromMinutes, relativeTime } from "@/lib/format";
+import { NewsView } from "@/components/views/news-view";
+import { areaCounts, lastHours } from "@/lib/data";
+import { compactFromMinutes } from "@/lib/format";
 import { SOURCE_LENSES, type LiveWireItem } from "@/lib/sources";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import type { Incident, NewsStory } from "@/lib/types";
@@ -37,7 +37,6 @@ export function FeedView({
     incidentVisible(i, { severities, municipalities, areaFilter, sourceLens: "all" }),
   );
   const day = lastHours(visible, 24);
-  const week = lastHours(visible, 24 * 7);
   const areas = areaCounts(lastHours(areaVisible, 24));
   const critical = day.filter((i) => i.severity === "critical").length;
   const active = day.filter((i) => i.status === "active").length;
@@ -160,38 +159,11 @@ export function FeedView({
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto overscroll-y-contain px-4 pb-8 pt-3 scrollbar-thin">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Stat value={String(day.length)} label="24 hours" />
-            <Stat value={String(week.length)} label="7 days" />
-            <Stat value={topCategory(week)} label="Top type" />
-            <Stat value={areas[0]?.name ?? "—"} label="Top area" />
-          </div>
-
-          {news.length ? (
-            <NewsSection title="Live wire" items={news} />
-          ) : (
-            <p className="mt-6 rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
-              Waiting on Capital Region newsrooms.
-            </p>
-          )}
+          <NewsView stories={news} />
         </div>
       )}
     </div>
   );
-}
-
-function groupIncidents(incidents: Incident[]) {
-  const buckets = {
-    now: [] as Incident[],
-    recent: [] as Incident[],
-    earlier: [] as Incident[],
-  };
-  for (const inc of incidents) {
-    if (inc.minutesAgo <= 30 || inc.status === "active") buckets.now.push(inc);
-    else if (inc.minutesAgo <= 360) buckets.recent.push(inc);
-    else buckets.earlier.push(inc);
-  }
-  return buckets;
 }
 
 function FeedSection({
@@ -263,43 +235,3 @@ function Chip({
   );
 }
 
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-border bg-surface px-3 py-3 text-center">
-      <div className="truncate font-mono text-base font-semibold tabular-nums text-fg">{value}</div>
-      <div className="mt-0.5 text-xs text-subtle">{label}</div>
-    </div>
-  );
-}
-
-function NewsSection({ title, items }: { title: string; items: NewsStory[] }) {
-  if (!items.length) return null;
-  return (
-    <section className="mt-6">
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">{title}</h2>
-      <div className="flex flex-col gap-2.5">
-        {items.map((n) => (
-          <a
-            key={n.id + title}
-            href={n.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block rounded-xl border border-border bg-surface p-4 transition-colors duration-150 active:bg-surface-2"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <Badge tone={n.kicker === "Live wire" ? "cyan" : "accent"}>{n.kicker}</Badge>
-              <span className="font-mono text-xs tabular-nums text-subtle">
-                {relativeTime(n.occurredAt)}
-              </span>
-            </div>
-            <h3 className="mt-2 text-base font-semibold leading-snug">{n.title}</h3>
-            <p className="mt-1 text-sm leading-relaxed text-muted">{n.summary}</p>
-            <p className="mt-2 text-xs text-subtle">
-              {n.outlet} · {n.municipality}
-            </p>
-          </a>
-        ))}
-      </div>
-    </section>
-  );
-}

@@ -36,8 +36,9 @@ export function AppShell() {
   const [wire, setWire] = useState<LiveWireItem[]>([]);
   const [wireLive, setWireLive] = useState(false);
   const [wireOutlets, setWireOutlets] = useState<string[]>([]);
+  const [stories, setStories] = useState<LiveWireItem[]>([]);
   const incidents = useMemo(() => wireToIncidents(wire), [wire]);
-  const news = useMemo(() => mergeWireNews([], wire), [wire]);
+  const news = useMemo(() => mergeWireNews([], stories.length ? stories : wire), [stories, wire]);
 
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
@@ -65,7 +66,7 @@ export function AppShell() {
     let cancelled = false;
     async function pull() {
       try {
-        let res: { ok: boolean; items: LiveWireItem[]; outlets?: string[] } | null = null;
+        let res: { ok: boolean; items: LiveWireItem[]; stories?: LiveWireItem[]; outlets?: string[] } | null = null;
         try {
           res = await getLiveWire();
         } catch {
@@ -73,11 +74,19 @@ export function AppShell() {
         }
         if (!res?.ok) {
           const r = await fetch("/api/wire", { headers: { Accept: "application/json" } });
-          if (r.ok) res = (await r.json()) as { ok: boolean; items: LiveWireItem[]; outlets?: string[] };
+          if (r.ok) {
+            res = (await r.json()) as {
+              ok: boolean;
+              items: LiveWireItem[];
+              stories?: LiveWireItem[];
+              outlets?: string[];
+            };
+          }
         }
         if (cancelled || !res?.ok) return;
         setWire(res.items);
-        setWireLive(res.items.length > 0);
+        setStories(res.stories?.length ? res.stories : res.items);
+        setWireLive(res.items.length > 0 || (res.stories?.length ?? 0) > 0);
         setWireOutlets(res.outlets ?? []);
       } catch {
         /* keep last good wire */
@@ -238,19 +247,28 @@ export function AppShell() {
   );
 }
 
+function storyKicker(title: string): string {
+  const t = title.toLowerCase();
+  if (/\b(shot|shooting|stab|homicide|murder|assault)\b/.test(t) || /stabbing/.test(t)) return "Crime";
+  if (/\b(fire|blaze)\b/.test(t)) return "Fire";
+  if (/\b(crash|collision|fatal)\b/.test(t)) return "Crash";
+  if (/\b(arrest|charged|sentenced|prison|indicted)\b/.test(t)) return "Courts";
+  return "Local";
+}
+
 function mergeWireNews(seed: NewsStory[], wire: LiveWireItem[]): NewsStory[] {
-  if (!wire.length) return seed;
   const extra: NewsStory[] = wire.map((w) => ({
     id: w.id,
     minutesAgo: w.minutesAgo,
     occurredAt: w.publishedAt,
-    kicker: "Live wire",
+    kicker: storyKicker(w.title),
     title: w.title,
-    summary: w.summary || "Capital Region public-safety coverage.",
+    summary: w.summary || "Capital Region coverage.",
     outlet: w.outlet,
     municipality: "Albany County",
     url: w.url,
     category: "other",
+    image: w.image,
   }));
   const urls = new Set(extra.map((e) => e.url));
   return [...extra, ...seed.filter((n) => !urls.has(n.url))];
