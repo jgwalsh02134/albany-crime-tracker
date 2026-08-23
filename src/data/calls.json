@@ -1,0 +1,254 @@
+[
+  {
+    "id": "call-001",
+    "minutesAgo": 1,
+    "talkgroup": "13102",
+    "discipline": "police",
+    "summary": "Shots fired, Second Ave and Lark. Multiple callers. Start EMS and a supervisor.",
+    "durationSec": 18,
+    "priority": "high"
+  },
+  {
+    "id": "call-002",
+    "minutesAgo": 4,
+    "talkgroup": "10401",
+    "discipline": "police",
+    "summary": "Armed robbery, 200 block of Central Ave. Suspect on foot toward Wolf Road.",
+    "durationSec": 22,
+    "priority": "high"
+  },
+  {
+    "id": "call-003",
+    "minutesAgo": 7,
+    "talkgroup": "12001",
+    "discipline": "fire",
+    "summary": "Engine 2 on scene, working fire second floor, stretch a line to the stairs.",
+    "durationSec": 16,
+    "priority": "high"
+  },
+  {
+    "id": "call-004",
+    "minutesAgo": 11,
+    "talkgroup": "13001",
+    "discipline": "ems",
+    "summary": "Med 4 staging for the shots-fired until PD clears the block.",
+    "durationSec": 9,
+    "priority": "high"
+  },
+  {
+    "id": "call-005",
+    "minutesAgo": 16,
+    "talkgroup": "10502",
+    "discipline": "police",
+    "summary": "Welfare check, caller disconnected. Delaware Ave near the high school.",
+    "durationSec": 14,
+    "priority": "medium"
+  },
+  {
+    "id": "call-006",
+    "minutesAgo": 22,
+    "talkgroup": "15202",
+    "discipline": "police",
+    "summary": "K-9 en route. Hold the perimeter on New Scotland, no one in or out.",
+    "durationSec": 12,
+    "priority": "high"
+  },
+  {
+    "id": "call-007",
+    "minutesAgo": 28,
+    "talkgroup": "12201",
+    "discipline": "fire",
+    "summary": "Dumpster fire behind the plaza, expose the adjacent garage.",
+    "durationSec": 21,
+    "priority": "medium"
+  },
+  {
+    "id": "call-008",
+    "minutesAgo": 35,
+    "talkgroup": "10601",
+    "discipline": "police",
+    "summary": "Alarm, rear door, no keyholder. Hold for a walk-through.",
+    "durationSec": 11,
+    "priority": "medium"
+  },
+  {
+    "id": "call-009",
+    "minutesAgo": 44,
+    "talkgroup": "10501",
+    "discipline": "police",
+    "summary": "Traffic stop, Western Ave. Plate comes back stolen — start backup.",
+    "durationSec": 17,
+    "priority": "high"
+  },
+  {
+    "id": "call-010",
+    "minutesAgo": 52,
+    "talkgroup": "10702",
+    "discipline": "fire",
+    "summary": "Second due, lay in from the hydrant at the corner of Route 85.",
+    "durationSec": 19,
+    "priority": "medium"
+  },
+  {
+    "id": "call-011",
+    "minutesAgo": 63,
+    "talkgroup": "8259",
+    "discipline": "ems",
+    "summary": "Priority 1, unresponsive, CPR in progress. Stage if PD is not on scene.",
+    "durationSec": 15,
+    "priority": "high"
+  },
+  {
+    "id": "call-012",
+    "minutesAgo": 78,
+    "talkgroup": "8215",
+    "discipline": "police",
+    "summary": "One in custody. Start a wagon to Delaware and Elsmere.",
+    "durationSec": 8,
+    "priority": "medium"
+  },
+  {
+    "id": "call-013",
+    "minutesAgo": 95,
+    "talkgroup": "11101",
+    "discipline": "police",
+    "summary": "Thruway-adjacent pursuit terminated. Units 10-4, resume patrol.",
+    "durationSec": 13,
+    "priority": "medium"
+  },
+  {
+    "id": "call-014",
+    "minutesAgo": 110,
+    "talkgroup": "12301",
+    "discipline": "fire",
+    "summary": "Wires down on Kenwood, arcing. Hold traffic until National Grid.",
+    "durationSec": 20,
+    "priority": "medium"
+  },
+  {
+    "id": "call-015",
+    "minutesAgo": 130,
+    "talkgroup": "10602",
+    "discipline": "police",
+    "summary": "Fight in progress, 19th Street. Extra unit, one subject down.",
+    "durationSec": 16,
+    "priority": "high"
+  },
+  {
+    "id": "call-016",
+    "minutesAgo": 155,
+    "talkgroup": "12401",
+    "discipline": "fire",
+    "summary": "Automatic alarm, campus building, nothing showing on arrival.",
+    "durationSec": 10,
+    "priority": "low"
+  },
+  {
+    "id": "call-017",
+    "minutesAgo": 180,
+    "talkgroup": "13102",
+    "discipline": "police",
+    "summary": "Suspect last seen running toward the river from Broadway.",
+    "durationSec": 14,
+    "priority": "medium"
+  },
+  {
+    "id": "call-018",
+    "minutesAgo": 210,
+    "talkgroup": "13001",
+    "discipline": "ems",
+    "summary": "Lift assist, third floor, no injuries. Clear from Pearl Street.",
+    "durationSec": 7,
+    "priority": "low"
+  },
+  {
+    "id": "call-019",
+    "minutesAgo": 250,
+    "talkgroup": "10401",
+    "discipline": "police",
+    "summary": "Larceny from auto, Wolf Road parking lot. Delayed report.",
+    "durationSec": 11,
+    "priority": "low"
+  },
+  {
+    "id": "call-020",
+    "minutesAgo": 290,
+    "talkgroup": "12001",
+    "discipline": "fire",
+    "summary": "MVA with entrapment, I-90 westbound. Rescue 1 and an engine.",
+    "durationSec": 24,
+    "priority": "high"
+  },
+  {
+    "id": "call-021",
+    "minutesAgo": 340,
+    "talkgroup": "10502",
+    "discipline": "police",
+    "summary": "Domestic, verbal only, parties separated. No weapons.",
+    "durationSec": 9,
+    "priority": "medium"
+  },
+  {
+    "id": "call-022",
+    "minutesAgo": 400,
+    "talkgroup": "12501",
+    "discipline": "fire",
+    "summary": "Odor of gas in the stairwell, evacuate the building, wait on National Grid.",
+    "durationSec": 18,
+    "priority": "high"
+  },
+  {
+    "id": "call-023",
+    "minutesAgo": 470,
+    "talkgroup": "15202",
+    "discipline": "police",
+    "summary": "Traffic stop, Route 85. Operator unlicensed. Tow requested.",
+    "durationSec": 12,
+    "priority": "low"
+  },
+  {
+    "id": "call-024",
+    "minutesAgo": 540,
+    "talkgroup": "8260",
+    "discipline": "ems",
+    "summary": "Fall with head injury, Washington Park. ALS intercept.",
+    "durationSec": 14,
+    "priority": "medium"
+  },
+  {
+    "id": "call-025",
+    "minutesAgo": 620,
+    "talkgroup": "10701",
+    "discipline": "police",
+    "summary": "Suspicious vehicle, same plates as last night's burglary.",
+    "durationSec": 10,
+    "priority": "medium"
+  },
+  {
+    "id": "call-026",
+    "minutesAgo": 710,
+    "talkgroup": "12201",
+    "discipline": "fire",
+    "summary": "Kitchen fire knocked down. Checking for extension in the walls.",
+    "durationSec": 15,
+    "priority": "medium"
+  },
+  {
+    "id": "call-027",
+    "minutesAgo": 800,
+    "talkgroup": "11101",
+    "discipline": "police",
+    "summary": "Disabled tractor-trailer, northbound 87. State DOT advised.",
+    "durationSec": 8,
+    "priority": "low"
+  },
+  {
+    "id": "call-028",
+    "minutesAgo": 920,
+    "talkgroup": "13102",
+    "discipline": "police",
+    "summary": "Noise complaint, late party, Henry Johnson. Advised and clearing.",
+    "durationSec": 6,
+    "priority": "low"
+  }
+]

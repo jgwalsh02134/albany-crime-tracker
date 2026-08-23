@@ -1,14 +1,11 @@
-# Keep the build context small and reproducible — never ship local virtualenvs,
-# caches, secrets, or scratch audio into the image.
-.venv
-venv
-__pycache__
-**/__pycache__
-*.pyc
-.git
-.env
-.env.*
-temp_audio
-.DS_Store
-*.log
 node_modules
+.git
+.vercel
+.tanstack
+.output
+dist
+screenshots
+artifacts
+*.log
+.env
+.env.local

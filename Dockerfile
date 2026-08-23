@@ -1,26 +1,25 @@
-# Albany County Crime Tracker — production image.
-# Uses a Dockerfile (not Nixpacks/Railpack) so ffmpeg is GUARANTEED present for
-# the Whisper scanner pipeline. Railway auto-detects this Dockerfile and builds it.
-FROM python:3.11-slim
-
-# System deps: ffmpeg for clean Broadcastify stream capture, curl for healthchecks.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg curl \
-    && rm -rf /var/lib/apt/lists/*
+# Albany County Crime Tracker — Railway production image (Node / TanStack Start)
+FROM node:22-slim
 
 WORKDIR /app
 
-# Install Python deps first for better layer caching.
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY package.json package-lock.json ./
+RUN npm ci
 
-# Copy the application source.
 COPY . .
 
-# Railway's HTTP networking forwards to port 8080 for this service (matches the
-# internal domain / FASTAPI_URL). Bind there by default; PORT can still override.
+# Auth is off; this file is the build-flag carrier expected by with-app-env.
+RUN mkdir -p .grok && printf '%s\n' '{"VITE_AUTH_ENABLED":"false"}' > .grok/app-env.json
+
+ENV NODE_ENV=production
+ENV NITRO_PRESET=node-server
+ENV HOST=0.0.0.0
 ENV PORT=8080
+ENV NITRO_HOST=0.0.0.0
+ENV NITRO_PORT=8080
+
+RUN npm run build
+
 EXPOSE 8080
 
-# Shell form so ${PORT} expands at container start.
-CMD uvicorn api_server:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD ["node", ".output/server/index.mjs"]
