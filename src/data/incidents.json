@@ -1,0 +1,1175 @@
+[
+  {
+    "id": "act-001",
+    "minutesAgo": 3,
+    "title": "Shots fired \u2014 Second Ave & Lark St",
+    "type": "shots-fired",
+    "category": "violent",
+    "severity": "critical",
+    "status": "active",
+    "municipality": "Albany",
+    "address": "Second Ave & Lark St",
+    "lat": 42.66002,
+    "lng": -73.76725,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Multiple callers reported gunfire. Units established a perimeter. No victim located on the initial canvas.",
+    "sources": [
+      {
+        "kind": "scanner",
+        "name": "OpenMHz P25",
+        "tier": "tier_3"
+      },
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-002",
+    "minutesAgo": 8,
+    "title": "Armed robbery \u2014 200 block of Central Ave",
+    "type": "robbery",
+    "category": "violent",
+    "severity": "high",
+    "status": "active",
+    "municipality": "Albany",
+    "address": "200 block of Central Ave",
+    "lat": 42.6606,
+    "lng": -73.77357,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Suspect displayed a weapon and fled on foot. Description broadcast county-wide.",
+    "sources": [
+      {
+        "kind": "blotter",
+        "name": "Agency blotter",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-003",
+    "minutesAgo": 14,
+    "title": "Shots fired \u2014 Henry Johnson Blvd & Livingston Ave",
+    "type": "shots-fired",
+    "category": "violent",
+    "severity": "critical",
+    "status": "active",
+    "municipality": "Albany",
+    "address": "Henry Johnson Blvd & Livingston Ave",
+    "lat": 42.66799,
+    "lng": -73.75833,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Multiple callers reported gunfire. Units established a perimeter. No victim located on the initial canvas.",
+    "sources": [
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "developing"
+  },
+  {
+    "id": "act-004",
+    "minutesAgo": 21,
+    "title": "Aggravated assault \u2014 South Pearl St & Morton Ave",
+    "type": "aggravated-assault",
+    "category": "violent",
+    "severity": "high",
+    "status": "active",
+    "municipality": "Albany",
+    "address": "South Pearl St & Morton Ave",
+    "lat": 42.64524,
+    "lng": -73.76153,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Serious injury reported. EMS on scene. Suspect description taken from witnesses.",
+    "sources": [
+      {
+        "kind": "cfs",
+        "name": "APD Calls for Service",
+        "tier": "tier_1"
+      },
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-005",
+    "minutesAgo": 29,
+    "title": "Assault \u2014 Madison Ave & Quail St",
+    "type": "assault",
+    "category": "violent",
+    "severity": "high",
+    "status": "active",
+    "municipality": "Albany",
+    "address": "Madison Ave & Quail St",
+    "lat": 42.65458,
+    "lng": -73.7831,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Physical altercation. One party treated on scene. Officers taking statements.",
+    "sources": [
+      {
+        "kind": "nixle",
+        "name": "Nixle alert",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-006",
+    "minutesAgo": 41,
+    "title": "Stabbing \u2014 Washington Ave & Partridge St",
+    "type": "stabbing",
+    "category": "violent",
+    "severity": "critical",
+    "status": "active",
+    "municipality": "Albany",
+    "address": "Washington Ave & Partridge St",
+    "lat": 42.65755,
+    "lng": -73.78205,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Stabbing reported. Trauma activation. Weapon not immediately recovered.",
+    "sources": [
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-007",
+    "minutesAgo": 55,
+    "title": "Burglary \u2014 North Pearl St near Clinton Square",
+    "type": "burglary",
+    "category": "property",
+    "severity": "high",
+    "status": "active",
+    "municipality": "Albany",
+    "address": "North Pearl St near Clinton Square",
+    "lat": 42.65101,
+    "lng": -73.75291,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Forced entry to a residence or business. K-9 requested. Property inventory underway.",
+    "sources": [
+      {
+        "kind": "scanner",
+        "name": "OpenMHz P25",
+        "tier": "tier_3"
+      },
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-008",
+    "minutesAgo": 72,
+    "title": "Larceny \u2014 Delaware Ave & Whitehall Rd",
+    "type": "larceny",
+    "category": "property",
+    "severity": "medium",
+    "status": "active",
+    "municipality": "Albany",
+    "address": "Delaware Ave & Whitehall Rd",
+    "lat": 42.642,
+    "lng": -73.78515,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Theft from a store or vehicle. Suspect captured on camera in some cases.",
+    "sources": [
+      {
+        "kind": "blotter",
+        "name": "Agency blotter",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-009",
+    "minutesAgo": 88,
+    "title": "Stolen vehicle \u2014 New Scotland Ave & South Allen St",
+    "type": "auto-theft",
+    "category": "property",
+    "severity": "high",
+    "status": "active",
+    "municipality": "Albany",
+    "address": "New Scotland Ave & South Allen St",
+    "lat": 42.65056,
+    "lng": -73.79251,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Vehicle taken. Plate and description entered NCIC. Last seen heading toward I-87.",
+    "sources": [
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "developing"
+  },
+  {
+    "id": "act-010",
+    "minutesAgo": 105,
+    "title": "Criminal mischief \u2014 Broadway & Colonie St",
+    "type": "vandalism",
+    "category": "property",
+    "severity": "low",
+    "status": "developing",
+    "municipality": "Albany",
+    "address": "Broadway & Colonie St",
+    "lat": 42.66388,
+    "lng": -73.75114,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Graffiti or broken windows reported. Report taken for insurance and follow-up.",
+    "sources": [
+      {
+        "kind": "cfs",
+        "name": "APD Calls for Service",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-011",
+    "minutesAgo": 140,
+    "title": "Narcotics investigation \u2014 Ontario St & Second St",
+    "type": "narcotics",
+    "category": "other",
+    "severity": "medium",
+    "status": "developing",
+    "municipality": "Albany",
+    "address": "Ontario St & Second St",
+    "lat": 42.66625,
+    "lng": -73.75282,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Investigation of suspected drug activity. Additional units staged nearby.",
+    "sources": [
+      {
+        "kind": "nixle",
+        "name": "Nixle alert",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-012",
+    "minutesAgo": 175,
+    "title": "Shots fired \u2014 Western Ave & Manning Blvd",
+    "type": "shots-fired",
+    "category": "violent",
+    "severity": "critical",
+    "status": "developing",
+    "municipality": "Albany",
+    "address": "Western Ave & Manning Blvd",
+    "lat": 42.66992,
+    "lng": -73.80465,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Multiple callers reported gunfire. Units established a perimeter. No victim located on the initial canvas.",
+    "sources": [
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-013",
+    "minutesAgo": 210,
+    "title": "Traffic stop / crash \u2014 Lark St & Madison Ave",
+    "type": "traffic",
+    "category": "other",
+    "severity": "low",
+    "status": "developing",
+    "municipality": "Albany",
+    "address": "Lark St & Madison Ave",
+    "lat": 42.65626,
+    "lng": -73.76843,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Two-vehicle crash or high-risk traffic stop. Lanes restricted.",
+    "sources": [
+      {
+        "kind": "scanner",
+        "name": "OpenMHz P25",
+        "tier": "tier_3"
+      }
+    ],
+    "verification": "scanner"
+  },
+  {
+    "id": "act-014",
+    "minutesAgo": 260,
+    "title": "Warrant service \u2014 Clinton Ave & Ten Broeck St",
+    "type": "warrant",
+    "category": "other",
+    "severity": "medium",
+    "status": "developing",
+    "municipality": "Albany",
+    "address": "Clinton Ave & Ten Broeck St",
+    "lat": 42.65484,
+    "lng": -73.75463,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Felony warrant service. Street temporarily closed. One in custody.",
+    "sources": [
+      {
+        "kind": "blotter",
+        "name": "Agency blotter",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-015",
+    "minutesAgo": 310,
+    "title": "Missing person \u2014 Empire State Plaza loading docks",
+    "type": "missing",
+    "category": "other",
+    "severity": "high",
+    "status": "developing",
+    "municipality": "Albany",
+    "address": "Empire State Plaza loading docks",
+    "lat": 42.65308,
+    "lng": -73.75866,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Missing person reported. Last seen description circulated to all units.",
+    "sources": [
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "developing"
+  },
+  {
+    "id": "act-016",
+    "minutesAgo": 365,
+    "title": "Armed robbery \u2014 Wolf Rd & Central Ave",
+    "type": "robbery",
+    "category": "violent",
+    "severity": "high",
+    "status": "confirmed",
+    "municipality": "Colonie",
+    "address": "Wolf Rd & Central Ave",
+    "lat": 42.72026,
+    "lng": -73.8096,
+    "agency": "Colonie Police",
+    "agencyAbbr": "CPD",
+    "description": "Suspect displayed a weapon and fled on foot. Description broadcast county-wide.",
+    "sources": [
+      {
+        "kind": "cfs",
+        "name": "APD Calls for Service",
+        "tier": "tier_1"
+      },
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-017",
+    "minutesAgo": 420,
+    "title": "EMS response \u2014 Albany Shaker Rd near Crossgates",
+    "type": "ems",
+    "category": "other",
+    "severity": "medium",
+    "status": "confirmed",
+    "municipality": "Colonie",
+    "address": "Albany Shaker Rd near Crossgates",
+    "lat": 42.71049,
+    "lng": -73.84477,
+    "agency": "Colonie Police",
+    "agencyAbbr": "CPD",
+    "description": "Medical emergency. ALS dispatched. Police on scene for access and crowd control.",
+    "sources": [
+      {
+        "kind": "nixle",
+        "name": "Nixle alert",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-018",
+    "minutesAgo": 480,
+    "title": "Weapons complaint \u2014 Latham Circle",
+    "type": "weapons",
+    "category": "violent",
+    "severity": "high",
+    "status": "confirmed",
+    "municipality": "Colonie",
+    "address": "Latham Circle",
+    "lat": 42.74603,
+    "lng": -73.76128,
+    "agency": "Colonie Police",
+    "agencyAbbr": "CPD",
+    "description": "Caller reported a person with a firearm. Area checked. Subject not immediately located.",
+    "sources": [
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-019",
+    "minutesAgo": 540,
+    "title": "Shots fired \u2014 Route 7 & Wade Rd",
+    "type": "shots-fired",
+    "category": "violent",
+    "severity": "critical",
+    "status": "confirmed",
+    "municipality": "Colonie",
+    "address": "Route 7 & Wade Rd",
+    "lat": 42.75484,
+    "lng": -73.78121,
+    "agency": "Colonie Police",
+    "agencyAbbr": "CPD",
+    "description": "Multiple callers reported gunfire. Units established a perimeter. No victim located on the initial canvas.",
+    "sources": [
+      {
+        "kind": "scanner",
+        "name": "OpenMHz P25",
+        "tier": "tier_3"
+      },
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-020",
+    "minutesAgo": 610,
+    "title": "Fraud / identity theft \u2014 Newton Plaza parking lot",
+    "type": "fraud",
+    "category": "property",
+    "severity": "low",
+    "status": "confirmed",
+    "municipality": "Colonie",
+    "address": "Newton Plaza parking lot",
+    "lat": 42.72929,
+    "lng": -73.80433,
+    "agency": "Colonie Police",
+    "agencyAbbr": "CPD",
+    "description": "Financial crime reported. Case referred to detectives / financial crimes unit.",
+    "sources": [
+      {
+        "kind": "blotter",
+        "name": "Agency blotter",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-021",
+    "minutesAgo": 680,
+    "title": "Shots fired \u2014 Delaware Ave & Elsmere Ave",
+    "type": "shots-fired",
+    "category": "violent",
+    "severity": "critical",
+    "status": "confirmed",
+    "municipality": "Bethlehem",
+    "address": "Delaware Ave & Elsmere Ave",
+    "lat": 42.62344,
+    "lng": -73.83764,
+    "agency": "Bethlehem Police",
+    "agencyAbbr": "BPD",
+    "description": "Multiple callers reported gunfire. Units established a perimeter. No victim located on the initial canvas.",
+    "sources": [
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "developing"
+  },
+  {
+    "id": "act-022",
+    "minutesAgo": 750,
+    "title": "Shooting \u2014 Kenwood Ave near Town Hall",
+    "type": "shooting",
+    "category": "violent",
+    "severity": "critical",
+    "status": "confirmed",
+    "municipality": "Bethlehem",
+    "address": "Kenwood Ave near Town Hall",
+    "lat": 42.59922,
+    "lng": -73.86231,
+    "agency": "Bethlehem Police",
+    "agencyAbbr": "BPD",
+    "description": "Victim transported with gunshot wounds. Detectives and crime scene on site. Area closed to through traffic.",
+    "sources": [
+      {
+        "kind": "cfs",
+        "name": "APD Calls for Service",
+        "tier": "tier_1"
+      },
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-023",
+    "minutesAgo": 800,
+    "title": "Robbery \u2014 Rt 9W & Glenmont Rd",
+    "type": "robbery",
+    "category": "violent",
+    "severity": "high",
+    "status": "confirmed",
+    "municipality": "Bethlehem",
+    "address": "Rt 9W & Glenmont Rd",
+    "lat": 42.60244,
+    "lng": -73.79307,
+    "agency": "Bethlehem Police",
+    "agencyAbbr": "BPD",
+    "description": "Suspect displayed a weapon and fled on foot. Description broadcast county-wide.",
+    "sources": [
+      {
+        "kind": "nixle",
+        "name": "Nixle alert",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-024",
+    "minutesAgo": 920,
+    "title": "Aggravated assault \u2014 Western Ave (Rt 20) & Carman Rd",
+    "type": "aggravated-assault",
+    "category": "violent",
+    "severity": "high",
+    "status": "confirmed",
+    "municipality": "Guilderland",
+    "address": "Western Ave (Rt 20) & Carman Rd",
+    "lat": 42.69421,
+    "lng": -73.91402,
+    "agency": "Guilderland Police",
+    "agencyAbbr": "GPD",
+    "description": "Serious injury reported. EMS on scene. Suspect description taken from witnesses.",
+    "sources": [
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-025",
+    "minutesAgo": 1040,
+    "title": "Assault \u2014 Crossgates Mall ring road",
+    "type": "assault",
+    "category": "violent",
+    "severity": "high",
+    "status": "confirmed",
+    "municipality": "Guilderland",
+    "address": "Crossgates Mall ring road",
+    "lat": 42.68759,
+    "lng": -73.85225,
+    "agency": "Guilderland Police",
+    "agencyAbbr": "GPD",
+    "description": "Physical altercation. One party treated on scene. Officers taking statements.",
+    "sources": [
+      {
+        "kind": "scanner",
+        "name": "OpenMHz P25",
+        "tier": "tier_3"
+      },
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-026",
+    "minutesAgo": 1160,
+    "title": "Stabbing \u2014 Foundry Rd & Rt 155",
+    "type": "stabbing",
+    "category": "violent",
+    "severity": "critical",
+    "status": "confirmed",
+    "municipality": "Guilderland",
+    "address": "Foundry Rd & Rt 155",
+    "lat": 42.70976,
+    "lng": -73.9313,
+    "agency": "Guilderland Police",
+    "agencyAbbr": "GPD",
+    "description": "Stabbing reported. Trauma activation. Weapon not immediately recovered.",
+    "sources": [
+      {
+        "kind": "blotter",
+        "name": "Agency blotter",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-027",
+    "minutesAgo": 1280,
+    "title": "Burglary \u2014 Remsen St & Ontario St",
+    "type": "burglary",
+    "category": "property",
+    "severity": "high",
+    "status": "confirmed",
+    "municipality": "Cohoes",
+    "address": "Remsen St & Ontario St",
+    "lat": 42.77294,
+    "lng": -73.69603,
+    "agency": "Cohoes Police",
+    "agencyAbbr": "Cohoes PD",
+    "description": "Forced entry to a residence or business. K-9 requested. Property inventory underway.",
+    "sources": [
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "developing"
+  },
+  {
+    "id": "act-028",
+    "minutesAgo": 1400,
+    "title": "Larceny \u2014 Columbia St near Harmony Mills",
+    "type": "larceny",
+    "category": "property",
+    "severity": "medium",
+    "status": "confirmed",
+    "municipality": "Cohoes",
+    "address": "Columbia St near Harmony Mills",
+    "lat": 42.78238,
+    "lng": -73.70671,
+    "agency": "Cohoes Police",
+    "agencyAbbr": "Cohoes PD",
+    "description": "Theft from a store or vehicle. Suspect captured on camera in some cases.",
+    "sources": [
+      {
+        "kind": "cfs",
+        "name": "APD Calls for Service",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-029",
+    "minutesAgo": 1550,
+    "title": "Stolen vehicle \u2014 19th St & 2nd Ave",
+    "type": "auto-theft",
+    "category": "property",
+    "severity": "high",
+    "status": "confirmed",
+    "municipality": "Watervliet",
+    "address": "19th St & 2nd Ave",
+    "lat": 42.72877,
+    "lng": -73.69951,
+    "agency": "Watervliet Police",
+    "agencyAbbr": "WPD",
+    "description": "Vehicle taken. Plate and description entered NCIC. Last seen heading toward I-87.",
+    "sources": [
+      {
+        "kind": "nixle",
+        "name": "Nixle alert",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-030",
+    "minutesAgo": 1700,
+    "title": "Criminal mischief \u2014 Broadway & 13th St",
+    "type": "vandalism",
+    "category": "property",
+    "severity": "low",
+    "status": "confirmed",
+    "municipality": "Watervliet",
+    "address": "Broadway & 13th St",
+    "lat": 42.72191,
+    "lng": -73.70441,
+    "agency": "Watervliet Police",
+    "agencyAbbr": "WPD",
+    "description": "Graffiti or broken windows reported. Report taken for insurance and follow-up.",
+    "sources": [
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-031",
+    "minutesAgo": 1850,
+    "title": "Narcotics investigation \u2014 Hudson Ave & George St",
+    "type": "narcotics",
+    "category": "other",
+    "severity": "medium",
+    "status": "confirmed",
+    "municipality": "Green Island",
+    "address": "Hudson Ave & George St",
+    "lat": 42.74872,
+    "lng": -73.6927,
+    "agency": "Green Island Police",
+    "agencyAbbr": "GIPD",
+    "description": "Investigation of suspected drug activity. Additional units staged nearby.",
+    "sources": [
+      {
+        "kind": "scanner",
+        "name": "OpenMHz P25",
+        "tier": "tier_3"
+      }
+    ],
+    "verification": "scanner"
+  },
+  {
+    "id": "act-032",
+    "minutesAgo": 2000,
+    "title": "Disorderly conduct \u2014 Broadway & Menands Rd",
+    "type": "disturbance",
+    "category": "other",
+    "severity": "low",
+    "status": "confirmed",
+    "municipality": "Menands",
+    "address": "Broadway & Menands Rd",
+    "lat": 42.69286,
+    "lng": -73.72295,
+    "agency": "Menands Police",
+    "agencyAbbr": "MPD",
+    "description": "Loud party or street argument. Dispersed after officers arrived.",
+    "sources": [
+      {
+        "kind": "blotter",
+        "name": "Agency blotter",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-033",
+    "minutesAgo": 2200,
+    "title": "Traffic stop / crash \u2014 Main St, Ravena",
+    "type": "traffic",
+    "category": "other",
+    "severity": "low",
+    "status": "closed",
+    "municipality": "Coeymans",
+    "address": "Main St, Ravena",
+    "lat": 42.47134,
+    "lng": -73.81324,
+    "agency": "Coeymans Police",
+    "agencyAbbr": "Coeymans PD",
+    "description": "Two-vehicle crash or high-risk traffic stop. Lanes restricted.",
+    "sources": [
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "developing"
+  },
+  {
+    "id": "act-034",
+    "minutesAgo": 2500,
+    "title": "Warrant service \u2014 Maple Ave, Voorheesville",
+    "type": "warrant",
+    "category": "other",
+    "severity": "medium",
+    "status": "closed",
+    "municipality": "New Scotland",
+    "address": "Maple Ave, Voorheesville",
+    "lat": 42.64763,
+    "lng": -73.93358,
+    "agency": "Albany County Sheriff",
+    "agencyAbbr": "ACSO",
+    "description": "Felony warrant service. Street temporarily closed. One in custody.",
+    "sources": [
+      {
+        "kind": "cfs",
+        "name": "APD Calls for Service",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-035",
+    "minutesAgo": 2800,
+    "title": "Missing person \u2014 Main St & Maple Ave",
+    "type": "missing",
+    "category": "other",
+    "severity": "high",
+    "status": "closed",
+    "municipality": "Altamont",
+    "address": "Main St & Maple Ave",
+    "lat": 42.69942,
+    "lng": -74.03582,
+    "agency": "Altamont Police",
+    "agencyAbbr": "Altamont PD",
+    "description": "Missing person reported. Last seen description circulated to all units.",
+    "sources": [
+      {
+        "kind": "nixle",
+        "name": "Nixle alert",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-036",
+    "minutesAgo": 3100,
+    "title": "Structure fire \u2014 Second Ave & Lark St",
+    "type": "fire",
+    "category": "other",
+    "severity": "high",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "Second Ave & Lark St",
+    "lat": 42.65659,
+    "lng": -73.75807,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Working fire. AFD / volunteer companies on scene. Occupants accounted for unless noted.",
+    "sources": [
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-037",
+    "minutesAgo": 3400,
+    "title": "EMS response \u2014 200 block of Central Ave",
+    "type": "ems",
+    "category": "other",
+    "severity": "medium",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "200 block of Central Ave",
+    "lat": 42.66541,
+    "lng": -73.77265,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Medical emergency. ALS dispatched. Police on scene for access and crowd control.",
+    "sources": [
+      {
+        "kind": "scanner",
+        "name": "OpenMHz P25",
+        "tier": "tier_3"
+      }
+    ],
+    "verification": "scanner"
+  },
+  {
+    "id": "act-038",
+    "minutesAgo": 3800,
+    "title": "Weapons complaint \u2014 Henry Johnson Blvd & Livingston Ave",
+    "type": "weapons",
+    "category": "violent",
+    "severity": "high",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "Henry Johnson Blvd & Livingston Ave",
+    "lat": 42.66734,
+    "lng": -73.76114,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Caller reported a person with a firearm. Area checked. Subject not immediately located.",
+    "sources": [
+      {
+        "kind": "blotter",
+        "name": "Agency blotter",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-039",
+    "minutesAgo": 4100,
+    "title": "Domestic incident \u2014 South Pearl St & Morton Ave",
+    "type": "domestic",
+    "category": "violent",
+    "severity": "high",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "South Pearl St & Morton Ave",
+    "lat": 42.64542,
+    "lng": -73.75781,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Domestic incident. One party removed. Child protective notified if children present.",
+    "sources": [
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "developing"
+  },
+  {
+    "id": "act-040",
+    "minutesAgo": 4300,
+    "title": "Fraud / identity theft \u2014 Madison Ave & Quail St",
+    "type": "fraud",
+    "category": "property",
+    "severity": "low",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "Madison Ave & Quail St",
+    "lat": 42.65332,
+    "lng": -73.78093,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Financial crime reported. Case referred to detectives / financial crimes unit.",
+    "sources": [
+      {
+        "kind": "cfs",
+        "name": "APD Calls for Service",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-041",
+    "minutesAgo": 5000,
+    "title": "Shots fired \u2014 Washington Ave & Partridge St",
+    "type": "shots-fired",
+    "category": "violent",
+    "severity": "critical",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "Washington Ave & Partridge St",
+    "lat": 42.66029,
+    "lng": -73.78447,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Multiple callers reported gunfire. Units established a perimeter. No victim located on the initial canvas.",
+    "sources": [
+      {
+        "kind": "nixle",
+        "name": "Nixle alert",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-042",
+    "minutesAgo": 5800,
+    "title": "Shooting \u2014 North Pearl St near Clinton Square",
+    "type": "shooting",
+    "category": "violent",
+    "severity": "critical",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "North Pearl St near Clinton Square",
+    "lat": 42.65548,
+    "lng": -73.74592,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Victim transported with gunshot wounds. Detectives and crime scene on site. Area closed to through traffic.",
+    "sources": [
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-043",
+    "minutesAgo": 6500,
+    "title": "Robbery \u2014 Delaware Ave & Whitehall Rd",
+    "type": "robbery",
+    "category": "violent",
+    "severity": "high",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "Delaware Ave & Whitehall Rd",
+    "lat": 42.64,
+    "lng": -73.78841,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Suspect displayed a weapon and fled on foot. Description broadcast county-wide.",
+    "sources": [
+      {
+        "kind": "scanner",
+        "name": "OpenMHz P25",
+        "tier": "tier_3"
+      },
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-044",
+    "minutesAgo": 7200,
+    "title": "Aggravated assault \u2014 New Scotland Ave & South Allen St",
+    "type": "aggravated-assault",
+    "category": "violent",
+    "severity": "high",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "New Scotland Ave & South Allen St",
+    "lat": 42.65678,
+    "lng": -73.7933,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Serious injury reported. EMS on scene. Suspect description taken from witnesses.",
+    "sources": [
+      {
+        "kind": "blotter",
+        "name": "Agency blotter",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-045",
+    "minutesAgo": 8200,
+    "title": "Assault \u2014 Broadway & Colonie St",
+    "type": "assault",
+    "category": "violent",
+    "severity": "high",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "Broadway & Colonie St",
+    "lat": 42.65813,
+    "lng": -73.75073,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Physical altercation. One party treated on scene. Officers taking statements.",
+    "sources": [
+      {
+        "kind": "news",
+        "name": "Times Union",
+        "tier": "tier_2"
+      }
+    ],
+    "verification": "developing"
+  },
+  {
+    "id": "act-046",
+    "minutesAgo": 9000,
+    "title": "Stabbing \u2014 Ontario St & Second St",
+    "type": "stabbing",
+    "category": "violent",
+    "severity": "critical",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "Ontario St & Second St",
+    "lat": 42.66068,
+    "lng": -73.75353,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Stabbing reported. Trauma activation. Weapon not immediately recovered.",
+    "sources": [
+      {
+        "kind": "cfs",
+        "name": "APD Calls for Service",
+        "tier": "tier_1"
+      },
+      {
+        "kind": "press",
+        "name": "Agency press release",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  },
+  {
+    "id": "act-047",
+    "minutesAgo": 9800,
+    "title": "Burglary \u2014 Western Ave & Manning Blvd",
+    "type": "burglary",
+    "category": "property",
+    "severity": "high",
+    "status": "closed",
+    "municipality": "Albany",
+    "address": "Western Ave & Manning Blvd",
+    "lat": 42.67354,
+    "lng": -73.80198,
+    "agency": "Albany Police Department",
+    "agencyAbbr": "APD",
+    "description": "Forced entry to a residence or business. K-9 requested. Property inventory underway.",
+    "sources": [
+      {
+        "kind": "nixle",
+        "name": "Nixle alert",
+        "tier": "tier_1"
+      }
+    ],
+    "verification": "confirmed"
+  }
+]

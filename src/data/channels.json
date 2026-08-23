@@ -1,0 +1,363 @@
+[
+  {
+    "id": "apd",
+    "label": "Albany Police Dispatch",
+    "talkgroups": [
+      "13102",
+      "13302",
+      "13402",
+      "13502"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "capital_albany",
+    "priority": "high"
+  },
+  {
+    "id": "albany_fire",
+    "label": "Albany City Fire",
+    "talkgroups": [
+      "12001",
+      "12101",
+      "13202",
+      "8239"
+    ],
+    "disciplines": [
+      "fire"
+    ],
+    "region": "capital_albany",
+    "priority": "high"
+  },
+  {
+    "id": "albany_ems",
+    "label": "Albany EMS",
+    "talkgroups": [
+      "13001",
+      "8260"
+    ],
+    "disciplines": [
+      "ems"
+    ],
+    "region": "capital_albany",
+    "priority": "medium"
+  },
+  {
+    "id": "albany_city_unified",
+    "label": "Albany City \u2014 Police / Fire / EMS",
+    "talkgroups": [
+      "13102",
+      "13302",
+      "13402",
+      "13502",
+      "12001",
+      "12101",
+      "13202",
+      "8239",
+      "13001",
+      "8260"
+    ],
+    "disciplines": [
+      "police",
+      "fire",
+      "ems"
+    ],
+    "region": "capital_albany",
+    "priority": "high"
+  },
+  {
+    "id": "acso",
+    "label": "Albany County Sheriff",
+    "talkgroups": [
+      "10002",
+      "10003",
+      "11003",
+      "15202",
+      "18301",
+      "8206"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "county_wide",
+    "priority": "high"
+  },
+  {
+    "id": "albany_county_fire",
+    "label": "Albany County Fire",
+    "talkgroups": [
+      "10702",
+      "11702"
+    ],
+    "disciplines": [
+      "fire"
+    ],
+    "region": "county_wide",
+    "priority": "medium"
+  },
+  {
+    "id": "albany_county_ems",
+    "label": "Albany County EMS",
+    "talkgroups": [
+      "8259"
+    ],
+    "disciplines": [
+      "ems"
+    ],
+    "region": "county_wide",
+    "priority": "medium"
+  },
+  {
+    "id": "albany_county_oem",
+    "label": "Albany County OEM",
+    "talkgroups": [
+      "10925"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "county_wide",
+    "priority": "low"
+  },
+  {
+    "id": "albany_county_interop",
+    "label": "Albany County Interop",
+    "talkgroups": [
+      "10921",
+      "10923",
+      "10922"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "county_wide",
+    "priority": "low"
+  },
+  {
+    "id": "colonie_pd",
+    "label": "Colonie Police",
+    "talkgroups": [
+      "10401",
+      "10402",
+      "10403",
+      "8211",
+      "8212"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "colonie_area",
+    "priority": "high"
+  },
+  {
+    "id": "colonie_fire",
+    "label": "Colonie Fire",
+    "talkgroups": [
+      "12201",
+      "8243"
+    ],
+    "disciplines": [
+      "fire"
+    ],
+    "region": "colonie_area",
+    "priority": "medium"
+  },
+  {
+    "id": "bethlehem_pd",
+    "label": "Bethlehem Police",
+    "talkgroups": [
+      "10502",
+      "8215"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "bethlehem_area",
+    "priority": "high"
+  },
+  {
+    "id": "bethlehem_fire",
+    "label": "Bethlehem Fire",
+    "talkgroups": [
+      "12301"
+    ],
+    "disciplines": [
+      "fire"
+    ],
+    "region": "bethlehem_area",
+    "priority": "medium"
+  },
+  {
+    "id": "bethlehem_public_safety",
+    "label": "Bethlehem Public Safety (Police + Fire)",
+    "talkgroups": [
+      "10502",
+      "8215",
+      "12301"
+    ],
+    "disciplines": [
+      "police",
+      "fire"
+    ],
+    "region": "bethlehem_area",
+    "priority": "high"
+  },
+  {
+    "id": "guilderland_pd",
+    "label": "Guilderland Police",
+    "talkgroups": [
+      "10501",
+      "8216"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "guilderland_area",
+    "priority": "high"
+  },
+  {
+    "id": "guilderland_fire",
+    "label": "Guilderland Fire",
+    "talkgroups": [
+      "12401"
+    ],
+    "disciplines": [
+      "fire"
+    ],
+    "region": "guilderland_area",
+    "priority": "medium"
+  },
+  {
+    "id": "altamont_pd",
+    "label": "Altamont Police",
+    "talkgroups": [
+      "11001"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "guilderland_area",
+    "priority": "low"
+  },
+  {
+    "id": "coeymans_pd",
+    "label": "Coeymans Police",
+    "talkgroups": [
+      "10901"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "coeymans_ravena",
+    "priority": "high"
+  },
+  {
+    "id": "cohoes_pd",
+    "label": "Cohoes Police",
+    "talkgroups": [
+      "10601"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "cohoes_watervliet_green_island",
+    "priority": "high"
+  },
+  {
+    "id": "cohoes_fire",
+    "label": "Cohoes Fire",
+    "talkgroups": [
+      "12501"
+    ],
+    "disciplines": [
+      "fire"
+    ],
+    "region": "cohoes_watervliet_green_island",
+    "priority": "medium"
+  },
+  {
+    "id": "watervliet_pd",
+    "label": "Watervliet Police",
+    "talkgroups": [
+      "10602"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "cohoes_watervliet_green_island",
+    "priority": "high"
+  },
+  {
+    "id": "watervliet_fire",
+    "label": "Watervliet Fire",
+    "talkgroups": [
+      "12601"
+    ],
+    "disciplines": [
+      "fire"
+    ],
+    "region": "cohoes_watervliet_green_island",
+    "priority": "medium"
+  },
+  {
+    "id": "green_island_pd",
+    "label": "Green Island Police",
+    "talkgroups": [
+      "10701"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "cohoes_watervliet_green_island",
+    "priority": "medium"
+  },
+  {
+    "id": "menands_pd",
+    "label": "Menands Police",
+    "talkgroups": [
+      "10801"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "capital_albany",
+    "priority": "low"
+  },
+  {
+    "id": "nysp_troop_g",
+    "label": "NYSP Troop G",
+    "talkgroups": [
+      "11101",
+      "11201"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "county_wide",
+    "priority": "high"
+  },
+  {
+    "id": "nysp_capitol",
+    "label": "NYSP Capitol",
+    "talkgroups": [
+      "18884"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "capitol",
+    "priority": "medium"
+  },
+  {
+    "id": "metro_law",
+    "label": "Metro Law (Capital Region Tac)",
+    "talkgroups": [
+      "10354"
+    ],
+    "disciplines": [
+      "police"
+    ],
+    "region": "capital_albany",
+    "priority": "low"
+  }
+]

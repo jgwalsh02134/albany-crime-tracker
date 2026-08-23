@@ -1,0 +1,386 @@
+{
+  "15202": {
+    "agency": "Albany County Sheriff",
+    "dept": "Law Dispatch",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "Law Dispatch",
+    "priority": "high"
+  },
+  "10002": {
+    "agency": "Albany County Sheriff",
+    "dept": "County Law (secondary)",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "County Law (secondary)",
+    "priority": "high"
+  },
+  "10003": {
+    "agency": "Albany County Sheriff",
+    "dept": "County Law 1",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "County Law 1",
+    "priority": "high"
+  },
+  "18301": {
+    "agency": "Albany County Sheriff",
+    "dept": "Law Ops",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "Law Ops",
+    "priority": "high"
+  },
+  "10702": {
+    "agency": "Albany County Fire",
+    "dept": "Fire Dispatch",
+    "municipality": "County-wide",
+    "discipline": "fire",
+    "channel": "Fire Dispatch",
+    "priority": "high"
+  },
+  "11702": {
+    "agency": "Albany County Fire",
+    "dept": "Fire Tac",
+    "municipality": "County-wide",
+    "discipline": "fire",
+    "channel": "Fire Tac",
+    "priority": "medium"
+  },
+  "11003": {
+    "agency": "Albany County Sheriff",
+    "dept": "County Law 2",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "County Law 2",
+    "priority": "high"
+  },
+  "10921": {
+    "agency": "Albany County",
+    "dept": "Interop",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "Interop",
+    "priority": "medium"
+  },
+  "10922": {
+    "agency": "Multi-Agency",
+    "dept": "Tactical",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "Multi-Agency Tac",
+    "priority": "medium"
+  },
+  "10923": {
+    "agency": "Albany County",
+    "dept": "Emergency Ops",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "Emergency Ops",
+    "priority": "high"
+  },
+  "10925": {
+    "agency": "Albany County OEM",
+    "dept": "OEM",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "OEM",
+    "priority": "medium"
+  },
+  "13102": {
+    "agency": "Albany Police",
+    "dept": "Dispatch",
+    "municipality": "Albany",
+    "discipline": "police",
+    "channel": "APD Dispatch",
+    "priority": "high"
+  },
+  "13202": {
+    "agency": "Albany Fire",
+    "dept": "Fire 1",
+    "municipality": "Albany",
+    "discipline": "fire",
+    "channel": "AFD Fire 1",
+    "priority": "high"
+  },
+  "13302": {
+    "agency": "Albany Police",
+    "dept": "Tac 1",
+    "municipality": "Albany",
+    "discipline": "police",
+    "channel": "APD Tac 1",
+    "priority": "medium"
+  },
+  "13402": {
+    "agency": "Albany Police",
+    "dept": "Tac 2",
+    "municipality": "Albany",
+    "discipline": "police",
+    "channel": "APD Tac 2",
+    "priority": "medium"
+  },
+  "13502": {
+    "agency": "Albany Police",
+    "dept": "Detective",
+    "municipality": "Albany",
+    "discipline": "police",
+    "channel": "APD Det",
+    "priority": "medium"
+  },
+  "18884": {
+    "agency": "NYSP Capitol",
+    "dept": "State Police Tac",
+    "municipality": "Downtown Albany",
+    "discipline": "police",
+    "channel": "Capitol Tac",
+    "priority": "high"
+  },
+  "10354": {
+    "agency": "Metro Law",
+    "dept": "Tactical",
+    "municipality": "Capital Region",
+    "discipline": "police",
+    "channel": "Metro Tac",
+    "priority": "medium"
+  },
+  "10401": {
+    "agency": "Colonie Police",
+    "dept": "Dispatch",
+    "municipality": "Colonie / Latham",
+    "discipline": "police",
+    "channel": "CPD Dispatch",
+    "priority": "high"
+  },
+  "10402": {
+    "agency": "Colonie Police",
+    "dept": "Tac",
+    "municipality": "Colonie",
+    "discipline": "police",
+    "channel": "CPD Tac",
+    "priority": "medium"
+  },
+  "10403": {
+    "agency": "Colonie Police",
+    "dept": "Ops",
+    "municipality": "Colonie",
+    "discipline": "police",
+    "channel": "CPD Ops",
+    "priority": "medium"
+  },
+  "10501": {
+    "agency": "Guilderland Police",
+    "dept": "Dispatch",
+    "municipality": "Guilderland",
+    "discipline": "police",
+    "channel": "GPD Dispatch",
+    "priority": "medium"
+  },
+  "10502": {
+    "agency": "Bethlehem Police",
+    "dept": "Dispatch",
+    "municipality": "Bethlehem / Delmar",
+    "discipline": "police",
+    "channel": "BPD Dispatch",
+    "priority": "medium"
+  },
+  "10601": {
+    "agency": "Cohoes Police",
+    "dept": "Dispatch",
+    "municipality": "Cohoes",
+    "discipline": "police",
+    "channel": "Cohoes PD",
+    "priority": "medium"
+  },
+  "10602": {
+    "agency": "Watervliet Police",
+    "dept": "Dispatch",
+    "municipality": "Watervliet",
+    "discipline": "police",
+    "channel": "Watervliet PD",
+    "priority": "medium"
+  },
+  "10701": {
+    "agency": "Green Island Police",
+    "dept": "Dispatch",
+    "municipality": "Green Island",
+    "discipline": "police",
+    "channel": "GI PD",
+    "priority": "medium"
+  },
+  "10801": {
+    "agency": "Menands Police",
+    "dept": "Dispatch",
+    "municipality": "Menands",
+    "discipline": "police",
+    "channel": "Menands PD",
+    "priority": "medium"
+  },
+  "10901": {
+    "agency": "Coeymans Police",
+    "dept": "Dispatch",
+    "municipality": "Coeymans / Ravena",
+    "discipline": "police",
+    "channel": "Coeymans PD",
+    "priority": "medium"
+  },
+  "11001": {
+    "agency": "Altamont Police",
+    "dept": "Dispatch",
+    "municipality": "Altamont",
+    "discipline": "police",
+    "channel": "Altamont PD",
+    "priority": "medium"
+  },
+  "11101": {
+    "agency": "NYSP Troop G",
+    "dept": "Dispatch",
+    "municipality": "Latham / County-wide",
+    "discipline": "police",
+    "channel": "NYSP Troop G",
+    "priority": "high"
+  },
+  "11201": {
+    "agency": "NYSP Troop G",
+    "dept": "Tac",
+    "municipality": "Latham / County-wide",
+    "discipline": "police",
+    "channel": "NYSP Troop G Tac",
+    "priority": "medium"
+  },
+  "12001": {
+    "agency": "Albany Fire",
+    "dept": "Dispatch",
+    "municipality": "Albany",
+    "discipline": "fire",
+    "channel": "AFD Dispatch",
+    "priority": "high"
+  },
+  "12101": {
+    "agency": "Albany Fire",
+    "dept": "Fireground",
+    "municipality": "Albany",
+    "discipline": "fire",
+    "channel": "AFD Fireground",
+    "priority": "high"
+  },
+  "12201": {
+    "agency": "Colonie Fire",
+    "dept": "Dispatch",
+    "municipality": "Colonie",
+    "discipline": "fire",
+    "channel": "Colonie FD",
+    "priority": "high"
+  },
+  "12301": {
+    "agency": "Bethlehem Fire",
+    "dept": "Dispatch",
+    "municipality": "Bethlehem",
+    "discipline": "fire",
+    "channel": "Bethlehem FD",
+    "priority": "medium"
+  },
+  "12401": {
+    "agency": "Guilderland Fire",
+    "dept": "Dispatch",
+    "municipality": "Guilderland",
+    "discipline": "fire",
+    "channel": "Guilderland FD",
+    "priority": "medium"
+  },
+  "12501": {
+    "agency": "Cohoes Fire",
+    "dept": "Dispatch",
+    "municipality": "Cohoes",
+    "discipline": "fire",
+    "channel": "Cohoes FD",
+    "priority": "medium"
+  },
+  "12601": {
+    "agency": "Watervliet Fire",
+    "dept": "Dispatch",
+    "municipality": "Watervliet",
+    "discipline": "fire",
+    "channel": "Watervliet FD",
+    "priority": "medium"
+  },
+  "13001": {
+    "agency": "Albany EMS",
+    "dept": "Dispatch",
+    "municipality": "Albany",
+    "discipline": "ems",
+    "channel": "Albany EMS",
+    "priority": "high"
+  },
+  "8211": {
+    "agency": "Colonie Police",
+    "dept": "Dispatch",
+    "municipality": "Colonie / Latham",
+    "discipline": "police",
+    "channel": "CPD Dispatch",
+    "priority": "high"
+  },
+  "8212": {
+    "agency": "Colonie Police",
+    "dept": "Tac",
+    "municipality": "Colonie",
+    "discipline": "police",
+    "channel": "CPD Tac",
+    "priority": "medium"
+  },
+  "8215": {
+    "agency": "Bethlehem Police",
+    "dept": "Dispatch",
+    "municipality": "Bethlehem / Delmar",
+    "discipline": "police",
+    "channel": "BPD Dispatch",
+    "priority": "medium"
+  },
+  "8216": {
+    "agency": "Guilderland Police",
+    "dept": "Dispatch",
+    "municipality": "Guilderland",
+    "discipline": "police",
+    "channel": "GPD Dispatch",
+    "priority": "medium"
+  },
+  "8206": {
+    "agency": "Albany County Sheriff",
+    "dept": "Sheriff",
+    "municipality": "County-wide",
+    "discipline": "police",
+    "channel": "ACSO",
+    "priority": "high"
+  },
+  "8239": {
+    "agency": "Albany Fire",
+    "dept": "Dispatch",
+    "municipality": "Albany",
+    "discipline": "fire",
+    "channel": "AFD Dispatch",
+    "priority": "high"
+  },
+  "8243": {
+    "agency": "Colonie Fire",
+    "dept": "Dispatch",
+    "municipality": "Colonie",
+    "discipline": "fire",
+    "channel": "Colonie FD",
+    "priority": "high"
+  },
+  "8259": {
+    "agency": "Albany County EMS",
+    "dept": "EMS Dispatch",
+    "municipality": "County-wide",
+    "discipline": "ems",
+    "channel": "County EMS",
+    "priority": "high"
+  },
+  "8260": {
+    "agency": "Albany EMS",
+    "dept": "Dispatch",
+    "municipality": "Albany",
+    "discipline": "ems",
+    "channel": "Albany EMS",
+    "priority": "high"
+  }
+}

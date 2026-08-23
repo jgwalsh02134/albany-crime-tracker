@@ -1,0 +1,202 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --font-sans: "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-cyan: var(--cyan);
+  --color-gold: var(--gold);
+  --color-sev-critical: var(--sev-critical);
+  --color-sev-high: var(--sev-high);
+  --color-sev-medium: var(--sev-medium);
+  --color-sev-low: var(--sev-low);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+:root,
+[data-theme="dark"] {
+  --bg: #0a1128;
+  --surface: #141e3a;
+  --surface-2: #1b2747;
+  --surface-3: #243358;
+  --fg: #f0f4f8;
+  --muted: #b9c4d8;
+  --subtle: #8b9bb4;
+  --border: color-mix(in oklab, #f0f4f8 14%, transparent);
+  --accent: #ff8a22;
+  --accent-fg: #0a1128;
+  --cyan: #00e5ff;
+  --gold: #ffd54f;
+  --sev-critical: #ff8a22;
+  --sev-high: #ff6b4a;
+  --sev-medium: #00e5ff;
+  --sev-low: #8b9bb4;
+}
+
+[data-theme="light"] {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f6;
+  --surface-3: #e2e8f0;
+  --fg: #0f172a;
+  --muted: #334155;
+  --subtle: #64748b;
+  --border: color-mix(in oklab, #0f172a 12%, transparent);
+  --accent: #c2410c;
+  --accent-fg: #ffffff;
+  --cyan: #0369a1;
+  --gold: #b45309;
+  --sev-critical: #c2410c;
+  --sev-high: #b91c1c;
+  --sev-medium: #0369a1;
+  --sev-low: #64748b;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100dvh;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    overscroll-behavior: none;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes viz-eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 28%, transparent);
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+.viz-bar {
+  display: inline-block;
+  width: 3px;
+  height: 16px;
+  margin-inline: 1px;
+  border-radius: 2px;
+  background: var(--cyan);
+  transform-origin: bottom;
+  animation: viz-eq 0.9s ease-in-out infinite;
+}
+
+.viz-bar:nth-child(2) {
+  animation-delay: 0.12s;
+}
+.viz-bar:nth-child(3) {
+  animation-delay: 0.24s;
+}
+.viz-bar:nth-child(4) {
+  animation-delay: 0.08s;
+}
+.viz-bar:nth-child(5) {
+  animation-delay: 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot,
+  .viz-bar {
+    animation: none;
+  }
+}
+
+.leaflet-container {
+  background: var(--bg);
+  font-family: var(--font-sans);
+}
+
+.leaflet-container img,
+.leaflet-pane img,
+.leaflet-tile {
+  max-width: none !important;
+  max-height: none !important;
+}
+
+.act-marker {
+  border-radius: 999px;
+  border: 2px solid color-mix(in oklab, white 80%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--m) 30%, transparent);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--fg) 22%, transparent) transparent;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
