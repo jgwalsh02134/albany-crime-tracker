@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import channels from "@/data/channels.json";
 import { compactFromMinutes } from "@/lib/format";
-import { bytesToBase64, parseM3u8 } from "@/lib/scanner-hls";
+import { bytesToBase64, extractAudioFromMpegTs, parseM3u8 } from "@/lib/scanner-hls";
 import { SCANNER_FEEDS } from "@/lib/scanner-feeds";
 import { getScannerPlaylist, getScannerStatuses, transcribeAudioChunk } from "@/lib/transcribe";
 import type { Discipline, ScannerCall } from "@/lib/types";
@@ -52,6 +52,7 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
   const playGen = useRef(0);
   const resumePlay = useRef(false);
   const playlistUrlsRef = useRef<string[]>([]);
+  const onFragRef = useRef<((bytes: Uint8Array, seq: number) => void) | null>(null);
 
   const [feedId, setFeedId] = useState(SCANNER_FEEDS[0]!.id);
   const [playing, setPlaying] = useState(false);
@@ -122,6 +123,12 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
         },
       });
       hlsRef.current = hls;
+      hls.on(Hls.Events.FRAG_LOADED, (_event, data: { payload?: ArrayBuffer; frag?: { sn?: number | string } }) => {
+        const payload = data.payload;
+        const sn = data.frag?.sn;
+        if (!payload || typeof sn !== "number") return;
+        onFragRef.current?.(new Uint8Array(payload), sn);
+      });
       const parsed = new Promise<void>((resolve, reject) => {
         let settled = false;
         const finish = (fn: () => void) => {
@@ -165,16 +172,34 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
         setPlaying(false);
         setPlayerError("Stream dropped. Hit play to reconnect.");
       });
-      await audio.play();
-      setPlaying(true);
+      try {
+        await audio.play();
+      } catch {
+        audio.muted = true;
+        try {
+          await audio.play();
+        } catch {
+          /* Buffering still feeds captions even if autoplay is blocked. */
+        }
+      }
+      setPlaying(!audio.paused);
       setPlayerError(null);
       return;
     }
 
     if (audio.canPlayType("application/vnd.apple.mpegurl")) {
       audio.src = url;
-      await audio.play();
-      setPlaying(true);
+      try {
+        await audio.play();
+      } catch {
+        audio.muted = true;
+        try {
+          await audio.play();
+        } catch {
+          /* Captions can still pull HLS clips without audible playback. */
+        }
+      }
+      setPlaying(!audio.paused);
       setPlayerError(null);
       return;
     }
@@ -314,8 +339,104 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let afterSeq: number | null = null;
+    let fails = 0;
+    let busy = false;
+    let pending: { seq: number; b64: string; mime: string; filename: string } | null = null;
+    let lastFragAt = 0;
     let playlistUrl = playlistUrlsRef.current[0] ?? "";
     const started = Date.now();
+    const seen = new Set<number>();
+
+    function remainMin() {
+      return Math.max(0, Math.ceil((TRANSCRIBE_MAX_MS - (Date.now() - started)) / 60000));
+    }
+
+    function clipFromTs(buf: Uint8Array, seq: number) {
+      if (buf.byteLength < 400) return null;
+      const audio = extractAudioFromMpegTs(buf);
+      if (!audio) return null;
+      return { seq, b64: bytesToBase64(audio.bytes), mime: audio.mime, filename: audio.filename };
+    }
+
+    async function applyResult(seq: number, res: Awaited<ReturnType<typeof transcribeAudioChunk>>) {
+      if (cancelled) return;
+      if (!res.ok) {
+        setTranscriptError(res.error);
+        if ("fatal" in res && res.fatal) {
+          setTranscriptStatus("Paused");
+          setTranscribing(false);
+          return;
+        }
+        fails += 1;
+        if (fails >= 8) {
+          setTranscriptStatus("Paused");
+          setTranscribing(false);
+        }
+        return;
+      }
+      fails = 0;
+      if (res.text) {
+        const line: TranscriptLine = {
+          id: `${seq}-${Date.now()}`,
+          at: Date.now(),
+          text: res.text,
+          feedName: feed.name,
+        };
+        setTranscript((prev) => [line, ...prev].slice(0, TRANSCRIBE_MAX_LINES));
+        setLastHeardAt(Date.now());
+        setTranscriptError(null);
+        setTranscriptStatus(`Voice · ${remainMin()}m left`);
+      } else {
+        setTranscriptStatus(`Squelch · ${remainMin()}m left`);
+      }
+    }
+
+    async function sendClip(clip: { seq: number; b64: string; mime: string; filename: string }) {
+      if (cancelled) return;
+      if (seen.has(clip.seq)) return;
+      if (busy) {
+        pending = clip;
+        return;
+      }
+      seen.add(clip.seq);
+      if (seen.size > 48) {
+        const first = seen.values().next().value;
+        if (typeof first === "number") seen.delete(first);
+      }
+      busy = true;
+      setTranscriptStatus(`Listening · ${remainMin()}m left`);
+      try {
+        const res = await transcribeAudioChunk({
+          data: { feedId, b64: clip.b64, mime: clip.mime, filename: clip.filename },
+        });
+        await applyResult(clip.seq, res);
+      } catch {
+        if (!cancelled) {
+          fails += 1;
+          setTranscriptError("Could not caption this clip. Retrying…");
+          if (fails >= 8) {
+            setTranscribing(false);
+            setTranscriptStatus("Paused");
+          }
+        }
+      } finally {
+        busy = false;
+        if (!cancelled && pending) {
+          const next = pending;
+          pending = null;
+          void sendClip(next);
+        }
+      }
+    }
+
+    onFragRef.current = (bytes, seq) => {
+      if (cancelled) return;
+      lastFragAt = Date.now();
+      afterSeq = seq;
+      const clip = clipFromTs(bytes, seq);
+      if (!clip) return;
+      void sendClip(clip);
+    };
 
     async function resolvePlaylist() {
       if (playlistUrl) return playlistUrl;
@@ -326,13 +447,13 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
       return playlistUrl;
     }
 
-    async function readLatestSegment(): Promise<{ seq: number; b64: string } | { idle: true; reason: string }> {
+    async function pullClip() {
       const url = await resolvePlaylist();
       const candidates = playlistUrlsRef.current.length ? playlistUrlsRef.current : [url];
       let text = "";
       let used = url;
       for (const candidate of candidates) {
-        const pl = await fetch(candidate, { cache: "no-store" });
+        const pl = await fetch(candidate, { mode: "cors", credentials: "omit" });
         if (!pl.ok) continue;
         const body = await pl.text();
         if (!body.includes("#EXTM3U")) continue;
@@ -341,79 +462,51 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
         playlistUrl = candidate;
         break;
       }
-      if (!text) return { idle: true, reason: "playlist" };
+      if (!text) return;
       const segs = parseM3u8(text, used);
-      if (segs.length === 0) return { idle: true, reason: "idle" };
+      if (segs.length === 0) return;
       const newest = segs[segs.length - 1]!;
-      if (afterSeq != null && newest.seq <= afterSeq) return { idle: true, reason: "caught-up" };
-      const segRes = await fetch(newest.url, { cache: "no-store" });
-      if (!segRes.ok) return { idle: true, reason: "segment" };
+      if (afterSeq != null && newest.seq <= afterSeq) return;
+      const segRes = await fetch(newest.url, { mode: "cors", credentials: "omit" });
+      if (!segRes.ok) return;
       const buf = new Uint8Array(await segRes.arrayBuffer());
-      if (buf.byteLength < 400) {
-        afterSeq = newest.seq;
-        return { idle: true, reason: "tiny" };
-      }
-      return { seq: newest.seq, b64: bytesToBase64(buf) };
+      afterSeq = newest.seq;
+      const clip = clipFromTs(buf, newest.seq);
+      if (clip) void sendClip(clip);
     }
 
     async function tick() {
       if (cancelled) return;
-      const elapsed = Date.now() - started;
-      if (elapsed > TRANSCRIBE_MAX_MS) {
+      if (Date.now() - started > TRANSCRIBE_MAX_MS) {
         setTranscribing(false);
         setTranscriptStatus("Stopped after 8 minutes.");
         return;
       }
-      const remainMin = Math.max(0, Math.ceil((TRANSCRIBE_MAX_MS - elapsed) / 60000));
-      setTranscriptStatus(`Listening · ${remainMin}m left`);
-      try {
-        const pulled = await readLatestSegment();
-        if (cancelled) return;
-        if ("idle" in pulled) {
-          if (pulled.reason === "idle" || pulled.reason === "playlist") {
-            setTranscriptStatus("No audio on this feed right now");
-          } else {
-            setTranscriptStatus(`Squelch · ${remainMin}m left`);
-          }
-        } else {
-          afterSeq = pulled.seq;
-          const res = await transcribeAudioChunk({ data: { feedId, b64: pulled.b64 } });
-          if (cancelled) return;
-          if (!res.ok) {
-            setTranscriptError(res.error);
-            setTranscriptStatus("Paused");
-            setTranscribing(false);
-            return;
-          }
-          if (res.text) {
-            const line: TranscriptLine = {
-              id: `${pulled.seq}-${Date.now()}`,
-              at: Date.now(),
-              text: res.text,
-              feedName: feed.name,
-            };
-            setTranscript((prev) => [line, ...prev].slice(0, TRANSCRIBE_MAX_LINES));
-            setLastHeardAt(Date.now());
-            setTranscriptError(null);
-            setTranscriptStatus(`Voice · ${remainMin}m left`);
-          } else {
-            setTranscriptStatus(`Squelch · ${remainMin}m left`);
+      if (!lastFragAt) {
+        setTranscriptStatus(`Waiting for audio · ${remainMin()}m left`);
+      }
+      if (!lastFragAt || Date.now() - lastFragAt > 10000) {
+        try {
+          await pullClip();
+        } catch {
+          if (!cancelled) {
+            fails += 1;
+            setTranscriptError("Could not read the live feed.");
+            if (fails >= 8) {
+              setTranscribing(false);
+              setTranscriptStatus("Paused");
+              return;
+            }
           }
         }
-      } catch {
-        if (!cancelled) {
-          setTranscriptError("Could not read the live feed.");
-          setTranscribing(false);
-          setTranscriptStatus("Paused");
-        }
-        return;
       }
       if (!cancelled) timer = setTimeout(tick, TRANSCRIBE_TICK_MS);
     }
 
-    void tick();
+    timer = setTimeout(tick, 2000);
     return () => {
       cancelled = true;
+      onFragRef.current = null;
       if (timer) clearTimeout(timer);
     };
   }, [transcribing, feedId, feed.name]);
@@ -433,7 +526,7 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
             href={feed.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-11 items-center gap-1.5 text-xs font-semibold text-accent"
+            className="inline-flex h-11 items-center justify-center gap-1.5 text-xs font-semibold text-accent"
           >
             Broadcastify
             <ExternalLink className="size-3.5" />

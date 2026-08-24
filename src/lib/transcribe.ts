@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { extractAudioFromMpegTs } from "./scanner-hls";
 import { getScannerFeed, SCANNER_FEEDS } from "./scanner-feeds";
 
 const LISTEN_UA =
@@ -55,23 +56,6 @@ function fleetVariants(url: string): string[] {
   return urls;
 }
 
-async function playlistLive(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": LISTEN_UA,
-        Accept: "application/vnd.apple.mpegurl,application/x-mpegURL,*/*",
-      },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!res.ok) return false;
-    const text = await res.text();
-    return text.includes("#EXTM3U") && /#EXTINF:/i.test(text);
-  } catch {
-    return false;
-  }
-}
-
 async function resolveHls(feedId: string): Promise<ResolvedFeed> {
   const hit = resolveCache.get(feedId);
   if (hit && Date.now() - hit.at < RESOLVE_TTL_MS) return hit;
@@ -92,16 +76,14 @@ async function resolveHls(feedId: string): Promise<ResolvedFeed> {
       if (hlsUrl.startsWith("http")) extracted.push(hlsUrl);
     }
   } catch {
-    /* HTML probe is optional — playlist probe is source of truth */
+    /* HTML probe is optional — client HLS is the source of truth */
   }
 
   const urls = [...new Set([...extracted.flatMap(fleetVariants), ...(feed ? fleetVariants(feed.hlsFallback) : [])])];
-  const checks = await Promise.all(urls.map(async (url) => ({ url, live: await playlistLive(url) })));
-  const liveUrls = checks.filter((c) => c.live).map((c) => c.url);
   const entry: ResolvedFeed = {
-    hlsUrl: liveUrls[0] ?? urls[0] ?? feed?.hlsFallback ?? "",
-    candidates: liveUrls.length ? liveUrls : urls,
-    online: liveUrls.length > 0,
+    hlsUrl: urls[0] ?? feed?.hlsFallback ?? "",
+    candidates: urls,
+    online: extracted.length > 0 || urls.length > 0,
     at: Date.now(),
   };
   resolveCache.set(feedId, entry);
@@ -115,7 +97,21 @@ function looksBlank(text: string): boolean {
   return /^(silence|\[?(blank|silence|inaudible|music)\]?|\(+.*?quiet.*?\)+)$/i.test(t);
 }
 
-async function transcribeBytes(bytes: Uint8Array): Promise<{ text: string; duration: number }> {
+function decodeBase64(b64: string): Uint8Array {
+  const buf = Buffer.from(b64, "base64");
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+}
+
+function looksLikeMpegTs(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 188) return false;
+  return bytes[0] === 0x47 && (bytes[188] === 0x47 || bytes.length < 376);
+}
+
+async function transcribeAudioFile(
+  bytes: Uint8Array,
+  filename: string,
+  mime: string,
+): Promise<{ text: string; duration: number }> {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) throw new Error("missing-key");
 
@@ -125,9 +121,9 @@ async function transcribeBytes(bytes: Uint8Array): Promise<{ text: string; durat
   const form = new FormData();
   form.append("language", "en");
   form.append("format", "true");
-  form.append("vad_threshold", "0.28");
+  form.append("vad_threshold", "0.2");
   for (const term of KEYTERMS) form.append("keyterm", term);
-  form.append("file", new File([copy], "segment.ts", { type: "video/mp2t" }));
+  form.append("file", new File([copy], filename, { type: mime }));
 
   const res = await fetch("https://api.x.ai/v1/stt", {
     method: "POST",
@@ -140,11 +136,6 @@ async function transcribeBytes(bytes: Uint8Array): Promise<{ text: string; durat
   }
   const body = (await res.json()) as { text?: string; duration?: number };
   return { text: body.text?.trim() ?? "", duration: body.duration ?? 0 };
-}
-
-function decodeBase64(b64: string): Uint8Array {
-  const buf = Buffer.from(b64, "base64");
-  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
 export const getScannerPlaylist = createServerFn({ method: "POST" })
@@ -179,37 +170,49 @@ export const getScannerStatuses = createServerFn({ method: "POST" }).handler(asy
 });
 
 export const transcribeAudioChunk = createServerFn({ method: "POST" })
-  .validator((input: { feedId: string; b64: string }) => {
+  .validator((input: { feedId: string; b64: string; mime?: string; filename?: string }) => {
     const feedId = String(input.feedId ?? "");
     if (!SCANNER_FEEDS.some((f) => f.id === feedId)) {
       throw new Error("Unknown scanner feed.");
     }
     const b64 = String(input.b64 ?? "").replace(/\s/g, "");
     if (b64.length < 24) throw new Error("Audio chunk is empty.");
-    if (b64.length > 700_000) throw new Error("Audio chunk is too large.");
-    return { feedId, b64 };
+    if (b64.length > 900_000) throw new Error("Audio chunk is too large.");
+    const mime = String(input.mime ?? "audio/mpeg");
+    const filename = String(input.filename ?? "segment.mp3");
+    return { feedId, b64, mime, filename };
   })
   .handler(async ({ data }) => {
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) {
-      return { ok: false as const, error: "Transcript is not available in this environment." };
+      return {
+        ok: false as const,
+        fatal: true,
+        error: "Transcript is not available in this environment.",
+      };
     }
 
     let bytes: Uint8Array;
     try {
       bytes = decodeBase64(data.b64);
     } catch {
-      return { ok: false as const, error: "Could not decode audio." };
+      return { ok: false as const, fatal: false, error: "Could not decode audio." };
     }
-    if (bytes.byteLength < 400) {
+    if (bytes.byteLength < 64) {
       return { ok: true as const, silent: true, text: "", reason: "tiny" as const };
     }
-    if (bytes.byteLength > 500_000) {
-      return { ok: false as const, error: "Audio chunk too large." };
+
+    let audio = { bytes, mime: data.mime, filename: data.filename };
+    if (looksLikeMpegTs(bytes)) {
+      const extracted = extractAudioFromMpegTs(bytes);
+      if (!extracted) {
+        return { ok: true as const, silent: true, text: "", reason: "decode" as const };
+      }
+      audio = extracted;
     }
 
     try {
-      const result = await transcribeBytes(bytes);
+      const result = await transcribeAudioFile(audio.bytes, audio.filename, audio.mime);
       const spoken = looksBlank(result.text) ? "" : result.text;
       return {
         ok: true as const,
@@ -221,11 +224,15 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       if (msg === "missing-key") {
-        return { ok: false as const, error: "Transcript is not available in this environment." };
+        return {
+          ok: false as const,
+          fatal: true,
+          error: "Transcript is not available in this environment.",
+        };
       }
       if (msg.startsWith("stt-429")) {
-        return { ok: false as const, error: "Transcript is busy. Wait a moment and retry." };
+        return { ok: false as const, fatal: false, error: "Transcript is busy. Retrying…" };
       }
-      return { ok: false as const, error: "Transcription failed. Try again." };
+      return { ok: false as const, fatal: false, error: "Caption skipped — trying the next clip." };
     }
   });
