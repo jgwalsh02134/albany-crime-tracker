@@ -111,7 +111,7 @@ export function AppShell() {
     <div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg">
       <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3 pb-1 pt-[max(0.35rem,env(safe-area-inset-top))]">
         <div className="flex min-w-0 items-center gap-2">
-          <ShieldLogo className="size-7 shrink-0" />
+          <ShieldLogo className="size-8 shrink-0 rounded-full" />
           <div className="min-w-0 leading-tight">
             <p className="truncate text-sm font-semibold tracking-tight">Albany County</p>
             <p className="flex items-center gap-1.5 text-xs text-subtle">
