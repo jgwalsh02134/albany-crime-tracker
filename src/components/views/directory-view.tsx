@@ -294,7 +294,9 @@ function ContactRow({
         <Seal id={agency.id} label={title} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold leading-snug">{agency.name}</p>
-          <p className="truncate text-xs text-subtle">{agency.phone || agency.jurisdiction}</p>
+          <p className="truncate text-xs text-subtle">
+            {agency.address || agency.phone || agency.jurisdiction}
+          </p>
         </div>
       </button>
       <button
