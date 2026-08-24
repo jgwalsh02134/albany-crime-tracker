@@ -26,6 +26,17 @@ const TIER_ORDER: Tier[] = ["municipal", "county", "state", "federal", "campus",
 const FAV_KEY = "act-fav-agencies";
 const NIBRS_MAP = "https://nibrs.fbi.gov/2025/";
 
+function telHref(phone: string): string | null {
+  if (/text/i.test(phone)) return null;
+  const digits = phone.replace(/[^\d+]/g, "");
+  if (digits.replace(/\D/g, "").length < 7) return null;
+  return `tel:${digits}`;
+}
+
+function mapsHref(address: string): string {
+  return `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
+}
+
 function loadFavs(): string[] {
   try {
     const raw = localStorage.getItem(FAV_KEY);
@@ -294,9 +305,9 @@ function ContactRow({
       >
         <Star className={cn("size-4", starred && "fill-gold text-gold")} />
       </button>
-      {agency.phone ? (
+      {agency.phone && telHref(agency.phone) ? (
         <a
-          href={`tel:${agency.phone.replace(/[^\d+]/g, "")}`}
+          href={telHref(agency.phone)!}
           aria-label={`Call ${agency.name}`}
           className="flex w-12 shrink-0 items-center justify-center border-l border-border text-accent active:bg-surface-2"
         >
@@ -372,10 +383,8 @@ function AgencySheet({
   onStar: () => void;
 }) {
   const stats = agency ? dcjsFor(agency.id) : undefined;
-  const maps = agency?.address
-    ? `https://maps.apple.com/?q=${encodeURIComponent(agency.address)}`
-    : null;
-  const tel = agency?.phone ? `tel:${agency.phone.replace(/[^\d+]/g, "")}` : null;
+  const maps = agency?.address ? mapsHref(agency.address) : null;
+  const tel = agency?.phone ? telHref(agency.phone) : null;
 
   return (
     <Drawer.Root open={!!agency} onOpenChange={(o) => !o && onClose()}>
@@ -406,10 +415,15 @@ function AgencySheet({
               </div>
               <p className="mt-3 text-sm leading-relaxed text-muted">{agency.jurisdiction}</p>
               {agency.address ? (
-                <p className="mt-2 flex items-start gap-2 text-sm text-muted">
+                <a
+                  href={maps ?? mapsHref(agency.address)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 flex items-start gap-2 text-sm text-muted"
+                >
                   <MapPin className="mt-0.5 size-4 shrink-0" />
-                  {agency.address}
-                </p>
+                  <span>{agency.address}</span>
+                </a>
               ) : null}
               {agency.headOfficial ? (
                 <p className="mt-2 text-sm text-muted">
