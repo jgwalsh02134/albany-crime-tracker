@@ -19,6 +19,10 @@ export function IncidentCard({
   onSelect: (id: string) => void;
 }) {
   const source = incident.sources[0]?.name;
+  const kind = incident.sources[0]?.kind;
+  const badge =
+    kind === "blotter" ? "NYSP" : kind === "scanner" ? "Scanner" : kind === "cfs" ? "511NY" : "Newsroom";
+  const badgeTone = kind === "blotter" || kind === "cfs" ? "cyan" : kind === "scanner" ? "accent" : "muted";
 
   return (
     <button
@@ -56,7 +60,7 @@ export function IncidentCard({
       </p>
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <Badge tone={incident.severity}>{incident.severity}</Badge>
-        {incident.origin === "live" ? <Badge tone="cyan">sourced</Badge> : null}
+        {incident.origin === "live" ? <Badge tone={badgeTone}>{badge}</Badge> : null}
       </div>
     </button>
   );

@@ -3,7 +3,7 @@ import { IncidentCard } from "@/components/incident-card";
 import { NewsView } from "@/components/views/news-view";
 import { areaCounts, lastHours } from "@/lib/data";
 import { compactFromMinutes } from "@/lib/format";
-import { type LiveWireItem } from "@/lib/sources";
+import { type LiveWireItem, sourceMix } from "@/lib/sources";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import type { Incident, NewsStory } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -33,6 +33,7 @@ export function FeedView({
   const areaFilter = useAppStore((s) => s.areaFilter);
   const setAreaFilter = useAppStore((s) => s.setAreaFilter);
   const sourceLens = useAppStore((s) => s.sourceLens);
+  const setSourceLens = useAppStore((s) => s.setSourceLens);
 
   const visible = incidents.filter((i) =>
     incidentVisible(i, { severities, municipalities, areaFilter, sourceLens }),
@@ -44,6 +45,7 @@ export function FeedView({
   const areas = areaCounts(lastHours(areaVisible, 24));
   const liveItems = visible.filter((i) => i.origin === "live");
   const newest = liveItems[0] ?? visible[0];
+  const mix = sourceMix(areaVisible.filter((i) => i.origin === "live"));
 
   return (
     <div className="flex h-full flex-col">
@@ -72,6 +74,9 @@ export function FeedView({
           areas={areas}
           areaFilter={areaFilter}
           setAreaFilter={setAreaFilter}
+          sourceLens={sourceLens}
+          setSourceLens={setSourceLens}
+          mix={mix}
           newest={newest}
           wireLive={wireLive}
           wireOutlets={wireOutlets}
@@ -94,6 +99,9 @@ function LiveList({
   areas,
   areaFilter,
   setAreaFilter,
+  sourceLens,
+  setSourceLens,
+  mix,
   newest,
   wireLive,
   wireOutlets,
@@ -106,6 +114,9 @@ function LiveList({
   areas: { name: string; count: number }[];
   areaFilter: string;
   setAreaFilter: (a: string | "all") => void;
+  sourceLens: "all" | "official" | "scanner" | "news";
+  setSourceLens: (s: "all" | "official" | "scanner" | "news") => void;
+  mix: { official: number; scanner: number; news: number };
   newest?: Incident;
   wireLive: boolean;
   wireOutlets: string[];
@@ -154,16 +165,41 @@ function LiveList({
       <div className="flex items-center justify-between gap-2 py-2">
         <p className="min-w-0 truncate text-xs text-subtle">
           <span className="font-semibold text-fg">{liveItems.length}</span>
-          {wireLive ? " sourced stories" : " · connecting…"}
-          {wireOutlets.length ? ` · ${wireOutlets.slice(0, 3).join(" · ")}` : ""}
+          {wireLive ? " in the last 24h" : " · connecting…"}
         </p>
         <p className="shrink-0 font-mono text-xs tabular-nums text-subtle">
           {newest ? compactFromMinutes(newest.minutesAgo) : "—"}
         </p>
       </div>
+      <p className="pb-2 text-[11px] leading-snug text-subtle">
+        NYSP blotter through 7 AM ET. Scanner and 511 cover the hours since. Not a city CAD dump.
+        {wireOutlets.length ? ` · ${wireOutlets.slice(0, 4).join(" · ")}` : ""}
+      </p>
 
       <div className="sticky top-0 z-10 -mx-3 mb-3 bg-bg/90 px-3 py-1.5 backdrop-blur-md">
         <div className="flex gap-2 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+          <Chip
+            active={sourceLens === "all"}
+            onClick={() => setSourceLens("all")}
+            label={`All · ${mix.official + mix.scanner + mix.news}`}
+          />
+          <Chip
+            active={sourceLens === "official"}
+            onClick={() => setSourceLens("official")}
+            label={`Official · ${mix.official}`}
+          />
+          <Chip
+            active={sourceLens === "scanner"}
+            onClick={() => setSourceLens("scanner")}
+            label={`Scanner · ${mix.scanner}`}
+          />
+          <Chip
+            active={sourceLens === "news"}
+            onClick={() => setSourceLens("news")}
+            label={`News · ${mix.news}`}
+          />
+        </div>
+        <div className="mt-2 flex gap-2 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
           <Chip
             active={areaFilter === "all"}
             onClick={() => setAreaFilter("all")}
@@ -182,7 +218,9 @@ function LiveList({
 
       {liveItems.length === 0 ? (
         <p className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-          {wireLive ? "No stories match these filters." : "Pulling Capital Region newsrooms…"}
+          {wireLive
+            ? "No matching activity in the last 24 hours. NYSP posts the daily blotter at 7 AM ET."
+            : "Pulling NYSP blotter, scanner, 511, and newsrooms…"}
         </p>
       ) : (
         <ul className="flex flex-col gap-2.5">

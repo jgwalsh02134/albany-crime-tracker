@@ -107,7 +107,7 @@ function looksLikeMpegTs(bytes: Uint8Array): boolean {
   return bytes[0] === 0x47 && (bytes[188] === 0x47 || bytes.length < 376);
 }
 
-async function transcribeAudioFile(
+export async function transcribeAudioFile(
   bytes: Uint8Array,
   filename: string,
   mime: string,

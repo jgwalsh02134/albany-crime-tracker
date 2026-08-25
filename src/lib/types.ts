@@ -82,6 +82,17 @@ export const MUNICIPALITIES = [
   "Westerlo",
   "Rensselaerville",
   "Altamont",
+  "Troy",
+  "Rensselaer",
+  "East Greenbush",
+  "Schodack",
+  "Brunswick",
+  "Clifton Park",
+  "Saratoga Springs",
+  "Schenectady",
+  "Rotterdam",
+  "Niskayuna",
+  "Glenville",
 ] as const;
 
 export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];

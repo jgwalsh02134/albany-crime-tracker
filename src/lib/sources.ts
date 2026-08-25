@@ -42,7 +42,7 @@ function normalizeTier(raw: string, kind: SourceKind): SourceTier {
 }
 
 function sourceUrl(kind: SourceKind, name: string, agencyAbbr: string): string {
-  if (kind === "scanner") return "https://openmhz.com/system/albanycony";
+  if (kind === "scanner") return "https://www.broadcastify.com/listen/feed/3626";
   if (kind === "nixle") return "https://local.nixle.com/albany-police-department/";
   if (kind === "cfs" || kind === "opendata") return "https://data.albanyny.gov/";
   if (kind === "news") {
@@ -60,7 +60,7 @@ function sourceLabel(kind: SourceKind, name: string, agencyAbbr: string): string
   if (kind === "press") return `${agencyAbbr} press`;
   if (kind === "cfs") return "Calls for service";
   if (kind === "nixle") return "Nixle";
-  if (kind === "scanner") return "OpenMHz P25";
+  if (kind === "scanner") return name.includes("Fire") ? "Albany Fire radio" : "Broadcastify P25";
   return name;
 }
 
@@ -146,6 +146,8 @@ export function verificationWhy(inc: Incident): string {
   return "Source mix is thin — treat as unconfirmed.";
 }
 
+export type ActivityKind = "news" | "blotter" | "scanner" | "traffic";
+
 export type LiveWireItem = {
   id: string;
   title: string;
@@ -155,6 +157,14 @@ export type LiveWireItem = {
   publishedAt: string;
   minutesAgo: number;
   image?: string;
+  kind?: ActivityKind;
+  municipality?: string;
+  address?: string;
+  agency?: string;
+  category?: string;
+  status?: string;
+  lat?: number;
+  lng?: number;
 };
 
 function tokens(s: string): string[] {
@@ -223,15 +233,23 @@ function classify(title: string): { type: string; category: Incident["category"]
     return { type: "shots-fired", category: "violent", severity: "critical" };
   }
   if (/\b(fire|blaze|2-alarm|two-alarm)\b/.test(t)) return { type: "fire", category: "other", severity: "high" };
-  if (/\b(crash|collision|fatal)\b/.test(t) || (/\bkilled\b/.test(t) && /\b(car|vehicle|traffic)\b/.test(t))) {
+  if (/\bfatal crash\b|\baccident - fatal\b/.test(t)) return { type: "crash", category: "other", severity: "critical" };
+  if (/\b(crash|collision|hit-and-run|hit & run|accident - )\b/.test(t)) {
     return { type: "crash", category: "other", severity: "high" };
   }
-  if (/\bkilled\b/.test(t)) return { type: "homicide", category: "violent", severity: "critical" };
+  if (/\bdwi|intoxicat/.test(t)) return { type: "dwi", category: "other", severity: "high" };
+  if (/\bdomestic\b/.test(t)) return { type: "domestic", category: "violent", severity: "high" };
   if (/\b(robbery|carjack)\b/.test(t)) return { type: "robbery", category: "violent", severity: "high" };
   if (/\bassault\b/.test(t)) return { type: "assault", category: "violent", severity: "high" };
-  if (/\b(burglary|break-in)\b/.test(t)) return { type: "burglary", category: "property", severity: "medium" };
+  if (/\b(burglary|break-in|alarm - burglary)\b/.test(t)) return { type: "burglary", category: "property", severity: "medium" };
   if (/\b(theft|stolen|larceny)\b/.test(t)) return { type: "larceny", category: "property", severity: "medium" };
+  if (/\bdrug\b/.test(t)) return { type: "drugs", category: "other", severity: "medium" };
+  if (/\bwelfare check\b/.test(t)) return { type: "welfare-check", category: "other", severity: "medium" };
+  if (/\bdisturbance\b/.test(t)) return { type: "disturbance", category: "other", severity: "medium" };
+  if (/\b(harassment|trespass)\b/.test(t)) return { type: "trespass", category: "other", severity: "medium" };
+  if (/\bsuspicious\b/.test(t)) return { type: "suspicious", category: "other", severity: "low" };
   if (/\b(arrest|charged|indicted)\b/.test(t)) return { type: "arrest", category: "other", severity: "medium" };
+  if (/\bdisabled vehicle\b/.test(t)) return { type: "disabled-vehicle", category: "other", severity: "low" };
   return { type: "public-safety", category: "other", severity: "medium" };
 }
 
@@ -242,28 +260,38 @@ function hashId(s: string): string {
 }
 
 export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
-  return clusterWire(wire).map((group) => {
+  const news = wire.filter((w) => (w.kind ?? "news") === "news");
+  const other = wire.filter((w) => (w.kind ?? "news") !== "news");
+  const clustered = clusterWire(news);
+  const groups: LiveWireItem[][] = [...other.map((w) => [w]), ...clustered];
+  return groups.map((group) => {
     const item = group[0]!;
     const hay = group.map((g) => `${g.title} ${g.summary}`).join(" ");
-    const place = placeOf(hay);
-    const kind = classify(item.title);
-    const muni = place.name === "Albany County" ? "Albany" : place.name;
+    const place = item.municipality
+      ? { name: item.municipality, lat: item.lat ?? 42.6526, lng: item.lng ?? -73.7562 }
+      : placeOf(hay);
+    const kind = classify(`${item.title} ${item.category ?? ""}`);
+    const muni = item.municipality && item.municipality !== "Albany County" ? item.municipality : place.name === "Albany County" ? "Albany" : place.name;
     const jitter = (item.title.length % 7) * 0.0018;
     const seen = new Set<string>();
     const sources: IncidentSource[] = [];
     for (const g of group) {
       if (seen.has(g.url)) continue;
       seen.add(g.url);
+      const activity = g.kind ?? "news";
       sources.push({
-        kind: "news",
+        kind: activity === "blotter" ? "blotter" : activity === "scanner" ? "scanner" : activity === "traffic" ? "cfs" : "news",
         name: g.outlet,
-        tier: "context",
+        tier: activity === "blotter" || activity === "traffic" ? "official" : activity === "scanner" ? "unconfirmed" : "context",
         url: g.url,
         excerpt: g.summary || g.title,
       });
     }
+    const activity = item.kind ?? "news";
+    const verification: Incident["verification"] =
+      activity === "blotter" || activity === "traffic" ? "confirmed" : activity === "scanner" ? "scanner" : "developing";
     return {
-      id: hashId(item.url),
+      id: item.id.startsWith("nysp-") || item.id.startsWith("scan-") ? item.id : hashId(item.url),
       minutesAgo: item.minutesAgo,
       occurredAt: item.publishedAt,
       title: item.title,
@@ -272,14 +300,14 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       severity: kind.severity,
       status: item.minutesAgo <= 180 ? "active" : item.minutesAgo <= 24 * 60 ? "developing" : "closed",
       municipality: muni,
-      address: place.name === "Albany County" ? "Countywide" : place.name,
-      lat: place.lat + jitter,
-      lng: place.lng - jitter,
-      agency: item.outlet,
-      agencyAbbr: item.outlet.replace(/\s+/g, "").slice(0, 6).toUpperCase(),
+      address: item.address || (place.name === "Albany County" ? "Countywide" : place.name),
+      lat: (item.lat ?? place.lat) + (activity === "news" ? jitter : 0),
+      lng: (item.lng ?? place.lng) - (activity === "news" ? jitter : 0),
+      agency: item.agency || item.outlet,
+      agencyAbbr: activity === "blotter" ? "NYSP" : activity === "scanner" ? "SCAN" : item.outlet.replace(/\s+/g, "").slice(0, 6).toUpperCase(),
       description: item.summary || item.title,
       sources,
-      verification: "developing",
+      verification,
       origin: "live",
     } satisfies Incident;
   });

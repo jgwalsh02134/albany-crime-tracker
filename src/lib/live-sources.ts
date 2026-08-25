@@ -1,25 +1,35 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { LiveWireItem } from "./sources";
+import { fetchNyspBlotter } from "./nysp-blotter";
+import { scannerItems, startScannerPoll } from "./scanner-poll";
 
 const FEEDS: { url: string; outlet: string }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
   { url: "https://www.news10.com/news/crime/feed/", outlet: "News10" },
   { url: "https://cbs6albany.com/news/local.rss", outlet: "CBS6" },
   { url: "https://wnyt.com/feed/", outlet: "WNYT" },
+  { url: "https://www.wamc.org/news.rss", outlet: "WAMC" },
   {
-    url: "https://news.google.com/rss/search?q=Albany+County+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    url: "https://news.google.com/rss/search?q=Albany+County+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Google News",
   },
 ];
 
 const LOCAL =
-  /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g)\b/i;
+  /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g|clifton park|troy|schenectady|rensselaer|sand lake|schodack|east greenbush)\b/i;
 const CRIME =
-  /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrest|fire|blaze|killed|injured|fatal|burglary|assault|charged|vandal|carjack|wanted|bomb|arson|hit-and-run)\b/i;
+  /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrest|fire|blaze|killed|injured|fatal|burglary|assault|charged|vandal|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|trooper|state police|sheriff)\b/i;
 const DROP =
-  /\b(weather forecast|sports|football|baseball|soccer|high school|seasonably|rain chances|speedway|autism|op-ed|letter to the editor|stock|recipe|police chief|job posting|retired before|common council|initiative|camera expansion|suspended without pay|k9|hiring|season preview)\b/i;
+  /\b(weather forecast|sports|football|baseball|soccer|high school|seasonably|rain chances|speedway|autism|op-ed|letter to the editor|stock|recipe|job posting|retired before|common council|initiative|camera expansion|suspended without pay|hiring|season preview|concert|festival)\b/i;
+const NOTABLE_BLOTTER =
+  /fatal|personal injury|dwi|burglary|robbery|assault|homicide|shoot|stab|domestic|gun|weapon|arrest|hit & run|hit-and-run|fire|larceny|fraud|harassment|trespass/i;
+const COURT_ONLY =
+  /\b(sentenced|years in prison|plea|convicted|verdict|gets \d+ years)\b/i;
 
-const UA = "AlbanyCountyCrimeTracker/1.0 (+https://albanypulse.com)";
+const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
+const CAP_COUNTIES = new Set(["albany", "rensselaer", "schenectady", "saratoga"]);
+const LIVE_MIN = 24 * 60;
+const NEWS_MIN = 72 * 60;
 
 function decode(raw: string): string {
   const named: Record<string, string> = {
@@ -110,7 +120,7 @@ function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean):
     seen.add(url);
     const published = Date.parse(tag(block, "pubDate") || tag(block, "dc:date")) || now;
     const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
-    if (minutesAgo > 72 * 60) continue;
+    if (minutesAgo > NEWS_MIN) continue;
     out.push({
       id: url,
       title,
@@ -120,13 +130,13 @@ function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean):
       publishedAt: new Date(published).toISOString(),
       minutesAgo,
       image: parseImage(block),
+      kind: "news",
     });
   }
   return out;
 }
 
-async function collectWire() {
-  const now = Date.now();
+async function collectNews(now: number) {
   const batches = await Promise.all(
     FEEDS.map(async (feed) => {
       try {
@@ -153,7 +163,7 @@ async function collectWire() {
   const seenNews = new Set<string>();
   const seenCrime = new Set<string>();
   const stories: LiveWireItem[] = [];
-  const items: LiveWireItem[] = [];
+  const crime: LiveWireItem[] = [];
   const liveOutlets: string[] = [];
   for (const batch of batches) {
     if ((batch.news.length || batch.crime.length) && !liveOutlets.includes(batch.outlet)) {
@@ -164,7 +174,7 @@ async function collectWire() {
       if (seenCrime.has(row.url) || seenCrime.has(key)) continue;
       seenCrime.add(row.url);
       seenCrime.add(key);
-      items.push(row);
+      crime.push(row);
     }
     for (const row of batch.news) {
       const key = row.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -174,14 +184,187 @@ async function collectWire() {
       stories.push(row);
     }
   }
-  items.sort((a, b) => a.minutesAgo - b.minutesAgo);
-  stories.sort((a, b) => a.minutesAgo - b.minutesAgo);
+  return { crime, stories, liveOutlets };
+}
+
+type DotEvent = {
+  ID?: string;
+  CountyName?: string;
+  EventType?: string;
+  Description?: string;
+  RoadwayName?: string;
+  Severity?: string;
+  Reported?: string;
+  Latitude?: number;
+  Longitude?: number;
+};
+
+function parse511When(raw: string | undefined, now: number): number {
+  if (!raw) return now;
+  const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) {
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? t : now;
+  }
+  const iso = `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:${m[6]}`;
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : now;
+}
+
+async function fetch511(now: number): Promise<LiveWireItem[]> {
+  try {
+    const res = await fetch("https://511ny.org/api/getevents?format=json", {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const events = (await res.json()) as DotEvent[];
+    const out: LiveWireItem[] = [];
+    for (const e of events) {
+      if ((e.EventType || "") !== "accidentsAndIncidents") continue;
+      const county = (e.CountyName || "").toLowerCase();
+      if (county && !CAP_COUNTIES.has(county)) continue;
+      const desc = e.Description || "";
+      if (!county && !LOCAL.test(desc)) continue;
+      const at = parse511When(e.Reported, now);
+      const minutesAgo = Math.max(0, Math.round((now - at) / 60_000));
+      if (minutesAgo > LIVE_MIN) continue;
+      const road = e.RoadwayName || "Roadway";
+      const place = county ? county.replace(/\b\w/g, (c) => c.toUpperCase()) : "Capital District";
+      const sev = e.Severity && e.Severity !== "Unknown" ? `${e.Severity} crash` : "Crash";
+      out.push({
+        id: `511-${e.ID || road}-${at}`,
+        title: `${sev} — ${road}`,
+        url: "https://511ny.org/region/Capital%20Region%20Albany%20Saratoga%20Area",
+        outlet: "511NY",
+        summary: desc.slice(0, 220),
+        publishedAt: new Date(at).toISOString(),
+        minutesAgo,
+        kind: "traffic",
+        municipality: place,
+        address: road,
+        agency: "NYSDOT 511",
+        lat: typeof e.Latitude === "number" ? e.Latitude : undefined,
+        lng: typeof e.Longitude === "number" ? e.Longitude : undefined,
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchNyspPress(now: number): Promise<LiveWireItem[]> {
+  try {
+    const res = await fetch("https://troopers.ny.gov/nysp-newsroom", {
+      headers: { "User-Agent": UA, Accept: "text/html" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return [];
+    const html = await res.text();
+    const candidates: { path: string; title: string }[] = [];
+    const seen = new Set<string>();
+    for (const m of html.matchAll(/href="(\/news\/[^"]+)"/g)) {
+      const path = m[1]!;
+      if (seen.has(path)) continue;
+      const slug = path.replace(/^\/news\//, "").replace(/-/g, " ");
+      if (!LOCAL.test(slug)) continue;
+      seen.add(path);
+      candidates.push({ path, title: slug });
+    }
+    const out: LiveWireItem[] = [];
+    for (const row of candidates.slice(0, 6)) {
+      const url = `https://troopers.ny.gov${row.path}`;
+      let published = now;
+      let title = row.title.replace(/\b\w/g, (c) => c.toUpperCase());
+      try {
+        const page = await fetch(url, {
+          headers: { "User-Agent": UA, Accept: "text/html" },
+          signal: AbortSignal.timeout(7000),
+        });
+        if (page.ok) {
+          const body = await page.text();
+          const dt =
+            body.match(/datetime="([^"]+)"/)?.[1] ||
+            body.match(/"datePublished"\s*:\s*"([^"]+)"/)?.[1];
+          if (dt) {
+            const t = Date.parse(dt);
+            if (Number.isFinite(t)) published = t;
+          }
+          const h = body.match(/<h1[^>]*>\s*(?:<span>)?([^<]{12,180})/i)?.[1];
+          if (h) title = decode(h).replace(/\s+/g, " ").trim();
+        }
+      } catch {
+        /* listing title is enough */
+      }
+      const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
+      if (minutesAgo > NEWS_MIN) continue;
+      out.push({
+        id: url,
+        title,
+        url,
+        outlet: "NYSP press",
+        summary: "New York State Police newsroom",
+        publishedAt: new Date(published).toISOString(),
+        minutesAgo,
+        kind: "news",
+        agency: "NYSP",
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function mergeActivity(parts: LiveWireItem[][]): LiveWireItem[] {
+  const seen = new Set<string>();
+  const out: LiveWireItem[] = [];
+  for (const part of parts) {
+    for (const row of part) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push(row);
+    }
+  }
+  out.sort((a, b) => a.minutesAgo - b.minutesAgo);
+  return out;
+}
+
+function notable(row: LiveWireItem): boolean {
+  return NOTABLE_BLOTTER.test(`${row.title} ${row.category ?? ""} ${row.summary}`);
+}
+
+async function collectWire() {
+  const now = Date.now();
+  startScannerPoll();
+  const [news, blotter, traffic, press] = await Promise.all([
+    collectNews(now),
+    fetchNyspBlotter(now).catch(() => [] as LiveWireItem[]),
+    fetch511(now),
+    fetchNyspPress(now).catch(() => [] as LiveWireItem[]),
+  ]);
+  const scan = scannerItems(now);
+  const blotterLive = blotter.filter((r) => r.minutesAgo <= LIVE_MIN);
+  const blotterNews = blotter.filter((r) => r.minutesAgo > LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
+  const liveNews = [...news.crime, ...press].filter(
+    (r) => r.minutesAgo <= LIVE_MIN && !COURT_ONLY.test(`${r.title} ${r.summary}`),
+  );
+  const items = mergeActivity([blotterLive, scan, traffic, liveNews]);
+  const stories = mergeActivity([news.stories, blotterNews.map((r) => ({ ...r, kind: "news" as const }))]);
+  const outlets = [
+    blotterLive.length ? "NYSP blotter" : "",
+    scan.length ? "Scanner" : "",
+    traffic.length ? "511NY" : "",
+    press.length ? "NYSP press" : "",
+    ...news.liveOutlets,
+  ].filter(Boolean);
   return {
     ok: true as const,
     at: now,
-    items: items.slice(0, 16),
-    stories: stories.slice(0, 28),
-    outlets: liveOutlets,
+    items: items.slice(0, 160),
+    stories: stories.slice(0, 40),
+    outlets,
   };
 }
 

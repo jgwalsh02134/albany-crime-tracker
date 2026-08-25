@@ -15,7 +15,7 @@ async function snapshot(): Promise<string> {
     const mins = Math.round((now - new Date(i.occurredAt).getTime()) / 60000);
     return `- ${i.severity.toUpperCase()} | ${i.title} | ${i.municipality} | ${mins}m ago | ${i.agency} | ${i.sources[0]?.url ?? ""}`;
   });
-  return `Live newsroom wire only (not a CAD dump). ${all.length} Capital Region public-safety headlines:\n${lines.join("\n") || "(none right now)"}`;
+  return `Live Capital District activity, last 24 hours (NYSP blotter, scanner captions, 511 crashes, breaking news). ${all.length} items:\n${lines.join("\n") || "(none right now)"}`;
 }
 
 export const askCrimeAi = createServerFn({ method: "POST" })
@@ -50,7 +50,7 @@ export const askCrimeAi = createServerFn({ method: "POST" })
           {
             role: "system",
             content:
-              "You are the Albany County Crime Tracker assistant. Answer only about public-safety activity in Albany County, NY. The snapshot is a live newsroom wire (News10, CBS6, Google News), NOT a live police CAD feed. Never treat those headlines as confirmed blotter incidents. Never invent arrests, names of victims, or charges that are not in the snapshot. If asked something off-topic, steer back to county public safety.",
+              "You are the Albany County Crime Tracker assistant. Answer only about public-safety activity in the Capital District, NY. The snapshot mixes official NYSP blotter calls, unconfirmed scanner captions, 511 crashes, and newsroom headlines. Treat blotter/511 as official. Treat scanner as unconfirmed radio. Treat newsroom items as journalism, not CAD. Never invent arrests, names of victims, or charges that are not in the snapshot. If asked something off-topic, steer back to county public safety.",
           },
           {
             role: "system",

@@ -102,8 +102,11 @@ export function incidentVisible(
   inc: Incident,
   state: Pick<AppState, "severities" | "municipalities" | "areaFilter" | "sourceLens">,
 ): boolean {
-  if (!state.severities.includes(inc.severity)) return false;
-  if (!state.municipalities.includes(inc.municipality)) return false;
+  if (state.severities.length && !state.severities.includes(inc.severity)) return false;
+  const known = (MUNICIPALITIES as readonly string[]).includes(inc.municipality);
+  if (known && state.municipalities.length && !state.municipalities.includes(inc.municipality)) return false;
+  if (!known && state.areaFilter !== "all") return false;
+  if (!known && state.municipalities.length < MUNICIPALITIES.length) return false;
   if (state.areaFilter !== "all" && inc.municipality !== state.areaFilter) return false;
   if (!matchesSourceLens(inc, state.sourceLens)) return false;
   return true;

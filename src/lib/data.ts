@@ -38,19 +38,24 @@ export function matchesFilters(
 
 export const SOURCES = [
   {
-    name: "News10, CBS6, WNYT",
-    tier: "Newsroom",
-    detail: "Live RSS. Every Live/News card is a real article with a link to the original story.",
+    name: "NYSP Troop G / T blotter",
+    tier: "Official",
+    detail: "Daily public information reports. Crashes, DWI, arrests, and calls for service — not a news rewrite.",
   },
   {
-    name: "Google News · Capital Region",
-    tier: "Newsroom",
-    detail: "Public-safety query for Albany County. Used when local desks syndicate a story.",
-  },
-  {
-    name: "Broadcastify",
+    name: "Broadcastify Albany/Colonie PD",
     tier: "Scanner",
-    detail: "Live Albany County P25 audio. Captions are from the stream. No sample CAD log.",
+    detail: "Live P25 radio. Captions and Live cards from the stream are unconfirmed until a blotter or newsroom matches.",
+  },
+  {
+    name: "511NY",
+    tier: "Official",
+    detail: "NYSDOT crashes and incidents on Capital Region roads when NY posts them.",
+  },
+  {
+    name: "News10, CBS6, WNYT, WAMC",
+    tier: "Newsroom",
+    detail: "Journalism. Breaking crime under 24h also appears on Live. Older significant stories stay on News.",
   },
   {
     name: "Agency directory",

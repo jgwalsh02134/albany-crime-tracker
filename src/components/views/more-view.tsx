@@ -31,7 +31,7 @@ export function MoreView({ incidents }: { incidents: Incident[] }) {
     <div className="h-full overflow-y-auto overscroll-y-contain px-3 pb-8 pt-3 scrollbar-thin">
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Last 24 hours</h2>
-        <p className="mt-1 text-sm text-muted">Newsroom reports only — not CAD.</p>
+        <p className="mt-1 text-sm text-muted">NYSP blotter, scanner, 511, and newsroom activity — last 24 hours.</p>
         <div className="mt-2 grid grid-cols-3 gap-2">
           <Pattern n={day.length} l="stories" />
           <Pattern n={violent} l="violent" />
