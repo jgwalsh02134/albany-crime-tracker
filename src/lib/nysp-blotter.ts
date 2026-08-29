@@ -360,7 +360,7 @@ export function extractNyspText(
   return out;
 }
 
-async function textWithPoppler(buf: Uint8Array): Promise<string | null> {
+async function textWithPoppler(buf: Uint8Array, extra: string[] = ["-layout"]): Promise<string | null> {
   try {
     const { spawn } = await import("node:child_process");
     const { writeFileSync, unlinkSync, mkdtempSync, rmdirSync } = await import("node:fs");
@@ -370,7 +370,7 @@ async function textWithPoppler(buf: Uint8Array): Promise<string | null> {
     const pdfPath = join(dir, "in.pdf");
     writeFileSync(pdfPath, buf);
     const text = await new Promise<string>((resolve, reject) => {
-      const proc = spawn("pdftotext", ["-layout", "-enc", "UTF-8", pdfPath, "-"]);
+      const proc = spawn("pdftotext", [...extra, "-enc", "UTF-8", pdfPath, "-"]);
       const chunks: Buffer[] = [];
       const err: Buffer[] = [];
       const timer = setTimeout(() => {
@@ -413,6 +413,10 @@ async function textWithPdfParse(buf: Uint8Array): Promise<string> {
   }
 }
 
+function incidentHits(text: string): number {
+  return (text.match(/Incident\s*Number:\s*NY\d+/gi) || []).length;
+}
+
 async function fetchPdf(url: string): Promise<{ text: string; how: "poppler" | "pdf-parse" }> {
   const res = await fetch(url, {
     headers: {
@@ -425,18 +429,22 @@ async function fetchPdf(url: string): Promise<{ text: string; how: "poppler" | "
   if (!res.ok) throw new Error(`pdf-${res.status}`);
   const buf = new Uint8Array(await res.arrayBuffer());
   if (buf.byteLength < 32) throw new Error("pdf-empty");
-  const poppler = await textWithPoppler(buf);
-  if (poppler && /Incident\s*Number/i.test(poppler)) return { text: poppler, how: "poppler" };
+
+  const candidates: { text: string; how: "poppler" | "pdf-parse"; n: number }[] = [];
+  const layout = await textWithPoppler(buf, ["-layout"]);
+  if (layout) candidates.push({ text: layout, how: "poppler", n: incidentHits(layout) });
+  const raw = await textWithPoppler(buf, []);
+  if (raw) candidates.push({ text: raw, how: "poppler", n: incidentHits(raw) });
   try {
     const parsed = await textWithPdfParse(buf);
-    if (parsed && /Incident\s*Number/i.test(parsed)) return { text: parsed, how: "pdf-parse" };
-    if (poppler && poppler.length > 80) return { text: poppler, how: "poppler" };
-    if (parsed && parsed.length > 80) return { text: parsed, how: "pdf-parse" };
+    if (parsed) candidates.push({ text: parsed, how: "pdf-parse", n: incidentHits(parsed) });
   } catch (err) {
-    if (poppler && poppler.length > 80) return { text: poppler, how: "poppler" };
-    throw err;
+    console.error("[nysp] pdf-parse", url, err instanceof Error ? err.message : err);
   }
-  throw new Error("pdf-no-text");
+  candidates.sort((a, b) => b.n - a.n);
+  const best = candidates.find((c) => c.n > 0) ?? candidates.find((c) => c.text.length > 80);
+  if (!best) throw new Error("pdf-no-text");
+  return { text: best.text, how: best.how };
 }
 
 export type BlotterReport = {
