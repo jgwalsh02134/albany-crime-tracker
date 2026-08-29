@@ -155,6 +155,7 @@ export type WireHealth = {
   traffic: number;
   news: number;
   captions: boolean;
+  extractor?: string;
 };
 
 export type LiveWireItem = {

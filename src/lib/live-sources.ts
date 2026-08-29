@@ -356,6 +356,7 @@ async function collectWire() {
     traffic: traffic.length,
     news: liveNews.length,
     captions: Boolean(process.env.XAI_API_KEY),
+    extractor: blotterRes.extractor,
   };
   return {
     ok: true as const,

@@ -401,6 +401,49 @@ async function textWithPoppler(buf: Uint8Array, extra: string[] = ["-layout"]): 
   }
 }
 
+async function textWithPdfCli(buf: Uint8Array): Promise<string | null> {
+  try {
+    const { spawn } = await import("node:child_process");
+    const { writeFileSync, unlinkSync, mkdtempSync, rmdirSync, existsSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const cli = join(process.cwd(), "node_modules/pdf-parse/bin/cli.mjs");
+    if (!existsSync(cli)) return null;
+    const dir = mkdtempSync(join(tmpdir(), "nysp-cli-"));
+    const pdfPath = join(dir, "in.pdf");
+    writeFileSync(pdfPath, buf);
+    const text = await new Promise<string>((resolve, reject) => {
+      const proc = spawn(process.execPath, [cli, "text", pdfPath], { cwd: process.cwd() });
+      const chunks: Buffer[] = [];
+      const err: Buffer[] = [];
+      const timer = setTimeout(() => {
+        proc.kill("SIGKILL");
+        reject(new Error("pdf-cli-timeout"));
+      }, 25000);
+      proc.stdout.on("data", (c: Buffer) => chunks.push(c));
+      proc.stderr.on("data", (c: Buffer) => err.push(c));
+      proc.on("error", (e) => {
+        clearTimeout(timer);
+        reject(e);
+      });
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve(Buffer.concat(chunks).toString("utf8"));
+        else reject(new Error(Buffer.concat(err).toString("utf8") || `pdf-cli-${code}`));
+      });
+    });
+    try {
+      unlinkSync(pdfPath);
+      rmdirSync(dir);
+    } catch {
+      /* ignore */
+    }
+    return text;
+  } catch {
+    return null;
+  }
+}
+
 async function textWithPdfParse(buf: Uint8Array): Promise<string> {
   const mod = await import("pdf-parse");
   const PDFParse = mod.PDFParse;
@@ -431,6 +474,8 @@ async function fetchPdf(url: string): Promise<{ text: string; how: "poppler" | "
   if (buf.byteLength < 32) throw new Error("pdf-empty");
 
   const candidates: { text: string; how: "poppler" | "pdf-parse"; n: number }[] = [];
+  const cli = await textWithPdfCli(buf);
+  if (cli) candidates.push({ text: cli, how: "pdf-parse", n: incidentHits(cli) });
   const layout = await textWithPoppler(buf, ["-layout"]);
   if (layout) candidates.push({ text: layout, how: "poppler", n: incidentHits(layout) });
   const raw = await textWithPoppler(buf, []);
