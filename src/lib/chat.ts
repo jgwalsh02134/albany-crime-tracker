@@ -1,5 +1,4 @@
 import { createServerFn } from "@tanstack/react-start";
-import { fetchLiveWire } from "./live-sources";
 import { wireToIncidents } from "./sources";
 
 const MAX_PROMPT = 800;
@@ -9,13 +8,33 @@ type ChatTurn = { role: "user" | "assistant"; content: string };
 
 async function snapshot(): Promise<string> {
   const now = Date.now();
+  const { fetchLiveWire } = await import("./live-sources");
   const wire = await fetchLiveWire();
   const all = wireToIncidents(wire.items);
-  const lines = all.slice(0, 18).map((i) => {
+  const byMuni = new Map<string, number>();
+  const byType = new Map<string, number>();
+  for (const i of all) {
+    byMuni.set(i.municipality, (byMuni.get(i.municipality) ?? 0) + 1);
+    byType.set(i.type, (byType.get(i.type) ?? 0) + 1);
+  }
+  const muni = [...byMuni.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([n, c]) => `${n} ${c}`)
+    .join(", ");
+  const types = [...byType.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([n, c]) => `${n} ${c}`)
+    .join(", ");
+  const lines = all.slice(0, 50).map((i) => {
     const mins = Math.round((now - new Date(i.occurredAt).getTime()) / 60000);
-    return `- ${i.severity.toUpperCase()} | ${i.title} | ${i.municipality} | ${mins}m ago | ${i.agency} | ${i.sources[0]?.url ?? ""}`;
+    return `- ${i.severity.toUpperCase()} | ${i.title} | ${i.municipality} | ${mins}m ago | ${i.agency} | ${i.sources[0]?.kind ?? ""}`;
   });
-  return `Live Capital District activity, last 24 hours (NYSP blotter, scanner captions, 511 crashes, breaking news). ${all.length} items:\n${lines.join("\n") || "(none right now)"}`;
+  const health = wire.health
+    ? `Official blotter ${wire.health.blotter}, scanner ${wire.health.scanner}, 511 ${wire.health.traffic}, news ${wire.health.news}.`
+    : "";
+  return `Live Capital District activity (NYSP blotter through ~7 AM ET, plus scanner captions, 511 crashes, breaking news). ${all.length} items. ${health}\nTowns: ${muni || "none"}\nTypes: ${types || "none"}\n${lines.join("\n") || "(none right now)"}`;
 }
 
 export const askCrimeAi = createServerFn({ method: "POST" })

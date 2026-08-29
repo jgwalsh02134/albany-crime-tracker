@@ -3,7 +3,7 @@ import { IncidentCard } from "@/components/incident-card";
 import { NewsView } from "@/components/views/news-view";
 import { areaCounts } from "@/lib/data";
 import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
-import { type LiveWireItem, sourceMix } from "@/lib/sources";
+import { type LiveWireItem, type WireHealth, sourceMix } from "@/lib/sources";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import type { Incident, NewsStory } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,7 @@ export function FeedView({
   wire,
   wireLive,
   wireOutlets = [],
+  wireHealth = null,
   refreshing = false,
   onRefresh,
 }: {
@@ -22,6 +23,7 @@ export function FeedView({
   wire: LiveWireItem[];
   wireLive: boolean;
   wireOutlets?: string[];
+  wireHealth?: WireHealth | null;
   refreshing?: boolean;
   onRefresh?: () => Promise<void> | void;
 }) {
@@ -80,6 +82,7 @@ export function FeedView({
           newest={newest}
           wireLive={wireLive}
           wireOutlets={wireOutlets}
+          wireHealth={wireHealth}
           onSelect={select}
           refreshing={refreshing}
           onRefresh={onRefresh}
@@ -105,6 +108,7 @@ function LiveList({
   newest,
   wireLive,
   wireOutlets,
+  wireHealth,
   onSelect,
   refreshing,
   onRefresh,
@@ -120,6 +124,7 @@ function LiveList({
   newest?: Incident;
   wireLive: boolean;
   wireOutlets: string[];
+  wireHealth: WireHealth | null;
   onSelect: (id: string) => void;
   refreshing: boolean;
   onRefresh?: () => Promise<void> | void;
@@ -172,7 +177,9 @@ function LiveList({
         </p>
       </div>
       <p className="pb-2 text-xs leading-snug text-subtle">
-        NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511, and breaking crime since then.
+        {wireLive && wireHealth && wireHealth.blotter === 0 && wireHealth.blotterFailed > 0
+          ? "NYSP’s daily blotter is delayed. Radio, 511, and newsrooms still update — this is not a city CAD dump."
+          : "NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511, and breaking crime since then."}
         {wireOutlets.length ? ` · ${wireOutlets.slice(0, 4).join(" · ")}` : ""}
       </p>
 

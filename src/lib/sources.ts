@@ -1,4 +1,4 @@
-import type { Incident, IncidentSource, SourceKind, SourceLens, SourceTier, Verification } from "./types";
+import type { Incident, IncidentSource, ScannerCall, SourceKind, SourceLens, SourceTier, Verification } from "./types";
 
 export const OFFICIAL_KINDS = new Set<SourceKind>(["blotter", "cfs", "nixle", "press", "opendata"]);
 
@@ -147,6 +147,15 @@ export function verificationWhy(inc: Incident): string {
 }
 
 export type ActivityKind = "news" | "blotter" | "scanner" | "traffic";
+
+export type WireHealth = {
+  blotter: number;
+  blotterFailed: number;
+  scanner: number;
+  traffic: number;
+  news: number;
+  captions: boolean;
+};
 
 export type LiveWireItem = {
   id: string;
@@ -335,4 +344,30 @@ function clusterWire(items: LiveWireItem[]): LiveWireItem[][] {
 
 export function mergeLiveFeed(_seed: Incident[], wire: LiveWireItem[]): Incident[] {
   return wireToIncidents(wire);
+}
+
+export function wireToScannerCalls(wire: LiveWireItem[]): ScannerCall[] {
+  return wire
+    .filter((w) => (w.kind ?? "news") === "scanner")
+    .map((w) => {
+      const hay = `${w.agency} ${w.title} ${w.summary}`;
+      const discipline: ScannerCall["discipline"] = /\b(fire|ems|rescue|ambulance)\b/i.test(hay)
+        ? /ems|ambulance/i.test(hay)
+          ? "ems"
+          : "fire"
+        : "police";
+      return {
+        id: w.id,
+        minutesAgo: w.minutesAgo,
+        occurredAt: w.publishedAt,
+        talkgroup: w.agency || "Dispatch",
+        discipline,
+        summary: w.title,
+        durationSec: 6,
+        priority: /weapon|shots|priority|10-13/i.test(hay) ? "high" : "medium",
+        agency: w.agency || "Scanner",
+        channel: w.outlet,
+        municipality: w.municipality || "Albany",
+      };
+    });
 }

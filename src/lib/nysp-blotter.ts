@@ -1,4 +1,3 @@
-import { PDFParse } from "pdf-parse";
 import type { LiveWireItem } from "./sources";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
@@ -78,8 +77,8 @@ const FEEDS: { troop: string; zone: number }[] = [
   { troop: "T", zone: 2 },
 ];
 
-let cache: { at: number; items: LiveWireItem[] } | null = null;
-const CACHE_MS = 10 * 60_000;
+let cache: { at: number; items: LiveWireItem[]; tried: number; failed: number; extractor: "poppler" | "pdf-parse" | "none" } | null = null;
+const CACHE_MS = 5 * 60_000;
 
 function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
@@ -279,7 +278,7 @@ export function extractNyspText(
 ): LiveWireItem[] {
   const body = clean(text);
   const out: LiveWireItem[] = [];
-  const chunks = body.split(/Incident Number:\s*(?=NY\d+)/i);
+  const chunks = body.split(/Incident\s*Number:\s*(?=NY\d+)/i);
   for (const chunk of chunks) {
     const idm = chunk.match(/^(NY\d+)/i);
     if (!idm) continue;
@@ -361,14 +360,50 @@ export function extractNyspText(
   return out;
 }
 
-async function fetchPdf(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: { "User-Agent": UA, Accept: "application/pdf" },
-    signal: AbortSignal.timeout(15000),
-    redirect: "follow",
-  });
-  if (!res.ok) throw new Error(`pdf-${res.status}`);
-  const buf = new Uint8Array(await res.arrayBuffer());
+async function textWithPoppler(buf: Uint8Array): Promise<string | null> {
+  try {
+    const { spawn } = await import("node:child_process");
+    const { writeFileSync, unlinkSync, mkdtempSync, rmdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "nysp-"));
+    const pdfPath = join(dir, "in.pdf");
+    writeFileSync(pdfPath, buf);
+    const text = await new Promise<string>((resolve, reject) => {
+      const proc = spawn("pdftotext", ["-layout", "-enc", "UTF-8", pdfPath, "-"]);
+      const chunks: Buffer[] = [];
+      const err: Buffer[] = [];
+      const timer = setTimeout(() => {
+        proc.kill("SIGKILL");
+        reject(new Error("pdftotext-timeout"));
+      }, 20000);
+      proc.stdout.on("data", (c: Buffer) => chunks.push(c));
+      proc.stderr.on("data", (c: Buffer) => err.push(c));
+      proc.on("error", (e) => {
+        clearTimeout(timer);
+        reject(e);
+      });
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve(Buffer.concat(chunks).toString("utf8"));
+        else reject(new Error(Buffer.concat(err).toString("utf8") || `pdftotext-${code}`));
+      });
+    });
+    try {
+      unlinkSync(pdfPath);
+      rmdirSync(dir);
+    } catch {
+      /* ignore */
+    }
+    return text;
+  } catch {
+    return null;
+  }
+}
+
+async function textWithPdfParse(buf: Uint8Array): Promise<string> {
+  const mod = await import("pdf-parse");
+  const PDFParse = mod.PDFParse;
   const parser = new PDFParse({ data: buf });
   try {
     const result = await parser.getText();
@@ -378,16 +413,56 @@ async function fetchPdf(url: string): Promise<string> {
   }
 }
 
-export async function fetchNyspBlotter(now = Date.now()): Promise<LiveWireItem[]> {
-  if (cache && now - cache.at < CACHE_MS) return cache.items;
+async function fetchPdf(url: string): Promise<{ text: string; how: "poppler" | "pdf-parse" }> {
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": UA,
+      Accept: "application/pdf,*/*",
+    },
+    signal: AbortSignal.timeout(20000),
+    redirect: "follow",
+  });
+  if (!res.ok) throw new Error(`pdf-${res.status}`);
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (buf.byteLength < 32) throw new Error("pdf-empty");
+  const poppler = await textWithPoppler(buf);
+  if (poppler && /Incident\s*Number/i.test(poppler)) return { text: poppler, how: "poppler" };
+  try {
+    const parsed = await textWithPdfParse(buf);
+    if (parsed && /Incident\s*Number/i.test(parsed)) return { text: parsed, how: "pdf-parse" };
+    if (poppler && poppler.length > 80) return { text: poppler, how: "poppler" };
+    if (parsed && parsed.length > 80) return { text: parsed, how: "pdf-parse" };
+  } catch (err) {
+    if (poppler && poppler.length > 80) return { text: poppler, how: "poppler" };
+    throw err;
+  }
+  throw new Error("pdf-no-text");
+}
+
+export type BlotterReport = {
+  items: LiveWireItem[];
+  tried: number;
+  failed: number;
+  extractor: "poppler" | "pdf-parse" | "none";
+};
+
+export async function fetchNyspBlotter(now = Date.now()): Promise<BlotterReport> {
+  if (cache && now - cache.at < CACHE_MS) {
+    return { items: cache.items, tried: cache.tried, failed: cache.failed, extractor: cache.extractor };
+  }
   const days = nyWeekdays(new Date(now));
+  let failed = 0;
+  let extractor: BlotterReport["extractor"] = "none";
   const jobs = FEEDS.flatMap((f) =>
     days.map(async (dow) => {
       const url = pdfUrl(f.troop, dow, f.zone);
       try {
-        const text = await fetchPdf(url);
+        const { text, how } = await fetchPdf(url);
+        extractor = how;
         return extractNyspText(text, f.troop, f.zone, url, now);
-      } catch {
+      } catch (err) {
+        failed += 1;
+        console.error("[nysp]", url, err instanceof Error ? err.message : err);
         return [] as LiveWireItem[];
       }
     }),
@@ -403,6 +478,9 @@ export async function fetchNyspBlotter(now = Date.now()): Promise<LiveWireItem[]
     }
   }
   items.sort((a, b) => a.minutesAgo - b.minutesAgo);
-  cache = { at: now, items };
-  return items;
+  const tried = jobs.length;
+  if (items.length > 0 || failed === 0) {
+    cache = { at: now, items, tried, failed, extractor };
+  }
+  return { items, tried, failed, extractor };
 }

@@ -188,6 +188,11 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
             <Share2 className="size-4" />
           </Button>
         </div>
+        {visible.length === 0 ? (
+          <p className="pointer-events-none mt-2 text-center text-xs text-subtle">
+            No mapped calls in this window. NYSP blotter pins appear after the 7 AM report.
+          </p>
+        ) : null}
       </div>
     </div>
   );

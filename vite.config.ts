@@ -157,6 +157,12 @@ export default defineConfig(({ command, isPreview }) => ({
     strictPort: true,
   },
   resolve: { tsconfigPaths: true },
+  ssr: {
+    external: ["pdf-parse"],
+  },
+  optimizeDeps: {
+    exclude: ["pdf-parse"],
+  },
   plugins: [
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.
@@ -175,7 +181,9 @@ export default defineConfig(({ command, isPreview }) => ({
             // manifest + head-tag middleware). Nitro v3 defaults serverDir to
             // false, so removing this silently unwires /?install=1 on deploys.
             serverDir: "./server",
-          }),
+            // pdf-parse breaks when Nitro bundles it; Railway uses poppler.
+            externals: { external: ["pdf-parse"] },
+          } as Parameters<typeof nitro>[0]),
         ]
       : []),
     viteReact(),

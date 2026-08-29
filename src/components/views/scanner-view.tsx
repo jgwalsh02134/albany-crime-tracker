@@ -750,12 +750,12 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
           </div>
 
           <p className="mt-3 text-xs text-subtle">
-            Live radio only. There is no sample CAD log.
+            Live radio. Captions are unconfirmed until they match a blotter or newsroom.
           </p>
 
           {filtered.length === 0 ? (
             <p className="mt-4 rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
-              No recorded talkgroups. Play a feed and start captions to see real traffic.
+              Play a feed and start captions to transcribe dispatch. Recent scanner lines also land on Live when the server can hear the stream.
             </p>
           ) : (
             <div className="mt-3 flex flex-col gap-5">

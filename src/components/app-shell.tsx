@@ -18,8 +18,7 @@ import { FeedView } from "@/components/views/feed-view";
 import { MapView } from "@/components/views/map-view";
 import { MoreView } from "@/components/views/more-view";
 import { ScannerView } from "@/components/views/scanner-view";
-import { getLiveWire } from "@/lib/live-sources";
-import { wireToIncidents, type LiveWireItem } from "@/lib/sources";
+import { wireToIncidents, wireToScannerCalls, type LiveWireItem, type WireHealth } from "@/lib/sources";
 import { useAppStore } from "@/lib/store";
 import type { NewsStory, ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -35,9 +34,11 @@ export function AppShell() {
   const [wire, setWire] = useState<LiveWireItem[]>([]);
   const [wireLive, setWireLive] = useState(false);
   const [wireOutlets, setWireOutlets] = useState<string[]>([]);
+  const [wireHealth, setWireHealth] = useState<WireHealth | null>(null);
   const [stories, setStories] = useState<LiveWireItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const incidents = useMemo(() => wireToIncidents(wire), [wire]);
+  const scannerCalls = useMemo(() => wireToScannerCalls(wire), [wire]);
   const news = useMemo(() => mergeWireNews([], stories.length ? stories : wire), [stories, wire]);
 
   const view = useAppStore((s) => s.view);
@@ -65,28 +66,21 @@ export function AppShell() {
 
   const pullWire = useCallback(async () => {
     try {
-      let res: { ok: boolean; items: LiveWireItem[]; stories?: LiveWireItem[]; outlets?: string[] } | null = null;
-      try {
-        res = await getLiveWire();
-      } catch {
-        res = null;
-      }
-      if (!res?.ok) {
-        const r = await fetch("/api/wire", { headers: { Accept: "application/json" } });
-        if (r.ok) {
-          res = (await r.json()) as {
-            ok: boolean;
-            items: LiveWireItem[];
-            stories?: LiveWireItem[];
-            outlets?: string[];
-          };
-        }
-      }
+      const r = await fetch("/api/wire", { headers: { Accept: "application/json" } });
+      if (!r.ok) return;
+      const res = (await r.json()) as {
+        ok: boolean;
+        items: LiveWireItem[];
+        stories?: LiveWireItem[];
+        outlets?: string[];
+        health?: WireHealth;
+      };
       if (!res?.ok) return;
       setWire(res.items);
       setStories(res.stories?.length ? res.stories : res.items);
-      setWireLive(res.items.length > 0 || (res.stories?.length ?? 0) > 0);
+      setWireLive(true);
       setWireOutlets(res.outlets ?? []);
+      setWireHealth(res.health ?? null);
     } catch {
       /* keep last good wire */
     }
@@ -180,6 +174,7 @@ export function AppShell() {
             wire={wire}
             wireLive={wireLive}
             wireOutlets={wireOutlets}
+            wireHealth={wireHealth}
             refreshing={refreshing}
             onRefresh={refresh}
           />
@@ -188,7 +183,7 @@ export function AppShell() {
           <MapView incidents={incidents} active={view === "map"} />
         </div>
         <div className={cn("absolute inset-0", view === "scanner" ? "block" : "hidden")}>
-          <ScannerView calls={[]} />
+          <ScannerView calls={scannerCalls} />
         </div>
         <div className={cn("absolute inset-0", view === "chat" ? "block" : "hidden")}>
           <ChatView />

@@ -21,10 +21,13 @@ const PLACE =
 
 function looksVoice(text: string): boolean {
   const t = text.trim();
-  if (t.length < 12) return false;
+  if (t.length < 18) return false;
   if (/^(silence|inaudible|music|blank|\.+)$/i.test(t)) return false;
-  if ((t.match(/,/g) || []).length >= 4 && /albany/i.test(t) && /colonie/i.test(t)) return false;
   if (!/[a-z]/i.test(t)) return false;
+  if ((t.match(/10-\d+/g) || []).length >= 3) return false;
+  if (/copy\s+en route\s+on scene/i.test(t)) return false;
+  if (/(?:^|,)\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}/.test(t)) return false;
+  if ((t.match(/,/g) || []).length >= 4) return false;
   const RADIO =
     /\b(10-\d+|copy|dispatch|en route|on scene|in custody|unit|officer|pd|fire|ems|rescue|ambulance|respond|priority|wanted|suspect|traffic stop|welfare|albany|colonie|latham|central|western|lark|pearl|car |truck|male|female|weapons)\b/i;
   return RADIO.test(t) || PLACE.test(t);

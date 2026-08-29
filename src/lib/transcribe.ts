@@ -13,24 +13,12 @@ const KEYTERMS = [
   "Cohoes",
   "Watervliet",
   "Menands",
-  "APD",
-  "AFD",
-  "NYSP",
-  "Thruway",
+  "Latham",
   "Western Avenue",
   "Central Avenue",
   "Lark Street",
   "Pearl Street",
   "Washington Avenue",
-  "10-4",
-  "10-10",
-  "10-13",
-  "10-33",
-  "copy",
-  "en route",
-  "on scene",
-  "in custody",
-  "dispatch",
 ];
 
 type ResolvedFeed = {
@@ -93,8 +81,12 @@ async function resolveHls(feedId: string): Promise<ResolvedFeed> {
 function looksBlank(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
-  if (t.length < 3) return true;
-  return /^(silence|\[?(blank|silence|inaudible|music)\]?|\(+.*?quiet.*?\)+)$/i.test(t);
+  if (t.length < 8) return true;
+  if (/^(silence|\[?(blank|silence|inaudible|music)\]?|\(+.*?quiet.*?\)+)$/i.test(t)) return true;
+  if ((t.match(/10-\d+/g) || []).length >= 3) return true;
+  if (/copy\s+en route\s+on scene/i.test(t)) return true;
+  if ((t.match(/,/g) || []).length >= 4) return true;
+  return false;
 }
 
 function decodeBase64(b64: string): Uint8Array {

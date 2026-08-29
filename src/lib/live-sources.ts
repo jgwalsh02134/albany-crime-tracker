@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import type { LiveWireItem } from "./sources";
+import type { LiveWireItem, WireHealth } from "./sources";
 import { fetchNyspBlotter, parseNyWhen } from "./nysp-blotter";
 import { scannerItems, startScannerPoll } from "./scanner-poll";
 
@@ -319,12 +319,16 @@ function notable(row: LiveWireItem): boolean {
 async function collectWire() {
   const now = Date.now();
   startScannerPoll();
-  const [news, blotter, traffic, press] = await Promise.all([
+  const [news, blotterRes, traffic, press] = await Promise.all([
     collectNews(now),
-    fetchNyspBlotter(now).catch(() => [] as LiveWireItem[]),
+    fetchNyspBlotter(now).catch((err) => {
+      console.error("[nysp] blotter", err instanceof Error ? err.message : err);
+      return { items: [] as LiveWireItem[], tried: 0, failed: 1, extractor: "none" as const };
+    }),
     fetch511(now),
     fetchNyspPress(now).catch(() => [] as LiveWireItem[]),
   ]);
+  const blotter = blotterRes.items;
   const scan = scannerItems(now);
   const blotterLive = blotter.filter((r) => r.minutesAgo <= BLOTTER_LIVE_MIN);
   const blotterNews = blotter.filter((r) => r.minutesAgo > BLOTTER_LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
@@ -345,12 +349,21 @@ async function collectWire() {
     press.length ? "NYSP press" : "",
     ...news.liveOutlets,
   ].filter(Boolean);
+  const health: WireHealth = {
+    blotter: blotterLive.length,
+    blotterFailed: blotterRes.failed,
+    scanner: scan.length,
+    traffic: traffic.length,
+    news: liveNews.length,
+    captions: Boolean(process.env.XAI_API_KEY),
+  };
   return {
     ok: true as const,
     at: now,
-    items: items.slice(0, 160),
+    items: items.slice(0, 200),
     stories: stories.slice(0, 40),
     outlets,
+    health,
   };
 }
 
