@@ -5,7 +5,7 @@ const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 const SKIP_CAT =
-  /property check|impounded|repossessed|lost\/stolen plates|vehicle - recovered|property found|^civil$/i;
+  /property check|impounded|repossessed|lost\/stolen plates|vehicle - recovered|property found|^civil$|public appearance/i;
 
 const MONTHS: Record<string, number> = {
   january: 1,
@@ -46,8 +46,15 @@ const PLACES: { re: RegExp; place: Place }[] = [
   { re: /\btroy\b/i, place: { name: "Troy", lat: 42.7284, lng: -73.6918 } },
   { re: /\brensselaer\b/i, place: { name: "Rensselaer", lat: 42.6426, lng: -73.7429 } },
   { re: /\bclifton park\b/i, place: { name: "Clifton Park", lat: 42.8586, lng: -73.7709 } },
-  { re: /\bhalfmoon\b/i, place: { name: "Clifton Park", lat: 42.843, lng: -73.713 } },
-  { re: /\bmalta\b|\bballston\b|\bmechanicville\b|\bwaterford\b|\bstillwater\b|\bwilton\b|\bmilton\b/i, place: { name: "Saratoga Springs", lat: 43.0831, lng: -73.7846 } },
+  { re: /\bhalfmoon\b/i, place: { name: "Halfmoon", lat: 42.843, lng: -73.713 } },
+  { re: /\bmalta\b/i, place: { name: "Malta", lat: 42.967, lng: -73.793 } },
+  { re: /\bballston\b/i, place: { name: "Ballston", lat: 42.955, lng: -73.879 } },
+  { re: /\bmechanicville\b/i, place: { name: "Mechanicville", lat: 42.904, lng: -73.69 } },
+  { re: /\bwaterford\b/i, place: { name: "Waterford", lat: 42.791, lng: -73.681 } },
+  { re: /\bstillwater\b/i, place: { name: "Stillwater", lat: 42.938, lng: -73.659 } },
+  { re: /\bwilton\b/i, place: { name: "Wilton", lat: 43.181, lng: -73.744 } },
+  { re: /\bmilton\b/i, place: { name: "Milton", lat: 43.035, lng: -73.853 } },
+  { re: /\bgreenfield\b/i, place: { name: "Greenfield", lat: 43.129, lng: -73.846 } },
   { re: /\bsaratoga\b/i, place: { name: "Saratoga Springs", lat: 43.0831, lng: -73.7846 } },
   { re: /\bniskayuna\b/i, place: { name: "Niskayuna", lat: 42.776, lng: -73.831 } },
   { re: /\brotterdam\b|\bduanesburg\b|\bprincetown\b/i, place: { name: "Rotterdam", lat: 42.787, lng: -73.971 } },
@@ -60,7 +67,7 @@ const CD_STATION =
   /\b(latham|schodack|brunswick|capital|clifton park|saratoga|wilton|malta|ballston|halfmoon|waterford|mechanicville|princetown|rotterdam|niskayuna|glenville|scotia|albany thruway|loudonville|bethlehem|guilderland|delmar|cohoes|watervliet|menands|east greenbush|north greenbush|castleton|sand lake)\b/i;
 
 const CD_PLACE =
-  /\b(albany|colonie|latham|loudonville|bethlehem|delmar|selkirk|glenmont|guilderland|altamont|cohoes|watervliet|green island|menands|new scotland|voorheesville|coeymans|ravena|westerlo|berne|knox|rensselaerville|troy|brunswick|schodack|castleton|east greenbush|north greenbush|rensselaer|nassau|sand lake|berlin|stephentown|hoosick|pittstown|poestenkill|grafton|clifton park|halfmoon|malta|ballston|waterford|mechanicville|stillwater|wilton|milton|saratoga|niskayuna|rotterdam|duanesburg|princetown|glenville|scotia|schenectady)\b/i;
+  /\b(albany|colonie|latham|loudonville|bethlehem|delmar|selkirk|glenmont|guilderland|altamont|cohoes|watervliet|green island|menands|new scotland|voorheesville|coeymans|ravena|westerlo|berne|knox|rensselaerville|troy|brunswick|schodack|castleton|east greenbush|north greenbush|rensselaer|nassau|sand lake|berlin|stephentown|hoosick|pittstown|poestenkill|grafton|clifton park|halfmoon|malta|ballston|waterford|mechanicville|stillwater|wilton|milton|greenfield|saratoga|niskayuna|rotterdam|duanesburg|princetown|glenville|scotia|schenectady)\b/i;
 
 const FEEDS: { troop: string; zone: number }[] = [
   { troop: "G", zone: 1 },
@@ -96,6 +103,8 @@ function clean(s: string): string {
     .replace(/ciizen|\bcizen\b/g, "citizen")
     .replace(/revocaon/g, "revocation")
     .replace(/identy the\b/gi, "identity theft")
+    .replace(/violaon/g, "violation")
+    .replace(/Ulity/g, "Utility")
     .replace(/cket\b/g, "ticket")
     .replace(/\s+/g, " ")
     .trim();
@@ -132,7 +141,7 @@ function zonedNy(year: number, month: number, day: number, hour: number, minute:
   return utc - (asIf - utc);
 }
 
-function parseWhen(raw: string): number | null {
+export function parseNyWhen(raw: string): number | null {
   const s = raw
     .replace(/Sta(?:tion|on):.*/i, "")
     .replace(/Arrestee.*/i, "")
@@ -227,6 +236,7 @@ function prettyCat(cat: string): string {
     "Suspicious person": "Suspicious person",
     "Disturbance - neighborhood": "Disturbance",
     "Drug/Alcohol - possession": "Drug possession",
+    "Drug/Alcohol - ABC law violation": "ABC violation",
     "Domestic - family offense": "Domestic",
     "Alarm - burglary": "Burglary alarm",
     "Road - blocked": "Road blocked",
@@ -235,8 +245,24 @@ function prettyCat(cat: string): string {
     "Trespass in-progress": "Trespass",
     "Animal - complaint": "Animal complaint",
     "Animal - dog complaint": "Dog complaint",
+    "Aid - locate person": "Locate person",
+    "Aid - ambulance": "Assist ambulance",
+    "Aid - aided case": "Aided person",
+    "Screaming person": "Screaming person",
+    "Disturbance - disorderly": "Disorderly",
+    "Disturbance - criminal mischief": "Criminal mischief",
+    "Child - endangering the welfare": "Child welfare",
+    "Missing - child": "Missing child",
+    "Larceny - from building": "Larceny · building",
+    "Larceny - from vehicle": "Larceny · vehicle",
+    "Larceny - of a vehicle": "Stolen vehicle",
+    "Larceny - other": "Larceny",
+    "TERPO/ERPO": "Protection order",
+    "Utility - odor of gas": "Gas odor",
+    "Menacing": "Menacing",
   };
-  return map[c] ?? c.replace(/^Vehicle - /i, "").replace(/^Aid - /i, "").replace(/^Larceny - /i, "Larceny · ");
+  const mapped = map[c] ?? c.replace(/^Vehicle - /i, "").replace(/^Aid - /i, "").replace(/^Larceny - /i, "Larceny · ");
+  return mapped.replace(/^([a-z])/, (ch) => ch.toUpperCase());
 }
 
 function field(chunk: string, label: string, until: string): string {
@@ -268,8 +294,8 @@ export function extractNyspText(
     const road = field(chunk, "Road\\/Highway", "Number of|Driver|Incident |Defendant");
     const injured = chunk.match(/Number Injured:\s*(\d+)/i)?.[1];
     const killed = chunk.match(/Number Killed:\s*(\d+)/i)?.[1];
-    const reportedAt = parseWhen(reportedRaw);
-    const arrestAt = parseWhen(clean(arrestRaw));
+    const reportedAt = parseNyWhen(reportedRaw);
+    const arrestAt = parseNyWhen(clean(arrestRaw));
     const at = [arrestAt, reportedAt]
       .filter((n): n is number => n != null)
       .sort((a, b) => b - a)[0];
@@ -302,7 +328,9 @@ export function extractNyspText(
           ? ` · ${injured} injured`
           : "";
     const roadBit = road && road.length < 48 ? road.replace(/^INTERSTATE\s+/i, "I-") : "";
-    const address = [roadBit, where || place.name].filter(Boolean).join(" · ");
+    const address = roadBit && where && roadBit.toLowerCase() !== where.toLowerCase()
+      ? `${roadBit} · ${where}`
+      : where || place.name;
     const summary = [
       `NYSP Troop ${troop} Zone ${zone}`,
       station,

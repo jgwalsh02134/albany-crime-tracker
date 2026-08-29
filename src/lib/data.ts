@@ -40,7 +40,7 @@ export const SOURCES = [
   {
     name: "NYSP Troop G / T blotter",
     tier: "Official",
-    detail: "Daily public information reports. Crashes, DWI, arrests, and calls for service — not a news rewrite.",
+    detail: "Daily public information reports covering 7:01 AM yesterday through 7:00 AM today. Crashes, DWI, arrests, and calls — not a news rewrite.",
   },
   {
     name: "Broadcastify Albany/Colonie PD",

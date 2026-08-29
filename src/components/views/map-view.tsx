@@ -122,7 +122,7 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
   }
 
   async function share() {
-    const text = `${visible.length} Albany County incidents in the last ${mapHours}h`;
+    const text = `${visible.length} Capital District incidents in the last ${mapHours}h`;
     try {
       if (navigator.share) await navigator.share({ title: "Albany County Crime Tracker", text });
       else await navigator.clipboard.writeText(text);

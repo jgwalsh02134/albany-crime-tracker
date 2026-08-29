@@ -243,13 +243,14 @@ function classify(title: string): { type: string; category: Incident["category"]
   if (/\bassault\b/.test(t)) return { type: "assault", category: "violent", severity: "high" };
   if (/\b(burglary|break-in|alarm - burglary)\b/.test(t)) return { type: "burglary", category: "property", severity: "medium" };
   if (/\b(theft|stolen|larceny)\b/.test(t)) return { type: "larceny", category: "property", severity: "medium" };
-  if (/\bdrug\b/.test(t)) return { type: "drugs", category: "other", severity: "medium" };
-  if (/\bwelfare check\b/.test(t)) return { type: "welfare-check", category: "other", severity: "medium" };
-  if (/\bdisturbance\b/.test(t)) return { type: "disturbance", category: "other", severity: "medium" };
-  if (/\b(harassment|trespass)\b/.test(t)) return { type: "trespass", category: "other", severity: "medium" };
+  if (/\bdrug\b|\babc violation\b/.test(t)) return { type: "drugs", category: "other", severity: "medium" };
+  if (/\bwelfare check\b|\bchild welfare\b/.test(t)) return { type: "welfare-check", category: "other", severity: "medium" };
+  if (/\bdisturbance\b|\bdisorderly\b|\bscreaming\b/.test(t)) return { type: "disturbance", category: "other", severity: "medium" };
+  if (/\b(harassment|trespass|menacing)\b/.test(t)) return { type: "trespass", category: "other", severity: "medium" };
   if (/\bsuspicious\b/.test(t)) return { type: "suspicious", category: "other", severity: "low" };
   if (/\b(arrest|charged|indicted)\b/.test(t)) return { type: "arrest", category: "other", severity: "medium" };
   if (/\bdisabled vehicle\b/.test(t)) return { type: "disabled-vehicle", category: "other", severity: "low" };
+  if (/\blocate person\b|\bmissing child\b/.test(t)) return { type: "missing-person", category: "other", severity: "high" };
   return { type: "public-safety", category: "other", severity: "medium" };
 }
 

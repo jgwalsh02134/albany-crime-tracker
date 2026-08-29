@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { LiveWireItem } from "./sources";
-import { fetchNyspBlotter } from "./nysp-blotter";
+import { fetchNyspBlotter, parseNyWhen } from "./nysp-blotter";
 import { scannerItems, startScannerPoll } from "./scanner-poll";
 
 const FEEDS: { url: string; outlet: string }[] = [
@@ -20,15 +20,18 @@ const LOCAL =
 const CRIME =
   /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrest|fire|blaze|killed|injured|fatal|burglary|assault|charged|vandal|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|trooper|state police|sheriff)\b/i;
 const DROP =
-  /\b(weather forecast|sports|football|baseball|soccer|high school|seasonably|rain chances|speedway|autism|op-ed|letter to the editor|stock|recipe|job posting|retired before|common council|initiative|camera expansion|suspended without pay|hiring|season preview|concert|festival)\b/i;
+  /\b(weather forecast|sports|football|baseball|soccer|high school|seasonably|rain chances|speedway|autism|op-ed|letter to the editor|stock|recipe|job posting|retired before|common council|initiative|camera expansion|suspended without pay|hiring|season preview|concert|festival|fitness|telehealth|auction|tropical storm|superintendent|retirement plans|holiday tour|drive-in|pokémon|pokemon|travers|we salute|settlement|beautiful weather)\b/i;
 const NOTABLE_BLOTTER =
-  /fatal|personal injury|dwi|burglary|robbery|assault|homicide|shoot|stab|domestic|gun|weapon|arrest|hit & run|hit-and-run|fire|larceny|fraud|harassment|trespass/i;
+  /fatal|personal injury|dwi|burglary|robbery|assault|homicide|shoot|stab|domestic|gun|weapon|arrest|hit & run|hit-and-run|fire|larceny|fraud|harassment|trespass|menacing|stolen/i;
 const COURT_ONLY =
-  /\b(sentenced|years in prison|plea|convicted|verdict|gets \d+ years)\b/i;
+  /\b(sentenced|years in prison|plea|convicted|verdict|gets \d+ years|indictment for)\b/i;
+const NOT_LIVE_NEWS =
+  /\b(lawsuit|file suit|sues |weekly|notable dwi|week in review)\b/i;
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const CAP_COUNTIES = new Set(["albany", "rensselaer", "schenectady", "saratoga"]);
 const LIVE_MIN = 24 * 60;
+const BLOTTER_LIVE_MIN = 36 * 60;
 const NEWS_MIN = 72 * 60;
 
 function decode(raw: string): string {
@@ -74,7 +77,7 @@ function outletFromTitle(title: string, fallback: string): { title: string; outl
   const m = title.match(/^(.*)\s[-–—]\s([^–—-]{2,40})$/);
   if (!m) return { title, outlet: fallback };
   const source = m[2]!.trim();
-  if (/NEWS10|WRGB|CBS ?6|WNYT|WAMC|Times Union|Spectrum/i.test(source)) {
+  if (/NEWS10|WRGB|CBS ?6|WNYT|WAMC|Times Union|Spectrum|Daily Gazette|Patch/i.test(source)) {
     return { title: m[1]!.trim(), outlet: source.replace(/\s+/g, " ") };
   }
   return { title, outlet: fallback };
@@ -262,43 +265,21 @@ async function fetchNyspPress(now: number): Promise<LiveWireItem[]> {
     });
     if (!res.ok) return [];
     const html = await res.text();
-    const candidates: { path: string; title: string }[] = [];
+    const out: LiveWireItem[] = [];
     const seen = new Set<string>();
-    for (const m of html.matchAll(/href="(\/news\/[^"]+)"/g)) {
+    const re =
+      /href="(\/news\/[^"]+)"[^>]*>\s*([^<]{10,200})[\s\S]{0,1200}?news-listing-date">\s*([^<]+?)\s*<\/div>[\s\S]{0,240}?news-listing-time">\s*([^<]+?)\s*</gi;
+    for (const m of html.matchAll(re)) {
       const path = m[1]!;
       if (seen.has(path)) continue;
-      const slug = path.replace(/^\/news\//, "").replace(/-/g, " ");
-      if (!LOCAL.test(slug)) continue;
       seen.add(path);
-      candidates.push({ path, title: slug });
-    }
-    const out: LiveWireItem[] = [];
-    for (const row of candidates.slice(0, 6)) {
-      const url = `https://troopers.ny.gov${row.path}`;
-      let published = now;
-      let title = row.title.replace(/\b\w/g, (c) => c.toUpperCase());
-      try {
-        const page = await fetch(url, {
-          headers: { "User-Agent": UA, Accept: "text/html" },
-          signal: AbortSignal.timeout(7000),
-        });
-        if (page.ok) {
-          const body = await page.text();
-          const dt =
-            body.match(/datetime="([^"]+)"/)?.[1] ||
-            body.match(/"datePublished"\s*:\s*"([^"]+)"/)?.[1];
-          if (dt) {
-            const t = Date.parse(dt);
-            if (Number.isFinite(t)) published = t;
-          }
-          const h = body.match(/<h1[^>]*>\s*(?:<span>)?([^<]{12,180})/i)?.[1];
-          if (h) title = decode(h).replace(/\s+/g, " ").trim();
-        }
-      } catch {
-        /* listing title is enough */
-      }
+      const title = decode(m[2]!).replace(/\s+/g, " ").trim();
+      const hay = `${title} ${path}`;
+      if (!LOCAL.test(hay)) continue;
+      const published = parseNyWhen(`${m[3]!.trim()} ${m[4]!.replace(/ET/i, "").trim()}`) ?? now;
       const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
       if (minutesAgo > NEWS_MIN) continue;
+      const url = `https://troopers.ny.gov${path}`;
       out.push({
         id: url,
         title,
@@ -345,13 +326,18 @@ async function collectWire() {
     fetchNyspPress(now).catch(() => [] as LiveWireItem[]),
   ]);
   const scan = scannerItems(now);
-  const blotterLive = blotter.filter((r) => r.minutesAgo <= LIVE_MIN);
-  const blotterNews = blotter.filter((r) => r.minutesAgo > LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
-  const liveNews = [...news.crime, ...press].filter(
-    (r) => r.minutesAgo <= LIVE_MIN && !COURT_ONLY.test(`${r.title} ${r.summary}`),
-  );
+  const blotterLive = blotter.filter((r) => r.minutesAgo <= BLOTTER_LIVE_MIN);
+  const blotterNews = blotter.filter((r) => r.minutesAgo > BLOTTER_LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
+  const liveNews = [...news.crime, ...press].filter((r) => {
+    const hay = `${r.title} ${r.summary}`;
+    return r.minutesAgo <= LIVE_MIN && !COURT_ONLY.test(hay) && !NOT_LIVE_NEWS.test(hay);
+  });
   const items = mergeActivity([blotterLive, scan, traffic, liveNews]);
-  const stories = mergeActivity([news.stories, blotterNews.map((r) => ({ ...r, kind: "news" as const }))]);
+  const stories = mergeActivity([
+    news.stories,
+    press.filter((r) => r.minutesAgo <= NEWS_MIN),
+    blotterNews.map((r) => ({ ...r, kind: "news" as const })),
+  ]);
   const outlets = [
     blotterLive.length ? "NYSP blotter" : "",
     scan.length ? "Scanner" : "",

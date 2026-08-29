@@ -1,6 +1,6 @@
 import { MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { compactFromMinutes, typeLabel } from "@/lib/format";
+import { clockTime, compactFromMinutes, typeLabel } from "@/lib/format";
 import type { Incident, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,9 @@ export function IncidentCard({
   const badge =
     kind === "blotter" ? "NYSP" : kind === "scanner" ? "Scanner" : kind === "cfs" ? "511NY" : "Newsroom";
   const badgeTone = kind === "blotter" || kind === "cfs" ? "cyan" : kind === "scanner" ? "accent" : "muted";
+  const loc = incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
+    ? incident.address
+    : `${incident.address} · ${incident.municipality}`;
 
   return (
     <button
@@ -44,19 +47,19 @@ export function IncidentCard({
             </>
           ) : null}
         </p>
-        <time className="shrink-0 font-mono text-xs font-semibold tabular-nums text-muted">
-          {compactFromMinutes(incident.minutesAgo)}
-        </time>
+        <p className="shrink-0 text-right">
+          <time className="block font-mono text-xs font-semibold tabular-nums text-fg">
+            {clockTime(incident.occurredAt)}
+          </time>
+          <span className="font-mono text-xs tabular-nums text-subtle">{compactFromMinutes(incident.minutesAgo)}</span>
+        </p>
       </div>
       <h3 className="mt-1 text-sm font-semibold leading-snug tracking-tight text-fg">
         {incident.title}
       </h3>
       <p className="mt-1.5 flex items-center gap-1.5 text-sm text-muted">
         <MapPin className="size-3.5 shrink-0 text-subtle" />
-        <span className="truncate">
-          {incident.address}
-          <span className="text-subtle"> · {incident.municipality}</span>
-        </span>
+        <span className="truncate">{loc}</span>
       </p>
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <Badge tone={incident.severity}>{incident.severity}</Badge>

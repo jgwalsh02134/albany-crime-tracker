@@ -23,9 +23,10 @@ function looksVoice(text: string): boolean {
   const t = text.trim();
   if (t.length < 12) return false;
   if (/^(silence|inaudible|music|blank|\.+)$/i.test(t)) return false;
+  if ((t.match(/,/g) || []).length >= 4 && /albany/i.test(t) && /colonie/i.test(t)) return false;
   if (!/[a-z]/i.test(t)) return false;
   const RADIO =
-    /\b(10-\d+|copy|dispatch|en route|on scene|in custody|unit|officer|pd|fire|ems|rescue|ambulance|respond|priority|wanted|suspect|traffic stop|welfare|albany|colonie|latham|central|western|lark|pearl)\b/i;
+    /\b(10-\d+|copy|dispatch|en route|on scene|in custody|unit|officer|pd|fire|ems|rescue|ambulance|respond|priority|wanted|suspect|traffic stop|welfare|albany|colonie|latham|central|western|lark|pearl|car |truck|male|female|weapons)\b/i;
   return RADIO.test(t) || PLACE.test(t);
 }
 
@@ -49,43 +50,44 @@ async function tickFeed(feedId: string) {
   const playlistUrl = feed.hlsFallback;
   const playlist = await http2GetText(playlistUrl, 8000);
   const segs = parseM3u8(playlist, playlistUrl);
-  const latest = segs.at(-1);
-  if (!latest) return;
+  const latestFew = segs.slice(-3);
   const seen = seenSeq.get(feedId) ?? new Set<number>();
-  if (seen.has(latest.seq)) return;
-  seen.add(latest.seq);
+  for (const latest of latestFew) {
+    if (seen.has(latest.seq)) continue;
+    seen.add(latest.seq);
+    const ts = await http2Get(latest.url, 8000);
+    const audio = extractAudioFromMpegTs(ts);
+    if (!audio || audio.bytes.byteLength < MIN_AUDIO) continue;
+    const result = await transcribeAudioFile(audio.bytes, audio.filename, audio.mime);
+    const spoken = result.text.trim();
+    if (!looksVoice(spoken)) continue;
+    const key = spoken.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (key === lastText.get(feedId)) continue;
+    lastText.set(feedId, key);
+    const now = Date.now();
+    const muni = placeName(spoken, "Albany");
+    const item: LiveWireItem = {
+      id: `scan-${feedId}-${latest.seq}`,
+      title: titleFrom(spoken),
+      url: feed.url,
+      outlet: "Scanner",
+      summary: `${feed.name} · ${PLACE.test(spoken) ? "location heard" : "unconfirmed radio traffic"}`,
+      publishedAt: new Date(now).toISOString(),
+      minutesAgo: 0,
+      kind: "scanner",
+      municipality: muni,
+      address: feed.coverage,
+      agency: feed.name,
+    };
+    buffer.unshift(item);
+    if (buffer.length > MAX_ITEMS) buffer.length = MAX_ITEMS;
+  }
   if (seen.size > 400) {
     const keep = [...seen].slice(-200);
     seen.clear();
     for (const s of keep) seen.add(s);
   }
   seenSeq.set(feedId, seen);
-  const ts = await http2Get(latest.url, 8000);
-  const audio = extractAudioFromMpegTs(ts);
-  if (!audio || audio.bytes.byteLength < MIN_AUDIO) return;
-  const result = await transcribeAudioFile(audio.bytes, audio.filename, audio.mime);
-  const spoken = result.text.trim();
-  if (!looksVoice(spoken)) return;
-  const key = spoken.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  if (key === lastText.get(feedId)) return;
-  lastText.set(feedId, key);
-  const now = Date.now();
-  const muni = placeName(spoken, feed.discipline === "fire" ? "Albany" : "Albany");
-  const item: LiveWireItem = {
-    id: `scan-${feedId}-${latest.seq}`,
-    title: titleFrom(spoken),
-    url: feed.url,
-    outlet: "Scanner",
-    summary: `${feed.name} · ${PLACE.test(spoken) ? "location heard" : "unconfirmed radio traffic"}`,
-    publishedAt: new Date(now).toISOString(),
-    minutesAgo: 0,
-    kind: "scanner",
-    municipality: muni,
-    address: feed.coverage,
-    agency: feed.name,
-  };
-  buffer.unshift(item);
-  if (buffer.length > MAX_ITEMS) buffer.length = MAX_ITEMS;
 }
 
 async function tick() {

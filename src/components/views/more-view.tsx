@@ -20,7 +20,7 @@ import type { Incident } from "@/lib/types";
 const ID_BY_DCJS = Object.fromEntries(Object.entries(DCJS_NAME_BY_ID).map(([id, name]) => [name, id]));
 
 export function MoreView({ incidents }: { incidents: Incident[] }) {
-  const day = lastHours(incidents, 24);
+  const day = lastHours(incidents, 36);
   const violent = day.filter((i) => i.category === "violent").length;
   const property = day.filter((i) => i.category === "property").length;
   const n = fbi.national;
@@ -31,9 +31,9 @@ export function MoreView({ incidents }: { incidents: Incident[] }) {
     <div className="h-full overflow-y-auto overscroll-y-contain px-3 pb-8 pt-3 scrollbar-thin">
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Last 24 hours</h2>
-        <p className="mt-1 text-sm text-muted">NYSP blotter, scanner, 511, and newsroom activity — last 24 hours.</p>
+        <p className="mt-1 text-sm text-muted">NYSP blotter, scanner, 511, and breaking crime — not a CAD dump.</p>
         <div className="mt-2 grid grid-cols-3 gap-2">
-          <Pattern n={day.length} l="stories" />
+          <Pattern n={day.length} l="calls" />
           <Pattern n={violent} l="violent" />
           <Pattern n={property} l="property" />
         </div>

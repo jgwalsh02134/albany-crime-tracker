@@ -63,7 +63,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   areaFilter: "all",
   sourceLens: "all",
   mapCategory: "all",
-  mapHours: 24,
+  mapHours: 36,
   heatmap: false,
   selectedId: null,
   filterOpen: false,

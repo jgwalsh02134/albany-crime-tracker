@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { IncidentCard } from "@/components/incident-card";
 import { NewsView } from "@/components/views/news-view";
-import { areaCounts, lastHours } from "@/lib/data";
-import { compactFromMinutes } from "@/lib/format";
+import { areaCounts } from "@/lib/data";
+import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
 import { type LiveWireItem, sourceMix } from "@/lib/sources";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import type { Incident, NewsStory } from "@/lib/types";
@@ -41,11 +41,11 @@ export function FeedView({
   const areaVisible = incidents.filter((i) =>
     incidentVisible(i, { severities, municipalities, areaFilter, sourceLens: "all" }),
   );
-  const day = lastHours(visible, 24);
-  const areas = areaCounts(lastHours(areaVisible, 24));
+  const liveAll = areaVisible.filter((i) => i.origin === "live");
+  const areas = areaCounts(liveAll);
   const liveItems = visible.filter((i) => i.origin === "live");
   const newest = liveItems[0] ?? visible[0];
-  const mix = sourceMix(areaVisible.filter((i) => i.origin === "live"));
+  const mix = sourceMix(liveAll);
 
   return (
     <div className="flex h-full flex-col">
@@ -70,7 +70,7 @@ export function FeedView({
       {homeMode === "live" ? (
         <LiveList
           liveItems={liveItems}
-          dayCount={day.length}
+          dayCount={liveAll.length}
           areas={areas}
           areaFilter={areaFilter}
           setAreaFilter={setAreaFilter}
@@ -165,14 +165,14 @@ function LiveList({
       <div className="flex items-center justify-between gap-2 py-2">
         <p className="min-w-0 truncate text-xs text-subtle">
           <span className="font-semibold text-fg">{liveItems.length}</span>
-          {wireLive ? " in the last 24h" : " · connecting…"}
+          {wireLive ? " calls" : " · connecting…"}
         </p>
         <p className="shrink-0 font-mono text-xs tabular-nums text-subtle">
           {newest ? compactFromMinutes(newest.minutesAgo) : "—"}
         </p>
       </div>
-      <p className="pb-2 text-[11px] leading-snug text-subtle">
-        NYSP blotter through 7 AM ET. Scanner and 511 cover the hours since. Not a city CAD dump.
+      <p className="pb-2 text-xs leading-snug text-subtle">
+        NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511, and breaking crime since then.
         {wireOutlets.length ? ` · ${wireOutlets.slice(0, 4).join(" · ")}` : ""}
       </p>
 
@@ -203,7 +203,7 @@ function LiveList({
           <Chip
             active={areaFilter === "all"}
             onClick={() => setAreaFilter("all")}
-            label={`County · ${dayCount}`}
+            label={`Capital District · ${dayCount}`}
           />
           {areas.map((a) => (
             <Chip
@@ -219,18 +219,54 @@ function LiveList({
       {liveItems.length === 0 ? (
         <p className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
           {wireLive
-            ? "No matching activity in the last 24 hours. NYSP posts the daily blotter at 7 AM ET."
+            ? "No matching activity. NYSP posts the daily blotter at 7 AM ET; radio and 511 cover the hours since."
             : "Pulling NYSP blotter, scanner, 511, and newsrooms…"}
         </p>
       ) : (
-        <ul className="flex flex-col gap-2.5">
-          {liveItems.map((inc) => (
-            <li key={inc.id}>
-              <IncidentCard incident={inc} onSelect={onSelect} />
-            </li>
-          ))}
-        </ul>
+        <GroupedList items={liveItems} onSelect={onSelect} />
       )}
+    </div>
+  );
+}
+
+function GroupedList({
+  items,
+  onSelect,
+}: {
+  items: Incident[];
+  onSelect: (id: string) => void;
+}) {
+  const since7 = minutesSinceNy7am();
+  const fresh = items.filter((i) => i.minutesAgo <= since7);
+  const overnight = items.filter((i) => i.minutesAgo > since7);
+  return (
+    <div className="flex flex-col gap-5">
+      {fresh.length ? (
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Since 7 AM</h2>
+          <ul className="flex flex-col gap-2.5">
+            {fresh.map((inc) => (
+              <li key={inc.id}>
+                <IncidentCard incident={inc} onSelect={onSelect} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+      {overnight.length ? (
+        <section>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+            NYSP overnight report
+          </h2>
+          <ul className="flex flex-col gap-2.5">
+            {overnight.map((inc) => (
+              <li key={inc.id}>
+                <IncidentCard incident={inc} onSelect={onSelect} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }
