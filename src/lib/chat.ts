@@ -32,9 +32,9 @@ async function snapshot(): Promise<string> {
     return `- ${i.severity.toUpperCase()} | ${i.title} | ${i.municipality} | ${mins}m ago | ${i.agency} | ${i.sources[0]?.kind ?? ""}`;
   });
   const health = wire.health
-    ? `Official blotter ${wire.health.blotter}, scanner ${wire.health.scanner}, 511 ${wire.health.traffic}, news ${wire.health.news}.`
+    ? `Official blotter ${wire.health.blotter}, scanner ${wire.health.scanner}, 511 ${wire.health.traffic}, news ${wire.health.news}, Facebook ${wire.health.facebook ?? 0}, X ${wire.health.x ?? 0}, citizens ${wire.health.reddit ?? 0}.`
     : "";
-  return `Live Capital District activity (NYSP blotter through ~7 AM ET, plus scanner captions, 511 crashes, breaking news). ${all.length} items. ${health}\nTowns: ${muni || "none"}\nTypes: ${types || "none"}\n${lines.join("\n") || "(none right now)"}`;
+  return `Live Capital District activity (NYSP blotter through ~7 AM ET, plus scanner captions, 511 crashes, department Facebook/X, citizen reports, breaking news). ${all.length} items. ${health}\nTowns: ${muni || "none"}\nTypes: ${types || "none"}\n${lines.join("\n") || "(none right now)"}`;
 }
 
 export const askCrimeAi = createServerFn({ method: "POST" })
@@ -69,7 +69,7 @@ export const askCrimeAi = createServerFn({ method: "POST" })
           {
             role: "system",
             content:
-              "You are the Albany County Crime Tracker assistant. Answer only about public-safety activity in the Capital District, NY. The snapshot mixes official NYSP blotter calls, unconfirmed scanner captions, 511 crashes, and newsroom headlines. Treat blotter/511 as official. Treat scanner as unconfirmed radio. Treat newsroom items as journalism, not CAD. Never invent arrests, names of victims, or charges that are not in the snapshot. If asked something off-topic, steer back to county public safety.",
+              "You are the Albany County Crime Tracker assistant. Answer only about public-safety activity in the Capital District, NY. The snapshot mixes official NYSP blotter calls, unconfirmed scanner captions, 511 crashes, department Facebook/X posts, citizen/Reddit reports, and newsroom headlines. Treat blotter/511 and official department Facebook as official. Treat scanner, Reddit, and citizen tips as unconfirmed. Treat newsroom items as journalism, not CAD. Never invent arrests, names of victims, or charges that are not in the snapshot. If asked something off-topic, steer back to county public safety.",
           },
           {
             role: "system",

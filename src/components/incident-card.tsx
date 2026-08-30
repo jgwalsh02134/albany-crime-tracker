@@ -21,8 +21,31 @@ export function IncidentCard({
   const source = incident.sources[0]?.name;
   const kind = incident.sources[0]?.kind;
   const badge =
-    kind === "blotter" ? "NYSP" : kind === "scanner" ? "Scanner" : kind === "cfs" ? "511NY" : "Newsroom";
-  const badgeTone = kind === "blotter" || kind === "cfs" ? "cyan" : kind === "scanner" ? "accent" : "muted";
+    kind === "blotter"
+      ? "NYSP"
+      : kind === "scanner"
+        ? "Scanner"
+        : kind === "cfs"
+          ? "511NY"
+          : /Facebook/i.test(source ?? "")
+            ? "Facebook"
+            : /X ·/i.test(source ?? "")
+              ? "X"
+              : /Reddit/i.test(source ?? "")
+                ? "Reddit"
+                : kind === "social" || /Citizen/i.test(source ?? "")
+                  ? "Citizen"
+                  : kind === "press"
+                    ? "Press"
+                    : "Newsroom";
+  const badgeTone =
+    kind === "blotter" || kind === "cfs" || kind === "press"
+      ? "cyan"
+      : kind === "scanner"
+        ? "accent"
+        : kind === "social"
+          ? "medium"
+          : "muted";
   const loc = incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
     ? incident.address
     : `${incident.address} · ${incident.municipality}`;

@@ -5,9 +5,9 @@ export type Verification = "confirmed" | "developing" | "scanner";
 export type ViewId = "feed" | "map" | "scanner" | "chat" | "directory" | "more";
 export type HomeMode = "live" | "news";
 export type Discipline = "police" | "fire" | "ems";
-export type SourceKind = "blotter" | "cfs" | "nixle" | "press" | "scanner" | "news" | "opendata";
+export type SourceKind = "blotter" | "cfs" | "nixle" | "press" | "scanner" | "news" | "opendata" | "social";
 export type SourceTier = "official" | "context" | "unconfirmed";
-export type SourceLens = "all" | "official" | "scanner" | "news";
+export type SourceLens = "all" | "official" | "scanner" | "news" | "social";
 
 export type IncidentSource = {
   kind: SourceKind;

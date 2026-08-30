@@ -160,7 +160,11 @@ export function IncidentDrawer({ incident }: { incident: Incident | null }) {
             {clockTime(incident.occurredAt)} · {relativeTime(incident.occurredAt)}
           </p>
           <p className="mt-4 text-sm leading-relaxed text-fg">{incident.description}</p>
-          {incident.origin === "live" && incident.verification === "developing" ? (
+          {incident.origin === "live" && incident.verification === "developing" && incident.sources.some((s) => s.kind === "social") ? (
+            <p className="mt-3 rounded-lg border border-sev-medium/30 bg-sev-medium/10 px-3 py-2 text-xs leading-relaxed text-muted">
+              Citizen or social post — not a 911 or CAD call. Treat as unconfirmed.
+            </p>
+          ) : incident.origin === "live" && incident.verification === "developing" ? (
             <p className="mt-3 rounded-lg border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs leading-relaxed text-muted">
               Newsroom report — not a confirmed blotter or CAD call. Open the source for the original story.
             </p>

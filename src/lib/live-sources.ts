@@ -3,6 +3,7 @@ import type { LiveWireItem, WireHealth } from "./sources";
 import { fetchNyspBlotter, parseNyWhen } from "./nysp-blotter";
 import { scannerHealth, scannerItems, startScannerPoll } from "./scanner-poll";
 import { placeFromText } from "./geo";
+import { collectSocial, socialLive, socialNews } from "./social-sources";
 
 const FEEDS: { url: string; outlet: string }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
@@ -358,7 +359,7 @@ function notable(row: LiveWireItem): boolean {
 async function collectWire() {
   const now = Date.now();
   startScannerPoll();
-  const [news, blotterRes, traffic, press] = await Promise.all([
+  const [news, blotterRes, traffic, press, social] = await Promise.all([
     collectNews(now),
     fetchNyspBlotter(now).catch((err) => {
       console.error("[nysp] blotter", err instanceof Error ? err.message : err);
@@ -366,26 +367,42 @@ async function collectWire() {
     }),
     fetch511(now),
     fetchNyspPress(now).catch(() => [] as LiveWireItem[]),
+    collectSocial(now).catch(() => ({
+      items: [] as LiveWireItem[],
+      facebook: 0,
+      x: 0,
+      reddit: 0,
+      citizen: 0,
+    })),
   ]);
   const blotter = blotterRes.items;
   const scan = scannerItems(now);
+  const socialNow = socialLive(social.items);
+  const socialOlder = socialNews(social.items);
   const blotterLive = blotter.filter((r) => r.minutesAgo <= BLOTTER_LIVE_MIN);
   const blotterNews = blotter.filter((r) => r.minutesAgo > BLOTTER_LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
   const liveNews = [...news.crime, ...news.stories, ...press].filter((r) => {
     const hay = `${r.title} ${r.summary}`;
     return r.minutesAgo <= LIVE_MIN && CRIME.test(hay) && !COURT_ONLY.test(hay) && !NOT_LIVE_NEWS.test(hay) && !NYC_NOT_OURS.test(hay);
   });
-  const items = mergeActivity([blotterLive, scan, traffic, liveNews]);
-  const stories = mergeActivity([
+  const items = mergeActivity([blotterLive, scan, traffic, liveNews, socialNow]);
+  const storiesCore = mergeActivity([
     news.stories,
     press.filter((r) => r.minutesAgo <= NEWS_MIN),
     blotterNews.map((r) => ({ ...r, kind: "news" as const })),
-  ]);
+    socialOlder.filter((r) => r.minutesAgo <= NEWS_MIN),
+  ]).slice(0, 40);
+  const seenStories = new Set(storiesCore.map((s) => s.id));
+  const extraSocial = socialOlder.filter((r) => !seenStories.has(r.id)).slice(0, 12);
+  const stories = [...storiesCore, ...extraSocial];
   const outlets = [
     blotterLive.length ? "NYSP blotter" : "",
     scan.length ? "Scanner" : "",
     traffic.length ? "511NY" : "",
     press.length ? "NYSP press" : "",
+    social.facebook ? "Facebook" : "",
+    social.x ? "X" : "",
+    social.reddit || social.citizen ? "Citizens" : "",
     ...news.liveOutlets,
   ].filter(Boolean);
   const scanStats = scannerHealth();
@@ -401,12 +418,16 @@ async function collectWire() {
     scannerError: scanStats.lastError || undefined,
     scannerHeard: scanStats.lastSpoken || undefined,
     scannerCaptioned: scanStats.captions,
+    facebook: social.facebook,
+    x: social.x,
+    reddit: social.reddit,
+    citizen: social.citizen,
   };
   return {
     ok: true as const,
     at: now,
     items: items.slice(0, 200),
-    stories: stories.slice(0, 40),
+    stories: stories.slice(0, 52),
     outlets,
     health,
   };

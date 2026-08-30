@@ -8,6 +8,7 @@ export const SOURCE_LENSES: { id: SourceLens; label: string }[] = [
   { id: "official", label: "Official" },
   { id: "scanner", label: "Scanner" },
   { id: "news", label: "News" },
+  { id: "social", label: "Social" },
 ];
 
 const AGENCY_HOME: Record<string, string> = {
@@ -28,7 +29,8 @@ function normalizeKind(raw: string): SourceKind {
     raw === "press" ||
     raw === "scanner" ||
     raw === "news" ||
-    raw === "opendata"
+    raw === "opendata" ||
+    raw === "social"
   ) {
     return raw;
   }
@@ -81,6 +83,8 @@ export function kindLabel(kind: SourceKind): string {
       return "News";
     case "opendata":
       return "Open data";
+    case "social":
+      return "Social";
   }
 }
 
@@ -112,19 +116,33 @@ export function deriveVerification(sources: IncidentSource[], fallback: Verifica
 export function matchesSourceLens(inc: Incident, lens: SourceLens): boolean {
   if (lens === "all") return true;
   if (lens === "official") return inc.sources.some((s) => OFFICIAL_KINDS.has(s.kind));
+  if (lens === "social") {
+    return inc.sources.some(
+      (s) => s.kind === "social" || /Facebook|X ·|Reddit|Citizen/i.test(s.name),
+    );
+  }
   return inc.sources.some((s) => s.kind === lens);
 }
 
-export function sourceMix(incidents: Incident[]): { official: number; scanner: number; news: number } {
+export function sourceMix(incidents: Incident[]): {
+  official: number;
+  scanner: number;
+  news: number;
+  social: number;
+} {
   let official = 0;
   let scanner = 0;
   let news = 0;
+  let social = 0;
   for (const inc of incidents) {
     if (inc.sources.some((s) => OFFICIAL_KINDS.has(s.kind))) official += 1;
     if (inc.sources.some((s) => s.kind === "scanner")) scanner += 1;
     if (inc.sources.some((s) => s.kind === "news")) news += 1;
+    if (inc.sources.some((s) => s.kind === "social" || /Facebook|X ·|Reddit|Citizen/i.test(s.name))) {
+      social += 1;
+    }
   }
-  return { official, scanner, news };
+  return { official, scanner, news, social };
 }
 
 export function verificationWhy(inc: Incident): string {
@@ -138,6 +156,10 @@ export function verificationWhy(inc: Incident): string {
   }
   const hasNews = inc.sources.some((s) => s.kind === "news");
   const hasScan = inc.sources.some((s) => s.kind === "scanner");
+  const hasSocial = inc.sources.some((s) => s.kind === "social");
+  if (hasSocial && !hasNews && !hasScan) {
+    return "Citizen or social post — not a CAD call. Treat as unconfirmed.";
+  }
   if (inc.origin === "live" || (hasNews && !hasScan && official.length === 0)) {
     return "Newsroom report only — not a confirmed CAD / blotter incident. Treat as developing.";
   }
@@ -147,7 +169,7 @@ export function verificationWhy(inc: Incident): string {
   return "Source mix is thin — treat as unconfirmed.";
 }
 
-export type ActivityKind = "news" | "blotter" | "scanner" | "traffic";
+export type ActivityKind = "news" | "blotter" | "scanner" | "traffic" | "social";
 
 export type WireHealth = {
   blotter: number;
@@ -161,6 +183,10 @@ export type WireHealth = {
   scannerError?: string;
   scannerHeard?: string;
   scannerCaptioned?: number;
+  facebook?: number;
+  x?: number;
+  reddit?: number;
+  citizen?: number;
 };
 
 export type LiveWireItem = {
@@ -284,18 +310,45 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       seen.add(g.url);
       const activity = g.kind ?? "news";
       sources.push({
-        kind: activity === "blotter" ? "blotter" : activity === "scanner" ? "scanner" : activity === "traffic" ? "cfs" : "news",
+        kind:
+          activity === "blotter"
+            ? "blotter"
+            : activity === "scanner"
+              ? "scanner"
+              : activity === "traffic"
+                ? "cfs"
+                : activity === "social"
+                  ? /Facebook ·|X · NYSP|X · Albany (PD|Fire)|X · Colonie|X · Bethlehem/i.test(g.outlet)
+                    ? "press"
+                    : "social"
+                  : "news",
         name: g.outlet,
-        tier: activity === "blotter" || activity === "traffic" ? "official" : activity === "scanner" ? "unconfirmed" : "context",
+        tier:
+          activity === "blotter" || activity === "traffic"
+            ? "official"
+            : activity === "scanner" || activity === "social"
+              ? /Facebook ·|X · NYSP|X · Albany (PD|Fire)|X · Colonie|X · Bethlehem/i.test(g.outlet)
+                ? "official"
+                : "unconfirmed"
+              : "context",
         url: g.url,
         excerpt: g.summary || g.title,
       });
     }
     const activity = item.kind ?? "news";
+    const officialSocial =
+      activity === "social" &&
+      /Facebook ·|X · NYSP|X · Albany (PD|Fire)|X · Colonie|X · Bethlehem/i.test(item.outlet);
     const verification: Incident["verification"] =
-      activity === "blotter" || activity === "traffic" ? "confirmed" : activity === "scanner" ? "scanner" : "developing";
+      activity === "blotter" || activity === "traffic" || officialSocial
+        ? "confirmed"
+        : activity === "scanner"
+          ? "scanner"
+          : "developing";
     return {
-      id: item.id.startsWith("nysp-") || item.id.startsWith("scan-") ? item.id : hashId(item.url),
+      id: item.id.startsWith("nysp-") || item.id.startsWith("scan-") || item.id.startsWith("citizen-")
+        ? item.id
+        : hashId(item.url),
       minutesAgo: item.minutesAgo,
       occurredAt: item.publishedAt,
       title: item.title,
@@ -308,7 +361,24 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       lat: item.lat ?? placed.lat,
       lng: item.lng ?? placed.lng,
       agency: item.agency || item.outlet,
-      agencyAbbr: activity === "blotter" ? "NYSP" : activity === "scanner" ? "SCAN" : item.outlet.replace(/\s+/g, "").slice(0, 6).toUpperCase(),
+      agencyAbbr:
+        activity === "blotter"
+          ? "NYSP"
+          : activity === "scanner"
+            ? "SCAN"
+            : activity === "social"
+              ? /albany pd/i.test(item.outlet)
+                ? "APD"
+                : /colonie/i.test(item.outlet)
+                  ? "CPD"
+                  : /bethlehem/i.test(item.outlet)
+                    ? "BPD"
+                    : /reddit/i.test(item.outlet)
+                      ? "RDT"
+                      : /citizen/i.test(item.outlet)
+                        ? "TIP"
+                        : "SOC"
+              : item.outlet.replace(/\s+/g, "").slice(0, 6).toUpperCase(),
       description: item.summary || item.title,
       sources,
       verification,
