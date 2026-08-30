@@ -202,6 +202,24 @@
   box-shadow: 0 0 0 4px color-mix(in oklab, var(--m) 30%, transparent);
 }
 
+.leaflet-tooltip.act-tip {
+  white-space: pre-line;
+  max-width: 18rem;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px color-mix(in oklab, black 35%, transparent);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 8px 10px;
+}
+
+.leaflet-tooltip.act-tip::before {
+  border-top-color: var(--surface);
+}
+
 .scrollbar-thin {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklab, var(--fg) 22%, transparent) transparent;

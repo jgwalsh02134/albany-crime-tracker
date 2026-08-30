@@ -179,7 +179,7 @@ export function AppShell() {
             onRefresh={refresh}
           />
         </div>
-        <div className={cn("absolute inset-0", view === "map" ? "block" : "hidden")}>
+        <div className={cn("absolute inset-0", view === "map" ? "z-[1]" : "invisible pointer-events-none")}>
           <MapView incidents={incidents} active={view === "map"} />
         </div>
         <div className={cn("absolute inset-0", view === "scanner" ? "block" : "hidden")}>

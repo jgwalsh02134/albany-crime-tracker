@@ -1,4 +1,5 @@
 import type { Incident, IncidentSource, ScannerCall, SourceKind, SourceLens, SourceTier, Verification } from "./types";
+import { placeFromText, spreadItems } from "./geo";
 
 export const OFFICIAL_KINDS = new Set<SourceKind>(["blotter", "cfs", "nixle", "press", "opendata"]);
 
@@ -216,25 +217,8 @@ export function fuseLiveWire(incidents: Incident[], wire: LiveWireItem[]): Incid
   });
 }
 
-const PLACES: { name: string; lat: number; lng: number; re: RegExp }[] = [
-  { name: "New Scotland", lat: 42.6217, lng: -73.9412, re: /new scotland/i },
-  { name: "Green Island", lat: 42.7442, lng: -73.6918, re: /green island/i },
-  { name: "Guilderland", lat: 42.7045, lng: -73.9115, re: /guilderland|altamont/i },
-  { name: "Bethlehem", lat: 42.5917, lng: -73.824, re: /bethlehem|delmar|selkirk|glenmont/i },
-  { name: "Watervliet", lat: 42.7301, lng: -73.7012, re: /watervliet/i },
-  { name: "Menands", lat: 42.692, lng: -73.7237, re: /menands/i },
-  { name: "Colonie", lat: 42.7179, lng: -73.8373, re: /colonie|latham|loudonville/i },
-  { name: "Cohoes", lat: 42.7742, lng: -73.7001, re: /cohoes/i },
-  { name: "Westerlo", lat: 42.5145, lng: -74.044, re: /westerlo/i },
-  { name: "Coeymans", lat: 42.4737, lng: -73.7923, re: /coeymans|ravena/i },
-  { name: "Albany", lat: 42.6526, lng: -73.7562, re: /\balbany\b/i },
-];
-
 function placeOf(text: string): { name: string; lat: number; lng: number } {
-  for (const p of PLACES) {
-    if (p.re.test(text)) return p;
-  }
-  return { name: "Albany County", lat: 42.6526, lng: -73.7562 };
+  return placeFromText(text) ?? { name: "Albany County", lat: 42.6526, lng: -73.7562 };
 }
 
 function classify(title: string): { type: string; category: Incident["category"]; severity: Incident["severity"] } {
@@ -275,15 +259,19 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
   const other = wire.filter((w) => (w.kind ?? "news") !== "news");
   const clustered = clusterWire(news);
   const groups: LiveWireItem[][] = [...other.map((w) => [w]), ...clustered];
-  return groups.map((group) => {
+  const incidents = groups.map((group) => {
     const item = group[0]!;
     const hay = group.map((g) => `${g.title} ${g.summary}`).join(" ");
-    const place = item.municipality
+    const placed = item.municipality
       ? { name: item.municipality, lat: item.lat ?? 42.6526, lng: item.lng ?? -73.7562 }
       : placeOf(hay);
-    const kind = classify(`${item.title} ${item.category ?? ""}`);
-    const muni = item.municipality && item.municipality !== "Albany County" ? item.municipality : place.name === "Albany County" ? "Albany" : place.name;
-    const jitter = (item.title.length % 7) * 0.0018;
+    const kind = classify(`${item.title} ${item.category ?? ""} ${item.summary ?? ""}`);
+    const muni =
+      item.municipality && item.municipality !== "Albany County"
+        ? item.municipality
+        : placed.name === "Albany County"
+          ? "Albany"
+          : placed.name;
     const seen = new Set<string>();
     const sources: IncidentSource[] = [];
     for (const g of group) {
@@ -311,17 +299,19 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       severity: kind.severity,
       status: item.minutesAgo <= 180 ? "active" : item.minutesAgo <= 24 * 60 ? "developing" : "closed",
       municipality: muni,
-      address: item.address || (place.name === "Albany County" ? "Countywide" : place.name),
-      lat: (item.lat ?? place.lat) + (activity === "news" ? jitter : 0),
-      lng: (item.lng ?? place.lng) - (activity === "news" ? jitter : 0),
+      address: item.address || (placed.name === "Albany County" ? "Countywide" : placed.name),
+      lat: item.lat ?? placed.lat,
+      lng: item.lng ?? placed.lng,
       agency: item.agency || item.outlet,
       agencyAbbr: activity === "blotter" ? "NYSP" : activity === "scanner" ? "SCAN" : item.outlet.replace(/\s+/g, "").slice(0, 6).toUpperCase(),
       description: item.summary || item.title,
       sources,
       verification,
       origin: "live",
+      disposition: item.status,
     } satisfies Incident;
   });
+  return spreadItems(incidents);
 }
 
 function clusterWire(items: LiveWireItem[]): LiveWireItem[][] {
@@ -332,10 +322,11 @@ function clusterWire(items: LiveWireItem[]): LiveWireItem[][] {
     const found = groups.find((g) => {
       const head = g[0]!;
       if (classify(head.title).type !== kind.type) return false;
-      if (Math.abs(item.minutesAgo - head.minutesAgo) > 36 * 60) return false;
+      if (Math.abs(item.minutesAgo - head.minutesAgo) > 8 * 60) return false;
       const other = tokens(head.title);
       const hit = words.filter((w) => other.includes(w)).length;
-      return hit >= 3;
+      const need = Math.max(4, Math.ceil(Math.min(words.length, other.length) * 0.55));
+      return hit >= need;
     });
     if (found) found.push(item);
     else groups.push([item]);

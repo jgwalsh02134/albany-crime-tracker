@@ -36,6 +36,7 @@ export type Incident = {
   sources: IncidentSource[];
   verification: Verification;
   origin?: "live" | "snapshot";
+  disposition?: string;
 };
 
 export type NewsStory = {
@@ -93,11 +94,18 @@ export const MUNICIPALITIES = [
   "Wilton",
   "Ballston",
   "Waterford",
+  "Mechanicville",
+  "Stillwater",
+  "Milton",
+  "Greenfield",
   "Saratoga Springs",
   "Schenectady",
   "Rotterdam",
   "Niskayuna",
   "Glenville",
+  "Hoosick",
+  "Stephentown",
+  "Grafton",
 ] as const;
 
 export const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];

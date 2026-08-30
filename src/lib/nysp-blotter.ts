@@ -1,4 +1,5 @@
 import type { LiveWireItem } from "./sources";
+import { locateCall, placeFromText } from "./geo";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -23,50 +24,11 @@ const MONTHS: Record<string, number> = {
 
 type Place = { name: string; lat: number; lng: number };
 
-const PLACES: { re: RegExp; place: Place }[] = [
-  { re: /\bnew scotland\b|\bvoorheesville\b/i, place: { name: "New Scotland", lat: 42.6217, lng: -73.9412 } },
-  { re: /\bgreen island\b/i, place: { name: "Green Island", lat: 42.7442, lng: -73.6918 } },
-  { re: /\bguilderland\b|\baltamont\b/i, place: { name: "Guilderland", lat: 42.7045, lng: -73.9115 } },
-  { re: /\bbethlehem\b|\bdelmar\b|\bselkirk\b|\bglenmont\b/i, place: { name: "Bethlehem", lat: 42.5917, lng: -73.824 } },
-  { re: /\bwatervliet\b/i, place: { name: "Watervliet", lat: 42.7301, lng: -73.7012 } },
-  { re: /\bmenands\b/i, place: { name: "Menands", lat: 42.692, lng: -73.7237 } },
-  { re: /\bcolonie\b|\blatham\b|\bloudonville\b/i, place: { name: "Colonie", lat: 42.7179, lng: -73.8373 } },
-  { re: /\bcohoes\b/i, place: { name: "Cohoes", lat: 42.7742, lng: -73.7001 } },
-  { re: /\bwesterlo\b/i, place: { name: "Westerlo", lat: 42.5145, lng: -74.044 } },
-  { re: /\bcoeymans\b|\bravena\b/i, place: { name: "Coeymans", lat: 42.4737, lng: -73.7923 } },
-  { re: /\bberne\b/i, place: { name: "Berne", lat: 42.548, lng: -74.134 } },
-  { re: /\bknox\b/i, place: { name: "Knox", lat: 42.671, lng: -74.116 } },
-  { re: /\brensselaerville\b/i, place: { name: "Rensselaerville", lat: 42.468, lng: -74.186 } },
-  { re: /\beast greenbush\b/i, place: { name: "East Greenbush", lat: 42.591, lng: -73.702 } },
-  { re: /\bnorth greenbush\b/i, place: { name: "North Greenbush", lat: 42.733, lng: -73.663 } },
-  { re: /\bschodack\b|\bcastleton\b|\bnassau\b/i, place: { name: "Schodack", lat: 42.529, lng: -73.693 } },
-  { re: /\bbrunswick\b|\bpoestenkill\b|\bgrafton\b/i, place: { name: "Brunswick", lat: 42.736, lng: -73.59 } },
-  { re: /\bsand lake\b|\bberlin\b|\bstephentown\b|\bhoosick\b|\bpittstown\b/i, place: { name: "Rensselaer", lat: 42.6209, lng: -73.712 } },
-  { re: /\btroy\b/i, place: { name: "Troy", lat: 42.7284, lng: -73.6918 } },
-  { re: /\brensselaer\b/i, place: { name: "Rensselaer", lat: 42.6426, lng: -73.7429 } },
-  { re: /\bclifton park\b/i, place: { name: "Clifton Park", lat: 42.8586, lng: -73.7709 } },
-  { re: /\bhalfmoon\b/i, place: { name: "Halfmoon", lat: 42.843, lng: -73.713 } },
-  { re: /\bmalta\b/i, place: { name: "Malta", lat: 42.967, lng: -73.793 } },
-  { re: /\bballston\b/i, place: { name: "Ballston", lat: 42.955, lng: -73.879 } },
-  { re: /\bmechanicville\b/i, place: { name: "Mechanicville", lat: 42.904, lng: -73.69 } },
-  { re: /\bwaterford\b/i, place: { name: "Waterford", lat: 42.791, lng: -73.681 } },
-  { re: /\bstillwater\b/i, place: { name: "Stillwater", lat: 42.938, lng: -73.659 } },
-  { re: /\bwilton\b/i, place: { name: "Wilton", lat: 43.181, lng: -73.744 } },
-  { re: /\bmilton\b/i, place: { name: "Milton", lat: 43.035, lng: -73.853 } },
-  { re: /\bgreenfield\b/i, place: { name: "Greenfield", lat: 43.129, lng: -73.846 } },
-  { re: /\bsaratoga\b/i, place: { name: "Saratoga Springs", lat: 43.0831, lng: -73.7846 } },
-  { re: /\bniskayuna\b/i, place: { name: "Niskayuna", lat: 42.776, lng: -73.831 } },
-  { re: /\brotterdam\b|\bduanesburg\b|\bprincetown\b/i, place: { name: "Rotterdam", lat: 42.787, lng: -73.971 } },
-  { re: /\bglenville\b|\bscotia\b/i, place: { name: "Glenville", lat: 42.929, lng: -73.996 } },
-  { re: /\bschenectady\b/i, place: { name: "Schenectady", lat: 42.8142, lng: -73.9396 } },
-  { re: /\b(city of )?albany\b|\bcapitol\b|\bempire state plaza\b|\balbany thruway\b/i, place: { name: "Albany", lat: 42.6526, lng: -73.7562 } },
-];
-
 const CD_STATION =
-  /\b(latham|schodack|brunswick|capital|clifton park|saratoga|wilton|malta|ballston|halfmoon|waterford|mechanicville|princetown|rotterdam|niskayuna|glenville|scotia|albany thruway|loudonville|bethlehem|guilderland|delmar|cohoes|watervliet|menands|east greenbush|north greenbush|castleton|sand lake)\b/i;
+  /\b(latham|schodack|brunswick|capital|clifton park|saratoga|wilton|malta|ballston|halfmoon|waterford|mechanicville|princetown|rotterdam|niskayuna|glenville|scotia|albany thruway|loudonville|bethlehem|guilderland|delmar|cohoes|watervliet|menands|east greenbush|north greenbush|castleton|sand lake|hoosick|stephentown|grafton)\b/i;
 
 const CD_PLACE =
-  /\b(albany|colonie|latham|loudonville|bethlehem|delmar|selkirk|glenmont|guilderland|altamont|cohoes|watervliet|green island|menands|new scotland|voorheesville|coeymans|ravena|westerlo|berne|knox|rensselaerville|troy|brunswick|schodack|castleton|east greenbush|north greenbush|rensselaer|nassau|sand lake|berlin|stephentown|hoosick|pittstown|poestenkill|grafton|clifton park|halfmoon|malta|ballston|waterford|mechanicville|stillwater|wilton|milton|greenfield|saratoga|niskayuna|rotterdam|duanesburg|princetown|glenville|scotia|schenectady)\b/i;
+  /\b(albany|colonie|latham|loudonville|bethlehem|delmar|selkirk|glenmont|guilderland|altamont|cohoes|watervliet|green island|menands|new scotland|voorheesville|coeymans|ravena|westerlo|berne|knox|rensselaerville|troy|brunswick|schodack|castleton|east greenbush|north greenbush|rensselaer|nassau|sand lake|berlin|stephentown|hoosick|pittstown|poestenkill|grafton|petersburgh|schaghticoke|clifton park|halfmoon|malta|ballston|waterford|mechanicville|stillwater|wilton|milton|greenfield|saratoga|niskayuna|rotterdam|duanesburg|princetown|glenville|scotia|schenectady)\b/i;
 
 const FEEDS: { troop: string; zone: number }[] = [
   { troop: "G", zone: 1 },
@@ -78,7 +40,7 @@ const FEEDS: { troop: string; zone: number }[] = [
 ];
 
 let cache: { at: number; items: LiveWireItem[]; tried: number; failed: number; extractor: "poppler" | "pdf-parse" | "none" } | null = null;
-const CACHE_MS = 5 * 60_000;
+const CACHE_MS = 4 * 60_000;
 
 function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
@@ -102,9 +64,21 @@ function clean(s: string): string {
     .replace(/ciizen|\bcizen\b/g, "citizen")
     .replace(/revocaon/g, "revocation")
     .replace(/identy the\b/gi, "identity theft")
-    .replace(/violaon/g, "violation")
+    .replace(/violaon/gi, "violation")
     .replace(/Ulity/g, "Utility")
     .replace(/cket\b/g, "ticket")
+    .replace(/Invesgaon/g, "Investigation")
+    .replace(/Secon/g, "Section")
+    .replace(/Descripon/g, "Description")
+    .replace(/Operaon/g, "Operation")
+    .replace(/Strangulaon/g, "Strangulation")
+    .replace(/Intersecon/g, "Intersection")
+    .replace(/Personaon/g, "Personation")
+    .replace(/Registraon/g, "Registration")
+    .replace(/Possesion/gi, "Possession")
+    .replace(/Conservaon/g, "Conservation")
+    .replace(/Navigaon/g, "Navigation")
+    .replace(/Suspen(?:s)?ion/g, "Suspension")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -199,10 +173,7 @@ function pdfUrl(troop: string, dow: string, zone: number): string {
 }
 
 function placeOf(text: string): Place | null {
-  for (const row of PLACES) {
-    if (row.re.test(text)) return row.place;
-  }
-  return null;
+  return placeFromText(text);
 }
 
 function inCapitalDistrict(station: string, loc: string): boolean {
@@ -259,6 +230,10 @@ function prettyCat(cat: string): string {
     "TERPO/ERPO": "Protection order",
     "Utility - odor of gas": "Gas odor",
     "Menacing": "Menacing",
+    "Bad check - insufficient funds": "Bad check",
+    "Domestic - dispute": "Domestic",
+    "Suspicious vehicle": "Suspicious vehicle",
+    "Fraud": "Fraud",
   };
   const mapped = map[c] ?? c.replace(/^Vehicle - /i, "").replace(/^Aid - /i, "").replace(/^Larceny - /i, "Larceny · ");
   return mapped.replace(/^([a-z])/, (ch) => ch.toUpperCase());
@@ -267,6 +242,137 @@ function prettyCat(cat: string): string {
 function field(chunk: string, label: string, until: string): string {
   const re = new RegExp(`${label}:\\s*([\\s\\S]*?)(?:${until}|$)`, "i");
   return clean(chunk.match(re)?.[1] ?? "");
+}
+
+function prettyStatus(status: string): string {
+  const s = status.replace(/Incident Information.*/i, "").replace(/file:.*/i, "").trim();
+  if (/arrest adult/i.test(s)) return "Adult arrested";
+  if (/closed\/cleared|closed/i.test(s)) return "Closed";
+  if (/investigation pending/i.test(s)) return "Investigation pending";
+  if (/unfounded/i.test(s)) return "Unfounded";
+  return s.slice(0, 48);
+}
+
+function prettyArrest(raw: string): string {
+  const s = clean(raw);
+  if (/held/i.test(s) && /\bno\b/i.test(s)) return "Held without bail";
+  if (/no bail/i.test(s)) return "Held without bail";
+  if (/appearance/i.test(s)) return "Appearance ticket issued";
+  if (/\bror\b|released on/i.test(s)) return "Released";
+  if (/held/i.test(s)) return "Held";
+  return "";
+}
+
+function prettyRoad(raw: string): string {
+  const s = clean(raw);
+  if (!s) return "";
+  if (/^parking lot$/i.test(s)) return "parking lot";
+  return titleCase(
+    s
+      .replace(/^INTERSTATE\s+/i, "I-")
+      .replace(/^STATE ROUTE\s+/i, "NY ")
+      .replace(/^US ROUTE\s+/i, "US ")
+      .replace(/^ROUTE\s+/i, "Route ")
+      .replace(/\bRD\b/g, "Rd")
+      .replace(/\bST\b/g, "St")
+      .replace(/\bDR\b/g, "Dr")
+      .replace(/\bAVE\b/g, "Ave")
+      .replace(/\bBLVD\b/g, "Blvd")
+      .replace(/\bPKWY\b/g, "Pkwy")
+      .replace(/\bLN\b/g, "Ln"),
+  );
+}
+
+function extractRoad(chunk: string): { road: string; intersection: string } {
+  const roadRaw =
+    chunk.match(
+      /Road\/Highway:\s*([^:]{2,48}?)(?=\s+(?:Intersection|Location|Number|Defendant|Driver|Incident)|$)/i,
+    )?.[1] ?? "";
+  const interRaw =
+    chunk.match(
+      /Intersection:\s*([^:]{2,48}?)(?=\s+(?:Location|Number|Defendant|Incident)|$)/i,
+    )?.[1] ?? "";
+  return { road: prettyRoad(roadRaw).slice(0, 42), intersection: prettyRoad(interRaw).slice(0, 36) };
+}
+
+function shortenCharge(desc: string): string {
+  let d = desc.trim();
+  if (/aggravated dwi|\.18/i.test(d)) return "Aggravated DWI";
+  if (/intoxicat|\.08 of 1%|alcohol or more/i.test(d)) return "DWI";
+  if (/unlicensed/i.test(d)) return "Aggravated unlicensed operation";
+  if (/false person/i.test(d)) return "False personation";
+  if (/stolen property/i.test(d)) return "Criminal possession of stolen property";
+  if (/controlled substance/i.test(d)) return "Criminal possession of a controlled substance";
+  if (/weapon/i.test(d)) return "Criminal possession of a weapon";
+  if (/forged instrument/i.test(d)) return "Possession of a forged instrument";
+  if (/family offense/i.test(d)) return "Aggravated family offense";
+  if (/pet(?:it)?\s+larceny/i.test(d)) return "Petit larceny";
+  if (/crim(?:inal)?\s+contempt/i.test(d)) return "Criminal contempt";
+  if (/registration (suspended|violation)|vehicle violation/i.test(d)) return "Suspended registration";
+  d = d
+    .replace(/-\s*\d+(st|nd|rd|th).*/i, "")
+    .replace(/-?\s*More Than.*/i, "")
+    .replace(/:.*/, "")
+    .trim();
+  const head = d.split(/[:]/)[0]!.trim();
+  if (head.length >= 6 && head.length <= 72) return head;
+  return d.slice(0, 72);
+}
+
+function extractCharges(chunk: string): string[] {
+  const out: string[] = [];
+  const re =
+    /\b(PL|VTL|ABC|ECL|AM|TL|TAX|PHL)\s+[\d.]+(?:\s+\S+)?\s+([A-Z])\s+(Felony|Misdemeanor|Infraction|Violation)\s+(.+?)\s+(\d+)(?=\s+(?:PL|VTL|ABC|ECL|AM|TL|TAX|PHL|Incident|$))/gi;
+  for (const m of chunk.matchAll(re)) {
+    const desc = shortenCharge(clean(m[4] ?? "").replace(/\s*\d+\s*$/, "").replace(/:+$/, "").trim());
+    if (desc.length < 3) continue;
+    if (out.some((x) => x.toLowerCase() === desc.toLowerCase())) continue;
+    out.push(desc);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+function impliedRoad(station: string, road: string): string {
+  if (road) return road;
+  if (/interstate patrol/i.test(station)) return "I-87";
+  if (/thruway/i.test(station)) return "Thruway";
+  return "";
+}
+
+function buildSummary(input: {
+  titleCat: string;
+  charges: string[];
+  status: string;
+  arrestee: string;
+  road: string;
+  intersection: string;
+  injured?: string;
+  killed?: string;
+  age?: string;
+  where: string;
+}): string {
+  const parts: string[] = [];
+  const place = [input.road, input.intersection ? `at ${input.intersection}` : ""].filter(Boolean).join(" ");
+  if (input.charges.length) {
+    const who = input.age
+      ? `${input.age}-year-old arrested for `
+      : /arrest/i.test(input.status)
+        ? "Adult arrested for "
+        : "Charged with ";
+    parts.push(who + input.charges.join("; "));
+    const hold = prettyArrest(input.arrestee);
+    if (hold) parts.push(hold);
+    if (place) parts.push(place);
+  } else {
+    const st = prettyStatus(input.status);
+    const whereBit = place ? `on ${place}` : input.where ? `in ${input.where}` : "";
+    parts.push(`${input.titleCat}${whereBit ? ` ${whereBit}` : ""}`);
+    if (st) parts.push(st);
+  }
+  if (input.killed && input.killed !== "0") parts.push(`${input.killed} killed`);
+  if (input.injured && input.injured !== "0") parts.push(`${input.injured} injured`);
+  return parts.join(". ").replace(/\s+\./g, ".").replace(/\.{2,}/g, ".").slice(0, 320);
 }
 
 export function extractNyspText(
@@ -288,11 +394,18 @@ export function extractNyspText(
     const reportedRaw = field(chunk, "Date\\/Time Reported", "Station:|Location Code:|Incident Status:");
     const arrestRaw = chunk.match(/Date\/Time of Arrest:\s*([0-9\/, APapM:]+)/i)?.[1] ?? "";
     const loc = field(chunk, "Location Code", "Incident Status:|Defendant|Driver|Road\\/Highway:");
-    const status = field(chunk, "Incident Status", "Defendant|Driver|Incident Number:|Road\\/Highway:");
+    const status = field(chunk, "Incident Status", "Defendant|Driver|Incident Number:|Road\\/Highway:|Incident Information");
     const station = field(chunk, "Station", "Location Code:|Incident Status:|Date\\/Time");
-    const road = field(chunk, "Road\\/Highway", "Number of|Driver|Incident |Defendant");
+    const { road, intersection } = extractRoad(chunk);
+    const charges = extractCharges(chunk);
+    const arrestee = clean(
+      chunk.match(
+        /Arrestee Status:\s*([^:]{3,80}?)(?=\s+(?:Location of Arrest|Bail Amount|Arrest Information|Incident Number)|$)/i,
+      )?.[1] ?? "",
+    );
     const injured = chunk.match(/Number Injured:\s*(\d+)/i)?.[1];
     const killed = chunk.match(/Number Killed:\s*(\d+)/i)?.[1];
+    const ageYrs = chunk.match(/\bAge:\s*(\d{1,3})\b/i)?.[1];
     const reportedAt = parseNyWhen(reportedRaw);
     const arrestAt = parseNyWhen(clean(arrestRaw));
     const at = [arrestAt, reportedAt]
@@ -320,28 +433,34 @@ export function extractNyspText(
     const titleCat = prettyCat(cat).replace(/\s+\d+\s*$/, "").trim();
     if (!titleCat || /file:|--/.test(titleCat)) continue;
     const where = locName || place.name;
-    const extra =
-      killed && killed !== "0"
-        ? ` · ${killed} killed`
-        : injured && injured !== "0"
-          ? ` · ${injured} injured`
-          : "";
-    const roadBit = road && road.length < 48 ? road.replace(/^INTERSTATE\s+/i, "I-") : "";
-    const address = roadBit && where && roadBit.toLowerCase() !== where.toLowerCase()
-      ? `${roadBit} · ${where}`
-      : where || place.name;
-    const summary = [
-      `NYSP Troop ${troop} Zone ${zone}`,
-      station,
+    const route = impliedRoad(station, road);
+    const roadPretty = prettyRoad(route);
+    const interPretty = prettyRoad(intersection);
+    const address =
+      roadPretty && interPretty
+        ? `${roadPretty} at ${interPretty} · ${where}`
+        : roadPretty
+          ? `${roadPretty} · ${where}`
+          : where || place.name;
+    const pin = locateCall({ municipality: place.name, station, road: route, intersection });
+    const summary = buildSummary({
+      titleCat,
+      charges,
       status,
-      extra.trim(),
-    ]
-      .filter(Boolean)
-      .join(" · ")
-      .slice(0, 220);
+      arrestee,
+      road: roadPretty,
+      intersection: interPretty,
+      injured,
+      killed,
+      age: ageYrs,
+      where,
+    });
+    const title = roadPretty
+      ? `${titleCat} on ${roadPretty}${interPretty ? ` at ${interPretty}` : ""} — ${where}`
+      : `${titleCat} — ${where}`;
     out.push({
       id: `nysp-${id}`,
-      title: `${titleCat} — ${where || place.name}`,
+      title,
       url: pdf,
       outlet: "NYSP blotter",
       summary,
@@ -352,9 +471,9 @@ export function extractNyspText(
       address,
       agency: `NYSP Troop ${troop}`,
       category: cat,
-      status,
-      lat: place.lat,
-      lng: place.lng,
+      status: prettyStatus(status) || status,
+      lat: pin.lat,
+      lng: pin.lng,
     });
   }
   return out;

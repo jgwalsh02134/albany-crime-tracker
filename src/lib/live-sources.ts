@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import type { LiveWireItem, WireHealth } from "./sources";
 import { fetchNyspBlotter, parseNyWhen } from "./nysp-blotter";
 import { scannerItems, startScannerPoll } from "./scanner-poll";
+import { placeFromText } from "./geo";
 
 const FEEDS: { url: string; outlet: string }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
@@ -18,7 +19,7 @@ const FEEDS: { url: string; outlet: string }[] = [
 const LOCAL =
   /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g|clifton park|troy|schenectady|rensselaer|sand lake|schodack|east greenbush)\b/i;
 const CRIME =
-  /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrest|fire|blaze|killed|injured|fatal|burglary|assault|charged|vandal|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|trooper|state police|sheriff)\b/i;
+  /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrests?|arrested|fire|blaze|killed|injured|fatal|burglary|assault|charg(?:e|ed|es|ing)|vandal|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|trooper|state police|sheriff|trooper)\b/i;
 const DROP =
   /\b(weather forecast|sports|football|baseball|soccer|high school|seasonably|rain chances|speedway|autism|op-ed|letter to the editor|stock|recipe|job posting|retired before|common council|initiative|camera expansion|suspended without pay|hiring|season preview|concert|festival|fitness|telehealth|auction|tropical storm|superintendent|retirement plans|holiday tour|drive-in|pokémon|pokemon|travers|we salute|settlement|beautiful weather)\b/i;
 const NOTABLE_BLOTTER =
@@ -41,9 +42,11 @@ function decode(raw: string): string {
     gt: ">",
     quot: '"',
     apos: "'",
+    nbsp: " ",
   };
   return raw
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&nbsp;/gi, " ")
     .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match, ent: string) => {
       const key = ent.toLowerCase();
       if (key in named) return named[key]!;
@@ -74,13 +77,26 @@ function attrLink(block: string): string {
 }
 
 function outletFromTitle(title: string, fallback: string): { title: string; outlet: string } {
-  const m = title.match(/^(.*)\s[-–—]\s([^–—-]{2,40})$/);
+  const m = title.match(/^(.*)\s[-–—]\s([^–—-]{2,60})$/);
   if (!m) return { title, outlet: fallback };
   const source = m[2]!.trim();
-  if (/NEWS10|WRGB|CBS ?6|WNYT|WAMC|Times Union|Spectrum|Daily Gazette|Patch/i.test(source)) {
+  if (
+    /NEWS10|WRGB|CBS ?6|WNYT|WAMC|Times Union|Spectrum|Daily Gazette|Patch|Dispatch|\.com|\.net/i.test(
+      source,
+    ) ||
+    source.length <= 28
+  ) {
     return { title: m[1]!.trim(), outlet: source.replace(/\s+/g, " ") };
   }
   return { title, outlet: fallback };
+}
+
+function tidySummary(title: string, summary: string, outlet: string): string {
+  let s = summary.replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
+  if (s.startsWith(title)) s = s.slice(title.length).replace(/^[\s\-–—]+/, "").trim();
+  s = s.replace(new RegExp(`${outlet.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i"), "").trim();
+  if (s.length < 28) return title;
+  return s.slice(0, 360);
 }
 
 function parseImage(block: string): string | undefined {
@@ -124,16 +140,21 @@ function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean):
     const published = Date.parse(tag(block, "pubDate") || tag(block, "dc:date")) || now;
     const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
     if (minutesAgo > NEWS_MIN) continue;
+    const place = placeFromText(`${title} ${summary}`);
     out.push({
       id: url,
       title,
       url,
       outlet: parsed.outlet,
-      summary: summary.slice(0, 220),
+      summary: tidySummary(title, summary, parsed.outlet),
       publishedAt: new Date(published).toISOString(),
       minutesAgo,
       image: parseImage(block),
       kind: "news",
+      municipality: place?.name,
+      address: place?.name,
+      lat: place?.lat,
+      lng: place?.lng,
     });
   }
   return out;
@@ -214,6 +235,14 @@ function parse511When(raw: string | undefined, now: number): number {
   return Number.isFinite(t) ? t : now;
 }
 
+function inCapital511(e: DotEvent): boolean {
+  const county = (e.CountyName || "").toLowerCase();
+  if (CAP_COUNTIES.has(county)) return true;
+  const lat = e.Latitude;
+  const lng = e.Longitude;
+  return typeof lat === "number" && typeof lng === "number" && lat > 42.4 && lat < 43.25 && lng > -74.25 && lng < -73.5;
+}
+
 async function fetch511(now: number): Promise<LiveWireItem[]> {
   try {
     const res = await fetch("https://511ny.org/api/getevents?format=json", {
@@ -225,22 +254,25 @@ async function fetch511(now: number): Promise<LiveWireItem[]> {
     const out: LiveWireItem[] = [];
     for (const e of events) {
       if ((e.EventType || "") !== "accidentsAndIncidents") continue;
-      const county = (e.CountyName || "").toLowerCase();
-      if (county && !CAP_COUNTIES.has(county)) continue;
+      if (!inCapital511(e)) continue;
       const desc = e.Description || "";
-      if (!county && !LOCAL.test(desc)) continue;
       const at = parse511When(e.Reported, now);
       const minutesAgo = Math.max(0, Math.round((now - at) / 60_000));
       if (minutesAgo > LIVE_MIN) continue;
       const road = e.RoadwayName || "Roadway";
-      const place = county ? county.replace(/\b\w/g, (c) => c.toUpperCase()) : "Capital District";
+      const county = (e.CountyName || "").toLowerCase();
+      const place = county
+        ? county.replace(/\b\w/g, (c) => c.toUpperCase())
+        : LOCAL.test(desc)
+          ? "Capital District"
+          : "Capital District";
       const sev = e.Severity && e.Severity !== "Unknown" ? `${e.Severity} crash` : "Crash";
       out.push({
         id: `511-${e.ID || road}-${at}`,
         title: `${sev} — ${road}`,
         url: "https://511ny.org/region/Capital%20Region%20Albany%20Saratoga%20Area",
         outlet: "511NY",
-        summary: desc.slice(0, 220),
+        summary: (desc || `${sev} reported on ${road}.`).slice(0, 280),
         publishedAt: new Date(at).toISOString(),
         minutesAgo,
         kind: "traffic",
@@ -280,16 +312,21 @@ async function fetchNyspPress(now: number): Promise<LiveWireItem[]> {
       const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
       if (minutesAgo > NEWS_MIN) continue;
       const url = `https://troopers.ny.gov${path}`;
+      const place = placeFromText(title);
       out.push({
         id: url,
         title,
         url,
         outlet: "NYSP press",
-        summary: "New York State Police newsroom",
+        summary: title,
         publishedAt: new Date(published).toISOString(),
         minutesAgo,
         kind: "news",
         agency: "NYSP",
+        municipality: place?.name,
+        address: place?.name,
+        lat: place?.lat,
+        lng: place?.lng,
       });
     }
     return out;
@@ -332,9 +369,9 @@ async function collectWire() {
   const scan = scannerItems(now);
   const blotterLive = blotter.filter((r) => r.minutesAgo <= BLOTTER_LIVE_MIN);
   const blotterNews = blotter.filter((r) => r.minutesAgo > BLOTTER_LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
-  const liveNews = [...news.crime, ...press].filter((r) => {
+  const liveNews = [...news.crime, ...news.stories, ...press].filter((r) => {
     const hay = `${r.title} ${r.summary}`;
-    return r.minutesAgo <= LIVE_MIN && !COURT_ONLY.test(hay) && !NOT_LIVE_NEWS.test(hay);
+    return r.minutesAgo <= LIVE_MIN && CRIME.test(hay) && !COURT_ONLY.test(hay) && !NOT_LIVE_NEWS.test(hay);
   });
   const items = mergeActivity([blotterLive, scan, traffic, liveNews]);
   const stories = mergeActivity([

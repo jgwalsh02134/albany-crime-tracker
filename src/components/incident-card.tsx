@@ -57,6 +57,9 @@ export function IncidentCard({
       <h3 className="mt-1 text-sm font-semibold leading-snug tracking-tight text-fg">
         {incident.title}
       </h3>
+      {incident.description && incident.description !== incident.title ? (
+        <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-muted">{incident.description}</p>
+      ) : null}
       <p className="mt-1.5 flex items-center gap-1.5 text-sm text-muted">
         <MapPin className="size-3.5 shrink-0 text-subtle" />
         <span className="truncate">{loc}</span>
@@ -64,6 +67,9 @@ export function IncidentCard({
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         <Badge tone={incident.severity}>{incident.severity}</Badge>
         {incident.origin === "live" ? <Badge tone={badgeTone}>{badge}</Badge> : null}
+        {incident.disposition ? (
+          <Badge tone={/arrest|held/i.test(incident.disposition) ? "high" : "muted"}>{incident.disposition}</Badge>
+        ) : null}
       </div>
     </button>
   );

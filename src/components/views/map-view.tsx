@@ -3,7 +3,7 @@ import { LocateFixed, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { lastHours } from "@/lib/data";
 import { incidentVisible, useAppStore } from "@/lib/store";
-import { ALBANY_CENTER, type Category, type Incident, type Severity } from "@/lib/types";
+import { type Category, type Incident, type Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
 
@@ -58,7 +58,7 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
       map = L.map(el.current, {
         zoomControl: false,
         attributionControl: true,
-      }).setView(ALBANY_CENTER, 12);
+      }).setView([42.78, -73.8], 10);
       L.control.zoom({ position: "bottomright" }).addTo(map);
       const tiles =
         theme === "light"
@@ -82,37 +82,54 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
 
   useEffect(() => {
     if (!active || !ready) return;
-    const map = mapRef.current?.map;
-    const id = window.setTimeout(() => map?.invalidateSize(), 50);
-    const id2 = window.setTimeout(() => map?.invalidateSize(), 250);
+    const ctx = mapRef.current;
+    const map = ctx?.map;
+    const L = ctx?.L;
+    const id = window.setTimeout(() => {
+      map?.invalidateSize();
+      if (!selectedId && L && visible.length) {
+        const bounds = L.latLngBounds(visible.map((i) => [i.lat, i.lng] as [number, number]));
+        if (bounds.isValid()) map?.fitBounds(bounds.pad(0.16), { maxZoom: 11, animate: false });
+      }
+    }, 80);
+    const id2 = window.setTimeout(() => map?.invalidateSize(), 300);
     return () => {
       window.clearTimeout(id);
       window.clearTimeout(id2);
     };
-  }, [active, ready]);
+  }, [active, ready, selectedId, visible.length, mapHours]);
 
   useEffect(() => {
     const ctx = mapRef.current;
     if (!ctx || !ready) return;
     const { L, layer, map } = ctx;
     layer.clearLayers();
+    const pts: [number, number][] = [];
     for (const inc of visible) {
-      const r = heatmap ? 18 : inc.severity === "critical" ? 9 : 7;
+      const selected = inc.id === selectedId;
+      const r = heatmap ? 16 : selected ? 10 : 7;
       const marker = L.circleMarker([inc.lat, inc.lng], {
         radius: r,
-        color: COLORS[inc.severity],
-        weight: heatmap ? 0 : 2,
+        color: selected ? "#fff" : COLORS[inc.severity],
+        weight: selected ? 3 : 2,
         fillColor: COLORS[inc.severity],
-        fillOpacity: heatmap ? 0.22 : 0.85,
+        fillOpacity: heatmap ? 0.22 : 0.92,
       });
+      const tip = [inc.title, inc.address, inc.description].filter(Boolean).join("\n").slice(0, 240);
+      marker.bindTooltip(tip, { direction: "top", opacity: 0.96, className: "act-tip", sticky: true });
       marker.on("click", () => select(inc.id));
       marker.addTo(layer);
+      pts.push([inc.lat, inc.lng]);
     }
+    if (!active) return;
     if (selectedId) {
       const hit = visible.find((i) => i.id === selectedId);
-      if (hit) map.panTo([hit.lat, hit.lng]);
+      if (hit) map.panTo([hit.lat, hit.lng], { animate: false });
+    } else if (pts.length > 0) {
+      const bounds = L.latLngBounds(pts);
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.16), { maxZoom: 11, animate: false });
     }
-  }, [visible, heatmap, selectedId, select, ready]);
+  }, [visible, heatmap, selectedId, select, ready, active]);
 
   function locate() {
     if (!navigator.geolocation || !mapRef.current) return;

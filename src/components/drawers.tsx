@@ -151,15 +151,22 @@ export function IncidentDrawer({ incident }: { incident: Incident | null }) {
           </div>
           <h2 className="mt-2 text-xl font-semibold leading-snug tracking-tight">{incident.title}</h2>
           <p className="mt-1.5 text-sm text-muted">
-            {incident.address}, {incident.municipality}
+            {incident.address}
+            {incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
+              ? ""
+              : `, ${incident.municipality}`}
           </p>
           <p className="mt-0.5 font-mono text-xs tabular-nums text-subtle">
             {clockTime(incident.occurredAt)} · {relativeTime(incident.occurredAt)}
           </p>
-          <p className="mt-4 text-sm leading-relaxed text-muted">{incident.description}</p>
+          <p className="mt-4 text-sm leading-relaxed text-fg">{incident.description}</p>
           {incident.origin === "live" && incident.verification === "developing" ? (
             <p className="mt-3 rounded-lg border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs leading-relaxed text-muted">
               Newsroom report — not a confirmed blotter or CAD call. Open the source for the original story.
+            </p>
+          ) : incident.verification === "scanner" ? (
+            <p className="mt-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-xs leading-relaxed text-muted">
+              Unconfirmed radio traffic. This is not a CAD incident.
             </p>
           ) : (
             <p className="mt-3 rounded-lg bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
@@ -173,7 +180,7 @@ export function IncidentDrawer({ incident }: { incident: Incident | null }) {
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-subtle">Status</dt>
-              <dd className="mt-0.5 font-medium capitalize">{incident.status}</dd>
+              <dd className="mt-0.5 font-medium">{incident.disposition || incident.status}</dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-subtle">Verification</dt>

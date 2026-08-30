@@ -179,7 +179,7 @@ function LiveList({
       <p className="pb-2 text-xs leading-snug text-subtle">
         {wireLive && wireHealth && wireHealth.blotter === 0 && wireHealth.blotterFailed > 0
           ? "NYSP’s daily blotter is delayed. Radio, 511, and newsrooms still update — this is not a city CAD dump."
-          : "NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511, and breaking crime since then."}
+          : "NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511 crashes, and breaking crime since then. Each card lists charges, road, and status when the blotter has them. City CAD is not public."}
         {wireOutlets.length ? ` · ${wireOutlets.slice(0, 4).join(" · ")}` : ""}
       </p>
 
