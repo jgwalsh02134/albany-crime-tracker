@@ -157,6 +157,7 @@ const STREETS: { re: RegExp; geo: Geo; label: string }[] = [
   { re: /\bnew scotland\b/i, geo: { lat: 42.65, lng: -73.78 }, label: "New Scotland Ave" },
   { re: /\bdelaware (ave|avenue)\b/i, geo: { lat: 42.64, lng: -73.77 }, label: "Delaware Ave" },
   { re: /\bbroadway\b/i, geo: { lat: 42.65, lng: -73.75 }, label: "Broadway" },
+  { re: /\bsouthern (blvd|boulevard)\b/i, geo: { lat: 42.642, lng: -73.773 }, label: "Southern Blvd" },
 ];
 
 const TOWN_NAMES = Object.keys(TOWN).sort((a, b) => b.length - a.length);

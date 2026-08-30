@@ -14,11 +14,25 @@ const KEYTERMS = [
   "Watervliet",
   "Menands",
   "Latham",
+  "Delmar",
+  "Loudonville",
   "Western Avenue",
   "Central Avenue",
   "Lark Street",
   "Pearl Street",
   "Washington Avenue",
+  "Madison Avenue",
+  "New Scotland",
+  "Delaware Avenue",
+  "Southern Boulevard",
+  "Broadway",
+  "Henry Johnson",
+  "Wolf Road",
+  "Speedway",
+  "panic alarm",
+  "welfare check",
+  "domestic",
+  "personal injury",
 ];
 
 type ResolvedFeed = {
@@ -81,11 +95,12 @@ async function resolveHls(feedId: string): Promise<ResolvedFeed> {
 function looksBlank(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
-  if (t.length < 8) return true;
+  if (t.length < 6) return true;
   if (/^(silence|\[?(blank|silence|inaudible|music)\]?|\(+.*?quiet.*?\)+)$/i.test(t)) return true;
+  if (/brooklyn north|automatic line/i.test(t)) return true;
   if ((t.match(/10-\d+/g) || []).length >= 3) return true;
   if (/copy\s+en route\s+on scene/i.test(t)) return true;
-  if ((t.match(/,/g) || []).length >= 4) return true;
+  if ((t.match(/,/g) || []).length >= 6) return true;
   return false;
 }
 
@@ -113,7 +128,7 @@ export async function transcribeAudioFile(
   const form = new FormData();
   form.append("language", "en");
   form.append("format", "true");
-  form.append("vad_threshold", "0.2");
+  form.append("vad_threshold", "0.28");
   for (const term of KEYTERMS) form.append("keyterm", term);
   form.append("file", new File([copy], filename, { type: mime }));
 
@@ -152,6 +167,8 @@ export const getScannerPlaylist = createServerFn({ method: "POST" })
   });
 
 export const getScannerStatuses = createServerFn({ method: "POST" }).handler(async () => {
+  const { startScannerPoll } = await import("./scanner-poll");
+  startScannerPoll();
   const feeds = await Promise.all(
     SCANNER_FEEDS.map(async (feed) => {
       const resolved = await resolveHls(feed.id);
@@ -160,6 +177,28 @@ export const getScannerStatuses = createServerFn({ method: "POST" }).handler(asy
   );
   return { ok: true as const, feeds };
 });
+
+export const getScannerCaptions = createServerFn({ method: "POST" })
+  .validator((input: { feedId?: string; listen?: boolean }) => ({
+    feedId: String(input.feedId ?? ""),
+    listen: Boolean(input.listen),
+  }))
+  .handler(async ({ data }) => {
+    const poll = await import("./scanner-poll");
+    poll.startScannerPoll();
+    if (data.listen && data.feedId) poll.setListenFeed(data.feedId);
+    else if (!data.listen) poll.setListenFeed(null);
+    const health = poll.scannerHealth();
+    return {
+      ok: true as const,
+      lines: poll.captionLines(data.feedId || undefined),
+      lastSpoken: health.lastSpoken,
+      lastError: health.lastError,
+      ticks: health.ticks,
+      kept: health.kept,
+      ageSec: health.ageSec,
+    };
+  });
 
 export const transcribeAudioChunk = createServerFn({ method: "POST" })
   .validator((input: { feedId: string; b64: string; mime?: string; filename?: string }) => {

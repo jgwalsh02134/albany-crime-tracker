@@ -160,6 +160,7 @@ export type WireHealth = {
   scannerTicks?: number;
   scannerError?: string;
   scannerHeard?: string;
+  scannerCaptioned?: number;
 };
 
 export type LiveWireItem = {
@@ -237,6 +238,7 @@ function classify(title: string): { type: string; category: Incident["category"]
   if (/\bdwi|intoxicat/.test(t)) return { type: "dwi", category: "other", severity: "high" };
   if (/\bdomestic\b/.test(t)) return { type: "domestic", category: "violent", severity: "high" };
   if (/\b(robbery|carjack)\b/.test(t)) return { type: "robbery", category: "violent", severity: "high" };
+  if (/\b(panic alarm|hold-?up alarm|burglar alarm)\b/.test(t)) return { type: "alarm", category: "other", severity: "high" };
   if (/\bassault\b/.test(t)) return { type: "assault", category: "violent", severity: "high" };
   if (/\b(burglary|break-in|alarm - burglary)\b/.test(t)) return { type: "burglary", category: "property", severity: "medium" };
   if (/\b(theft|stolen|larceny)\b/.test(t)) return { type: "larceny", category: "property", severity: "medium" };
@@ -357,7 +359,7 @@ export function wireToScannerCalls(wire: LiveWireItem[]): ScannerCall[] {
         occurredAt: w.publishedAt,
         talkgroup: w.agency || "Dispatch",
         discipline,
-        summary: w.title,
+        summary: (w.summary || w.title).replace(/\. Unconfirmed[\s\S]*$/i, "").trim() || w.title,
         durationSec: 6,
         priority: /weapon|shots|priority|10-13/i.test(hay) ? "high" : "medium",
         agency: w.agency || "Scanner",

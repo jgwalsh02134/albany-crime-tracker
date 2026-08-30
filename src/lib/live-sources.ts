@@ -400,6 +400,7 @@ async function collectWire() {
     scannerTicks: scanStats.ticks,
     scannerError: scanStats.lastError || undefined,
     scannerHeard: scanStats.lastSpoken || undefined,
+    scannerCaptioned: scanStats.captions,
   };
   return {
     ok: true as const,
