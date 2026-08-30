@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { LiveWireItem, WireHealth } from "./sources";
 import { fetchNyspBlotter, parseNyWhen } from "./nysp-blotter";
-import { scannerItems, startScannerPoll } from "./scanner-poll";
+import { scannerHealth, scannerItems, startScannerPoll } from "./scanner-poll";
 import { placeFromText } from "./geo";
 
 const FEEDS: { url: string; outlet: string }[] = [
@@ -10,8 +10,9 @@ const FEEDS: { url: string; outlet: string }[] = [
   { url: "https://cbs6albany.com/news/local.rss", outlet: "CBS6" },
   { url: "https://wnyt.com/feed/", outlet: "WNYT" },
   { url: "https://www.wamc.org/news.rss", outlet: "WAMC" },
+  { url: "https://patch.com/new-york/albany/rss", outlet: "Patch Albany" },
   {
-    url: "https://news.google.com/rss/search?q=Albany+County+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    url: "https://news.google.com/rss/search?q=Albany+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI+OR+trooper)+when:1d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Google News",
   },
 ];
@@ -28,6 +29,7 @@ const COURT_ONLY =
   /\b(sentenced|years in prison|plea|convicted|verdict|gets \d+ years|indictment for)\b/i;
 const NOT_LIVE_NEWS =
   /\b(lawsuit|file suit|sues |weekly|notable dwi|week in review)\b/i;
+const NYC_NOT_OURS = /\b(brooklyn|queens|bronx|manhattan|nycha|albany houses)\b/i;
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const CAP_COUNTIES = new Set(["albany", "rensselaer", "schenectady", "saratoga"]);
@@ -134,7 +136,7 @@ function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean):
     if (!title || !url || seen.has(url)) continue;
     const summary = tag(block, "description") || tag(block, "content:encoded");
     const hay = `${title} ${summary}`;
-    if (DROP.test(hay) || !LOCAL.test(hay)) continue;
+    if (DROP.test(hay) || NYC_NOT_OURS.test(hay) || !LOCAL.test(hay)) continue;
     if (crimeOnly && !CRIME.test(hay)) continue;
     seen.add(url);
     const published = Date.parse(tag(block, "pubDate") || tag(block, "dc:date")) || now;
@@ -371,7 +373,7 @@ async function collectWire() {
   const blotterNews = blotter.filter((r) => r.minutesAgo > BLOTTER_LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
   const liveNews = [...news.crime, ...news.stories, ...press].filter((r) => {
     const hay = `${r.title} ${r.summary}`;
-    return r.minutesAgo <= LIVE_MIN && CRIME.test(hay) && !COURT_ONLY.test(hay) && !NOT_LIVE_NEWS.test(hay);
+    return r.minutesAgo <= LIVE_MIN && CRIME.test(hay) && !COURT_ONLY.test(hay) && !NOT_LIVE_NEWS.test(hay) && !NYC_NOT_OURS.test(hay);
   });
   const items = mergeActivity([blotterLive, scan, traffic, liveNews]);
   const stories = mergeActivity([
@@ -386,6 +388,7 @@ async function collectWire() {
     press.length ? "NYSP press" : "",
     ...news.liveOutlets,
   ].filter(Boolean);
+  const scanStats = scannerHealth();
   const health: WireHealth = {
     blotter: blotterLive.length,
     blotterFailed: blotterRes.failed,
@@ -394,6 +397,9 @@ async function collectWire() {
     news: liveNews.length,
     captions: Boolean(process.env.XAI_API_KEY),
     extractor: blotterRes.extractor,
+    scannerTicks: scanStats.ticks,
+    scannerError: scanStats.lastError || undefined,
+    scannerHeard: scanStats.lastSpoken || undefined,
   };
   return {
     ok: true as const,

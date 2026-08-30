@@ -46,7 +46,10 @@ export function FeedView({
   const liveAll = areaVisible.filter((i) => i.origin === "live");
   const areas = areaCounts(liveAll);
   const liveItems = visible.filter((i) => i.origin === "live");
-  const newest = liveItems[0] ?? visible[0];
+  const newest = liveItems.reduce<Incident | undefined>((best, row) => {
+    if (!best || row.minutesAgo < best.minutesAgo) return row;
+    return best;
+  }, undefined);
   const mix = sourceMix(liveAll);
 
   return (
@@ -177,9 +180,11 @@ function LiveList({
         </p>
       </div>
       <p className="pb-2 text-xs leading-snug text-subtle">
-        {wireLive && wireHealth && wireHealth.blotter === 0 && wireHealth.blotterFailed > 0
-          ? "NYSP’s daily blotter is delayed. Radio, 511, and newsrooms still update — this is not a city CAD dump."
-          : "NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511 crashes, and breaking crime since then. Each card lists charges, road, and status when the blotter has them. City CAD is not public."}
+        {wireLive && newest && newest.minutesAgo >= 180
+          ? "NYSP’s blotter last posted at 7 AM ET. Radio, 511 crashes, and breaking news fill the hours since — city CAD is not public."
+          : wireLive && wireHealth && wireHealth.blotter === 0 && wireHealth.blotterFailed > 0
+            ? "NYSP’s daily blotter is delayed. Radio, 511, and newsrooms still update — this is not a city CAD dump."
+            : "NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511 crashes, and breaking crime since then. Each card lists charges, road, and status when the blotter has them. City CAD is not public."}
         {wireOutlets.length ? ` · ${wireOutlets.slice(0, 4).join(" · ")}` : ""}
       </p>
 
@@ -244,15 +249,32 @@ function GroupedList({
   onSelect: (id: string) => void;
 }) {
   const since7 = minutesSinceNy7am();
-  const fresh = items.filter((i) => i.minutesAgo <= since7);
+  const nowItems = items.filter((i) => i.minutesAgo <= 180);
+  const today = items.filter((i) => i.minutesAgo > 180 && i.minutesAgo <= since7);
   const overnight = items.filter((i) => i.minutesAgo > since7);
   return (
     <div className="flex flex-col gap-5">
-      {fresh.length ? (
+      <section>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Last 3 hours</h2>
+        {nowItems.length ? (
+          <ul className="flex flex-col gap-2.5">
+            {nowItems.map((inc) => (
+              <li key={inc.id}>
+                <IncidentCard incident={inc} onSelect={onSelect} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+            No radio, 511 crash, or breaking news in the last 3 hours. NYSP’s next official blotter posts at 7 AM.
+          </p>
+        )}
+      </section>
+      {today.length ? (
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Since 7 AM</h2>
           <ul className="flex flex-col gap-2.5">
-            {fresh.map((inc) => (
+            {today.map((inc) => (
               <li key={inc.id}>
                 <IncidentCard incident={inc} onSelect={onSelect} />
               </li>

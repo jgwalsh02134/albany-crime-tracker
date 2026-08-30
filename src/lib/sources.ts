@@ -157,6 +157,9 @@ export type WireHealth = {
   news: number;
   captions: boolean;
   extractor?: string;
+  scannerTicks?: number;
+  scannerError?: string;
+  scannerHeard?: string;
 };
 
 export type LiveWireItem = {
@@ -311,7 +314,7 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       disposition: item.status,
     } satisfies Incident;
   });
-  return spreadItems(incidents);
+  return spreadItems(incidents).sort((a, b) => a.minutesAgo - b.minutesAgo);
 }
 
 function clusterWire(items: LiveWireItem[]): LiveWireItem[][] {
