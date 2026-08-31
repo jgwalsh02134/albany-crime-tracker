@@ -8,7 +8,7 @@ import { locateSpoken } from "./geo";
 const TICK_MS = 12000;
 const MAX_ITEMS = 120;
 const MIN_AUDIO = 1400;
-const EXTRA_FEEDS = ["1440", "37206"] as const;
+const EXTRA_FEEDS = ["1440", "37206", "36327"] as const;
 const CALL =
   /\b(panic|alarm|welfare|domestic|crash|collision|accident|personal injury|\bpi\b|fire|ems|ambulance|shoot|shots|gun|stab|fight|assault|burglary|robbery|larceny|theft|stolen|suspicious|wanted|dwi|intoxicated|overdose|unconscious|medical|rescue|injury|injured|hit.?and.?run|pursuit|missing|trespass|harass|person down|man down|priority|hold.?up|weapon|carjack|disabled|breakdown|speedway|10-1[0-9]|10-5[0-9]|10-8[0-9])\b/i;
 const PLACE =

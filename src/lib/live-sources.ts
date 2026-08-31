@@ -32,6 +32,16 @@ const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
     outlet: "Patch",
     crimeOnly: true,
   },
+  {
+    url: "https://news.google.com/rss/search?q=site:dailygazette.com+(albany+OR+colonie+OR+schenectady)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Daily Gazette",
+    crimeOnly: true,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:fox23news.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "FOX23",
+    crimeOnly: true,
+  },
 ];
 
 const LOCAL =

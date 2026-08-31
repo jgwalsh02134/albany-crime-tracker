@@ -381,16 +381,17 @@ function SourcePipes({ health }: { health: WireHealth }) {
               <p className="mt-1 text-xs leading-relaxed text-muted">
                 Albany, Colonie, and Bethlehem do not publish live CAD. Counts below are what this refresh actually pulled.
               </p>
-              <ul className="mt-3 space-y-2">
+              <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Wired this refresh</h3>
+              <ul className="mt-2 space-y-2">
                 {[
                   ["NYSP blotter", health.blotter, "Official 7 AM dump. Not a live dispatch board."],
-                  ["Radio captions", health.scanner, "Broadcastify Albany/Colonie PD and fire. Unconfirmed."],
+                  ["Radio captions", health.scanner, "Albany/Colonie PD, Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire. Unconfirmed."],
                   ["511NY crashes", health.traffic, "Capital District accidents only. Construction is ignored."],
                   ["Department Facebook", health.facebook ?? 0, "APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland."],
                   ["X", health.x ?? 0, "NYSP, Albany Fire, CBS6, NEWS10, Times Union when they tweet crime."],
                   ["Town civic", health.civic ?? 0, "Bethlehem / Guilderland / Albany news flashes — crashes and arrests only."],
-                  ["Newsrooms", health.news, "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight."],
-                  ["Citizens", (health.reddit ?? 0) + (health.citizen ?? 0), "Reddit r/Albany and in-app reports. Not 911."],
+                  ["Newsrooms", health.news, "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight, Gazette, FOX23."],
+                  ["Citizens", (health.reddit ?? 0) + (health.citizen ?? 0), "Reddit r/Albany, r/Troy, r/Schenectady and in-app reports. Not 911."],
                   ["NWS warnings", health.nws ?? 0, "Tornado, flash flood, severe thunderstorm, blizzard. Not routine weather."],
                 ].map(([name, n, why]) => (
                   <li key={String(name)} className="rounded-lg border border-border bg-surface-2 px-3 py-2">
@@ -402,8 +403,38 @@ function SourcePipes({ health }: { health: WireHealth }) {
                   </li>
                 ))}
               </ul>
+              <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Tried and blocked</h3>
+              <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-muted">
+                <li>
+                  <span className="font-medium text-fg">Live CAD / CFS</span> — Albany, Colonie, and Bethlehem do not publish a dispatch board. City open-data host is dead.
+                </li>
+                <li>
+                  <span className="font-medium text-fg">PulsePoint</span> — Albany NY is not on PulsePoint. API returns 401.
+                </li>
+                <li>
+                  <span className="font-medium text-fg">OpenMHz</span> — albanycony is live in a browser, Cloudflare 403 to servers.
+                </li>
+                <li>
+                  <span className="font-medium text-fg">Nixle / NY-Alert</span> — login wall. APD Alert Center RSS is empty until the city posts.
+                </li>
+                <li>
+                  <span className="font-medium text-fg">SpotCrime / CrimeMapping / RAIDS</span> — no public JSON. SpotCrime API 403.
+                </li>
+                <li>
+                  <span className="font-medium text-fg">Citizen App, Ring, Nextdoor, Waze</span> — no public feed.
+                </li>
+                <li>
+                  <span className="font-medium text-fg">Meta Graph / Instagram</span> — needs an app review token. We index public Facebook posts via Google instead.
+                </li>
+                <li>
+                  <span className="font-medium text-fg">X PD accounts</span> — APD last posted Jan 2025. Colonie tells people to use Facebook.
+                </li>
+                <li>
+                  <span className="font-medium text-fg">Jail bookings / FOIL CAD</span> — not a live stream. DCJS and FBI NIBRS are annual, on Trends.
+                </li>
+              </ul>
               <p className="mt-3 text-xs leading-relaxed text-subtle">
-                Closed: live CAD, PulsePoint, OpenMHz, jail bookings, Nixle (login), Ring, Citizen App, Nextdoor, Meta Graph.
+                511 construction, CDTA notices, and hiring posts are fetched then dropped so Live stays public-safety.
               </p>
             </div>
           </Drawer.Content>

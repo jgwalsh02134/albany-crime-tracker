@@ -129,6 +129,20 @@ const REDDIT_FEEDS: SocialFeed[] = [
     needsLocal: false,
     format: "atom",
   },
+  {
+    url: "https://www.reddit.com/r/Troy/search.rss?q=police+OR+crash+OR+fire+OR+shooting+OR+arrest&sort=new&restrict_sr=on",
+    outlet: "Reddit · r/Troy",
+    official: false,
+    needsLocal: false,
+    format: "atom",
+  },
+  {
+    url: "https://www.reddit.com/r/Schenectady/search.rss?q=police+OR+crash+OR+fire+OR+shooting+OR+arrest&sort=new&restrict_sr=on",
+    outlet: "Reddit · r/Schenectady",
+    official: false,
+    needsLocal: false,
+    format: "atom",
+  },
 ];
 
 function decode(raw: string): string {

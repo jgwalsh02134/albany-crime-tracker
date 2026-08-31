@@ -45,7 +45,7 @@ export const SOURCES = [
   {
     name: "Broadcastify radio",
     tier: "Scanner",
-    detail: "Albany/Colonie PD, Albany Fire, volunteer fire, Thruway. Captions are unconfirmed until a blotter or newsroom matches. OpenMHz is blocked.",
+    detail: "Albany/Colonie PD, Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire, Thruway. Captions are unconfirmed. OpenMHz is blocked (403).",
   },
   {
     name: "511NY crashes",
@@ -60,17 +60,17 @@ export const SOURCES = [
   {
     name: "Town civic alerts",
     tier: "Official",
-    detail: "Bethlehem, Guilderland, and Albany CivicPlus news flashes when they are crashes, arrests, or fires — not hiring or parking.",
+    detail: "Bethlehem, Guilderland, and Albany CivicPlus news flashes when they are crashes, arrests, or fires — not hiring or parking. Alert Center RSS is empty unless the city posts.",
   },
   {
     name: "Newsrooms",
     tier: "Newsroom",
-    detail: "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight. Breaking crime under 24h also appears on Live.",
+    detail: "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight, Daily Gazette, FOX23. Breaking crime under 24h also appears on Live.",
   },
   {
     name: "Citizens",
     tier: "Unconfirmed",
-    detail: "Reddit r/Albany eyewitness posts and in-app ‘Saw something’ notes. Not 911. Citizen App, Ring, and Nextdoor have no public feed.",
+    detail: "Reddit r/Albany, r/Troy, r/Schenectady and in-app ‘Saw something’ notes. Not 911. Citizen App, Ring, and Nextdoor have no public feed.",
   },
   {
     name: "NWS warnings",
@@ -80,7 +80,7 @@ export const SOURCES = [
   {
     name: "Not public",
     tier: "Blocked",
-    detail: "Albany, Colonie, and Bethlehem do not publish live CAD. PulsePoint is not connected here. Jail bookings, Nixle (login), and Meta’s Facebook API are closed.",
+    detail: "No live CAD from Albany, Colonie, or Bethlehem. PulsePoint, OpenMHz, SpotCrime, CrimeMapping, Nixle, jail bookings, NY-Alert, Waze, and Meta Graph are closed or empty.",
   },
   {
     name: "Agency directory",

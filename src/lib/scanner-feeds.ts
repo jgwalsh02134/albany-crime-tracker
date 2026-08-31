@@ -23,6 +23,16 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
     hlsFallback: "https://hls-o1.broadcastify.com/s0/feed/3626/playlist.m3u8",
   },
   {
+    id: "36327",
+    name: "Bethlehem PD / Fire / EMS",
+    shortName: "Bethlehem",
+    coverage: "Bethlehem Police, Delmar / Elsmere / Selkirk / Slingerlands fire, EMS",
+    system: "County P25 talkgroups 10921–10931",
+    discipline: "all",
+    url: "https://www.broadcastify.com/listen/feed/36327",
+    hlsFallback: "https://hls-o1.broadcastify.com/s2/feed/36327/playlist.m3u8",
+  },
+  {
     id: "1440",
     name: "Albany Fire",
     shortName: "Fire",
