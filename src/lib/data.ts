@@ -43,19 +43,44 @@ export const SOURCES = [
     detail: "Daily public information reports covering 7:01 AM yesterday through 7:00 AM today. Crashes, DWI, arrests, and calls — not a news rewrite.",
   },
   {
-    name: "Broadcastify Albany/Colonie PD",
+    name: "Broadcastify radio",
     tier: "Scanner",
-    detail: "Live P25 radio. Captions and Live cards from the stream are unconfirmed until a blotter or newsroom matches.",
+    detail: "Albany/Colonie PD, Albany Fire, volunteer fire, Thruway. Captions are unconfirmed until a blotter or newsroom matches. OpenMHz is blocked.",
   },
   {
-    name: "511NY",
+    name: "511NY crashes",
     tier: "Official",
-    detail: "NYSDOT crashes and incidents on Capital Region roads when NY posts them.",
+    detail: "NYSDOT accidentsAndIncidents in Albany, Rensselaer, Schenectady, Saratoga. Construction is not shown as crime. Often empty overnight.",
   },
   {
-    name: "News10, CBS6, WNYT, WAMC",
+    name: "Department Facebook / X",
+    tier: "Official",
+    detail: "Albany, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland PD pages plus NYSP and Albany Fire on X. APD posts on Facebook, not X.",
+  },
+  {
+    name: "Town civic alerts",
+    tier: "Official",
+    detail: "Bethlehem, Guilderland, and Albany CivicPlus news flashes when they are crashes, arrests, or fires — not hiring or parking.",
+  },
+  {
+    name: "Newsrooms",
     tier: "Newsroom",
-    detail: "Journalism. Breaking crime under 24h also appears on Live. Older significant stories stay on News.",
+    detail: "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight. Breaking crime under 24h also appears on Live.",
+  },
+  {
+    name: "Citizens",
+    tier: "Unconfirmed",
+    detail: "Reddit r/Albany eyewitness posts and in-app ‘Saw something’ notes. Not 911. Citizen App, Ring, and Nextdoor have no public feed.",
+  },
+  {
+    name: "NWS warnings",
+    tier: "Official",
+    detail: "Tornado, flash flood, severe thunderstorm, blizzard, and civil-emergency warnings for the Capital District. Advisories are skipped.",
+  },
+  {
+    name: "Not public",
+    tier: "Blocked",
+    detail: "Albany, Colonie, and Bethlehem do not publish live CAD. PulsePoint is not connected here. Jail bookings, Nixle (login), and Meta’s Facebook API are closed.",
   },
   {
     name: "Agency directory",

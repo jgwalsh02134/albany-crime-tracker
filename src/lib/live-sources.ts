@@ -4,8 +4,9 @@ import { fetchNyspBlotter, parseNyWhen } from "./nysp-blotter";
 import { scannerHealth, scannerItems, startScannerPoll } from "./scanner-poll";
 import { placeFromText } from "./geo";
 import { collectSocial, socialLive, socialNews } from "./social-sources";
+import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
 
-const FEEDS: { url: string; outlet: string }[] = [
+const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
   { url: "https://www.news10.com/news/crime/feed/", outlet: "News10" },
   { url: "https://cbs6albany.com/news/local.rss", outlet: "CBS6" },
@@ -16,6 +17,21 @@ const FEEDS: { url: string; outlet: string }[] = [
     url: "https://news.google.com/rss/search?q=Albany+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI+OR+trooper)+when:1d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Google News",
   },
+  {
+    url: "https://news.google.com/rss/search?q=site:timesunion.com+(crash+OR+shooting+OR+arrest+OR+DWI+OR+homicide+OR+stabbing)+(albany+OR+colonie+OR+delmar+OR+latham+OR+bethlehem+OR+guilderland)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Times Union",
+    crimeOnly: true,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:spotlightnews.com+(arrest+OR+crash+OR+blotter+OR+DWI+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Spotlight",
+    crimeOnly: true,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:patch.com/new-york+(colonie+OR+bethlehem+OR+latham)+(police+OR+crash+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Patch",
+    crimeOnly: true,
+  },
 ];
 
 const LOCAL =
@@ -23,7 +39,7 @@ const LOCAL =
 const CRIME =
   /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrests?|arrested|fire|blaze|killed|injured|fatal|burglary|assault|charg(?:e|ed|es|ing)|vandal|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|trooper|state police|sheriff|trooper)\b/i;
 const DROP =
-  /\b(weather forecast|sports|football|baseball|soccer|high school|seasonably|rain chances|speedway|autism|op-ed|letter to the editor|stock|recipe|job posting|retired before|common council|initiative|camera expansion|suspended without pay|hiring|season preview|concert|festival|fitness|telehealth|auction|tropical storm|superintendent|retirement plans|holiday tour|drive-in|pokémon|pokemon|travers|we salute|settlement|beautiful weather)\b/i;
+  /\b(weather forecast|sports|football|baseball|soccer|high school|seasonably|rain chances|speedway|autism|op-ed|letter to the editor|stock|recipe|job posting|retired before|common council|initiative|camera expansion|suspended without pay|hiring|season preview|concert|festival|fitness|telehealth|auction|tropical storm|superintendent|retirement plans|holiday tour|drive-in|pokémon|pokemon|travers|we salute|settlement|beautiful weather|lanternfl|patroons|nightlife)\b/i;
 const NOTABLE_BLOTTER =
   /fatal|personal injury|dwi|burglary|robbery|assault|homicide|shoot|stab|domestic|gun|weapon|arrest|hit & run|hit-and-run|fire|larceny|fraud|harassment|trespass|menacing|stolen/i;
 const COURT_ONLY =
@@ -179,7 +195,7 @@ async function collectNews(now: number) {
         if (!xml.includes("<item")) return { outlet: feed.outlet, news: [] as LiveWireItem[], crime: [] as LiveWireItem[] };
         return {
           outlet: feed.outlet,
-          news: parseRss(xml, feed.outlet, now, false),
+          news: parseRss(xml, feed.outlet, now, Boolean(feed.crimeOnly)),
           crime: parseRss(xml, feed.outlet, now, true),
         };
       } catch {
@@ -359,7 +375,7 @@ function notable(row: LiveWireItem): boolean {
 async function collectWire() {
   const now = Date.now();
   startScannerPoll();
-  const [news, blotterRes, traffic, press, social] = await Promise.all([
+  const [news, blotterRes, traffic, press, social, civic, nws] = await Promise.all([
     collectNews(now),
     fetchNyspBlotter(now).catch((err) => {
       console.error("[nysp] blotter", err instanceof Error ? err.message : err);
@@ -374,32 +390,39 @@ async function collectWire() {
       reddit: 0,
       citizen: 0,
     })),
+    fetchCivic(now).catch(() => [] as LiveWireItem[]),
+    fetchNws(now).catch(() => [] as LiveWireItem[]),
   ]);
   const blotter = blotterRes.items;
   const scan = scannerItems(now);
   const socialNow = socialLive(social.items);
   const socialOlder = socialNews(social.items);
+  const civicNow = civicLive(civic);
+  const civicOlder = civicNews(civic);
   const blotterLive = blotter.filter((r) => r.minutesAgo <= BLOTTER_LIVE_MIN);
   const blotterNews = blotter.filter((r) => r.minutesAgo > BLOTTER_LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
   const liveNews = [...news.crime, ...news.stories, ...press].filter((r) => {
     const hay = `${r.title} ${r.summary}`;
     return r.minutesAgo <= LIVE_MIN && CRIME.test(hay) && !COURT_ONLY.test(hay) && !NOT_LIVE_NEWS.test(hay) && !NYC_NOT_OURS.test(hay);
   });
-  const items = mergeActivity([blotterLive, scan, traffic, liveNews, socialNow]);
+  const items = mergeActivity([blotterLive, scan, traffic, nws, liveNews, socialNow, civicNow]);
   const storiesCore = mergeActivity([
     news.stories,
     press.filter((r) => r.minutesAgo <= NEWS_MIN),
     blotterNews.map((r) => ({ ...r, kind: "news" as const })),
     socialOlder.filter((r) => r.minutesAgo <= NEWS_MIN),
+    civicOlder.filter((r) => r.minutesAgo <= NEWS_MIN),
   ]).slice(0, 40);
   const seenStories = new Set(storiesCore.map((s) => s.id));
-  const extraSocial = socialOlder.filter((r) => !seenStories.has(r.id)).slice(0, 12);
+  const extraSocial = [...socialOlder, ...civicOlder].filter((r) => !seenStories.has(r.id)).slice(0, 12);
   const stories = [...storiesCore, ...extraSocial];
   const outlets = [
     blotterLive.length ? "NYSP blotter" : "",
     scan.length ? "Scanner" : "",
     traffic.length ? "511NY" : "",
+    nws.length ? "NWS" : "",
     press.length ? "NYSP press" : "",
+    civic.length ? "Civic" : "",
     social.facebook ? "Facebook" : "",
     social.x ? "X" : "",
     social.reddit || social.citizen ? "Citizens" : "",
@@ -422,6 +445,8 @@ async function collectWire() {
     x: social.x,
     reddit: social.reddit,
     citizen: social.citizen,
+    civic: civic.length,
+    nws: nws.length,
   };
   return {
     ok: true as const,

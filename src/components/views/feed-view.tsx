@@ -185,12 +185,14 @@ function LiveList({
       </div>
       <p className="pb-2 text-xs leading-snug text-subtle">
         {wireLive && newest && newest.minutesAgo >= 180
-          ? "NYSP’s blotter last posted at 7 AM ET. Radio, Facebook, X, citizen reports, and 511 fill the hours since — city CAD is not public."
+          ? "NYSP’s blotter last posted at 7 AM ET. Radio, Facebook, civic alerts, citizen reports, and 511 fill the hours since — city CAD is not public."
           : wireLive && wireHealth && wireHealth.blotter === 0 && wireHealth.blotterFailed > 0
-            ? "NYSP’s daily blotter is delayed. Radio, department Facebook/X, and newsrooms still update — this is not a city CAD dump."
-            : "NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511, department Facebook/X, citizen reports, and breaking crime. City CAD is not public."}
-        {wireOutlets.length ? ` · ${wireOutlets.slice(0, 4).join(" · ")}` : ""}
+            ? "NYSP’s daily blotter is delayed. Radio, department Facebook, civic alerts, and newsrooms still update — this is not a city CAD dump."
+            : "NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511, department Facebook, civic alerts, citizen reports, and breaking crime. City CAD is not public."}
+        {wireOutlets.length ? ` · ${wireOutlets.slice(0, 5).join(" · ")}` : ""}
       </p>
+
+      {wireHealth ? <SourcePipes health={wireHealth} /> : null}
 
       <div className="sticky top-0 z-10 -mx-3 mb-3 bg-bg/90 px-3 py-1.5 backdrop-blur-md">
         <div className="flex gap-2 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
@@ -333,6 +335,81 @@ function Chip({
     >
       {label}
     </button>
+  );
+}
+
+function SourcePipes({ health }: { health: WireHealth }) {
+  const [open, setOpen] = useState(false);
+  const pipes: { label: string; n: number }[] = [
+    { label: "Blotter", n: health.blotter },
+    { label: "Radio", n: health.scanner },
+    { label: "511", n: health.traffic },
+    { label: "Facebook", n: health.facebook ?? 0 },
+    { label: "News", n: health.news },
+    { label: "Civic", n: health.civic ?? 0 },
+    { label: "Citizens", n: (health.reddit ?? 0) + (health.citizen ?? 0) },
+    { label: "NWS", n: health.nws ?? 0 },
+  ];
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mb-3 w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-left"
+      >
+        <div className="grid grid-cols-4 gap-1.5">
+          {pipes.map((p) => (
+            <div key={p.label} className="min-w-0">
+              <p className="font-mono text-sm font-semibold tabular-nums text-fg">{p.n}</p>
+              <p className="truncate text-[10px] uppercase tracking-wide text-subtle">{p.label}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-xs leading-snug text-muted">
+          {health.traffic === 0
+            ? "511 has no Capital District crashes posted. City CAD is not public. Tap for the source map."
+            : "Tap for what is feeding Live — and what is blocked."}
+        </p>
+      </button>
+      <Drawer.Root open={open} onOpenChange={setOpen}>
+        <Drawer.Portal>
+          <Drawer.Overlay className="fixed inset-0 z-40 bg-bg/70" />
+          <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-xl border border-border bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
+            <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-border" />
+            <div className="overflow-y-auto px-4 pb-8 pt-3 scrollbar-thin">
+              <Drawer.Title className="text-base font-semibold">Live source map</Drawer.Title>
+              <p className="mt-1 text-xs leading-relaxed text-muted">
+                Albany, Colonie, and Bethlehem do not publish live CAD. Counts below are what this refresh actually pulled.
+              </p>
+              <ul className="mt-3 space-y-2">
+                {[
+                  ["NYSP blotter", health.blotter, "Official 7 AM dump. Not a live dispatch board."],
+                  ["Radio captions", health.scanner, "Broadcastify Albany/Colonie PD and fire. Unconfirmed."],
+                  ["511NY crashes", health.traffic, "Capital District accidents only. Construction is ignored."],
+                  ["Department Facebook", health.facebook ?? 0, "APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland."],
+                  ["X", health.x ?? 0, "NYSP, Albany Fire, CBS6, NEWS10, Times Union when they tweet crime."],
+                  ["Town civic", health.civic ?? 0, "Bethlehem / Guilderland / Albany news flashes — crashes and arrests only."],
+                  ["Newsrooms", health.news, "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight."],
+                  ["Citizens", (health.reddit ?? 0) + (health.citizen ?? 0), "Reddit r/Albany and in-app reports. Not 911."],
+                  ["NWS warnings", health.nws ?? 0, "Tornado, flash flood, severe thunderstorm, blizzard. Not routine weather."],
+                ].map(([name, n, why]) => (
+                  <li key={String(name)} className="rounded-lg border border-border bg-surface-2 px-3 py-2">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="text-sm font-medium">{name}</p>
+                      <p className="font-mono text-sm tabular-nums">{n}</p>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted">{why}</p>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-xs leading-relaxed text-subtle">
+                Closed: live CAD, PulsePoint, OpenMHz, jail bookings, Nixle (login), Ring, Citizen App, Nextdoor, Meta Graph.
+              </p>
+            </div>
+          </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>
+    </>
   );
 }
 

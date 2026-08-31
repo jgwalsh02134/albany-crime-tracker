@@ -11,7 +11,7 @@ const LOCAL =
 const INCIDENT =
   /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrests?|arrested|fire|blaze|killed|injured|fatal|burglary|assault|charg(?:e|ed|es|ing)|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|investigation|narcotics|gunfire|shots fired|missing (?:person|child)|quality-of-life|large gatherings|traffic alert|lanes blocked|person down)\b/i;
 const DROP =
-  /\b(hiring|join our team|join the|found pet|found rabbit|lost pet|back-to-school|supply drive|dog days|pup was having|sworn in|lateral transfer|exam|academy|christmas|holiday travel|mlk|martin luther|ice cream|sprinkles|adopt|palmer is a|birthday|girlboss|vendor spots|flipped off|jokes write themselves|celebrate 50|co-op|full moon|well groomed cat|season preview|recipe|install news app|trusted by millions)\b/i;
+  /\b(hiring|join our team|join the|found pet|found rabbit|lost pet|back-to-school|supply drive|dog days|pup was having|sworn in|lateral transfer|exam|academy|christmas|holiday travel|mlk|martin luther|ice cream|sprinkles|adopt|palmer is a|birthday|girlboss|vendor spots|flipped off|jokes write themselves|celebrate 50|co-op|full moon|well groomed cat|season preview|recipe|install news app|trusted by millions|police reform|nibrs|lanternfl|patroons|nightlife|travers)\b/i;
 const NOT_OURS =
   /\b(brooklyn|queens|bronx|manhattan|nycha|albany houses|albany,? ga\b|albany,? georgia|albany,? oregon|new albany|albany park|long island|gloversville|jackson man|milo yiannopoulos)\b/i;
 const TITLE_CRIME =
@@ -53,6 +53,27 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
     format: "rss",
     titleMust: /bethlehem police/i,
   },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/CohoesPD+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Cohoes PD",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/WatervlietPolice+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Watervliet PD",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/guilderlandpolice+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Guilderland PD",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
 ];
 
 const X_FEEDS: SocialFeed[] = [
@@ -73,6 +94,20 @@ const X_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:x.com/CBS6Albany+(crash+OR+shooting+OR+fire+OR+arrest+OR+police)+when:2d&hl=en-US&gl=US&ceid=US:en",
     outlet: "X · CBS6",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/wten+(crash+OR+shooting+OR+fire+OR+arrest)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · NEWS10",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/timesunion+(crash+OR+shooting+OR+arrest+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Times Union",
     official: false,
     needsLocal: true,
     format: "rss",
@@ -368,7 +403,9 @@ export async function collectSocial(now: number): Promise<SocialBundle> {
 }
 
 export function isOfficialSocial(outlet: string): boolean {
-  return /Facebook ·|X · NYSP|X · Albany (PD|Fire)|X · Colonie|X · Bethlehem/i.test(outlet);
+  return /Facebook ·|Civic ·|X · NYSP|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
+    outlet,
+  );
 }
 
 export function socialLive(items: LiveWireItem[]): LiveWireItem[] {

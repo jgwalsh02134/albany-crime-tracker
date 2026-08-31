@@ -217,7 +217,7 @@ export function MoreView({ incidents }: { incidents: Incident[] }) {
             <li key={s.name} className="rounded-xl border border-border bg-surface p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-semibold">{s.name}</p>
-                <Badge tone={s.tier === "Official" ? "cyan" : s.tier === "Scanner" ? "accent" : "muted"}>
+                <Badge tone={s.tier === "Official" ? "cyan" : s.tier === "Scanner" ? "accent" : s.tier === "Blocked" ? "high" : "muted"}>
                   {s.tier}
                 </Badge>
               </div>

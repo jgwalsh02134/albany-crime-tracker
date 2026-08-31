@@ -187,6 +187,8 @@ export type WireHealth = {
   x?: number;
   reddit?: number;
   citizen?: number;
+  civic?: number;
+  nws?: number;
 };
 
 export type LiveWireItem = {
@@ -318,19 +320,27 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
               : activity === "traffic"
                 ? "cfs"
                 : activity === "social"
-                  ? /Facebook ·|X · NYSP|X · Albany (PD|Fire)|X · Colonie|X · Bethlehem/i.test(g.outlet)
+                  ? /Facebook ·|X · NYSP|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
+                      g.outlet,
+                    )
                     ? "press"
                     : "social"
-                  : "news",
+                  : /^Civic ·|^NWS$/i.test(g.outlet)
+                    ? "press"
+                    : "news",
         name: g.outlet,
         tier:
-          activity === "blotter" || activity === "traffic"
+          activity === "blotter" || activity === "traffic" || /^Civic ·|^NWS$/i.test(g.outlet)
             ? "official"
-            : activity === "scanner" || activity === "social"
-              ? /Facebook ·|X · NYSP|X · Albany (PD|Fire)|X · Colonie|X · Bethlehem/i.test(g.outlet)
-                ? "official"
-                : "unconfirmed"
-              : "context",
+            : activity === "scanner"
+              ? "unconfirmed"
+              : activity === "social"
+                ? /Facebook ·|X · NYSP|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
+                    g.outlet,
+                  )
+                  ? "official"
+                  : "unconfirmed"
+                : "context",
         url: g.url,
         excerpt: g.summary || g.title,
       });
