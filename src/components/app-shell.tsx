@@ -33,7 +33,6 @@ const TABS: { id: ViewId; label: string; icon: typeof Bolt }[] = [
 export function AppShell() {
   const [wire, setWire] = useState<LiveWireItem[]>([]);
   const [wireLive, setWireLive] = useState(false);
-  const [wireOutlets, setWireOutlets] = useState<string[]>([]);
   const [wireHealth, setWireHealth] = useState<WireHealth | null>(null);
   const [stories, setStories] = useState<LiveWireItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,7 +78,6 @@ export function AppShell() {
       setWire(res.items);
       setStories(res.stories?.length ? res.stories : res.items);
       setWireLive(true);
-      setWireOutlets(res.outlets ?? []);
       setWireHealth(res.health ?? null);
     } catch {
       /* keep last good wire */
@@ -103,12 +101,15 @@ export function AppShell() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg">
-      <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3 pb-1 pt-[max(0.35rem,env(safe-area-inset-top))]">
+      <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3 pt-[max(0.35rem,env(safe-area-inset-top))]">
         <div className="flex min-w-0 items-center gap-2">
           <ShieldLogo className="size-8 shrink-0 rounded-full" />
           <div className="min-w-0 leading-tight">
-            <p className="truncate text-sm font-semibold tracking-tight">Albany County</p>
-            <p className="flex items-center gap-1.5 text-xs text-subtle">
+            <p className="flex items-center gap-1.5 truncate text-sm font-semibold tracking-tight">
+              <span className="size-1.5 shrink-0 rounded-full bg-accent lg:hidden" />
+              Albany County
+            </p>
+            <p className="hidden items-center gap-1.5 text-xs text-subtle lg:flex">
               <span className="size-1.5 rounded-full bg-accent" />
               Crime Tracker
             </p>
@@ -129,7 +130,7 @@ export function AppShell() {
             variant="ghost"
             size="icon"
             aria-label="Toggle theme"
-            className="hidden md:inline-flex"
+            className="hidden lg:inline-flex"
             onClick={toggleTheme}
           >
             {theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}
@@ -138,7 +139,7 @@ export function AppShell() {
       </header>
 
       <nav
-        className="hidden shrink-0 border-b border-border md:flex"
+        className="hidden shrink-0 border-b border-border lg:flex"
         role="tablist"
         aria-label="Primary views"
       >
@@ -171,9 +172,7 @@ export function AppShell() {
           <FeedView
             incidents={incidents}
             news={news}
-            wire={wire}
             wireLive={wireLive}
-            wireOutlets={wireOutlets}
             wireHealth={wireHealth}
             refreshing={refreshing}
             onRefresh={refresh}
@@ -197,7 +196,7 @@ export function AppShell() {
       </main>
 
       <nav
-        className="flex shrink-0 border-t border-border bg-bg/90 pt-1 backdrop-blur-md md:hidden pb-[max(0.35rem,env(safe-area-inset-bottom))]"
+        className="flex shrink-0 border-t border-border bg-bg/90 pt-1 backdrop-blur-md lg:hidden pb-[max(0.35rem,env(safe-area-inset-bottom))]"
         role="tablist"
         aria-label="Main navigation"
       >

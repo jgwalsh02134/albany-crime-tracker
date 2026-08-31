@@ -31,31 +31,26 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="grid grid-cols-3 gap-2">
-        <Stat value={String(stories.length)} label="Stories" />
-        <Stat value={String(outlets.length)} label="Outlets" />
-        <Stat value={String(hour)} label="Last hour" />
+    <div className="flex flex-col gap-4">
+      <div>
+        <p className="mb-1.5 text-xs text-subtle">
+          <span className="font-semibold text-fg">{stories.length}</span> stories
+          <span> · {outlets.length} outlets</span>
+          {hour ? <span> · {hour} last hour</span> : null}
+        </p>
+        <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 scrollbar-none snap-x">
+          <Chip active={kicker === "all" && outlet === "all"} onClick={() => { setKicker("all"); setOutlet("all"); }} label="All" />
+          {kickers.map((k) => (
+            <Chip key={k} active={kicker === k} onClick={() => setKicker(kicker === k ? "all" : k)} label={k} />
+          ))}
+          <span className="mx-0.5 h-5 w-px shrink-0 self-center bg-border" />
+          {outlets.map((o) => (
+            <Chip key={o} active={outlet === o} onClick={() => setOutlet(outlet === o ? "all" : o)} label={o} />
+          ))}
+        </div>
       </div>
 
       {featured ? <Hero story={featured} /> : null}
-
-      <div>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Outlet</h2>
-        <div className="flex gap-2 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none snap-x">
-          <Chip active={outlet === "all"} onClick={() => setOutlet("all")} label="All" />
-          {outlets.map((o) => (
-            <Chip key={o} active={outlet === o} onClick={() => setOutlet(o)} label={o} />
-          ))}
-        </div>
-        <h2 className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wide text-subtle">Desk</h2>
-        <div className="flex gap-2 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none snap-x">
-          <Chip active={kicker === "all"} onClick={() => setKicker("all")} label="All" />
-          {kickers.map((k) => (
-            <Chip key={k} active={kicker === k} onClick={() => setKicker(k)} label={k} />
-          ))}
-        </div>
-      </div>
 
       {top.length ? (
         <section>
@@ -67,9 +62,9 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
                 href={s.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-[78%] shrink-0 snap-start overflow-hidden rounded-xl border border-border bg-surface active:bg-surface-2"
+                className="w-4/5 shrink-0 snap-start overflow-hidden rounded-xl border border-border bg-surface active:bg-surface-2"
               >
-                <Thumb src={s.image} label={s.outlet} className="aspect-[16/9] w-full" />
+                <Thumb src={s.image} label={s.outlet} className="aspect-video w-full" />
                 <div className="p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-cyan">{s.kicker}</p>
                   <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-snug">{s.title}</h3>
@@ -94,22 +89,22 @@ function StoryList({ title, items }: { title: string; items: NewsStory[] }) {
   return (
     <section>
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">{title}</h2>
-      <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-2">
         {items.map((s) => (
           <a
             key={s.id}
             href={s.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex gap-3 overflow-hidden rounded-xl border border-border bg-surface p-2.5 active:bg-surface-2"
+            className="flex gap-3 overflow-hidden rounded-lg border border-border bg-surface p-2.5 active:bg-surface-2"
           >
-            <Thumb src={s.image} label={s.outlet} className="h-[4.75rem] w-[6.5rem] shrink-0 rounded-lg" />
+            <Thumb src={s.image} label={s.outlet} className="h-16 w-24 shrink-0 rounded-md" />
             <div className="min-w-0 flex-1 py-0.5">
               <div className="flex items-center gap-2">
                 <Badge tone={s.kicker === "Crime" || s.kicker === "Fire" ? "high" : "cyan"}>{s.kicker}</Badge>
                 <span className="font-mono text-xs tabular-nums text-subtle">{relativeTime(s.occurredAt)}</span>
               </div>
-              <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-snug">{s.title}</h3>
+              <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-snug">{s.title}</h3>
               <p className="mt-1 truncate text-xs text-subtle">{s.outlet}</p>
             </div>
           </a>
@@ -128,17 +123,17 @@ function Hero({ story }: { story: NewsStory }) {
       className="block overflow-hidden rounded-xl border border-border bg-surface active:bg-surface-2"
     >
       <div className="relative">
-        <Thumb src={story.image} label={story.outlet} className="aspect-[16/10] w-full" />
+        <Thumb src={story.image} label={story.outlet} className="aspect-video w-full" />
         <span className="absolute left-3 top-3">
           <Badge tone="accent">{story.kicker}</Badge>
         </span>
       </div>
-      <div className="p-4">
-        <h2 className="text-xl font-semibold leading-snug tracking-tight">{story.title}</h2>
+      <div className="p-3">
+        <h2 className="text-lg font-semibold leading-snug tracking-tight">{story.title}</h2>
         {story.summary ? (
-          <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-muted">{story.summary}</p>
+          <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">{story.summary}</p>
         ) : null}
-        <p className="mt-2 text-xs text-subtle">
+        <p className="mt-1.5 text-xs text-subtle">
           {story.outlet} · {relativeTime(story.occurredAt)}
         </p>
       </div>
@@ -159,7 +154,7 @@ function Thumb({
   if (!src || broken) {
     return (
       <div className={cn("flex items-center justify-center bg-surface-2", className)}>
-        <span className="px-2 text-center text-[10px] font-semibold uppercase tracking-wide text-subtle">
+        <span className="px-2 text-center text-xs font-semibold uppercase tracking-wide text-subtle">
           {label}
         </span>
       </div>
@@ -183,21 +178,12 @@ function Chip({ active, onClick, label }: { active: boolean; onClick: () => void
       type="button"
       onClick={onClick}
       className={cn(
-        "h-11 shrink-0 snap-start rounded-full border px-4 text-sm font-medium",
+        "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium",
         active ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
       )}
     >
       {label}
     </button>
-  );
-}
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="min-w-0 rounded-xl border border-border bg-surface px-3 py-3 text-center">
-      <div className="truncate font-mono text-base font-semibold tabular-nums text-fg">{value}</div>
-      <div className="mt-0.5 text-xs text-subtle">{label}</div>
-    </div>
   );
 }
 

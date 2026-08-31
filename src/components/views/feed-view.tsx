@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Drawer } from "vaul";
+import { ChevronRight, Plus } from "lucide-react";
 import { IncidentCard } from "@/components/incident-card";
 import { NewsView } from "@/components/views/news-view";
 import { Button } from "@/components/ui/button";
@@ -7,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { areaCounts } from "@/lib/data";
 import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
 import { submitCitizenTip } from "@/lib/social-sources";
-import { type LiveWireItem, type WireHealth, sourceMix } from "@/lib/sources";
+import { type WireHealth, sourceMix } from "@/lib/sources";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import type { Incident, NewsStory, SourceLens } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -15,18 +16,14 @@ import { cn } from "@/lib/utils";
 export function FeedView({
   incidents,
   news,
-  wire,
   wireLive,
-  wireOutlets = [],
   wireHealth = null,
   refreshing = false,
   onRefresh,
 }: {
   incidents: Incident[];
   news: NewsStory[];
-  wire: LiveWireItem[];
   wireLive: boolean;
-  wireOutlets?: string[];
   wireHealth?: WireHealth | null;
   refreshing?: boolean;
   onRefresh?: () => Promise<void> | void;
@@ -57,16 +54,16 @@ export function FeedView({
   const mix = sourceMix(liveAll);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="shrink-0 px-3 pb-1.5 pt-2">
-        <div className="grid grid-cols-2 rounded-full bg-surface-2 p-1">
+    <div className="mx-auto flex h-full w-full max-w-lg flex-col">
+      <div className="shrink-0 px-3 pt-1.5">
+        <div className="grid grid-cols-2 rounded-full bg-surface-2 p-0.5">
           {(["live", "news"] as const).map((mode) => (
             <button
               key={mode}
               type="button"
               onClick={() => setHomeMode(mode)}
               className={cn(
-                "h-10 rounded-full text-sm font-semibold capitalize transition-colors duration-150",
+                "h-10 rounded-full text-sm font-semibold capitalize",
                 homeMode === mode ? "bg-surface text-fg shadow-sm" : "text-subtle",
               )}
             >
@@ -88,7 +85,6 @@ export function FeedView({
           mix={mix}
           newest={newest}
           wireLive={wireLive}
-          wireOutlets={wireOutlets}
           wireHealth={wireHealth}
           onSelect={select}
           refreshing={refreshing}
@@ -114,7 +110,6 @@ function LiveList({
   mix,
   newest,
   wireLive,
-  wireOutlets,
   wireHealth,
   onSelect,
   refreshing,
@@ -130,7 +125,6 @@ function LiveList({
   mix: { official: number; scanner: number; news: number; social: number };
   newest?: Incident;
   wireLive: boolean;
-  wireOutlets: string[];
   wireHealth: WireHealth | null;
   onSelect: (id: string) => void;
   refreshing: boolean;
@@ -160,98 +154,87 @@ function LiveList({
   }
 
   return (
-    <div
-      ref={scroller}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={() => void onTouchEnd()}
-      className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-6 scrollbar-thin"
-    >
+    <div className="relative min-h-0 flex-1">
       <div
-        className="overflow-hidden text-center text-xs text-subtle transition-[height] duration-150"
-        style={{ height: refreshing || pull > 8 ? 28 : 0 }}
+        ref={scroller}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={() => void onTouchEnd()}
+        className="absolute inset-0 overflow-y-auto overscroll-y-contain px-3 pb-20 scrollbar-thin"
       >
-        <p className="pt-1.5">{refreshing ? "Updating…" : pull > 52 ? "Release to refresh" : "Pull to refresh"}</p>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 py-2">
-        <p className="min-w-0 truncate text-xs text-subtle">
-          <span className="font-semibold text-fg">{liveItems.length}</span>
-          {wireLive ? " calls" : " · connecting…"}
-        </p>
-        <p className="shrink-0 font-mono text-xs tabular-nums text-subtle">
-          {newest ? compactFromMinutes(newest.minutesAgo) : "—"}
-        </p>
-      </div>
-      <p className="pb-2 text-xs leading-snug text-subtle">
-        {wireLive && newest && newest.minutesAgo >= 180
-          ? "NYSP’s blotter last posted at 7 AM ET. Radio, Facebook, civic alerts, citizen reports, and 511 fill the hours since — city CAD is not public."
-          : wireLive && wireHealth && wireHealth.blotter === 0 && wireHealth.blotterFailed > 0
-            ? "NYSP’s daily blotter is delayed. Radio, department Facebook, civic alerts, and newsrooms still update — this is not a city CAD dump."
-            : "NYSP’s last 24-hour report (through 7 AM ET), plus radio, 511, department Facebook, civic alerts, citizen reports, and breaking crime. City CAD is not public."}
-        {wireOutlets.length ? ` · ${wireOutlets.slice(0, 5).join(" · ")}` : ""}
-      </p>
-
-      {wireHealth ? <SourcePipes health={wireHealth} /> : null}
-
-      <div className="sticky top-0 z-10 -mx-3 mb-3 bg-bg/90 px-3 py-1.5 backdrop-blur-md">
-        <div className="flex gap-2 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
-          <Chip
-            active={sourceLens === "all"}
-            onClick={() => setSourceLens("all")}
-            label={`All · ${mix.official + mix.scanner + mix.news + mix.social}`}
-          />
-          <Chip
-            active={sourceLens === "official"}
-            onClick={() => setSourceLens("official")}
-            label={`Official · ${mix.official}`}
-          />
-          <Chip
-            active={sourceLens === "scanner"}
-            onClick={() => setSourceLens("scanner")}
-            label={`Scanner · ${mix.scanner}`}
-          />
-          <Chip
-            active={sourceLens === "news"}
-            onClick={() => setSourceLens("news")}
-            label={`News · ${mix.news}`}
-          />
-          <Chip
-            active={sourceLens === "social"}
-            onClick={() => setSourceLens("social")}
-            label={`Social · ${mix.social}`}
-          />
+        <div
+          className="overflow-hidden text-center text-xs text-subtle transition-[height] duration-150"
+          style={{ height: refreshing || pull > 8 ? 28 : 0 }}
+        >
+          <p className="pt-1.5">{refreshing ? "Updating…" : pull > 52 ? "Release to refresh" : "Pull to refresh"}</p>
         </div>
-        <div className="mt-2 flex gap-2 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
-          <Chip
-            active={areaFilter === "all"}
-            onClick={() => setAreaFilter("all")}
-            label={`Capital District · ${dayCount}`}
-          />
-          {areas.map((a) => (
-            <Chip
-              key={a.name}
-              active={areaFilter === a.name}
-              onClick={() => setAreaFilter(a.name)}
-              label={`${a.name} · ${a.count}`}
+
+        <div className="sticky top-0 z-10 -mx-3 mb-1.5 bg-bg/95 px-3 py-1 backdrop-blur-md">
+          {wireHealth ? (
+            <SourcePipes
+              health={wireHealth}
+              count={liveItems.length}
+              newest={newest}
+              wireLive={wireLive}
             />
-          ))}
+          ) : (
+            <p className="py-1.5 text-xs text-subtle">{wireLive ? `${liveItems.length} calls` : "Connecting…"}</p>
+          )}
+          <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+            <Chip
+              active={sourceLens === "all"}
+              onClick={() => setSourceLens("all")}
+              label={`All ${mix.official + mix.scanner + mix.news + mix.social}`}
+            />
+            <Chip
+              active={sourceLens === "official"}
+              onClick={() => setSourceLens("official")}
+              label={`Official ${mix.official}`}
+            />
+            <Chip
+              active={sourceLens === "scanner"}
+              onClick={() => setSourceLens("scanner")}
+              label={`Radio ${mix.scanner}`}
+            />
+            <Chip
+              active={sourceLens === "news"}
+              onClick={() => setSourceLens("news")}
+              label={`News ${mix.news}`}
+            />
+            <Chip
+              active={sourceLens === "social"}
+              onClick={() => setSourceLens("social")}
+              label={`Social ${mix.social}`}
+            />
+            <span className="mx-0.5 h-5 w-px shrink-0 self-center bg-border" />
+            <Chip
+              active={areaFilter === "all"}
+              onClick={() => setAreaFilter("all")}
+              label={`Towns ${dayCount}`}
+            />
+            {areas.map((a) => (
+              <Chip
+                key={a.name}
+                active={areaFilter === a.name}
+                onClick={() => setAreaFilter(a.name)}
+                label={`${a.name} ${a.count}`}
+              />
+            ))}
+          </div>
         </div>
+
+        {liveItems.length === 0 ? (
+          <p className="rounded-lg border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
+            {wireLive
+              ? "Nothing in this filter. Radio and 511 cover the hours since the 7 AM blotter."
+              : "Pulling blotter, radio, and newsrooms…"}
+          </p>
+        ) : (
+          <GroupedList items={liveItems} onSelect={onSelect} />
+        )}
       </div>
 
-      {wireLive ? (
-        <ReportButton onRefresh={onRefresh} />
-      ) : null}
-
-      {liveItems.length === 0 ? (
-        <p className="rounded-xl border border-border bg-surface px-4 py-12 text-center text-sm text-muted">
-          {wireLive
-            ? "No matching activity. NYSP posts the daily blotter at 7 AM ET; radio, Facebook, and citizen reports cover the hours since."
-            : "Pulling NYSP blotter, scanner, 511, Facebook, and newsrooms…"}
-        </p>
-      ) : (
-        <GroupedList items={liveItems} onSelect={onSelect} />
-      )}
+      {wireLive ? <ReportButton onRefresh={onRefresh} /> : null}
     </div>
   );
 }
@@ -268,11 +251,11 @@ function GroupedList({
   const today = items.filter((i) => i.minutesAgo > 180 && i.minutesAgo <= since7);
   const overnight = items.filter((i) => i.minutesAgo > since7);
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       <section>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Last 3 hours</h2>
+        <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">Last 3 hours</h2>
         {nowItems.length ? (
-          <ul className="flex flex-col gap-2.5">
+          <ul className="flex flex-col gap-1.5">
             {nowItems.map((inc) => (
               <li key={inc.id}>
                 <IncidentCard incident={inc} onSelect={onSelect} />
@@ -280,15 +263,15 @@ function GroupedList({
             ))}
           </ul>
         ) : (
-          <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
-            No radio, 511, social, or breaking news in the last 3 hours. NYSP’s next official blotter posts at 7 AM.
+          <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
+            Quiet in the last 3 hours. Blotter is the 7 AM dump — radio still runs.
           </p>
         )}
       </section>
       {today.length ? (
         <section>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Since 7 AM</h2>
-          <ul className="flex flex-col gap-2.5">
+          <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">Since 7 AM</h2>
+          <ul className="flex flex-col gap-1.5">
             {today.map((inc) => (
               <li key={inc.id}>
                 <IncidentCard incident={inc} onSelect={onSelect} />
@@ -299,10 +282,10 @@ function GroupedList({
       ) : null}
       {overnight.length ? (
         <section>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">
+          <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">
             NYSP overnight report
           </h2>
-          <ul className="flex flex-col gap-2.5">
+          <ul className="flex flex-col gap-1.5">
             {overnight.map((inc) => (
               <li key={inc.id}>
                 <IncidentCard incident={inc} onSelect={onSelect} />
@@ -329,7 +312,7 @@ function Chip({
       type="button"
       onClick={onClick}
       className={cn(
-        "h-10 shrink-0 snap-start rounded-full border px-3.5 text-sm font-medium active:opacity-80",
+        "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium active:opacity-80",
         active ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
       )}
     >
@@ -338,38 +321,42 @@ function Chip({
   );
 }
 
-function SourcePipes({ health }: { health: WireHealth }) {
+function SourcePipes({
+  health,
+  count,
+  newest,
+  wireLive,
+}: {
+  health: WireHealth;
+  count: number;
+  newest?: Incident;
+  wireLive: boolean;
+}) {
   const [open, setOpen] = useState(false);
-  const pipes: { label: string; n: number }[] = [
-    { label: "Blotter", n: health.blotter },
-    { label: "Radio", n: health.scanner },
-    { label: "511", n: health.traffic },
-    { label: "Facebook", n: health.facebook ?? 0 },
-    { label: "News", n: health.news },
-    { label: "Civic", n: health.civic ?? 0 },
-    { label: "Citizens", n: (health.reddit ?? 0) + (health.citizen ?? 0) },
-    { label: "NWS", n: health.nws ?? 0 },
-  ];
+  const parts = [
+    health.blotter ? `${health.blotter} blotter` : "",
+    health.scanner ? `${health.scanner} radio` : "",
+    health.news ? `${health.news} news` : "",
+    (health.facebook ?? 0) ? `${health.facebook} fb` : "",
+    (health.reddit ?? 0) + (health.citizen ?? 0) ? `${(health.reddit ?? 0) + (health.citizen ?? 0)} tips` : "",
+  ].filter(Boolean);
+
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mb-3 w-full rounded-xl border border-border bg-surface px-3 py-2.5 text-left"
+        className="flex min-h-9 w-full items-center justify-between gap-2 text-left"
       >
-        <div className="grid grid-cols-4 gap-1.5">
-          {pipes.map((p) => (
-            <div key={p.label} className="min-w-0">
-              <p className="font-mono text-sm font-semibold tabular-nums text-fg">{p.n}</p>
-              <p className="truncate text-[10px] uppercase tracking-wide text-subtle">{p.label}</p>
-            </div>
-          ))}
-        </div>
-        <p className="mt-2 text-xs leading-snug text-muted">
-          {health.traffic === 0
-            ? "511 has no Capital District crashes posted. City CAD is not public. Tap for the source map."
-            : "Tap for what is feeding Live — and what is blocked."}
+        <p className="min-w-0 truncate text-xs text-subtle">
+          <span className="font-semibold text-fg">{count}</span>
+          {wireLive ? " calls" : " connecting"}
+          {parts.length ? <span> · {parts.slice(0, 3).join(" · ")}</span> : null}
         </p>
+        <span className="flex shrink-0 items-center gap-1 font-mono text-xs tabular-nums text-subtle">
+          {newest ? compactFromMinutes(newest.minutesAgo) : "—"}
+          <ChevronRight className="size-3.5" />
+        </span>
       </button>
       <Drawer.Root open={open} onOpenChange={setOpen}>
         <Drawer.Portal>
@@ -485,9 +472,10 @@ function ReportButton({ onRefresh }: { onRefresh?: () => Promise<void> | void })
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mb-3 flex min-h-11 w-full items-center justify-center rounded-xl border border-dashed border-border bg-surface px-3 text-sm font-medium text-muted active:bg-surface-2"
+        aria-label="Report what you see"
+        className="absolute right-3 bottom-3 z-30 flex size-12 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg active:scale-95"
       >
-        Saw something — report it
+        <Plus className="size-6" strokeWidth={2.4} />
       </button>
       <Drawer.Root open={open} onOpenChange={setOpen}>
         <Drawer.Portal>
