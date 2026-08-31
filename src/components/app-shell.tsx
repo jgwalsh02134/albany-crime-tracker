@@ -182,7 +182,7 @@ export function AppShell() {
           <MapView incidents={incidents} active={view === "map"} />
         </div>
         <div className={cn("absolute inset-0", view === "scanner" ? "block" : "hidden")}>
-          <ScannerView calls={scannerCalls} />
+          <ScannerView calls={scannerCalls} active={view === "scanner"} />
         </div>
         <div className={cn("absolute inset-0", view === "chat" ? "block" : "hidden")}>
           <ChatView />

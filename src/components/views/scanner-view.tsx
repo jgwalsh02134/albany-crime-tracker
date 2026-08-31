@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Captions,
   CaptionsOff,
@@ -10,38 +10,72 @@ import {
   VolumeX,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import channels from "@/data/channels.json";
-import { compactFromMinutes } from "@/lib/format";
+import { clockTimeSec, compactFromMinutes } from "@/lib/format";
 import { SCANNER_FEEDS } from "@/lib/scanner-feeds";
 import { getScannerCaptions, getScannerPlaylist, getScannerStatuses } from "@/lib/transcribe";
-import type { Discipline, ScannerCall } from "@/lib/types";
+import type { ScannerCall } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-const TRANSCRIBE_MAX_LINES = 40;
 
 type TranscriptLine = {
   id: string;
   at: number;
   text: string;
+  feedId?: string;
   feedName: string;
 };
 
-type Panel = "traffic" | "captions";
+const TEN: Record<string, string> = {
+  "10-4": "acknowledged",
+  "10-6": "busy",
+  "10-7": "out of service",
+  "10-8": "in service",
+  "10-10": "fight",
+  "10-13": "officer needs help",
+  "10-16": "domestic",
+  "10-33": "emergency",
+  "10-50": "crash",
+  "10-52": "ambulance",
+  "10-54": "possible fatality",
+  "10-55": "DWI",
+  "10-57": "hit and run",
+  "10-78": "backup",
+  "10-80": "pursuit",
+};
 
-const CHANNELS = channels as { id: string; label: string; priority: string; talkgroups: string[] }[];
+function tenHint(text: string): string | null {
+  const found = [...text.matchAll(/\b10-\d{1,2}\b/gi)].map((m) => m[0]!.toLowerCase());
+  const hints = [...new Set(found)].map((c) => TEN[c]).filter(Boolean);
+  return hints.length ? hints.join(" · ") : null;
+}
 
-const CHANNEL_CHIPS: { id: string; label: string }[] = [
-  { id: "apd", label: "APD" },
-  { id: "albany_fire", label: "AFD" },
-  { id: "colonie_pd", label: "Colonie" },
-  { id: "acso", label: "Sheriff" },
-  { id: "bethlehem_pd", label: "Bethlehem" },
-  { id: "guilderland_pd", label: "Guilderland" },
-  { id: "nysp_troop_g", label: "NYSP" },
-];
+function natureChip(text: string): string | null {
+  if (/shots? fired|shoot/i.test(text)) return "Shots";
+  if (/panic/i.test(text)) return "Panic";
+  if (/hold.?up|robbery/i.test(text)) return "Robbery";
+  if (/domestic/i.test(text)) return "Domestic";
+  if (/welfare/i.test(text)) return "Welfare";
+  if (/personal injury|\bpi\b/i.test(text)) return "Injury crash";
+  if (/crash|collision|accident|mva|10-50/i.test(text)) return "Crash";
+  if (/structure fire|building fire/i.test(text)) return "Structure fire";
+  if (/\bfire\b|engine|ladder|truck/i.test(text)) return "Fire";
+  if (/ems|ambulance|medical|overdose|unconscious/i.test(text)) return "EMS";
+  if (/dwi|intoxicated|10-55/i.test(text)) return "DWI";
+  if (/pursuit|10-80/i.test(text)) return "Pursuit";
+  if (/suspicious/i.test(text)) return "Suspicious";
+  if (/\balarm\b/i.test(text)) return "Alarm";
+  return null;
+}
 
-export function ScannerView({ calls }: { calls: ScannerCall[] }) {
+function agoLabel(ms: number | null, now: number): string | null {
+  if (!ms) return null;
+  const sec = Math.max(0, Math.round((now - ms) / 1000));
+  if (sec < 5) return "just now";
+  if (sec < 60) return `${sec}s ago`;
+  if (sec < 3600) return `${Math.round(sec / 60)}m ago`;
+  return `${Math.round(sec / 3600)}h ago`;
+}
+
+export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; active?: boolean }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const hlsRef = useRef<{ destroy: () => void; startLoad?: () => void; recoverMediaError?: () => void } | null>(
     null,
@@ -54,37 +88,22 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(0.8);
-  const [disc, setDisc] = useState<Discipline | "all">("all");
-  const [channel, setChannel] = useState("");
-  const [q, setQ] = useState("");
-  const [panel, setPanel] = useState<Panel>("captions");
+  const [thisFeedOnly, setThisFeedOnly] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [online, setOnline] = useState<Record<string, boolean>>({});
 
-  const [transcribing, setTranscribing] = useState(false);
+  const [transcribing, setTranscribing] = useState(true);
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
-  const [transcriptStatus, setTranscriptStatus] = useState("Off");
-  const [transcriptError, setTranscriptError] = useState<string | null>(null);
-  const [lastHeardAt, setLastHeardAt] = useState<number | null>(null);
+  const [lastSpokenAt, setLastSpokenAt] = useState<number | null>(null);
+  const [lastFeed, setLastFeed] = useState("");
+  const [lastError, setLastError] = useState("");
+  const [ticks, setTicks] = useState(0);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   const feed = SCANNER_FEEDS.find((f) => f.id === feedId) ?? SCANNER_FEEDS[0]!;
-
-  const filtered = useMemo(() => {
-    const ch = CHANNELS.find((c) => c.id === channel);
-    const query = q.trim().toLowerCase();
-    return calls.filter((c) => {
-      if (disc !== "all" && c.discipline !== disc) return false;
-      if (ch && !ch.talkgroups.includes(c.talkgroup)) return false;
-      if (query) {
-        const hay = `${c.agency} ${c.channel} ${c.summary} ${c.municipality}`.toLowerCase();
-        if (!hay.includes(query)) return false;
-      }
-      return true;
-    });
-  }, [calls, disc, channel, q]);
-
-  const groups = useMemo(() => groupCalls(filtered), [filtered]);
+  const visible = thisFeedOnly ? transcript.filter((l) => l.feedName === feed.name || l.feedId === feedId) : transcript;
+  const liveCalls = calls.filter((c) => c.minutesAgo <= 180).slice(0, 12);
 
   function destroyHls() {
     if (hlsRef.current) {
@@ -169,7 +188,7 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
         try {
           await audio.play();
         } catch {
-          /* Buffering still feeds captions even if autoplay is blocked. */
+          /* Captions still run without audible playback. */
         }
       }
       setPlaying(!audio.paused);
@@ -186,7 +205,7 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
         try {
           await audio.play();
         } catch {
-          /* Captions can still pull HLS clips without audible playback. */
+          /* Captions still run without audible playback. */
         }
       }
       setPlaying(!audio.paused);
@@ -234,7 +253,7 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
       if (gen !== playGen.current) return;
       setPlaying(false);
       destroyHls();
-      setPlayerError("Could not start this stream. Try another feed or open Broadcastify.");
+      setPlayerError("Speaker blocked here — captions still run from the live stream.");
     } finally {
       if (gen === playGen.current) setConnecting(false);
     }
@@ -263,27 +282,12 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
     resumePlay.current = playing || connecting;
     stopPlayback();
     setFeedId(id);
-    setTranscript([]);
-    setLastHeardAt(null);
-    setTranscriptError(null);
     setPlayerError(null);
     playlistUrlsRef.current = [];
-    if (transcribing) setTranscriptStatus("Switching feed…");
   }
 
   function toggleTranscribe() {
-    if (transcribing) {
-      setTranscribing(false);
-      setTranscriptStatus("Off");
-      return;
-    }
-    setTranscriptError(null);
-    setTranscript([]);
-    setLastHeardAt(null);
-    setTranscribing(true);
-    setTranscriptStatus("Connecting…");
-    setPanel("captions");
-    if (!playing && !connecting) void startPlayback();
+    setTranscribing((on) => !on);
   }
 
   useEffect(() => {
@@ -325,95 +329,75 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
   }, []);
 
   useEffect(() => {
-    if (!transcribing) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!transcribing || !active) {
+      void getScannerCaptions({ data: { feedId, listen: false } });
+      return;
+    }
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let fails = 0;
 
     async function poll() {
       if (cancelled) return;
       try {
         const res = await getScannerCaptions({ data: { feedId, listen: true } });
-        if (cancelled) return;
-        if (!res.ok) {
-          fails += 1;
-          setTranscriptError("Could not reach the live listener.");
-          if (fails >= 8) {
-            setTranscribing(false);
-            setTranscriptStatus("Paused");
-            return;
-          }
-        } else {
-          fails = 0;
-          const lines = res.lines.slice(0, TRANSCRIBE_MAX_LINES).map((line) => ({
+        if (cancelled || !res.ok) return;
+        setTranscript(
+          res.lines.map((line) => ({
             id: line.id,
             at: line.at,
             text: line.text,
+            feedId: line.feedId,
             feedName: line.feedName,
-          }));
-          setTranscript(lines);
-          if (res.lastError?.includes("429")) {
-            setTranscriptError("Transcript is busy. Waiting for the next clip…");
-          } else {
-            setTranscriptError(null);
-          }
-          if (lines.length) {
-            setLastHeardAt(lines[0]!.at);
-            setTranscriptStatus("Voice on this feed");
-          } else if (res.lastSpoken) {
-            setTranscriptStatus("Hearing radio — waiting for a full transmission");
-          } else if (res.ageSec >= 0 && res.ageSec < 30) {
-            setTranscriptStatus("Listening — dispatch is often quiet between calls");
-          } else {
-            setTranscriptStatus("Connecting to the live stream…");
-          }
-        }
+          })),
+        );
+        setLastSpokenAt(res.lastSpokenAt || null);
+        setLastFeed(res.lastFeed || "");
+        setLastError(res.lastError || "");
+        setTicks(res.ticks || 0);
       } catch {
-        if (!cancelled) {
-          fails += 1;
-          setTranscriptError("Could not reach the live listener.");
-          if (fails >= 8) {
-            setTranscribing(false);
-            setTranscriptStatus("Paused");
-            return;
-          }
-        }
+        /* next poll */
       }
-      if (!cancelled) timer = setTimeout(poll, 4000);
+      if (!cancelled) timer = setTimeout(poll, 3000);
     }
 
-    setTranscriptStatus("Connecting to the live stream…");
     void poll();
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
-      void getScannerCaptions({ data: { feedId, listen: false } });
     };
-  }, [transcribing, feedId]);
+  }, [transcribing, feedId, active]);
 
   const live = playing && !connecting;
-  const statusLabel = connecting ? "Connecting" : live ? "Live" : online[feedId] === false ? "Idle" : "Ready";
+  const heardAgo = agoLabel(lastSpokenAt, nowTick);
+  const statusLabel = connecting
+    ? "Connecting speaker"
+    : live
+      ? "Speaker live"
+      : online[feedId] === false
+        ? "Feed idle"
+        : "Speaker ready";
+
+  let captionStatus = "Captions paused";
+  if (transcribing) {
+    if (lastError === "no-key") captionStatus = "Captions unavailable in this environment";
+    else if (lastError.includes("429")) captionStatus = "Speech API busy — retrying";
+    else if (ticks === 0) captionStatus = "Connecting to Broadcastify…";
+    else if (heardAgo) {
+      const from = SCANNER_FEEDS.find((f) => f.id === lastFeed)?.shortName;
+      captionStatus = `Heard ${heardAgo}${from ? ` · ${from}` : ""}`;
+    }
+    else captionStatus = "Listening — dispatch is often quiet between calls";
+  }
 
   return (
     <div className="flex h-full flex-col">
-      <div className="shrink-0 border-b border-border px-4 pb-3 pt-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-subtle">Scanner</p>
-            <h1 className="text-lg font-semibold tracking-tight">Albany County P25</h1>
-          </div>
-          <a
-            href={feed.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-11 items-center justify-center gap-1.5 text-xs font-semibold text-accent"
-          >
-            Broadcastify
-            <ExternalLink className="size-3.5" />
-          </a>
-        </div>
-
-        <div className="mt-3 flex gap-2 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none snap-x">
+      <div className="shrink-0 border-b border-border px-3 pb-2.5 pt-2">
+        <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
           {SCANNER_FEEDS.map((f) => {
             const on = feedId === f.id;
             const isLive = online[f.id];
@@ -423,15 +407,12 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
                 type="button"
                 onClick={() => selectFeed(f.id)}
                 className={cn(
-                  "flex h-11 shrink-0 snap-start items-center gap-2 rounded-full border px-4 text-sm font-semibold",
+                  "flex h-10 shrink-0 snap-start items-center gap-1.5 rounded-full border px-3 text-sm font-semibold",
                   on ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
                 )}
               >
                 <span
-                  className={cn(
-                    "size-2 rounded-full",
-                    on ? "bg-accent-fg" : isLive ? "live-dot" : "bg-subtle",
-                  )}
+                  className={cn("size-2 rounded-full", on ? "bg-accent-fg" : isLive ? "live-dot" : "bg-subtle")}
                   aria-hidden
                 />
                 {f.shortName}
@@ -440,7 +421,7 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
           })}
         </div>
 
-        <div className="mt-3 flex items-center gap-3 rounded-xl border border-border bg-surface p-3">
+        <div className="mt-2 flex items-center gap-2 rounded-xl border border-border bg-surface p-2.5">
           <button
             type="button"
             onClick={togglePlay}
@@ -475,14 +456,14 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
           <button
             type="button"
             onClick={toggleTranscribe}
-            aria-label={transcribing ? "Stop captions" : "Start captions"}
+            aria-label={transcribing ? "Pause captions" : "Resume captions"}
             aria-pressed={transcribing}
             className={cn(
               "flex size-11 shrink-0 items-center justify-center rounded-full",
               transcribing ? "bg-cyan text-accent-fg" : "text-muted",
             )}
           >
-            {transcribing ? <CaptionsOff className="size-5" /> : <Captions className="size-5" />}
+            {transcribing ? <Captions className="size-5" /> : <CaptionsOff className="size-5" />}
           </button>
           <button
             type="button"
@@ -503,155 +484,113 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
             aria-label="Volume"
           />
         </div>
-        {playerError ? (
-          <p className="mt-2 text-sm text-sev-high">
-            {transcribing
-              ? "Speaker is blocked here — captions still run from the live stream."
-              : playerError}
-          </p>
-        ) : null}
-
-        <div className="mt-3 grid grid-cols-2 rounded-lg bg-surface-2 p-1">
-          {([
-            ["traffic", "Traffic"],
-            ["captions", "Captions"],
-          ] as const).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setPanel(id)}
-              className={cn(
-                "h-11 rounded-md text-sm font-semibold transition-colors duration-150",
-                panel === id ? "bg-surface text-fg" : "text-subtle",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {playerError ? <p className="mt-1.5 text-xs text-muted">{playerError}</p> : null}
       </div>
 
-      {panel === "captions" ? (
-        <div className="flex min-h-0 flex-1 flex-col px-4 pb-8 pt-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold">Live captions</h2>
-                {transcribing ? (
-                  <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-cyan">
-                    <span className="live-dot" />
-                    On
-                  </span>
-                ) : null}
-              </div>
-              <p className="mt-0.5 text-xs text-subtle">{transcriptStatus}</p>
+      <div className="flex min-h-0 flex-1 flex-col px-3 pb-6 pt-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold">Live captions</h2>
+              {transcribing ? (
+                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-cyan">
+                  <span className="live-dot" />
+                  On
+                </span>
+              ) : null}
             </div>
+            <p className="mt-0.5 line-clamp-2 text-xs text-subtle">{captionStatus}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              onClick={toggleTranscribe}
+              onClick={() => setThisFeedOnly(false)}
               className={cn(
-                "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-4 text-sm font-semibold",
-                transcribing ? "bg-accent text-accent-fg" : "border border-border bg-surface text-fg",
+                "h-9 rounded-full px-3 text-xs font-semibold",
+                !thisFeedOnly ? "bg-accent text-accent-fg" : "text-muted",
               )}
-              aria-pressed={transcribing}
             >
-              {transcribing ? <CaptionsOff className="size-4" /> : <Captions className="size-4" />}
-              {transcribing ? "Stop" : "Start"}
+              All
             </button>
-          </div>
-          <p className="mt-2 text-xs text-muted">
-            Grok captions Albany / Colonie radio from the live Broadcastify stream. 10-codes and names
-            can be wrong. Unit chatter stays here; calls with a street or nature also land on Live.
-          </p>
-          {transcriptError ? <p className="mt-2 text-sm text-sev-high">{transcriptError}</p> : null}
-          <div
-            className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-y-contain rounded-xl border border-border bg-surface px-3 py-3 scrollbar-thin"
-            aria-live="polite"
-          >
-            {transcript.length === 0 ? (
-              <p className="px-2 py-10 text-center text-sm text-muted">
-                {transcribing
-                  ? lastHeardAt
-                    ? "Waiting for the next transmission…"
-                    : "Listening — dispatch is often quiet between calls."
-                  : "Start captions to transcribe this feed."}
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-3">
-                {transcript.map((line) => (
-                  <li key={line.id} className="border-l-2 border-cyan pl-3">
-                    <p className="font-mono text-xs uppercase tracking-wide text-subtle">
-                      {new Date(line.at).toLocaleTimeString([], {
-                        hour: "numeric",
-                        minute: "2-digit",
-                        second: "2-digit",
-                      })}
-                      <span className="mx-1.5">·</span>
-                      {line.feedName}
-                    </p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-fg">{line.text}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <button
+              type="button"
+              onClick={() => setThisFeedOnly(true)}
+              className={cn(
+                "h-9 rounded-full px-3 text-xs font-semibold",
+                thisFeedOnly ? "bg-accent text-accent-fg" : "text-muted",
+              )}
+            >
+              This feed
+            </button>
+            <a
+              href={feed.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex size-9 items-center justify-center text-subtle"
+              aria-label="Open on Broadcastify"
+            >
+              <ExternalLink className="size-4" />
+            </a>
           </div>
         </div>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pb-8 pt-3 scrollbar-thin">
-          <div className="grid grid-cols-4 gap-1.5">
-            {(["all", "police", "fire", "ems"] as const).map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setDisc(d)}
-                className={cn(
-                  "h-11 rounded-full text-sm font-semibold capitalize",
-                  disc === d ? "bg-accent text-accent-fg" : "border border-border bg-surface text-muted",
-                )}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
 
+        {liveCalls.length ? (
           <div className="mt-2 flex gap-2 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none snap-x">
-            <Chip active={channel === ""} onClick={() => setChannel("")} label="All" />
-            {CHANNEL_CHIPS.map((c) => (
-              <Chip
+            {liveCalls.map((c) => (
+              <article
                 key={c.id}
-                active={channel === c.id}
-                onClick={() => setChannel(c.id)}
-                label={c.label}
-              />
+                className="w-52 shrink-0 snap-start rounded-lg border border-border bg-surface px-3 py-2"
+              >
+                <p className="flex items-center justify-between gap-2 text-xs text-subtle">
+                  <span className="truncate font-semibold uppercase tracking-wide">{c.discipline}</span>
+                  <time className="font-mono tabular-nums">{compactFromMinutes(c.minutesAgo)}</time>
+                </p>
+                <p className="mt-0.5 line-clamp-2 text-sm font-medium leading-snug">{c.summary}</p>
+              </article>
             ))}
           </div>
+        ) : null}
 
-          <div className="mt-3">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search agency or traffic…"
-              aria-label="Search scanner traffic"
-            />
-          </div>
-
-          <p className="mt-3 text-xs text-subtle">
-            Live radio. Captions are unconfirmed until they match a blotter or newsroom.
-          </p>
-
-          {filtered.length === 0 ? (
-            <p className="mt-4 rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
-              Play a feed to listen. Start captions to read dispatch. Calls with a street or nature also land on Live.
+        <div
+          className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain rounded-xl border border-border bg-surface px-3 py-3 scrollbar-thin"
+          aria-live="polite"
+        >
+          {visible.length === 0 ? (
+            <p className="px-2 py-10 text-center text-sm text-muted">
+              {transcribing
+                ? ticks === 0
+                  ? "Connecting to Albany-area radio…"
+                  : "Quiet right now. Short unit chatter will show as soon as dispatch talks."
+                : "Captions paused. Tap the caption button to listen again."}
             </p>
           ) : (
-            <div className="mt-3 flex flex-col gap-5">
-              <CallSection title="Now" items={groups.now} />
-              <CallSection title="Last hour" items={groups.hour} />
-              <CallSection title="Earlier" items={groups.earlier} />
-            </div>
+            <ul className="flex flex-col gap-3">
+              {visible.map((line) => {
+                const hint = tenHint(line.text);
+                const nature = natureChip(line.text);
+                const on = line.feedId === feedId || line.feedName === feed.name;
+                return (
+                  <li key={line.id} className={cn("border-l-2 pl-3", on ? "border-cyan" : "border-border")}>
+                    <p className="flex flex-wrap items-center gap-x-2 font-mono text-xs uppercase tracking-wide text-subtle">
+                      <span>{clockTimeSec(line.at)}</span>
+                      <span>{line.feedName}</span>
+                      {nature ? (
+                        <Badge tone={/shots|panic|pursuit|robbery/i.test(nature) ? "high" : "cyan"}>{nature}</Badge>
+                      ) : null}
+                    </p>
+                    <p className="mt-0.5 text-sm leading-relaxed text-fg">{line.text}</p>
+                    {hint ? <p className="mt-0.5 text-xs text-muted">{hint}</p> : null}
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
-      )}
+        <p className="mt-2 text-xs leading-relaxed text-subtle">
+          Unconfirmed radio. 10-codes and names can be wrong. Play is optional — captions run from the stream
+          even if the speaker is blocked.
+        </p>
+      </div>
 
       <audio
         ref={audioRef}
@@ -661,100 +600,10 @@ export function ScannerView({ calls }: { calls: ScannerCall[] }) {
         onError={() => {
           if (!connecting) {
             setPlaying(false);
-            setPlayerError("Stream unavailable. Try another feed.");
+            setPlayerError("Speaker unavailable. Captions still run.");
           }
         }}
       />
     </div>
-  );
-}
-
-function groupCalls(calls: ScannerCall[]) {
-  const now: ScannerCall[] = [];
-  const hour: ScannerCall[] = [];
-  const earlier: ScannerCall[] = [];
-  for (const c of calls) {
-    if (c.minutesAgo <= 15) now.push(c);
-    else if (c.minutesAgo <= 60) hour.push(c);
-    else earlier.push(c);
-  }
-  return { now, hour, earlier };
-}
-
-function CallSection({ title, items }: { title: string; items: ScannerCall[] }) {
-  if (!items.length) return null;
-  return (
-    <section>
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">{title}</h2>
-        <span className="font-mono text-xs tabular-nums text-subtle">{items.length}</span>
-      </div>
-      <ul className="flex flex-col gap-2.5">
-        {items.map((c) => (
-          <li key={c.id}>
-            <CallCard call={c} />
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function CallCard({ call }: { call: ScannerCall }) {
-  const tone = call.discipline === "police" ? "accent" : call.discipline === "fire" ? "high" : "cyan";
-  const hot = call.priority === "high";
-  return (
-    <article
-      className={cn(
-        "rounded-xl border bg-surface p-4",
-        hot ? "border-accent/40" : "border-border",
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{call.agency}</p>
-          <p className="truncate text-xs text-subtle">
-            {call.channel}
-            <span className="mx-1.5">·</span>
-            {call.municipality}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <Badge tone={tone}>{call.discipline}</Badge>
-          <time className="font-mono text-xs font-semibold tabular-nums text-muted">
-            {compactFromMinutes(call.minutesAgo)}
-          </time>
-        </div>
-      </div>
-      <p className="mt-2 text-sm leading-snug text-fg">{call.summary}</p>
-      <p className="mt-2 font-mono text-xs text-subtle">
-        TG {call.talkgroup}
-        <span className="mx-1.5">·</span>
-        {call.durationSec}s
-      </p>
-    </article>
-  );
-}
-
-function Chip({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "h-11 shrink-0 snap-start rounded-full border px-4 text-sm font-medium",
-        active ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
-      )}
-    >
-      {label}
-    </button>
   );
 }

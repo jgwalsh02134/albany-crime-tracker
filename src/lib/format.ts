@@ -37,6 +37,13 @@ const NY_CLOCK = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
+const NY_CLOCK_SEC = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
 const NY_DAY = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
   month: "short",
@@ -57,6 +64,15 @@ export function clockTime(iso: string): string {
     return "";
   }
 }
+
+export function clockTimeSec(ms: number): string {
+  try {
+    return NY_CLOCK_SEC.format(new Date(ms));
+  } catch {
+    return "";
+  }
+}
+
 
 export function shortDate(iso: string): string {
   try {

@@ -23,7 +23,7 @@ export type CaptionLine = {
 };
 
 type ScanState = {
-  ver: 2;
+  ver: 3;
   buffer: LiveWireItem[];
   captions: CaptionLine[];
   seenSeq: Map<string, Set<number>>;
@@ -33,7 +33,9 @@ type ScanState = {
     kept: number;
     lastTickAt: number;
     lastError: string;
+    lastErrorAt: number;
     lastSpoken: string;
+    lastSpokenAt: number;
     lastFeed: string;
   };
   ticking: boolean;
@@ -44,6 +46,7 @@ type ScanState = {
   timer?: ReturnType<typeof setInterval>;
 };
 
+
 const g = globalThis as unknown as {
   __actScan?: ScanState;
   __actScanTimer?: ReturnType<typeof setInterval>;
@@ -52,12 +55,21 @@ const g = globalThis as unknown as {
 
 function freshState(): ScanState {
   return {
-    ver: 2,
+    ver: 3,
     buffer: [],
     captions: [],
     seenSeq: new Map(),
     lastText: new Map(),
-    stats: { ticks: 0, kept: 0, lastTickAt: 0, lastError: "", lastSpoken: "", lastFeed: "" },
+    stats: {
+      ticks: 0,
+      kept: 0,
+      lastTickAt: 0,
+      lastError: "",
+      lastErrorAt: 0,
+      lastSpoken: "",
+      lastSpokenAt: 0,
+      lastFeed: "",
+    },
     ticking: false,
     cursor: 0,
     sttBlockedUntil: 0,
@@ -66,7 +78,7 @@ function freshState(): ScanState {
   };
 }
 
-if (!g.__actScan || g.__actScan.ver !== 2) g.__actScan = freshState();
+if (!g.__actScan || g.__actScan.ver !== 3) g.__actScan = freshState();
 const state = g.__actScan;
 
 function stopZombie() {
@@ -78,27 +90,21 @@ function stopZombie() {
   state.ticking = false;
 }
 
-function looksVoice(text: string): boolean {
+function looksCaption(text: string): boolean {
   const t = text.replace(/\s+/g, " ").trim();
-  if (t.length < 16) return false;
-  if (!/[a-z]/i.test(t)) return false;
+  if (t.length < 3) return false;
+  if (!/[a-z0-9]/i.test(t)) return false;
   if (/^(silence|inaudible|music|blank|\.+)$/i.test(t)) return false;
   if (/brooklyn|queens|bronx|manhattan|automatic line|brooklyn north/i.test(t)) return false;
   if ((t.match(/10-\d+/g) || []).length >= 3) return false;
   if (/copy\s+en route\s+on scene/i.test(t)) return false;
   if ((t.match(/,/g) || []).length >= 6) return false;
-  const words = t
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 1);
-  if (words.length < 4) return false;
-  if (new Set(words).size < 3) return false;
   return true;
 }
 
 function looksDispatch(text: string): boolean {
-  if (!looksVoice(text)) return false;
+  if (!looksCaption(text)) return false;
+  if (text.replace(/\s+/g, " ").trim().length < 12) return false;
   if (CALL.test(text) || PLACE.test(text)) return true;
   return streetsOf(text).length > 0;
 }
@@ -222,6 +228,7 @@ async function tickFeed(feedId: string) {
       filename = audio.filename;
     } catch (err) {
       state.stats.lastError = err instanceof Error ? err.message : "seg-fetch";
+      state.stats.lastErrorAt = Date.now();
     }
   }
   if (!parts.length) {
@@ -241,9 +248,12 @@ async function tickFeed(feedId: string) {
     const result = await transcribeAudioFile(merged, filename, mime);
     spoken = result.text.trim();
     seen.add(last.seq);
+    state.stats.lastError = "";
+    state.stats.lastErrorAt = 0;
   } catch (err) {
     const msg = err instanceof Error ? err.message : "stt";
     state.stats.lastError = msg;
+    state.stats.lastErrorAt = Date.now();
     console.error("[scanner] stt", feedId, msg);
     if (msg.includes("429")) state.sttBlockedUntil = Date.now() + 60_000;
     state.seenSeq.set(feedId, seen);
@@ -258,8 +268,9 @@ async function tickFeed(feedId: string) {
 
   if (!spoken) return;
   state.stats.lastSpoken = spoken.slice(0, 160);
+  state.stats.lastSpokenAt = Date.now();
   state.stats.lastFeed = feedId;
-  if (!looksVoice(spoken)) return;
+  if (!looksCaption(spoken)) return;
   rememberCaption(feedId, feed.name, spoken);
   if (!looksDispatch(spoken)) return;
   const key = spoken.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -297,6 +308,7 @@ async function tick() {
   try {
     if (!process.env.XAI_API_KEY) {
       state.stats.lastError = "no-key";
+      state.stats.lastErrorAt = Date.now();
       return;
     }
     if (Date.now() < state.sttBlockedUntil) return;
@@ -313,6 +325,7 @@ async function tick() {
     ]);
   } catch (err) {
     state.stats.lastError = err instanceof Error ? err.message : "tick";
+    state.stats.lastErrorAt = Date.now();
     console.error("[scanner] tick", state.stats.lastError);
   } finally {
     state.ticking = false;
@@ -355,7 +368,10 @@ export function scannerHealth(): {
   ticks: number;
   kept: number;
   lastError: string;
+  lastErrorAt: number;
   lastSpoken: string;
+  lastSpokenAt: number;
+  lastFeed: string;
   ageSec: number;
   captions: number;
 } {
@@ -363,7 +379,10 @@ export function scannerHealth(): {
     ticks: state.stats.ticks,
     kept: state.stats.kept,
     lastError: state.stats.lastError,
+    lastErrorAt: state.stats.lastErrorAt,
     lastSpoken: state.stats.lastSpoken,
+    lastSpokenAt: state.stats.lastSpokenAt,
+    lastFeed: state.stats.lastFeed,
     ageSec: state.stats.lastTickAt ? Math.round((Date.now() - state.stats.lastTickAt) / 1000) : -1,
     captions: state.captions.length,
   };

@@ -128,7 +128,7 @@ export async function transcribeAudioFile(
   const form = new FormData();
   form.append("language", "en");
   form.append("format", "true");
-  form.append("vad_threshold", "0.28");
+  form.append("vad_threshold", "0.15");
   for (const term of KEYTERMS) form.append("keyterm", term);
   form.append("file", new File([copy], filename, { type: mime }));
 
@@ -191,9 +191,12 @@ export const getScannerCaptions = createServerFn({ method: "POST" })
     const health = poll.scannerHealth();
     return {
       ok: true as const,
-      lines: poll.captionLines(data.feedId || undefined),
+      lines: poll.captionLines(),
       lastSpoken: health.lastSpoken,
+      lastSpokenAt: health.lastSpokenAt,
+      lastFeed: health.lastFeed,
       lastError: health.lastError,
+      lastErrorAt: health.lastErrorAt,
       ticks: health.ticks,
       kept: health.kept,
       ageSec: health.ageSec,
