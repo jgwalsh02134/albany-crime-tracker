@@ -21,6 +21,12 @@ const FILTERS: { id: Category | "all"; label: string }[] = [
   { id: "other", label: "Other" },
 ];
 
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+
+function esriUrl(id: string) {
+  return `${ESRI}/${id}/MapServer/tile/{z}/{y}/{x}`;
+}
+
 export function MapView({ incidents, active }: { incidents: Incident[]; active: boolean }) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<{
@@ -60,14 +66,16 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         attributionControl: true,
       }).setView([42.78, -73.8], 10);
       L.control.zoom({ position: "bottomright" }).addTo(map);
-      const tiles =
-        theme === "light"
-          ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-      L.tileLayer(tiles, {
-        attribution: "&copy; OpenStreetMap &copy; CARTO",
+      const tone = theme === "light" ? "Light" : "Dark";
+      const tiles = {
         maxZoom: 18,
+        maxNativeZoom: 16,
+      };
+      L.tileLayer(esriUrl(`Canvas/World_${tone}_Gray_Base`), {
+        ...tiles,
+        attribution: "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, FAO, NOAA, USGS",
       }).addTo(map);
+      L.tileLayer(esriUrl(`Canvas/World_${tone}_Gray_Reference`), tiles).addTo(map);
       const layer = L.layerGroup().addTo(map);
       mapRef.current = { map, layer, L };
       setReady(true);
