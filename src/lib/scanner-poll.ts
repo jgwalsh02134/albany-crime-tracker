@@ -95,6 +95,7 @@ function looksCaption(text: string): boolean {
   if (t.length < 3) return false;
   if (!/[a-z0-9]/i.test(t)) return false;
   if (/^(silence|inaudible|music|blank|\.+)$/i.test(t)) return false;
+  if (/thanks for watching|subscribe to|please like|\[music\]/i.test(t)) return false;
   if (/brooklyn|queens|bronx|manhattan|automatic line|brooklyn north/i.test(t)) return false;
   if ((t.match(/10-\d+/g) || []).length >= 3) return false;
   if (/copy\s+en route\s+on scene/i.test(t)) return false;
@@ -215,10 +216,16 @@ async function tickFeed(feedId: string) {
   if (seen.has(last.seq)) return;
   if (Date.now() < state.sttBlockedUntil) return;
 
+  const fresh = window.filter((s) => !seen.has(s.seq));
+  if (!fresh.length) return;
+  const firstFresh = fresh[0]!.seq;
+  const context = segs.filter((s) => s.seq === firstFresh - 1);
+  const toFetch = [...context, ...fresh];
+
   const parts: Uint8Array[] = [];
   let mime = "audio/mpeg";
   let filename = "segment.mp3";
-  for (const seg of window) {
+  for (const seg of toFetch) {
     try {
       const ts = await http2Get(seg.url, 8000);
       const audio = extractAudioFromMpegTs(ts);
@@ -232,7 +239,7 @@ async function tickFeed(feedId: string) {
     }
   }
   if (!parts.length) {
-    seen.add(last.seq);
+    for (const seg of fresh) seen.add(seg.seq);
     state.seenSeq.set(feedId, seen);
     return;
   }
@@ -241,13 +248,13 @@ async function tickFeed(feedId: string) {
   try {
     const merged = parts.length === 1 ? parts[0]! : concatBytes(parts);
     if (merged.byteLength < MIN_AUDIO) {
-      seen.add(last.seq);
+      for (const seg of fresh) seen.add(seg.seq);
       state.seenSeq.set(feedId, seen);
       return;
     }
     const result = await transcribeAudioFile(merged, filename, mime);
     spoken = result.text.trim();
-    seen.add(last.seq);
+    for (const seg of fresh) seen.add(seg.seq);
     state.stats.lastError = "";
     state.stats.lastErrorAt = 0;
   } catch (err) {

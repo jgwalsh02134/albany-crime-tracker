@@ -16,8 +16,13 @@ const KEYTERMS = [
   "Latham",
   "Delmar",
   "Loudonville",
+  "Glenmont",
+  "Selkirk",
+  "Rensselaer",
+  "Troy",
   "Western Avenue",
   "Central Avenue",
+  "Clinton Avenue",
   "Lark Street",
   "Pearl Street",
   "Washington Avenue",
@@ -28,11 +33,44 @@ const KEYTERMS = [
   "Broadway",
   "Henry Johnson",
   "Wolf Road",
-  "Speedway",
+  "Northway",
+  "Thruway",
+  "Interstate 87",
+  "Interstate 90",
+  "Interstate 787",
+  "Route 9W",
+  "10-4",
+  "10-8",
+  "10-10",
+  "10-13",
+  "10-16",
+  "10-33",
+  "10-50",
+  "10-52",
+  "10-54",
+  "10-55",
+  "10-57",
+  "10-78",
+  "10-80",
   "panic alarm",
   "welfare check",
   "domestic",
   "personal injury",
+  "shots fired",
+  "structure fire",
+  "hit and run",
+  "search warrant",
+  "Speedway",
+  "Albany Police",
+  "Colonie Police",
+  "Bethlehem Police",
+  "Albany Fire",
+  "Engine",
+  "Ladder",
+  "Rescue",
+  "Ambulance",
+  "Troop G",
+  "NYSP",
 ];
 
 type ResolvedFeed = {
@@ -95,13 +133,29 @@ async function resolveHls(feedId: string): Promise<ResolvedFeed> {
 function looksBlank(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
-  if (t.length < 6) return true;
+  if (t.length < 3) return true;
   if (/^(silence|\[?(blank|silence|inaudible|music)\]?|\(+.*?quiet.*?\)+)$/i.test(t)) return true;
+  if (/thanks for watching|subscribe to|please like|\[music\]/i.test(t)) return true;
   if (/brooklyn north|automatic line/i.test(t)) return true;
   if ((t.match(/10-\d+/g) || []).length >= 3) return true;
   if (/copy\s+en route\s+on scene/i.test(t)) return true;
   if ((t.match(/,/g) || []).length >= 6) return true;
   return false;
+}
+
+export function tidyRadio(text: string): string {
+  let t = text.replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  t = t.replace(/\b10\s+(\d{1,2})\b/gi, "10-$1");
+  t = t.replace(
+    /\b(\d)\s+(\d)\s+(\d)\s+(\d)\s+(?=(?:\d{1,3}(?:st|nd|rd|th)\b|[A-Za-z]))/g,
+    "$1$2$3$4 ",
+  );
+  t = t.replace(
+    /\b(\d{1,2})\s+(\d{2})\s+(?=(?:\d{1,3}(?:st|nd|rd|th)\b|(?:north|south|east|west|n\.?|s\.?|e\.?|w\.?)?\s*[A-Za-z][A-Za-z']+\s+(?:street|st\.?|avenue|ave\.?|road|rd\.?|place|pl\.?|boulevard|blvd|drive|dr\.?)))/gi,
+    "$1$2 ",
+  );
+  return t.replace(/\s+/g, " ").trim();
 }
 
 function decodeBase64(b64: string): Uint8Array {
@@ -142,7 +196,7 @@ export async function transcribeAudioFile(
     throw new Error(`stt-${res.status}`);
   }
   const body = (await res.json()) as { text?: string; duration?: number };
-  return { text: body.text?.trim() ?? "", duration: body.duration ?? 0 };
+  return { text: tidyRadio(body.text?.trim() ?? ""), duration: body.duration ?? 0 };
 }
 
 export const getScannerPlaylist = createServerFn({ method: "POST" })
