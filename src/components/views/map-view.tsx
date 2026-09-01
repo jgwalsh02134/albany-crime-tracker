@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LocateFixed, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { lastHours } from "@/lib/data";
+import { clockTime } from "@/lib/format";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import { type Category, type Incident, type Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,19 @@ const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
 
 function esriUrl(id: string) {
   return `${ESRI}/${id}/MapServer/tile/{z}/{y}/{x}`;
+}
+
+function tipNode(inc: Incident): HTMLElement {
+  const root = document.createElement("div");
+  const title = document.createElement("p");
+  title.className = "act-tip-title";
+  title.textContent = inc.title;
+  const meta = document.createElement("p");
+  meta.className = "act-tip-meta";
+  const when = clockTime(inc.occurredAt);
+  meta.textContent = [inc.address, when].filter(Boolean).join(" · ");
+  root.append(title, meta);
+  return root;
 }
 
 export function MapView({ incidents, active }: { incidents: Incident[]; active: boolean }) {
@@ -123,8 +137,12 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         fillColor: COLORS[inc.severity],
         fillOpacity: heatmap ? 0.22 : 0.92,
       });
-      const tip = [inc.title, inc.address, inc.description].filter(Boolean).join("\n").slice(0, 240);
-      marker.bindTooltip(tip, { direction: "top", opacity: 0.96, className: "act-tip", sticky: true });
+      marker.bindTooltip(tipNode(inc), {
+        direction: "top",
+        opacity: 1,
+        className: "act-tip",
+        sticky: true,
+      });
       marker.on("click", () => select(inc.id));
       marker.addTo(layer);
       pts.push([inc.lat, inc.lng]);
@@ -160,16 +178,16 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
     <div className="relative h-full min-h-0">
       <div ref={el} className="absolute inset-0" role="region" aria-label="Incident map" />
 
-      <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-4">
-        <div className="pointer-events-auto flex gap-1 overflow-x-auto rounded-full border border-border bg-surface/95 p-1 shadow-md scrollbar-none">
+      <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
+        <div className="pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-full border border-border bg-surface/95 p-1 shadow-md scrollbar-none snap-x">
           {FILTERS.map((f) => (
             <button
               key={f.id}
               type="button"
               onClick={() => setMapCategory(f.id)}
               className={cn(
-                "h-10 min-w-11 rounded-full px-3.5 text-sm font-semibold",
-                mapCategory === f.id ? "bg-accent text-accent-fg" : "text-muted",
+                "h-11 shrink-0 snap-start rounded-full px-3.5 text-sm font-semibold tracking-tight",
+                mapCategory === f.id ? "bg-accent text-accent-fg" : "text-fg",
               )}
             >
               {f.label}
@@ -179,8 +197,8 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
             type="button"
             onClick={() => setHeatmap(!heatmap)}
             className={cn(
-              "h-10 min-w-11 rounded-full px-3.5 text-sm font-semibold",
-              heatmap ? "bg-cyan text-accent-fg" : "text-muted",
+              "h-11 shrink-0 snap-start rounded-full px-3.5 text-sm font-semibold tracking-tight",
+              heatmap ? "bg-cyan text-accent-fg" : "text-fg",
             )}
           >
             Heat
@@ -188,17 +206,22 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         </div>
       </div>
 
-      <div className="pointer-events-none absolute right-3 top-16 z-10">
+      <div className="pointer-events-none absolute right-3 top-20 z-10">
         <Button size="icon" variant="secondary" className="pointer-events-auto size-12 rounded-full shadow-md" onClick={locate} aria-label="Locate me">
           <LocateFixed className="size-5" />
         </Button>
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-3">
-        <div className="pointer-events-auto flex min-h-11 items-center gap-3 rounded-full border border-border bg-surface/95 px-3.5 py-1.5 shadow-md">
-          <span className="font-mono text-xs tabular-nums text-muted">{visible.length} shown</span>
-          <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-subtle">
-            {mapHours}h
+        <div className="pointer-events-auto flex min-h-12 items-center gap-3 rounded-full border border-border bg-surface/95 px-4 py-2 shadow-md">
+          <p className="shrink-0 leading-tight">
+            <span className="block font-mono text-base font-semibold tabular-nums tracking-tight text-fg">
+              {visible.length}
+            </span>
+            <span className="block text-xs font-semibold uppercase tracking-wide text-subtle">shown</span>
+          </p>
+          <label className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-fg">{mapHours}h</span>
             <input
               type="range"
               min={1}
@@ -206,15 +229,16 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
               value={mapHours}
               onChange={(e) => setMapHours(Number(e.target.value))}
               className="w-full accent-accent"
+              aria-label="Hours on the map"
             />
-            Now
+            <span className="shrink-0 text-sm font-semibold text-fg">Now</span>
           </label>
-          <Button size="icon-sm" variant="ghost" onClick={share}>
-            <Share2 className="size-4" />
+          <Button size="icon" variant="ghost" className="size-11 shrink-0" onClick={share} aria-label="Share map">
+            <Share2 className="size-5" />
           </Button>
         </div>
         {visible.length === 0 ? (
-          <p className="pointer-events-none mt-2 text-center text-xs text-subtle">
+          <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
             No mapped calls in this window. NYSP blotter pins appear after the 7 AM report.
           </p>
         ) : null}

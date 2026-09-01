@@ -187,6 +187,8 @@
 .leaflet-container {
   background: var(--bg);
   font-family: var(--font-sans);
+  font-size: 1rem;
+  color: var(--fg);
 }
 
 .leaflet-container img,
@@ -203,21 +205,75 @@
 }
 
 .leaflet-tooltip.act-tip {
-  white-space: pre-line;
-  max-width: 18rem;
+  white-space: normal;
+  max-width: min(17rem, calc(100vw - 2.5rem));
   background: var(--surface);
   color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: 0 8px 24px color-mix(in oklab, black 35%, transparent);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  padding: 0.75rem 0.875rem;
+}
+
+.act-tip-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  color: var(--fg);
+}
+
+.act-tip-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
   line-height: 1.4;
-  padding: 8px 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .leaflet-tooltip.act-tip::before {
   border-top-color: var(--surface);
+}
+
+.leaflet-container .leaflet-control-attribution {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--muted);
+  background: color-mix(in oklab, var(--surface) 92%, transparent);
+  padding: 0.25rem 0.5rem;
+  max-width: calc(100vw - 5.5rem);
+}
+
+.leaflet-container .leaflet-control-attribution a {
+  color: var(--fg);
+}
+
+.leaflet-bottom.leaflet-right {
+  bottom: 5.25rem;
+}
+
+.leaflet-control-zoom a {
+  width: 44px !important;
+  height: 44px !important;
+  line-height: 44px !important;
+  font-size: 1.125rem !important;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--fg) !important;
+  background: var(--surface) !important;
+}
+
+.leaflet-control-zoom a:hover,
+.leaflet-control-zoom a:focus {
+  background: var(--surface-2) !important;
+  color: var(--fg) !important;
 }
 
 .scrollbar-thin {
@@ -227,17 +283,8 @@
   overscroll-behavior-y: contain;
 }
 
-.leaflet-bottom.leaflet-right {
-  bottom: 4.75rem;
-}
-
-.leaflet-control-zoom a {
-  width: 44px !important;
-  height: 44px !important;
-  line-height: 44px !important;
-}
-
 .scrollbar-none {
+
   scrollbar-width: none;
 }
 
