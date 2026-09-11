@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { stripHtml } from "@/lib/security/sanitize";
 import { placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 
@@ -349,11 +350,23 @@ export function citizenItems(now: number): LiveWireItem[] {
 
 export const submitCitizenTip = createServerFn({ method: "POST" })
   .validator((input: { nature?: string; where?: string; details?: string }) => ({
-    nature: String(input.nature ?? "").trim().toLowerCase().slice(0, 20),
-    where: String(input.where ?? "").trim().slice(0, 80),
-    details: String(input.details ?? "").trim().slice(0, 280),
+    nature: stripHtml(String(input.nature ?? "").toLowerCase(), 20),
+    where: stripHtml(String(input.where ?? ""), 80),
+    details: stripHtml(String(input.details ?? ""), 280),
   }))
   .handler(async ({ data }) => {
+    // Dynamic .server imports — keep this module dual-safe for the client binder.
+    const { assertSameSiteRequest } = await import("@/lib/auth/isolation.server");
+    const { rateLimit } = await import("@/lib/security/rate-limit.server");
+    try {
+      assertSameSiteRequest();
+    } catch {
+      return { ok: false as const, error: "Forbidden." };
+    }
+    const limited = await rateLimit({ name: "tip-submit", limit: 8, windowSec: 60 });
+    if (!limited.ok) {
+      return { ok: false as const, error: "Too many reports right now — try again in a minute." };
+    }
     if (!NATURE_LABEL[data.nature]) {
       return { ok: false as const, error: "Pick what you saw." };
     }

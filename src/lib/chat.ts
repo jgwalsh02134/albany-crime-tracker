@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { wireToIncidents } from "./sources";
+import { stripHtml } from "@/lib/security/sanitize";
 
 const MAX_PROMPT = 800;
 const MAX_HISTORY = 8;
@@ -39,14 +40,25 @@ async function snapshot(): Promise<string> {
 
 export const askCrimeAi = createServerFn({ method: "POST" })
   .validator((input: { prompt: string; history?: ChatTurn[] }) => {
-    const prompt = String(input.prompt ?? "").trim().slice(0, MAX_PROMPT);
+    const prompt = stripHtml(String(input.prompt ?? ""), MAX_PROMPT);
     const history = (input.history ?? []).slice(-MAX_HISTORY).map((t) => ({
       role: t.role === "assistant" ? ("assistant" as const) : ("user" as const),
-      content: String(t.content ?? "").slice(0, 2000),
+      content: stripHtml(String(t.content ?? ""), 2000),
     }));
     return { prompt, history };
   })
   .handler(async ({ data }) => {
+    const { assertSameSiteRequest } = await import("@/lib/auth/isolation.server");
+    const { rateLimit } = await import("@/lib/security/rate-limit.server");
+    try {
+      assertSameSiteRequest();
+    } catch {
+      return { ok: false as const, error: "Forbidden." };
+    }
+    const limited = await rateLimit({ name: "ai-chat", limit: 20, windowSec: 60 });
+    if (!limited.ok) {
+      return { ok: false as const, error: "Too many questions right now — try again shortly." };
+    }
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) {
       return { ok: false as const, error: "AI is not available in this environment." };

@@ -1,14 +1,36 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { scannerHealth } from "@/lib/scanner-poll";
-import { superfeedrHealth, superfeedrSubscribeHealth, ensureSuperfeedrSubscriptions } from "@/lib/superfeedr";
+import {
+  superfeedrHealth,
+  superfeedrSubscribeHealth,
+  ensureSuperfeedrSubscriptions,
+} from "@/lib/superfeedr";
+import { isAdminAuthorized } from "@/lib/security/admin-token.server";
+import { rateLimitRequest, rateLimitResponse } from "@/lib/security/rate-limit.server";
 
+/**
+ * Public health: minimal `{ ok: true }`.
+ * Rich diagnostics + optional subscribe kick: Bearer / ?token= admin token
+ * (constant-time compare). Unauthenticated GET never triggers hub.subscribe.
+ */
 export const Route = createFileRoute("/ready")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        const limited = await rateLimitRequest(request, {
+          name: "ready",
+          limit: 120,
+          windowSec: 60,
+        });
+        if (!limited.ok) return rateLimitResponse(limited);
+
+        if (!isAdminAuthorized(request, false)) {
+          return Response.json({ ok: true });
+        }
+
         const scan = scannerHealth();
         const sf = superfeedrHealth();
-        // Kick idempotent hub.subscribe when credentials exist (no-op if already recent).
+        // Privileged ops only — never on anonymous probes.
         void ensureSuperfeedrSubscriptions({ requestUrl: request.url }).catch(() => undefined);
         const subs = superfeedrSubscribeHealth();
         return Response.json({
