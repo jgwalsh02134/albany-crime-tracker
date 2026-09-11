@@ -168,7 +168,17 @@ function looksLikeMpegTs(bytes: Uint8Array): boolean {
   return bytes[0] === 0x47 && (bytes[188] === 0x47 || bytes.length < 376);
 }
 
-export async function transcribeAudioFile(
+/** Skip xAI STT while ACL/auth is broken so we do not hammer api.x.ai. */
+let xaiSttBlockedUntil = 0;
+const XAI_ACL_BACKOFF_MS = 10 * 60_000;
+
+function fileCopy(bytes: Uint8Array, filename: string, mime: string): File {
+  const copy = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(copy).set(bytes);
+  return new File([copy], filename, { type: mime });
+}
+
+async function transcribeWithXai(
   bytes: Uint8Array,
   filename: string,
   mime: string,
@@ -176,15 +186,12 @@ export async function transcribeAudioFile(
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) throw new Error("missing-key");
 
-  const copy = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(copy).set(bytes);
-
   const form = new FormData();
   form.append("language", "en");
   form.append("format", "true");
   form.append("vad_threshold", "0.15");
   for (const term of KEYTERMS) form.append("keyterm", term);
-  form.append("file", new File([copy], filename, { type: mime }));
+  form.append("file", fileCopy(bytes, filename, mime));
 
   const res = await fetch("https://api.x.ai/v1/stt", {
     method: "POST",
@@ -197,6 +204,81 @@ export async function transcribeAudioFile(
   }
   const body = (await res.json()) as { text?: string; duration?: number };
   return { text: tidyRadio(body.text?.trim() ?? ""), duration: body.duration ?? 0 };
+}
+
+async function transcribeWithOpenAiWhisper(
+  bytes: Uint8Array,
+  filename: string,
+  mime: string,
+): Promise<{ text: string; duration: number }> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("missing-openai-key");
+
+  const form = new FormData();
+  form.append("model", process.env.SCANNER_TRANSCRIBE_MODEL?.trim() || "whisper-1");
+  form.append("language", "en");
+  form.append("file", fileCopy(bytes, filename, mime));
+
+  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) {
+    throw new Error(`whisper-${res.status}`);
+  }
+  const body = (await res.json()) as { text?: string; duration?: number };
+  return { text: tidyRadio(body.text?.trim() ?? ""), duration: body.duration ?? 0 };
+}
+
+export function sttProvidersConfigured(): boolean {
+  return Boolean(process.env.XAI_API_KEY || process.env.OPENAI_API_KEY);
+}
+
+/**
+ * Prefer xAI STT; on 401/403 (ACL) hard-backoff xAI and fall back to OpenAI Whisper
+ * when OPENAI_API_KEY is set so captions recover without waiting on xAI ACL.
+ */
+export async function transcribeAudioFile(
+  bytes: Uint8Array,
+  filename: string,
+  mime: string,
+): Promise<{ text: string; duration: number }> {
+  const hasXai = Boolean(process.env.XAI_API_KEY);
+  const hasOpenAi = Boolean(process.env.OPENAI_API_KEY);
+  if (!hasXai && !hasOpenAi) throw new Error("missing-key");
+
+  const xaiBlocked = Date.now() < xaiSttBlockedUntil;
+  if (hasXai && !xaiBlocked) {
+    try {
+      return await transcribeWithXai(bytes, filename, mime);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "stt-401" || msg === "stt-403") {
+        xaiSttBlockedUntil = Date.now() + XAI_ACL_BACKOFF_MS;
+        console.error("[stt] xai acl", msg, "backoff_ms", XAI_ACL_BACKOFF_MS);
+        if (hasOpenAi) {
+          try {
+            return await transcribeWithOpenAiWhisper(bytes, filename, mime);
+          } catch (fallbackErr) {
+            const fmsg = fallbackErr instanceof Error ? fallbackErr.message : "whisper";
+            console.error("[stt] whisper fallback failed", fmsg);
+            if (fmsg.includes("429")) {
+              throw fallbackErr instanceof Error ? fallbackErr : new Error(fmsg);
+            }
+            throw new Error(msg);
+          }
+        }
+      }
+      throw err instanceof Error ? err : new Error("stt");
+    }
+  }
+
+  if (hasOpenAi) {
+    return await transcribeWithOpenAiWhisper(bytes, filename, mime);
+  }
+  throw new Error("stt-403");
 }
 
 export const getScannerPlaylist = createServerFn({ method: "POST" })
@@ -271,8 +353,7 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
     return { feedId, b64, mime, filename };
   })
   .handler(async ({ data }) => {
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) {
+    if (!sttProvidersConfigured()) {
       return {
         ok: false as const,
         fatal: true,
@@ -318,8 +399,11 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
           error: "Transcript is not available in this environment.",
         };
       }
-      if (msg.startsWith("stt-429")) {
+      if (msg.startsWith("stt-429") || msg.startsWith("whisper-429")) {
         return { ok: false as const, fatal: false, error: "Transcript is busy. Retrying…" };
+      }
+      if (msg === "stt-401" || msg === "stt-403") {
+        return { ok: false as const, fatal: false, error: "Transcript auth issue — using fallback when available." };
       }
       return { ok: false as const, fatal: false, error: "Caption skipped — trying the next clip." };
     }
