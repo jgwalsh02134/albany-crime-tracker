@@ -3,7 +3,16 @@ import { http2Get, http2GetText } from "./http2-get";
 import { transcribeAudioFile } from "./transcribe";
 import { getScannerFeed, SCANNER_FEEDS } from "./scanner-feeds";
 import type { LiveWireItem } from "./sources";
-import { geocodeSpoken, locateSpoken } from "./geo";
+import { geocodeSpoken, locateSpoken, placeFromText, TOWN } from "./geo";
+import {
+  extractIntersection,
+  extractRoute,
+  resolveScannerAgency,
+  resolveScannerPlace,
+  scannerTitle,
+  withDisclaimer,
+  type AgencyLabel,
+} from "./scanner-labels";
 
 const TICK_MS = 12000;
 const MAX_ITEMS = 120;
@@ -50,6 +59,7 @@ function nearDuplicate(a: string, b: string): boolean {
 function isUnitStatusChatter(text: string): boolean {
   const t = text.replace(/\s+/g, " ").trim();
   if (streetsOf(t).length > 0) return false;
+  if (extractIntersection(t) || extractRoute(t)) return false;
   if (PLACE.test(t) && CALL.test(t)) return false;
   if (!UNIT_STATUS.test(t)) return false;
   // Status-only: short, or no call-type beyond the status codes themselves.
@@ -63,6 +73,7 @@ function isUnitStatusChatter(text: string): boolean {
 function liveRank(text: string): number {
   let score = 0;
   if (streetsOf(text).length) score += 4;
+  if (extractIntersection(text) || extractRoute(text)) score += 4;
   if (PLACE.test(text)) score += 2;
   if (CALL.test(text)) score += 3;
   if (isUnitStatusChatter(text)) score -= 5;
@@ -162,6 +173,7 @@ function looksDispatch(text: string): boolean {
   if (!looksCaption(text)) return false;
   if (text.replace(/\s+/g, " ").trim().length < 12) return false;
   if (CALL.test(text) || PLACE.test(text)) return true;
+  if (extractIntersection(text) || extractRoute(text)) return true;
   return streetsOf(text).length > 0;
 }
 
@@ -178,61 +190,65 @@ function streetsOf(text: string): string[] {
   return out;
 }
 
-function scannerTitle(spoken: string, feedName: string): string {
-  const streets = streetsOf(spoken);
-  const kind = /ems|ambulance|rescue/i.test(`${spoken} ${feedName}`)
-    ? "EMS"
-    : /fire|engine|truck/i.test(`${spoken} ${feedName}`)
-      ? "Fire"
-      : "Police";
-  const nature = natureOf(spoken);
-  if (nature && streets.length) return `${nature} · ${streets.slice(0, 2).join(" & ")}`;
-  if (nature) return `${kind} radio · ${nature}`;
-  if (streets.length) return `${kind} radio · ${streets.slice(0, 2).join(" & ")}`;
-  const t = spoken.replace(/\s+/g, " ").trim();
-  return `${kind} radio · ${t.length <= 72 ? t : `${t.slice(0, 68).replace(/\s+\S*$/, "")}…`}`;
+/** Build Live fields from feed + caption — specific agency/place, never dual blob. */
+async function labelSpoken(feedId: string, spoken: string, talkgroupId?: string | null): Promise<{
+  agency: AgencyLabel;
+  place: ReturnType<typeof resolveScannerPlace>;
+  title: string;
+  summary: string;
+  municipality: string;
+  address: string;
+  lat: number;
+  lng: number;
+}> {
+  const feed = getScannerFeed(feedId) ?? SCANNER_FEEDS[0]!;
+  const agency = resolveScannerAgency({ feedId, spoken, talkgroupId });
+  const place = resolveScannerPlace({ spoken, agency, feed });
+  const muni =
+    place.municipality ||
+    agency.municipalityHint ||
+    placeFromText(spoken)?.name ||
+    "";
+  const pin = await geocodeSpoken(spoken, muni || "Albany");
+  // Prefer geocoded road label when present; never fall back to dual coverage.
+  let address = place.address;
+  if (pin.road) {
+    address = muni && !pin.road.toLowerCase().includes(muni.toLowerCase())
+      ? `${pin.road} · ${muni}`
+      : pin.road;
+  } else if (!place.known) {
+    address = "area unknown";
+  }
+  const geo = pin.geo;
+  // If area unknown, avoid pretending a precise downtown pin — use town centroid only when muni known.
+  let lat = geo.lat;
+  let lng = geo.lng;
+  if (!place.known && !muni) {
+    // Soft county centroid — map still needs a number; address stays "area unknown".
+    lat = 42.68;
+    lng = -73.82;
+  } else if (!place.placeLabel && muni && TOWN[muni]) {
+    lat = TOWN[muni]!.lat;
+    lng = TOWN[muni]!.lng;
+  }
+  return {
+    agency,
+    place,
+    title: scannerTitle(spoken, agency, place),
+    summary: withDisclaimer(spoken, agency.agency),
+    municipality: muni || (address === "area unknown" ? "Unknown" : muni),
+    address,
+    lat,
+    lng,
+  };
 }
 
-function natureOf(text: string): string {
-  if (/panic/i.test(text)) return "Panic alarm";
-  if (/hold.?up|robbery/i.test(text)) return "Robbery";
-  if (/shots? fired|shoot/i.test(text)) return "Shots fired";
-  if (/domestic/i.test(text)) return "Domestic";
-  if (/welfare/i.test(text)) return "Welfare check";
-  if (/personal injury|\bpi\b|injury crash/i.test(text)) return "Injury crash";
-  if (/crash|collision|accident|mva/i.test(text)) return "Crash";
-  if (/structure fire|building fire/i.test(text)) return "Structure fire";
-  if (/\bfire\b/i.test(text)) return "Fire";
-  if (/ems|ambulance|medical|overdose|unconscious/i.test(text)) return "EMS";
-  if (/burglar/i.test(text)) return "Burglar alarm";
-  if (/\balarm\b/i.test(text)) return "Alarm";
-  if (/suspicious/i.test(text)) return "Suspicious";
-  if (/dwi|intoxicated/i.test(text)) return "DWI";
-  return "";
-}
-
-function placeName(text: string, fallback: string): string {
-  if (/colonie|latham/i.test(text)) return "Colonie";
-  if (/bethlehem|delmar/i.test(text)) return "Bethlehem";
-  if (/guilderland/i.test(text)) return "Guilderland";
-  if (/cohoes/i.test(text)) return "Cohoes";
-  if (/watervliet/i.test(text)) return "Watervliet";
-  if (/troy/i.test(text)) return "Troy";
-  return fallback;
-}
 
 function spokenFrom(row: LiveWireItem): string {
   if (/Unconfirmed .* radio/i.test(row.summary)) {
     return row.summary.replace(/\. Unconfirmed[\s\S]*$/i, "").trim();
   }
   return row.title;
-}
-
-function withDisclaimer(spoken: string, agency: string): string {
-  const clip = spoken.replace(/\s+/g, " ").trim().slice(0, 220);
-  const body = clip.length < spoken.trim().length ? `${clip.replace(/\s+\S*$/, "")}…` : clip;
-  const punct = /[.!?…]$/.test(body) ? "" : ".";
-  return `${body}${punct} Unconfirmed ${agency} radio — not a CAD call.`;
 }
 
 function concatBytes(parts: Uint8Array[]): Uint8Array {
@@ -365,14 +381,14 @@ async function tickFeed(feedId: string) {
   );
   if (dup) {
     if (liveRank(spoken) >= liveRank(spokenFrom(dup)) && spoken.length >= spokenFrom(dup).length) {
-      const muni = placeName(spoken, dup.municipality || "Albany");
-      const pin = await geocodeSpoken(spoken, muni);
-      dup.title = scannerTitle(spoken, feed.name);
-      dup.summary = withDisclaimer(spoken, feed.name);
-      dup.municipality = muni;
-      dup.address = pin.road ? `${pin.road} · ${muni}` : dup.address;
-      dup.lat = pin.geo.lat;
-      dup.lng = pin.geo.lng;
+      const labeled = await labelSpoken(feedId, spoken);
+      dup.title = labeled.title;
+      dup.summary = labeled.summary;
+      dup.municipality = labeled.municipality;
+      dup.address = labeled.address;
+      dup.agency = labeled.agency.agency;
+      dup.lat = labeled.lat;
+      dup.lng = labeled.lng;
       dup.publishedAt = new Date(now).toISOString();
       dup.minutesAgo = 0;
     }
@@ -381,22 +397,21 @@ async function tickFeed(feedId: string) {
   }
 
   state.lastText.set(feedId, key);
-  const muni = placeName(spoken, "Albany");
-  const pin = await geocodeSpoken(spoken, muni);
+  const labeled = await labelSpoken(feedId, spoken);
   const item: LiveWireItem = {
     id: `scan-${feedId}-${last.seq}`,
-    title: scannerTitle(spoken, feed.name),
+    title: labeled.title,
     url: feed.url,
     outlet: "Scanner",
-    summary: withDisclaimer(spoken, feed.name),
+    summary: labeled.summary,
     publishedAt: new Date(now).toISOString(),
     minutesAgo: 0,
     kind: "scanner",
-    municipality: muni,
-    address: pin.road ? `${pin.road} · ${muni}` : feed.coverage,
-    agency: feed.name,
-    lat: pin.geo.lat,
-    lng: pin.geo.lng,
+    municipality: labeled.municipality,
+    address: labeled.address,
+    agency: labeled.agency.agency,
+    lat: labeled.lat,
+    lng: labeled.lng,
   };
   state.buffer.unshift(item);
   // Prefer address + call-type toward the front when re-sorting recent scanner rows.
@@ -501,20 +516,45 @@ export function scannerHealth(): {
   };
 }
 
+function relabelSync(row: LiveWireItem): LiveWireItem {
+  const spoken = spokenFrom(row);
+  // Prefer feed id embedded in scan-<feedId>-<seq> ids.
+  const feedId = row.id.startsWith("scan-") ? row.id.split("-")[1] || "3626" : "3626";
+  const agency = resolveScannerAgency({ feedId, spoken });
+  const feed = getScannerFeed(feedId) ?? null;
+  const place = resolveScannerPlace({ spoken, agency, feed });
+  const muni = place.municipality || agency.municipalityHint || row.municipality || "";
+  const pin = locateSpoken(spoken, muni || "Albany");
+  let address = place.address;
+  if (pin.road) {
+    address = muni && !pin.road.toLowerCase().includes(muni.toLowerCase())
+      ? `${pin.road} · ${muni}`
+      : pin.road;
+  } else if (!place.known) {
+    address = "area unknown";
+  }
+  // Strip legacy dual-blob addresses from older buffer rows.
+  if (/City of Albany\s*&\s*Town of Colonie|Albany\s*\/\s*Colonie/i.test(address)) {
+    address = place.placeLabel || "area unknown";
+  }
+  return {
+    ...row,
+    title: scannerTitle(spoken, agency, place),
+    summary: withDisclaimer(spoken, agency.agency),
+    municipality: muni || (address === "area unknown" ? "Unknown" : muni),
+    address,
+    agency: agency.agency,
+    lat: pin.road ? pin.geo.lat : place.known && muni && TOWN[muni] ? TOWN[muni]!.lat : pin.geo.lat,
+    lng: pin.road ? pin.geo.lng : place.known && muni && TOWN[muni] ? TOWN[muni]!.lng : pin.geo.lng,
+  };
+}
+
 export function scannerItems(now = Date.now()): LiveWireItem[] {
   return state.buffer
     .map((row) => {
-      const spoken = spokenFrom(row);
-      const muni = placeName(spoken, row.municipality || "Albany");
-      const pin = locateSpoken(spoken, muni);
+      const next = relabelSync(row);
       return {
-        ...row,
-        title: scannerTitle(spoken, row.agency || "Scanner"),
-        summary: withDisclaimer(spoken, row.agency || "scanner"),
-        municipality: muni,
-        address: pin.road ? `${pin.road} · ${muni}` : row.address,
-        lat: pin.geo.lat,
-        lng: pin.geo.lng,
+        ...next,
         minutesAgo: Math.max(0, Math.round((now - Date.parse(row.publishedAt)) / 60_000)),
       };
     })

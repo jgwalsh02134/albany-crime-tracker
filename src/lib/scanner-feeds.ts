@@ -9,6 +9,8 @@ export type ScannerFeed = {
   discipline: Discipline | "all";
   url: string;
   hlsFallback: string;
+  /** Specific Live agency labels for this feed (never dual blobs). */
+  agencies: string[];
 };
 
 export const SCANNER_FEEDS: ScannerFeed[] = [
@@ -21,6 +23,8 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
     discipline: "police",
     url: "https://www.broadcastify.com/listen/feed/3626",
     hlsFallback: "https://hls-o1.broadcastify.com/s0/feed/3626/playlist.m3u8",
+    // Dual simulcast — resolve Albany PD vs Colonie PD from talkgroup / speech.
+    agencies: ["Albany PD", "Colonie PD"],
   },
   {
     id: "36327",
@@ -31,6 +35,7 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
     discipline: "all",
     url: "https://www.broadcastify.com/listen/feed/36327",
     hlsFallback: "https://hls-o1.broadcastify.com/s2/feed/36327/playlist.m3u8",
+    agencies: ["Bethlehem PD", "Bethlehem Fire", "Bethlehem EMS"],
   },
   {
     id: "1440",
@@ -41,6 +46,7 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
     discipline: "fire",
     url: "https://www.broadcastify.com/listen/feed/1440",
     hlsFallback: "https://hls-o1.broadcastify.com/s2/feed/1440/playlist.m3u8",
+    agencies: ["Albany Fire"],
   },
   {
     id: "37206",
@@ -51,6 +57,7 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
     discipline: "fire",
     url: "https://www.broadcastify.com/listen/feed/37206",
     hlsFallback: "https://hls-o1.broadcastify.com/s2/feed/37206/playlist.m3u8",
+    agencies: ["County volunteer fire"],
   },
   {
     id: "21216",
@@ -61,6 +68,7 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
     discipline: "all",
     url: "https://www.broadcastify.com/listen/feed/21216",
     hlsFallback: "https://hls-o1.broadcastify.com/s1/feed/21216/playlist.m3u8",
+    agencies: ["NYS Thruway"],
   },
 ];
 

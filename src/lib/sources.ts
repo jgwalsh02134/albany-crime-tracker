@@ -375,7 +375,19 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
         activity === "blotter"
           ? "NYSP"
           : activity === "scanner"
-            ? "SCAN"
+            ? /colonie/i.test(item.agency || "")
+              ? "CPD"
+              : /albany\s*pd|albany police/i.test(item.agency || "")
+                ? "APD"
+                : /bethlehem/i.test(item.agency || "")
+                  ? "BPD"
+                  : /albany\s*fire/i.test(item.agency || "")
+                    ? "AFD"
+                    : /thruway|nysta/i.test(item.agency || "")
+                      ? "NYSTA"
+                      : /nysp/i.test(item.agency || "")
+                        ? "NYSP"
+                        : "SCAN"
             : activity === "social"
               ? /albany pd/i.test(item.outlet)
                 ? "APD"
