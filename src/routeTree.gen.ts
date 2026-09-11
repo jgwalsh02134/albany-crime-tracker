@@ -14,6 +14,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiWireRouteImport } from './routes/api.wire'
 import { Route as ApiSuperfeedrWebhookRouteImport } from './routes/api.superfeedr.webhook'
 import { Route as ApiSuperfeedrSubscribeRouteImport } from './routes/api.superfeedr.subscribe'
+import { Route as ApiOgIdRouteImport } from './routes/api.og.$id'
+import { Route as IIdRouteImport } from './routes/i.$id'
 
 const ReadyRoute = ReadyRouteImport.update({
   id: '/ready',
@@ -40,6 +42,16 @@ const ApiSuperfeedrSubscribeRoute = ApiSuperfeedrSubscribeRouteImport.update({
   path: '/api/superfeedr/subscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiOgIdRoute = ApiOgIdRouteImport.update({
+  id: '/api/og/$id',
+  path: '/api/og/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IIdRoute = IIdRouteImport.update({
+  id: '/i/$id',
+  path: '/i/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +59,8 @@ export interface FileRoutesByFullPath {
   '/api/wire': typeof ApiWireRoute
   '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
+  '/api/og/$id': typeof ApiOgIdRoute
+  '/i/$id': typeof IIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +68,8 @@ export interface FileRoutesByTo {
   '/api/wire': typeof ApiWireRoute
   '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
+  '/api/og/$id': typeof ApiOgIdRoute
+  '/i/$id': typeof IIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,6 +78,8 @@ export interface FileRoutesById {
   '/api/wire': typeof ApiWireRoute
   '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
+  '/api/og/$id': typeof ApiOgIdRoute
+  '/i/$id': typeof IIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -71,6 +89,8 @@ export interface FileRouteTypes {
     | '/api/wire'
     | '/api/superfeedr/webhook'
     | '/api/superfeedr/subscribe'
+    | '/api/og/$id'
+    | '/i/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -78,6 +98,8 @@ export interface FileRouteTypes {
     | '/api/wire'
     | '/api/superfeedr/webhook'
     | '/api/superfeedr/subscribe'
+    | '/api/og/$id'
+    | '/i/$id'
   id:
     | '__root__'
     | '/'
@@ -85,6 +107,8 @@ export interface FileRouteTypes {
     | '/api/wire'
     | '/api/superfeedr/webhook'
     | '/api/superfeedr/subscribe'
+    | '/api/og/$id'
+    | '/i/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -93,6 +117,8 @@ export interface RootRouteChildren {
   ApiWireRoute: typeof ApiWireRoute
   ApiSuperfeedrWebhookRoute: typeof ApiSuperfeedrWebhookRoute
   ApiSuperfeedrSubscribeRoute: typeof ApiSuperfeedrSubscribeRoute
+  ApiOgIdRoute: typeof ApiOgIdRoute
+  IIdRoute: typeof IIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -132,6 +158,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSuperfeedrSubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/og/$id': {
+      id: '/api/og/$id'
+      path: '/api/og/$id'
+      fullPath: '/api/og/$id'
+      preLoaderRoute: typeof ApiOgIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/i/$id': {
+      id: '/i/$id'
+      path: '/i/$id'
+      fullPath: '/i/$id'
+      preLoaderRoute: typeof IIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -141,6 +181,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWireRoute: ApiWireRoute,
   ApiSuperfeedrWebhookRoute: ApiSuperfeedrWebhookRoute,
   ApiSuperfeedrSubscribeRoute: ApiSuperfeedrSubscribeRoute,
+  ApiOgIdRoute: ApiOgIdRoute,
+  IIdRoute: IIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

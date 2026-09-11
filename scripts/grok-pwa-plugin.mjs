@@ -94,7 +94,8 @@ function wrapHtmlResponses(middlewares, cwd) {
       String(req.headers.accept ?? "").includes("text/html") &&
       !isInstallQuery(rawUrl) &&
       isDocumentPath(pathOnly);
-    if (!looksLikeDocument) {
+    // Passthrough for /i/:id so route OG metas are not overwritten in dev/preview.
+    if (!looksLikeDocument || pathOnly === "/i" || pathOnly.startsWith("/i/")) {
       next();
       return;
     }

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { ShareButton } from "@/components/share-button";
 import { relativeTime } from "@/lib/format";
+import { newsSharePayload } from "@/lib/share";
 import type { NewsStory } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -57,22 +59,30 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">Top stories</h2>
           <div className="flex gap-3 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none snap-x">
             {top.map((s) => (
-              <a
+              <div
                 key={s.id}
-                href={s.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-4/5 shrink-0 snap-start overflow-hidden rounded-xl border border-border bg-surface active:bg-surface-2"
+                className="relative w-4/5 shrink-0 snap-start overflow-hidden rounded-xl border border-border bg-surface"
               >
-                <Thumb src={s.image} label={s.outlet} className="aspect-video w-full" />
-                <div className="p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-cyan">{s.kicker}</p>
-                  <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-snug">{s.title}</h3>
-                  <p className="mt-1.5 text-xs text-subtle">
-                    {s.outlet} · {relativeTime(s.occurredAt)}
-                  </p>
+                <a href={s.url} target="_blank" rel="noopener noreferrer" className="block active:bg-surface-2">
+                  <Thumb src={s.image} label={s.outlet} className="aspect-video w-full" />
+                  <div className="p-3 pr-12">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-cyan">{s.kicker}</p>
+                    <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-snug">{s.title}</h3>
+                    <p className="mt-1.5 text-xs text-subtle">
+                      {s.outlet} · {relativeTime(s.occurredAt)}
+                    </p>
+                  </div>
+                </a>
+                <div className="absolute right-2 top-2 z-10">
+                  <ShareButton
+                    payload={newsSharePayload(s)}
+                    size="icon"
+                    variant="secondary"
+                    className="size-9 rounded-full shadow-md"
+                    label="Share story"
+                  />
                 </div>
-              </a>
+              </div>
             ))}
           </div>
         </section>
@@ -91,23 +101,27 @@ function StoryList({ title, items }: { title: string; items: NewsStory[] }) {
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">{title}</h2>
       <div className="flex flex-col gap-2">
         {items.map((s) => (
-          <a
-            key={s.id}
-            href={s.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex gap-3 overflow-hidden rounded-lg border border-border bg-surface p-2.5 active:bg-surface-2"
-          >
-            <Thumb src={s.image} label={s.outlet} className="h-16 w-24 shrink-0 rounded-md" />
-            <div className="min-w-0 flex-1 py-0.5">
-              <div className="flex items-center gap-2">
-                <Badge tone={s.kicker === "Crime" || s.kicker === "Fire" ? "high" : "cyan"}>{s.kicker}</Badge>
-                <span className="font-mono text-xs tabular-nums text-subtle">{relativeTime(s.occurredAt)}</span>
+          <div key={s.id} className="relative overflow-hidden rounded-lg border border-border bg-surface">
+            <a
+              href={s.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex gap-3 p-2.5 pr-12 active:bg-surface-2"
+            >
+              <Thumb src={s.image} label={s.outlet} className="h-16 w-24 shrink-0 rounded-md" />
+              <div className="min-w-0 flex-1 py-0.5">
+                <div className="flex items-center gap-2">
+                  <Badge tone={s.kicker === "Crime" || s.kicker === "Fire" ? "high" : "cyan"}>{s.kicker}</Badge>
+                  <span className="font-mono text-xs tabular-nums text-subtle">{relativeTime(s.occurredAt)}</span>
+                </div>
+                <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-snug">{s.title}</h3>
+                <p className="mt-1 truncate text-xs text-subtle">{s.outlet}</p>
               </div>
-              <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-snug">{s.title}</h3>
-              <p className="mt-1 truncate text-xs text-subtle">{s.outlet}</p>
+            </a>
+            <div className="absolute right-1.5 top-1.5">
+              <ShareButton payload={newsSharePayload(s)} label="Share story" />
             </div>
-          </a>
+          </div>
         ))}
       </div>
     </section>
@@ -116,28 +130,39 @@ function StoryList({ title, items }: { title: string; items: NewsStory[] }) {
 
 function Hero({ story }: { story: NewsStory }) {
   return (
-    <a
-      href={story.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="block overflow-hidden rounded-xl border border-border bg-surface active:bg-surface-2"
-    >
-      <div className="relative">
-        <Thumb src={story.image} label={story.outlet} className="aspect-video w-full" />
-        <span className="absolute left-3 top-3">
-          <Badge tone="accent">{story.kicker}</Badge>
-        </span>
+    <div className="relative overflow-hidden rounded-xl border border-border bg-surface">
+      <a
+        href={story.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block active:bg-surface-2"
+      >
+        <div className="relative">
+          <Thumb src={story.image} label={story.outlet} className="aspect-video w-full" />
+          <span className="absolute left-3 top-3">
+            <Badge tone="accent">{story.kicker}</Badge>
+          </span>
+        </div>
+        <div className="p-3 pr-12">
+          <h2 className="text-lg font-semibold leading-snug tracking-tight">{story.title}</h2>
+          {story.summary ? (
+            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">{story.summary}</p>
+          ) : null}
+          <p className="mt-1.5 text-xs text-subtle">
+            {story.outlet} · {relativeTime(story.occurredAt)}
+          </p>
+        </div>
+      </a>
+      <div className="absolute right-2 top-2 z-10">
+        <ShareButton
+          payload={newsSharePayload(story)}
+          size="icon"
+          variant="secondary"
+          className="size-10 rounded-full shadow-md"
+          label="Share story"
+        />
       </div>
-      <div className="p-3">
-        <h2 className="text-lg font-semibold leading-snug tracking-tight">{story.title}</h2>
-        {story.summary ? (
-          <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">{story.summary}</p>
-        ) : null}
-        <p className="mt-1.5 text-xs text-subtle">
-          {story.outlet} · {relativeTime(story.occurredAt)}
-        </p>
-      </div>
-    </a>
+    </div>
   );
 }
 

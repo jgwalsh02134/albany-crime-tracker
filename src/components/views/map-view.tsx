@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LocateFixed, Share2 } from "lucide-react";
+import { LocateFixed } from "lucide-react";
+import { ShareButton } from "@/components/share-button";
 import { Button } from "@/components/ui/button";
 import { lastHours } from "@/lib/data";
+import { mapSharePayload } from "@/lib/share";
 import { clockTime, severityLabel, typeLabel } from "@/lib/format";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import { type Category, type Incident, type Severity } from "@/lib/types";
@@ -225,15 +227,6 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
     );
   }
 
-  async function share() {
-    const text = `${visible.length} Capital District incidents in the last ${mapHours}h`;
-    try {
-      if (navigator.share) await navigator.share({ title: "Albany County Crime Tracker", text });
-      else await navigator.clipboard.writeText(text);
-    } catch {
-      /* user cancelled */
-    }
-  }
 
   return (
     <div className="relative h-full min-h-0">
@@ -366,9 +359,13 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
             />
             <span className="shrink-0 text-sm font-semibold text-fg">Now</span>
           </label>
-          <Button size="icon" variant="ghost" className="size-11 shrink-0" onClick={share} aria-label="Share map">
-            <Share2 className="size-5" />
-          </Button>
+          <ShareButton
+            payload={mapSharePayload(visible.length, mapHours)}
+            size="icon"
+            variant="ghost"
+            className="size-11"
+            label="Share map"
+          />
         </div>
         {!listOpen && visible.length === 0 ? (
           <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
