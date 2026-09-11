@@ -3,7 +3,7 @@ import { http2Get, http2GetText } from "./http2-get";
 import { transcribeAudioFile } from "./transcribe";
 import { getScannerFeed, SCANNER_FEEDS } from "./scanner-feeds";
 import type { LiveWireItem } from "./sources";
-import { locateSpoken } from "./geo";
+import { geocodeSpoken, locateSpoken } from "./geo";
 
 const TICK_MS = 12000;
 const MAX_ITEMS = 120;
@@ -14,6 +14,61 @@ const CALL =
 const PLACE =
   /\b(street|st\.|avenue|ave\.|road|rd\.|boulevard|blvd|place|pl\.|parkway|pkwy|highway|hwy|interstate|i-?8[79]|i-?90|i-?787|route|western|central|lark|pearl|madison|washington|new scotland|delaware|southern|broadway|wolf road|henry johnson|colonie|latham|bethlehem|guilderland|albany|cohoes|watervliet|menands|delmar|loudonville|selkirk|glenmont|troy)\b/i;
 
+const UNIT_STATUS =
+  /\b(en route|in service|out of service|10-4|10-8|10-7|10-6|10-19|copy that|roger|affirmative|standing by|clear the air)\b/i;
+const DEDUPE_WINDOW_MS = 90_000;
+
+function normCaption(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/10-\d+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenSet(text: string): Set<string> {
+  return new Set(normCaption(text).split(" ").filter((w) => w.length > 2));
+}
+
+function nearDuplicate(a: string, b: string): boolean {
+  const na = normCaption(a);
+  const nb = normCaption(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  const sa = tokenSet(a);
+  const sb = tokenSet(b);
+  if (!sa.size || !sb.size) return false;
+  let inter = 0;
+  for (const w of sa) if (sb.has(w)) inter += 1;
+  const union = sa.size + sb.size - inter;
+  return union > 0 && inter / union >= 0.72;
+}
+
+/** Pure unit-status chatter with no place — keep caption, demote from Live. */
+function isUnitStatusChatter(text: string): boolean {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (streetsOf(t).length > 0) return false;
+  if (PLACE.test(t) && CALL.test(t)) return false;
+  if (!UNIT_STATUS.test(t)) return false;
+  // Status-only: short, or no call-type beyond the status codes themselves.
+  const withoutStatus = t
+    .replace(/\b(en route|in service|out of service|10-\d+|copy that|roger|affirmative|standing by)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return withoutStatus.length < 18 || !CALL.test(withoutStatus);
+}
+
+function liveRank(text: string): number {
+  let score = 0;
+  if (streetsOf(text).length) score += 4;
+  if (PLACE.test(text)) score += 2;
+  if (CALL.test(text)) score += 3;
+  if (isUnitStatusChatter(text)) score -= 5;
+  return score;
+}
+
 export type CaptionLine = {
   id: string;
   at: number;
@@ -23,7 +78,7 @@ export type CaptionLine = {
 };
 
 type ScanState = {
-  ver: 3;
+  ver: 4;
   buffer: LiveWireItem[];
   captions: CaptionLine[];
   seenSeq: Map<string, Set<number>>;
@@ -55,7 +110,7 @@ const g = globalThis as unknown as {
 
 function freshState(): ScanState {
   return {
-    ver: 3,
+    ver: 4,
     buffer: [],
     captions: [],
     seenSeq: new Map(),
@@ -78,7 +133,7 @@ function freshState(): ScanState {
   };
 }
 
-if (!g.__actScan || g.__actScan.ver !== 3) g.__actScan = freshState();
+if (!g.__actScan || g.__actScan.ver !== 4) g.__actScan = freshState();
 const state = g.__actScan;
 
 function stopZombie() {
@@ -192,11 +247,20 @@ function concatBytes(parts: Uint8Array[]): Uint8Array {
 }
 
 function rememberCaption(feedId: string, feedName: string, spoken: string) {
-  const last = state.captions[0];
-  if (last && last.feedId === feedId && last.text === spoken) return;
+  const now = Date.now();
+  for (const row of state.captions) {
+    if (now - row.at > DEDUPE_WINDOW_MS) break;
+    if (row.feedId !== feedId) continue;
+    if (nearDuplicate(row.text, spoken)) {
+      // Merge into the existing caption — keep the longer / richer wording.
+      if (spoken.length > row.text.length) row.text = spoken;
+      row.at = now;
+      return;
+    }
+  }
   state.captions.unshift({
-    id: `cap-${feedId}-${Date.now()}`,
-    at: Date.now(),
+    id: `cap-${feedId}-${now}`,
+    at: now,
     text: spoken,
     feedId,
     feedName,
@@ -286,12 +350,39 @@ async function tickFeed(feedId: string) {
   if (!looksCaption(spoken)) return;
   rememberCaption(feedId, feed.name, spoken);
   if (!looksDispatch(spoken)) return;
+  // Quieter Live: demote pure unit-status chatter with no place.
+  if (isUnitStatusChatter(spoken)) return;
   const key = spoken.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (key === state.lastText.get(feedId)) return;
-  state.lastText.set(feedId, key);
+
+  // Near-duplicate Live items in a short window (same clip posted twice).
   const now = Date.now();
+  const dup = state.buffer.find(
+    (row) =>
+      row.kind === "scanner" &&
+      now - Date.parse(row.publishedAt) < DEDUPE_WINDOW_MS &&
+      nearDuplicate(spokenFrom(row), spoken),
+  );
+  if (dup) {
+    if (liveRank(spoken) >= liveRank(spokenFrom(dup)) && spoken.length >= spokenFrom(dup).length) {
+      const muni = placeName(spoken, dup.municipality || "Albany");
+      const pin = await geocodeSpoken(spoken, muni);
+      dup.title = scannerTitle(spoken, feed.name);
+      dup.summary = withDisclaimer(spoken, feed.name);
+      dup.municipality = muni;
+      dup.address = pin.road ? `${pin.road} · ${muni}` : dup.address;
+      dup.lat = pin.geo.lat;
+      dup.lng = pin.geo.lng;
+      dup.publishedAt = new Date(now).toISOString();
+      dup.minutesAgo = 0;
+    }
+    state.lastText.set(feedId, key);
+    return;
+  }
+
+  state.lastText.set(feedId, key);
   const muni = placeName(spoken, "Albany");
-  const pin = locateSpoken(spoken, muni);
+  const pin = await geocodeSpoken(spoken, muni);
   const item: LiveWireItem = {
     id: `scan-${feedId}-${last.seq}`,
     title: scannerTitle(spoken, feed.name),
@@ -308,6 +399,15 @@ async function tickFeed(feedId: string) {
     lng: pin.geo.lng,
   };
   state.buffer.unshift(item);
+  // Prefer address + call-type toward the front when re-sorting recent scanner rows.
+  state.buffer.sort((a, b) => {
+    const ta = Date.parse(b.publishedAt) - Date.parse(a.publishedAt);
+    if (Math.abs(ta) > 120_000) return ta;
+    if (a.kind === "scanner" && b.kind === "scanner") {
+      return liveRank(spokenFrom(b)) - liveRank(spokenFrom(a)) || ta;
+    }
+    return ta;
+  });
   state.stats.kept += 1;
   if (state.buffer.length > MAX_ITEMS) state.buffer.length = MAX_ITEMS;
 }

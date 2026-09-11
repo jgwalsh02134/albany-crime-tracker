@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 import { placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 
@@ -260,3 +261,211 @@ export function superfeedrHealth() {
     lastError: s.lastError,
   };
 }
+
+/** Feeds the app already intends (newsroom + civic). Idempotent hub.subscribe. */
+export const SUPERFEEDR_TOPICS: { topic: string; outlet: string }[] = [
+  { topic: "https://www.news10.com/feed/", outlet: "News10" },
+  { topic: "https://www.news10.com/news/crime/feed/", outlet: "News10 Crime" },
+  { topic: "https://cbs6albany.com/news/local.rss", outlet: "CBS6" },
+  { topic: "https://wnyt.com/feed/", outlet: "WNYT" },
+  { topic: "https://www.wamc.org/news.rss", outlet: "WAMC" },
+  { topic: "https://patch.com/new-york/albany/rss", outlet: "Patch Albany" },
+  { topic: "https://www.timesunion.com/news/feed/", outlet: "Times Union" },
+  { topic: "https://www.timesunion.com/local/feed/", outlet: "Times Union Local" },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=site:spotlightnews.com+(arrest+OR+crash+OR+blotter+OR+DWI+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Spotlight",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=site:dailygazette.com+(albany+OR+colonie+OR+schenectady)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Daily Gazette",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=site:fox23news.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "FOX23",
+  },
+  {
+    topic: "https://www.townofbethlehem.org/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Bethlehem",
+  },
+  {
+    topic: "https://www.guilderlandpd.org/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Guilderland PD",
+  },
+  {
+    topic: "https://www.albanyny.gov/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Albany",
+  },
+];
+
+type SubState = {
+  lastRunAt: number;
+  running: boolean;
+  results: { topic: string; outlet: string; ok: boolean; status: number; detail: string }[];
+};
+
+const gSub = globalThis as unknown as { __actSuperfeedrSubs?: SubState };
+
+function subState(): SubState {
+  if (!gSub.__actSuperfeedrSubs) {
+    gSub.__actSuperfeedrSubs = { lastRunAt: 0, running: false, results: [] };
+  }
+  return gSub.__actSuperfeedrSubs;
+}
+
+export function superfeedrAuth(): { user: string; token: string } | null {
+  const user = (process.env.SUPERFEEDR_USER || process.env.SUPERFEEDR_LOGIN || "").trim();
+  const token = (
+    process.env.SUPERFEEDR_TOKEN ||
+    process.env.SUPERFEEDR_PASSWORD ||
+    process.env.SUPERFEEDR_PASS ||
+    ""
+  ).trim();
+  if (!user || !token) return null;
+  return { user, token };
+}
+
+export function superfeedrCallbackUrl(requestUrl?: string): string | null {
+  const explicit = (process.env.SUPERFEEDR_CALLBACK_URL || "").trim();
+  if (explicit) return explicit.replace(/\/$/, "");
+  const base = (
+    process.env.SUPERFEEDR_BASE_URL ||
+    process.env.PUBLIC_BASE_URL ||
+    process.env.APP_URL ||
+    process.env.RAILWAY_PUBLIC_DOMAIN ||
+    ""
+  )
+    .trim()
+    .replace(/\/$/, "");
+  if (base) {
+    const origin = base.startsWith("http") ? base : `https://${base}`;
+    return `${origin}/api/superfeedr/webhook`;
+  }
+  if (requestUrl) {
+    try {
+      const u = new URL(requestUrl);
+      return `${u.origin}/api/superfeedr/webhook`;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+export type SubscribeReport = {
+  ok: boolean;
+  skipped?: string;
+  callback?: string;
+  subscribed: number;
+  failed: number;
+  results: SubState["results"];
+};
+
+/** Idempotent PubSubHubbub subscribe for all intended feeds. */
+export async function ensureSuperfeedrSubscriptions(opts?: {
+  force?: boolean;
+  requestUrl?: string;
+}): Promise<SubscribeReport> {
+  const s = subState();
+  const auth = superfeedrAuth();
+  if (!auth) {
+    return { ok: false, skipped: "missing-SUPERFEEDR_USER/TOKEN", subscribed: 0, failed: 0, results: [] };
+  }
+  const callback = superfeedrCallbackUrl(opts?.requestUrl);
+  if (!callback) {
+    return { ok: false, skipped: "missing-SUPERFEEDR_CALLBACK_URL", subscribed: 0, failed: 0, results: [] };
+  }
+  if (s.running) {
+    return { ok: true, skipped: "in-flight", callback, subscribed: 0, failed: 0, results: s.results };
+  }
+  if (!opts?.force && s.lastRunAt && Date.now() - s.lastRunAt < 10 * 60_000) {
+    return {
+      ok: true,
+      skipped: "recent",
+      callback,
+      subscribed: s.results.filter((r) => r.ok).length,
+      failed: s.results.filter((r) => !r.ok).length,
+      results: s.results,
+    };
+  }
+
+  s.running = true;
+  const secret = (process.env.SUPERFEEDR_SECRET || "").trim();
+  const results: SubState["results"] = [];
+  let subscribed = 0;
+  let failed = 0;
+
+  try {
+    for (const feed of SUPERFEEDR_TOPICS) {
+      try {
+        const body = new URLSearchParams();
+        body.set("hub.mode", "subscribe");
+        body.set("hub.topic", feed.topic);
+        body.set("hub.callback", callback);
+        body.set("hub.verify", "async");
+        body.set("format", "json");
+        if (secret) body.set("hub.secret", secret);
+
+        const res = await fetch("https://push.superfeedr.com/", {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${Buffer.from(`${auth.user}:${auth.token}`).toString("base64")}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+            Accept: "application/json",
+          },
+          body,
+          signal: AbortSignal.timeout(15000),
+        });
+        const detail = (await res.text().catch(() => "")).slice(0, 160);
+        // 204 = subscribed, 202 = pending verify, 200 = ok/retrieve — all fine for idempotent resubscribe
+        const ok = res.status === 204 || res.status === 202 || res.status === 200;
+        results.push({ topic: feed.topic, outlet: feed.outlet, ok, status: res.status, detail });
+        if (ok) subscribed += 1;
+        else failed += 1;
+      } catch (err) {
+        failed += 1;
+        results.push({
+          topic: feed.topic,
+          outlet: feed.outlet,
+          ok: false,
+          status: 0,
+          detail: err instanceof Error ? err.message.slice(0, 160) : "subscribe-error",
+        });
+      }
+    }
+    s.results = results;
+    s.lastRunAt = Date.now();
+    console.info("[superfeedr] subscribe", { callback, subscribed, failed });
+    return { ok: failed === 0, callback, subscribed, failed, results };
+  } finally {
+    s.running = false;
+  }
+}
+
+export function superfeedrSubscribeHealth() {
+  const s = subState();
+  const auth = Boolean(superfeedrAuth());
+  const callback = superfeedrCallbackUrl();
+  return {
+    authConfigured: auth,
+    callbackConfigured: Boolean(callback),
+    callback: callback || undefined,
+    lastRunAt: s.lastRunAt,
+    topics: SUPERFEEDR_TOPICS.length,
+    subscribed: s.results.filter((r) => r.ok).length,
+    failed: s.results.filter((r) => !r.ok).length,
+  };
+}
+
+/** Fire-and-forget boot subscribe when credentials exist. */
+export function startSuperfeedrSubscriptions() {
+  if (!superfeedrAuth() || !superfeedrCallbackUrl()) return;
+  void ensureSuperfeedrSubscriptions().catch((err) => {
+    console.error("[superfeedr] boot-subscribe", err instanceof Error ? err.message : err);
+  });
+}
+
+startSuperfeedrSubscriptions();
