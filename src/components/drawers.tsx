@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Drawer } from "vaul";
 import { ExternalLink, Map as MapIcon } from "lucide-react";
+import { ShareButton } from "@/components/share-button";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { kindLabel, SOURCE_LENSES, verificationWhy } from "@/lib/sources";
@@ -8,6 +9,7 @@ import { MUNICIPALITIES, SEVERITIES, type Severity, type ViewId } from "@/lib/ty
 import { clockTime, relativeTime, typeLabel } from "@/lib/format";
 import { useAppStore } from "@/lib/store";
 import type { Incident } from "@/lib/types";
+import { incidentSharePayload } from "@/lib/share";
 import { cn } from "@/lib/utils";
 
 function SheetFrame({
@@ -232,6 +234,14 @@ export function IncidentDrawer({ incident }: { incident: Incident | null }) {
             })}
           </ul>
           <div className="mt-5 flex gap-2">
+            <ShareButton
+              payload={incidentSharePayload(incident)}
+              size="default"
+              variant="secondary"
+              label="Share"
+              className="flex-1"
+              stopPropagation={false}
+            />
             <Button
               className="flex-1"
               onClick={() => {

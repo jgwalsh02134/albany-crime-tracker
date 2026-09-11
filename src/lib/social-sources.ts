@@ -1,5 +1,3 @@
-import { createServerFn } from "@tanstack/react-start";
-import { stripHtml } from "@/lib/security/sanitize";
 import { placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 
@@ -299,102 +297,6 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
   }
 }
 
-type CitizenTip = {
-  id: string;
-  nature: string;
-  where: string;
-  details: string;
-  at: number;
-};
-
-type TipState = { tips: CitizenTip[] };
-
-const g = globalThis as typeof globalThis & { __actTips?: TipState };
-
-function tipState(): TipState {
-  if (!g.__actTips) g.__actTips = { tips: [] };
-  return g.__actTips;
-}
-
-const NATURE_LABEL: Record<string, string> = {
-  crash: "Crash",
-  fire: "Fire",
-  police: "Police activity",
-  shots: "Shots fired",
-  other: "Public safety",
-};
-
-export function citizenItems(now: number): LiveWireItem[] {
-  const st = tipState();
-  st.tips = st.tips.filter((t) => now - t.at <= LIVE_MIN * 60_000);
-  return st.tips.map((t) => {
-    const title = `Citizen report — ${NATURE_LABEL[t.nature] ?? "Activity"} at ${t.where}`;
-    const place = placeFromText(`${t.where} ${t.details}`) ?? placeFromText(t.where);
-    return {
-      id: t.id,
-      title,
-      url: "/#citizen",
-      outlet: "Citizen",
-      summary: t.details || `${NATURE_LABEL[t.nature] ?? "Activity"} reported at ${t.where}. Unconfirmed — not a 911 call.`,
-      publishedAt: new Date(t.at).toISOString(),
-      minutesAgo: Math.max(0, Math.round((now - t.at) / 60_000)),
-      kind: "social" as const,
-      municipality: place?.name,
-      address: t.where,
-      agency: "Citizen",
-      lat: place?.lat,
-      lng: place?.lng,
-    };
-  });
-}
-
-export const submitCitizenTip = createServerFn({ method: "POST" })
-  .validator((input: { nature?: string; where?: string; details?: string }) => ({
-    nature: stripHtml(String(input.nature ?? "").toLowerCase(), 20),
-    where: stripHtml(String(input.where ?? ""), 80),
-    details: stripHtml(String(input.details ?? ""), 280),
-  }))
-  .handler(async ({ data }) => {
-    // Dynamic .server imports — keep this module dual-safe for the client binder.
-    const { assertSameSiteRequest } = await import("@/lib/auth/isolation.server");
-    const { rateLimit } = await import("@/lib/security/rate-limit.server");
-    try {
-      assertSameSiteRequest();
-    } catch {
-      return { ok: false as const, error: "Forbidden." };
-    }
-    const limited = await rateLimit({ name: "tip-submit", limit: 8, windowSec: 60 });
-    if (!limited.ok) {
-      return { ok: false as const, error: "Too many reports right now — try again in a minute." };
-    }
-    if (!NATURE_LABEL[data.nature]) {
-      return { ok: false as const, error: "Pick what you saw." };
-    }
-    if (data.where.length < 4) {
-      return { ok: false as const, error: "Add a street or intersection." };
-    }
-    const st = tipState();
-    const now = Date.now();
-    st.tips = st.tips.filter((t) => now - t.at <= LIVE_MIN * 60_000);
-    const key = `${data.nature}|${data.where.toLowerCase()}`;
-    if (st.tips.some((t) => `${t.nature}|${t.where.toLowerCase()}` === key && now - t.at < 10 * 60_000)) {
-      return { ok: false as const, error: "That report is already on Live." };
-    }
-    if (st.tips.filter((t) => now - t.at < 60_000).length >= 4) {
-      return { ok: false as const, error: "Too many reports right now — try again in a minute." };
-    }
-    const tip: CitizenTip = {
-      id: `citizen-${now.toString(36)}`,
-      nature: data.nature,
-      where: data.where,
-      details: data.details,
-      at: now,
-    };
-    st.tips.unshift(tip);
-    st.tips = st.tips.slice(0, 40);
-    return { ok: true as const, id: tip.id };
-  });
-
 export type SocialBundle = {
   items: LiveWireItem[];
   facebook: number;
@@ -409,10 +311,9 @@ export async function collectSocial(now: number): Promise<SocialBundle> {
     Promise.all(X_FEEDS.map((f) => fetchFeed(f, now))),
     Promise.all(REDDIT_FEEDS.map((f) => fetchFeed(f, now))),
   ]);
-  const citizen = citizenItems(now);
   const seen = new Set<string>();
   const items: LiveWireItem[] = [];
-  for (const row of [...fb.flat(), ...x.flat(), ...reddit.flat(), ...citizen]) {
+  for (const row of [...fb.flat(), ...x.flat(), ...reddit.flat()]) {
     const key = `${row.outlet}|${row.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
     if (seen.has(row.id) || seen.has(key)) continue;
     seen.add(row.id);
@@ -425,7 +326,7 @@ export async function collectSocial(now: number): Promise<SocialBundle> {
     facebook: items.filter((i) => i.outlet.startsWith("Facebook")).length,
     x: items.filter((i) => i.outlet.startsWith("X ·")).length,
     reddit: items.filter((i) => i.outlet.startsWith("Reddit")).length,
-    citizen: citizen.length,
+    citizen: 0,
   };
 }
 

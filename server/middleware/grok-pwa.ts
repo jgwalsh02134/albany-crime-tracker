@@ -99,6 +99,12 @@ export default async function grokPwaMiddleware(
   if (!isDocumentPath(path)) return next();
 
   const result = await next();
+  // Incident deep links set their own OG card metas in the route `head`.
+  // Skip platform share-meta overwrite so iMessage/Slack/X previews keep the
+  // per-incident title/description/image from /api/og/:id.
+  if (path === "/i" || path.startsWith("/i/")) {
+    return result;
+  }
   if (
     result instanceof Response &&
     result.body &&

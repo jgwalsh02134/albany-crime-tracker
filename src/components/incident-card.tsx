@@ -1,5 +1,7 @@
 import { Badge } from "@/components/ui/badge";
+import { ShareButton } from "@/components/share-button";
 import { clockTime, typeLabel } from "@/lib/format";
+import { incidentSharePayload } from "@/lib/share";
 import type { Incident, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -44,29 +46,34 @@ export function IncidentCard({
   const extra = blurb(incident);
 
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(incident.id)}
-      className="relative w-full overflow-hidden rounded-lg border border-border bg-surface py-2.5 pl-3.5 pr-3 text-left active:bg-surface-2"
-    >
-      <span className={cn("absolute inset-y-2 left-0 w-1 rounded-full", rail[incident.severity])} />
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0 line-clamp-2 text-sm font-semibold leading-snug tracking-tight text-fg">
-          {incident.title}
-        </h3>
-        <time className="mt-0.5 shrink-0 font-mono text-xs font-semibold tabular-nums text-fg">
-          {clockTime(incident.occurredAt)}
-        </time>
+    <div className="relative w-full overflow-hidden rounded-lg border border-border bg-surface">
+      <button
+        type="button"
+        onClick={() => onSelect(incident.id)}
+        className="w-full py-2.5 pl-3.5 pr-12 text-left active:bg-surface-2"
+      >
+        <span className={cn("absolute inset-y-2 left-0 w-1 rounded-full", rail[incident.severity])} />
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="min-w-0 line-clamp-2 text-sm font-semibold leading-snug tracking-tight text-fg">
+            {incident.title}
+          </h3>
+          <time className="mt-0.5 shrink-0 font-mono text-xs font-semibold tabular-nums text-fg">
+            {clockTime(incident.occurredAt)}
+          </time>
+        </div>
+        {extra ? <p className="mt-0.5 line-clamp-1 text-sm text-muted">{extra}</p> : null}
+        <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
+          <span className="shrink-0 uppercase tracking-wide text-subtle">{typeLabel(incident.type)}</span>
+          <span className="text-subtle">·</span>
+          <span className="min-w-0 truncate">{loc}</span>
+          <Badge className="ml-auto shrink-0" tone={badge.tone}>
+            {badge.label}
+          </Badge>
+        </p>
+      </button>
+      <div className="absolute right-1.5 top-1.5">
+        <ShareButton payload={incidentSharePayload(incident)} label="Share incident" />
       </div>
-      {extra ? <p className="mt-0.5 line-clamp-1 text-sm text-muted">{extra}</p> : null}
-      <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
-        <span className="shrink-0 uppercase tracking-wide text-subtle">{typeLabel(incident.type)}</span>
-        <span className="text-subtle">·</span>
-        <span className="min-w-0 truncate">{loc}</span>
-        <Badge className="ml-auto shrink-0" tone={badge.tone}>
-          {badge.label}
-        </Badge>
-      </p>
-    </button>
+    </div>
   );
 }
