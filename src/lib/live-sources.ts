@@ -5,6 +5,7 @@ import { scannerHealth, scannerItems, startScannerPoll } from "./scanner-poll";
 import { placeFromText } from "./geo";
 import { collectSocial, socialLive, socialNews } from "./social-sources";
 import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
+import { superfeedrItems } from "./superfeedr";
 
 const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
@@ -405,13 +406,14 @@ async function collectWire() {
   ]);
   const blotter = blotterRes.items;
   const scan = scannerItems(now);
+  const pushed = superfeedrItems(now);
   const socialNow = socialLive(social.items);
   const socialOlder = socialNews(social.items);
   const civicNow = civicLive(civic);
   const civicOlder = civicNews(civic);
   const blotterLive = blotter.filter((r) => r.minutesAgo <= BLOTTER_LIVE_MIN);
   const blotterNews = blotter.filter((r) => r.minutesAgo > BLOTTER_LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
-  const liveNews = [...news.crime, ...news.stories, ...press].filter((r) => {
+  const liveNews = [...news.crime, ...news.stories, ...press, ...pushed].filter((r) => {
     const hay = `${r.title} ${r.summary}`;
     return r.minutesAgo <= LIVE_MIN && CRIME.test(hay) && !COURT_ONLY.test(hay) && !NOT_LIVE_NEWS.test(hay) && !NYC_NOT_OURS.test(hay);
   });
@@ -419,6 +421,7 @@ async function collectWire() {
   const storiesCore = mergeActivity([
     news.stories,
     press.filter((r) => r.minutesAgo <= NEWS_MIN),
+    pushed.filter((r) => r.minutesAgo <= NEWS_MIN),
     blotterNews.map((r) => ({ ...r, kind: "news" as const })),
     socialOlder.filter((r) => r.minutesAgo <= NEWS_MIN),
     civicOlder.filter((r) => r.minutesAgo <= NEWS_MIN),
@@ -432,6 +435,7 @@ async function collectWire() {
     traffic.length ? "511NY" : "",
     nws.length ? "NWS" : "",
     press.length ? "NYSP press" : "",
+    pushed.length ? "Superfeedr" : "",
     civic.length ? "Civic" : "",
     social.facebook ? "Facebook" : "",
     social.x ? "X" : "",
@@ -445,7 +449,7 @@ async function collectWire() {
     scanner: scan.length,
     traffic: traffic.length,
     news: liveNews.length,
-    captions: Boolean(process.env.XAI_API_KEY),
+    captions: Boolean(process.env.XAI_API_KEY || process.env.OPENAI_API_KEY),
     extractor: blotterRes.extractor,
     scannerTicks: scanStats.ticks,
     scannerError: scanStats.lastError || undefined,

@@ -9,9 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiWireRouteImport } from './routes/api.wire'
+import { Route as ApiSuperfeedrWebhookRouteImport } from './routes/api.superfeedr.webhook'
 
+const ReadyRoute = ReadyRouteImport.update({
+  id: '/ready',
+  path: '/ready',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -22,31 +29,44 @@ const ApiWireRoute = ApiWireRouteImport.update({
   path: '/api/wire',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSuperfeedrWebhookRoute = ApiSuperfeedrWebhookRouteImport.update({
+  id: '/api/superfeedr/webhook',
+  path: '/api/superfeedr/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ready': typeof ReadyRoute
   '/api/wire': typeof ApiWireRoute
+  '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ready': typeof ReadyRoute
   '/api/wire': typeof ApiWireRoute
+  '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/ready': typeof ReadyRoute
   '/api/wire': typeof ApiWireRoute
+  '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/wire'
+  fullPaths: '/' | '/ready' | '/api/wire' | '/api/superfeedr/webhook'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/wire'
-  id: '__root__' | '/' | '/api/wire'
+  to: '/' | '/ready' | '/api/wire' | '/api/superfeedr/webhook'
+  id: '__root__' | '/' | '/ready' | '/api/wire' | '/api/superfeedr/webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ReadyRoute: typeof ReadyRoute
   ApiWireRoute: typeof ApiWireRoute
+  ApiSuperfeedrWebhookRoute: typeof ApiSuperfeedrWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -58,6 +78,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ready': {
+      id: '/ready'
+      path: '/ready'
+      fullPath: '/ready'
+      preLoaderRoute: typeof ReadyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/wire': {
       id: '/api/wire'
       path: '/api/wire'
@@ -65,12 +92,21 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWireRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/superfeedr/webhook': {
+      id: '/api/superfeedr/webhook'
+      path: '/api/superfeedr/webhook'
+      fullPath: '/api/superfeedr/webhook'
+      preLoaderRoute: typeof ApiSuperfeedrWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ReadyRoute: ReadyRoute,
   ApiWireRoute: ApiWireRoute,
+  ApiSuperfeedrWebhookRoute: ApiSuperfeedrWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

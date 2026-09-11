@@ -262,7 +262,13 @@ async function tickFeed(feedId: string) {
     state.stats.lastError = msg;
     state.stats.lastErrorAt = Date.now();
     console.error("[scanner] stt", feedId, msg);
+    // Hard backoff on rate-limit and xAI ACL (401/403) — stop hammering.
+    // Whisper fallback inside transcribeAudioFile usually absorbs 401/403 when
+    // OPENAI_API_KEY is set; this path runs when transcription still failed.
     if (msg.includes("429")) state.sttBlockedUntil = Date.now() + 60_000;
+    else if (msg.includes("401") || msg.includes("403") || msg.includes("stt-401") || msg.includes("stt-403")) {
+      state.sttBlockedUntil = Date.now() + 60_000;
+    }
     state.seenSeq.set(feedId, seen);
     return;
   }
@@ -313,7 +319,7 @@ async function tick() {
   state.stats.ticks += 1;
   state.stats.lastTickAt = Date.now();
   try {
-    if (!process.env.XAI_API_KEY) {
+    if (!process.env.XAI_API_KEY && !process.env.OPENAI_API_KEY) {
       state.stats.lastError = "no-key";
       state.stats.lastErrorAt = Date.now();
       return;
