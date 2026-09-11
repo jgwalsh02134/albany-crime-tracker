@@ -3,20 +3,27 @@ import {
   ensureSuperfeedrSubscriptions,
   superfeedrSubscribeHealth,
 } from "@/lib/superfeedr";
-
-function authorized(request: Request): boolean {
-  const expected = (process.env.SUPERFEEDR_ADMIN_TOKEN || process.env.SUPERFEEDR_SECRET || "").trim();
-  if (!expected) return true; // no secret configured — allow ops on private deploy
-  const header = request.headers.get("authorization") || "";
-  const bearer = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
-  const query = new URL(request.url).searchParams.get("token") || "";
-  return bearer === expected || query === expected;
-}
+import { isAdminAuthorized } from "@/lib/security/admin-token.server";
+import { rateLimitRequest, rateLimitResponse } from "@/lib/security/rate-limit.server";
 
 export const Route = createFileRoute("/api/superfeedr/subscribe")({
   server: {
     handlers: {
-      GET: async () => {
+      GET: async ({ request }) => {
+        const limited = await rateLimitRequest(request, {
+          name: "superfeedr-subscribe",
+          limit: 30,
+          windowSec: 60,
+        });
+        if (!limited.ok) return rateLimitResponse(limited);
+
+        // Public: minimal. Rich health only with admin token.
+        if (!isAdminAuthorized(request, false)) {
+          return Response.json({
+            ok: true,
+            detail: "POST with admin token to run idempotent hub.subscribe",
+          });
+        }
         return Response.json({
           ok: true,
           ...superfeedrSubscribeHealth(),
@@ -24,7 +31,15 @@ export const Route = createFileRoute("/api/superfeedr/subscribe")({
         });
       },
       POST: async ({ request }) => {
-        if (!authorized(request)) {
+        const limited = await rateLimitRequest(request, {
+          name: "superfeedr-subscribe",
+          limit: 10,
+          windowSec: 60,
+        });
+        if (!limited.ok) return rateLimitResponse(limited);
+
+        // Allow if unset only on private deploys with no token configured.
+        if (!isAdminAuthorized(request, true)) {
           return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
         }
         const report = await ensureSuperfeedrSubscriptions({
