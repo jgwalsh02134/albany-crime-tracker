@@ -5,14 +5,17 @@ import { getScannerFeed, SCANNER_FEEDS } from "./scanner-feeds";
 import type { LiveWireItem } from "./sources";
 import { geocodeSpoken, locateSpoken, placeFromText, TOWN } from "./geo";
 import {
+  callFingerprint,
   extractIntersection,
   extractRoute,
+  isUnitStatusOnly,
   resolveScannerAgency,
   resolveScannerPlace,
   scannerTitle,
   withDisclaimer,
   type AgencyLabel,
 } from "./scanner-labels";
+import { isLowConfidencePlace, normalizeScannerSpeech } from "./geo";
 
 const TICK_MS = 12000;
 const MAX_ITEMS = 120;
@@ -21,10 +24,10 @@ const EXTRA_FEEDS = ["1440", "37206", "36327"] as const;
 const CALL =
   /\b(panic|alarm|welfare|domestic|crash|collision|accident|personal injury|\bpi\b|fire|ems|ambulance|shoot|shots|gun|stab|fight|assault|burglary|robbery|larceny|theft|stolen|suspicious|wanted|dwi|intoxicated|overdose|unconscious|medical|rescue|injury|injured|hit.?and.?run|pursuit|missing|trespass|harass|person down|man down|priority|hold.?up|weapon|carjack|disabled|breakdown|speedway|10-1[0-9]|10-5[0-9]|10-8[0-9])\b/i;
 const PLACE =
-  /\b(street|st\.|avenue|ave\.|road|rd\.|boulevard|blvd|place|pl\.|parkway|pkwy|highway|hwy|interstate|i-?8[79]|i-?90|i-?787|route|western|central|lark|pearl|madison|washington|new scotland|delaware|southern|broadway|wolf road|henry johnson|colonie|latham|bethlehem|guilderland|albany|cohoes|watervliet|menands|delmar|loudonville|selkirk|glenmont|troy)\b/i;
+  /\b(street|st\.|avenue|ave\.|road|rd\.|boulevard|blvd|place|pl\.|parkway|pkwy|highway|hwy|interstate|i-?8[79]|i-?90|i-?787|route|western|west granite|central|lark|pearl|madison|washington|new scotland|delaware|southern|broadway|wolf road|sand creek|sandwich|springsteen|henry johnson|colonie|latham|bethlehem|guilderland|albany|cohoes|watervliet|menands|delmar|loudonville|selkirk|glenmont|troy)\b/i;
 
 const UNIT_STATUS =
-  /\b(en route|in service|out of service|10-4|10-8|10-7|10-6|10-19|copy that|roger|affirmative|standing by|clear the air)\b/i;
+  /\b(en route|in service|out of service|in quarters|10-4|10-8|10-7|10-6|10-19|copy that|roger|affirmative|standing by|clear the air)\b/i;
 const DEDUPE_WINDOW_MS = 90_000;
 
 function normCaption(text: string): string {
@@ -41,18 +44,28 @@ function tokenSet(text: string): Set<string> {
 }
 
 function nearDuplicate(a: string, b: string): boolean {
-  const na = normCaption(a);
-  const nb = normCaption(b);
+  const na = normCaption(normalizeScannerSpeech(a));
+  const nb = normCaption(normalizeScannerSpeech(b));
   if (!na || !nb) return false;
   if (na === nb) return true;
   if (na.includes(nb) || nb.includes(na)) return true;
+  const fa = callFingerprint(a);
+  const fb = callFingerprint(b);
+  // Same nature + place fingerprint (e.g. garbled Western Ave variants).
+  if (fa && fb && fa === fb && !fa.startsWith("|") && fa !== "||") return true;
+  if (fa && fb && fa.split("|")[0] && fa.split("|")[0] === fb.split("|")[0]) {
+    const pa = fa.split("|").slice(1).join("|");
+    const pb = fb.split("|").slice(1).join("|");
+    if (pa && pb && (pa === pb || pa.includes(pb) || pb.includes(pa))) return true;
+  }
   const sa = tokenSet(a);
   const sb = tokenSet(b);
   if (!sa.size || !sb.size) return false;
   let inter = 0;
   for (const w of sa) if (sb.has(w)) inter += 1;
   const union = sa.size + sb.size - inter;
-  return union > 0 && inter / union >= 0.72;
+  // Slightly looser for short garbled STT variants of the same call.
+  return union > 0 && inter / union >= 0.62;
 }
 
 /** Pure unit-status chatter with no place — keep caption, demote from Live. */
@@ -367,7 +380,7 @@ async function tickFeed(feedId: string) {
   rememberCaption(feedId, feed.name, spoken);
   if (!looksDispatch(spoken)) return;
   // Quieter Live: demote pure unit-status chatter with no place.
-  if (isUnitStatusChatter(spoken)) return;
+  if (isUnitStatusChatter(spoken) || isUnitStatusOnly(spoken)) return;
   const key = spoken.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (key === state.lastText.get(feedId)) return;
 
@@ -380,8 +393,21 @@ async function tickFeed(feedId: string) {
       nearDuplicate(spokenFrom(row), spoken),
   );
   if (dup) {
-    if (liveRank(spoken) >= liveRank(spokenFrom(dup)) && spoken.length >= spokenFrom(dup).length) {
-      const labeled = await labelSpoken(feedId, spoken);
+    const labeled = await labelSpoken(feedId, spoken);
+    const prevSpoken = spokenFrom(dup);
+    const prevRank = liveRank(prevSpoken);
+    const nextRank = liveRank(spoken);
+    const prevPlaceBad =
+      !dup.address ||
+      dup.address === "area unknown" ||
+      isLowConfidencePlace(dup.address) ||
+      /triumph|trion|across/i.test(dup.title);
+    const nextPlaceGood = labeled.place.known && labeled.address !== "area unknown";
+    const shouldReplace =
+      (nextPlaceGood && prevPlaceBad) ||
+      (nextRank > prevRank) ||
+      (nextRank >= prevRank && spoken.length >= prevSpoken.length && !prevPlaceBad);
+    if (shouldReplace) {
       dup.title = labeled.title;
       dup.summary = labeled.summary;
       dup.municipality = labeled.municipality;
