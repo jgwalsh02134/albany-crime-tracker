@@ -1,13 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { scannerHealth } from "@/lib/scanner-poll";
-import { superfeedrHealth } from "@/lib/superfeedr";
+import { superfeedrHealth, superfeedrSubscribeHealth, ensureSuperfeedrSubscriptions } from "@/lib/superfeedr";
 
 export const Route = createFileRoute("/ready")({
   server: {
     handlers: {
-      GET: async () => {
+      GET: async ({ request }) => {
         const scan = scannerHealth();
         const sf = superfeedrHealth();
+        // Kick idempotent hub.subscribe when credentials exist (no-op if already recent).
+        void ensureSuperfeedrSubscriptions({ requestUrl: request.url }).catch(() => undefined);
+        const subs = superfeedrSubscribeHealth();
         return Response.json({
           ok: true,
           service: "albany-crime-tracker",
@@ -18,8 +21,16 @@ export const Route = createFileRoute("/ready")({
           },
           superfeedr: {
             secretConfigured: Boolean((process.env.SUPERFEEDR_SECRET || "").trim()),
+            authConfigured: subs.authConfigured,
+            callbackConfigured: subs.callbackConfigured,
             notifications: sf.notifications,
             buffered: sf.buffered,
+            subscriptions: {
+              topics: subs.topics,
+              subscribed: subs.subscribed,
+              failed: subs.failed,
+              lastRunAt: subs.lastRunAt || undefined,
+            },
           },
           scanner: {
             ticks: scan.ticks,

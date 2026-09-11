@@ -144,23 +144,45 @@ const ROADS: RoadRule[] = [
   { re: /\blark\b/i, at: { Albany: { lat: 42.655, lng: -73.762 } }, fallback: { lat: 42.655, lng: -73.762 } },
 ];
 
-const STREETS: { re: RegExp; geo: Geo; label: string }[] = [
-  { re: /\bnorth swan|n\.?\s*swan\b/i, geo: { lat: 42.66, lng: -73.754 }, label: "North Swan St" },
-  { re: /\blark\b/i, geo: { lat: 42.655, lng: -73.762 }, label: "Lark St" },
-  { re: /\bcentral (ave|avenue)\b/i, geo: { lat: 42.668, lng: -73.79 }, label: "Central Ave" },
-  { re: /\bcolony street|colonie street|\bcolony st\b/i, geo: { lat: 42.658, lng: -73.77 }, label: "Colony St" },
-  { re: /\bwestern (ave|avenue)\b/i, geo: { lat: 42.66, lng: -73.78 }, label: "Western Ave" },
-  { re: /\bpearl\b/i, geo: { lat: 42.65, lng: -73.75 }, label: "Pearl St" },
-  { re: /\bwashington (ave|avenue)\b/i, geo: { lat: 42.66, lng: -73.77 }, label: "Washington Ave" },
-  { re: /\bmadison\b/i, geo: { lat: 42.652, lng: -73.77 }, label: "Madison Ave" },
-  { re: /\bhenry johnson\b/i, geo: { lat: 42.666, lng: -73.76 }, label: "Henry Johnson Blvd" },
-  { re: /\bnew scotland\b/i, geo: { lat: 42.65, lng: -73.78 }, label: "New Scotland Ave" },
-  { re: /\bdelaware (ave|avenue)\b/i, geo: { lat: 42.64, lng: -73.77 }, label: "Delaware Ave" },
-  { re: /\bbroadway\b/i, geo: { lat: 42.65, lng: -73.75 }, label: "Broadway" },
-  { re: /\bsouthern (blvd|boulevard)\b/i, geo: { lat: 42.642, lng: -73.773 }, label: "Southern Blvd" },
+/** Known Capital District streets — midpoints only, never invented house pins. */
+const STREETS: { re: RegExp; geo: Geo; label: string; stems?: string[] }[] = [
+  { re: /\bnorth swan|n\.?\s*swan\b/i, geo: { lat: 42.66, lng: -73.754 }, label: "North Swan St", stems: ["swan"] },
+  { re: /\blark\b/i, geo: { lat: 42.655, lng: -73.762 }, label: "Lark St", stems: ["lark"] },
+  { re: /\bcentral(?:\s+(?:ave|avenue))?\b(?!\s+(?:park|district|region|ny|new york))/i, geo: { lat: 42.668, lng: -73.79 }, label: "Central Ave", stems: ["central"] },
+  { re: /\bcolony street|colonie street|\bcolony st\b/i, geo: { lat: 42.658, lng: -73.77 }, label: "Colony St", stems: ["colony", "colonie"] },
+  { re: /\bwestern(?:\s+(?:ave|avenue|tpk|turnpike))?\b/i, geo: { lat: 42.66, lng: -73.78 }, label: "Western Ave", stems: ["western"] },
+  { re: /\bpearl\b/i, geo: { lat: 42.65, lng: -73.75 }, label: "Pearl St", stems: ["pearl"] },
+  { re: /\bwashington (ave|avenue)\b/i, geo: { lat: 42.66, lng: -73.77 }, label: "Washington Ave", stems: ["washington"] },
+  { re: /\bmadison\b/i, geo: { lat: 42.652, lng: -73.77 }, label: "Madison Ave", stems: ["madison"] },
+  { re: /\bhenry johnson\b/i, geo: { lat: 42.666, lng: -73.76 }, label: "Henry Johnson Blvd", stems: ["henry johnson"] },
+  { re: /\bnew scotland\b/i, geo: { lat: 42.65, lng: -73.78 }, label: "New Scotland Ave", stems: ["new scotland"] },
+  { re: /\bdelaware (ave|avenue)\b/i, geo: { lat: 42.64, lng: -73.77 }, label: "Delaware Ave", stems: ["delaware"] },
+  { re: /\bbroadway\b/i, geo: { lat: 42.65, lng: -73.75 }, label: "Broadway", stems: ["broadway"] },
+  { re: /\bsouthern (blvd|boulevard)\b/i, geo: { lat: 42.642, lng: -73.773 }, label: "Southern Blvd", stems: ["southern"] },
+  { re: /\bquail\b/i, geo: { lat: 42.66, lng: -73.765 }, label: "Quail St", stems: ["quail"] },
+  { re: /\bontario\b/i, geo: { lat: 42.668, lng: -73.772 }, label: "Ontario St", stems: ["ontario"] },
+  { re: /\bclinton (ave|avenue)\b/i, geo: { lat: 42.668, lng: -73.755 }, label: "Clinton Ave", stems: ["clinton"] },
+  { re: /\bstate (st|street)\b/i, geo: { lat: 42.651, lng: -73.755 }, label: "State St", stems: ["state"] },
+  { re: /\blivingston\b/i, geo: { lat: 42.668, lng: -73.748 }, label: "Livingston Ave", stems: ["livingston"] },
+  { re: /\bmorton\b/i, geo: { lat: 42.645, lng: -73.76 }, label: "Morton Ave", stems: ["morton"] },
+  { re: /\bholland\b/i, geo: { lat: 42.648, lng: -73.76 }, label: "Holland Ave", stems: ["holland"] },
+  { re: /\beverett\b/i, geo: { lat: 42.68, lng: -73.78 }, label: "Everett Rd", stems: ["everett"] },
+  { re: /\bwolf (rd|road)\b/i, geo: { lat: 42.74, lng: -73.8 }, label: "Wolf Rd", stems: ["wolf"] },
+  { re: /\bsecond (st|street)|\b2nd (st|street)\b/i, geo: { lat: 42.655, lng: -73.748 }, label: "2nd St", stems: ["second", "2nd"] },
+  { re: /\bfirst (st|street)|\b1st (st|street)\b/i, geo: { lat: 42.654, lng: -73.749 }, label: "1st St", stems: ["first", "1st"] },
+  { re: /\bthird (st|street)|\b3rd (st|street)\b/i, geo: { lat: 42.656, lng: -73.747 }, label: "3rd St", stems: ["third", "3rd"] },
+  { re: /\bfourth (st|street)|\b4th (st|street)\b/i, geo: { lat: 42.657, lng: -73.746 }, label: "4th St", stems: ["fourth", "4th"] },
+  { re: /\bfifth (st|street)|\b5th (st|street)\b/i, geo: { lat: 42.658, lng: -73.745 }, label: "5th St", stems: ["fifth", "5th"] },
+  { re: /\bnorth pearl|n\.?\s*pearl\b/i, geo: { lat: 42.66, lng: -73.75 }, label: "N Pearl St", stems: ["north pearl"] },
+  { re: /\bsouth pearl|s\.?\s*pearl\b/i, geo: { lat: 42.64, lng: -73.758 }, label: "S Pearl St", stems: ["south pearl"] },
 ];
 
 const TOWN_NAMES = Object.keys(TOWN).sort((a, b) => b.length - a.length);
+
+const GEOCODE_UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch; contact@albany.watch)";
+const geocodeCache = new Map<string, { geo: Geo; road: string; at: number } | null>();
+const GEOCODE_TTL = 6 * 60 * 60_000;
+let geocodeLastAt = 0;
 
 function townGeo(name: string): Geo {
   return TOWN[name] ?? { lat: 42.68, lng: -73.82 };
@@ -199,13 +221,138 @@ export function locateCall(input: {
   return townGeo(muni);
 }
 
-export function locateSpoken(text: string, municipality: string): { geo: Geo; road: string } {
-  for (const s of STREETS) {
-    if (s.re.test(text)) return { geo: s.geo, road: s.label };
+export type SpokenAddress = {
+  house?: string;
+  street: string;
+  label: string;
+  geo: Geo;
+};
+
+/** Pull a spoken street / house number without inventing locations. */
+export function extractSpokenAddress(text: string): SpokenAddress | null {
+  const t = text.replace(/\s+/g, " ").trim();
+
+  // House number + known stem ("92 Central", "1400 Western Avenue")
+  const numbered = t.match(
+    /\b(\d{1,5})\s+((?:north|south|east|west|n\.?|s\.?|e\.?|w\.?)\s+)?([A-Za-z][A-Za-z']+(?:\s+[A-Za-z][A-Za-z']+){0,2})(?:\s+(street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?|place|pl\.?|drive|dr\.?|lane|ln\.?|court|ct\.?|parkway|pkwy\.?))?\b/i,
+  );
+  if (numbered) {
+    const house = numbered[1]!;
+    const dir = (numbered[2] || "").trim();
+    const name = numbered[3]!.trim();
+    const suffix = (numbered[4] || "").trim();
+    const stemHay = `${dir} ${name}`.replace(/\s+/g, " ").trim();
+    for (const s of STREETS) {
+      const hit =
+        s.re.test(`${stemHay} ${suffix}`) ||
+        s.re.test(`${house} ${stemHay}`) ||
+        (s.stems || []).some((stem) => new RegExp(`\\b${stem.replace(/\s+/g, "\\s+")}\\b`, "i").test(stemHay));
+      if (!hit) continue;
+      const label = house ? `${house} ${s.label}` : s.label;
+      return { house, street: s.label, label, geo: s.geo };
+    }
+    if (suffix) {
+      const pretty = `${house} ${dir ? dir + " " : ""}${name} ${suffix}`
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+      return { house, street: pretty, label: pretty, geo: { lat: 0, lng: 0 } };
+    }
   }
+
+  // Ordinal / named street without house number
+  for (const s of STREETS) {
+    if (s.re.test(t)) return { street: s.label, label: s.label, geo: s.geo };
+  }
+
+  // Generic "… Street/Ave" phrase
+  const generic = t.match(
+    /\b((?:north|south|east|west|n\.?|s\.?|e\.?|w\.?)\s+)?([A-Za-z][A-Za-z']+(?:\s+[A-Za-z][A-Za-z']+){0,2})\s+(street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?)\b/i,
+  );
+  if (generic) {
+    const pretty = generic[0]!.replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+    return { street: pretty, label: pretty, geo: { lat: 0, lng: 0 } };
+  }
+  return null;
+}
+
+function inCapitalDistrict(lat: number, lng: number): boolean {
+  return lat > 42.35 && lat < 43.35 && lng > -74.35 && lng < -73.3;
+}
+
+async function nominatimGeocode(query: string): Promise<Geo | null> {
+  const key = query.toLowerCase().replace(/\s+/g, " ").trim();
+  const cached = geocodeCache.get(key);
+  if (cached !== undefined && cached && Date.now() - cached.at < GEOCODE_TTL) return cached.geo;
+  if (cached === null && Date.now() - (geocodeCache.get(`$${key}`)?.at ?? 0) < 30 * 60_000) return null;
+
+  const wait = Math.max(0, 1100 - (Date.now() - geocodeLastAt));
+  if (wait) await new Promise((r) => setTimeout(r, wait));
+  geocodeLastAt = Date.now();
+
+  try {
+    const url = new URL("https://nominatim.openstreetmap.org/search");
+    url.searchParams.set("q", query);
+    url.searchParams.set("format", "json");
+    url.searchParams.set("limit", "1");
+    url.searchParams.set("countrycodes", "us");
+    const res = await fetch(url, {
+      headers: { "User-Agent": GEOCODE_UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) {
+      geocodeCache.set(key, null);
+      return null;
+    }
+    const rows = (await res.json()) as Array<{ lat?: string; lon?: string }>;
+    const row = rows[0];
+    const lat = Number(row?.lat);
+    const lng = Number(row?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inCapitalDistrict(lat, lng)) {
+      geocodeCache.set(key, null);
+      return null;
+    }
+    const geo = { lat, lng };
+    geocodeCache.set(key, { geo, road: query, at: Date.now() });
+    return geo;
+  } catch {
+    geocodeCache.set(key, null);
+    return null;
+  }
+}
+
+/**
+ * Sync path: local street gazetteer only. Centroid only when no street found.
+ */
+export function locateSpoken(text: string, municipality: string): { geo: Geo; road: string } {
+  const addr = extractSpokenAddress(text);
+  if (addr && addr.geo.lat !== 0) return { geo: addr.geo, road: addr.label };
   const place = placeFromText(text);
-  if (place) return { geo: { lat: place.lat, lng: place.lng }, road: "" };
+  if (place) return { geo: { lat: place.lat, lng: place.lng }, road: addr?.label || "" };
+  if (addr?.label) {
+    // Street phrase recognized but no local pin — still avoid inventing; use town until async geocode.
+    return { geo: townGeo(canonicalTown(municipality)), road: addr.label };
+  }
   return { geo: locateCall({ municipality, station: "", road: "", intersection: "" }), road: "" };
+}
+
+/**
+ * Prefer real OSM pins when speech has a house number / street. Centroid last.
+ */
+export async function geocodeSpoken(text: string, municipality: string): Promise<{ geo: Geo; road: string }> {
+  const local = locateSpoken(text, municipality);
+  const addr = extractSpokenAddress(text);
+  if (!addr) return local;
+
+  const muni = placeFromText(text)?.name || canonicalTown(municipality) || "Albany";
+  const wantsPrecise = Boolean(addr.house) || addr.geo.lat === 0;
+  if (!wantsPrecise && addr.geo.lat !== 0) return { geo: addr.geo, road: addr.label };
+
+  const query = `${addr.label}, ${muni}, NY`;
+  const geo = await nominatimGeocode(query);
+  if (geo) return { geo, road: addr.label };
+  if (addr.geo.lat !== 0) return { geo: addr.geo, road: addr.label };
+  return local;
 }
 
 /** Spread stacked pins far enough to read at Capital District zoom. */

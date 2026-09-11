@@ -54,30 +54,31 @@ function clean(s: string): string {
     .replace(/Page\s+\d+\s+of\s+\d+/gi, " ")
     .replace(/\b\d+\s+of\s+\d+\b/g, " ")
     .replace(/\b\d+\s*\/\s*\d+\b/g, " ")
-    .replace(/Locaon/g, "Location")
-    .replace(/Staon/g, "Station")
-    .replace(/Informaon/g, "Information")
+    // Poppler often splits "ti"/"tion" glyphs: "Loca on", "Sta on", "Informa on".
+    .replace(/Loca\s*on/gi, "Location")
+    .replace(/Sta\s*on/gi, "Station")
+    .replace(/Informa\s*on/gi, "Information")
     .replace(/Domesc/g, "Domestic")
     .replace(/oﬀense|offense/gi, "offense")
     .replace(/Traﬃc/g, "Traffic")
     .replace(/ac\u0000vity|acvity/g, "activity")
     .replace(/ciizen|\bcizen\b/g, "citizen")
-    .replace(/revocaon/g, "revocation")
+    .replace(/revoca\s*on/gi, "revocation")
     .replace(/identy the\b/gi, "identity theft")
-    .replace(/violaon/gi, "violation")
+    .replace(/viola\s*on/gi, "violation")
     .replace(/Ulity/g, "Utility")
     .replace(/cket\b/g, "ticket")
-    .replace(/Invesgaon/g, "Investigation")
-    .replace(/Secon/g, "Section")
-    .replace(/Descripon/g, "Description")
-    .replace(/Operaon/g, "Operation")
-    .replace(/Strangulaon/g, "Strangulation")
-    .replace(/Intersecon/g, "Intersection")
-    .replace(/Personaon/g, "Personation")
-    .replace(/Registraon/g, "Registration")
+    .replace(/Inves\s*ga\s*on/gi, "Investigation")
+    .replace(/Sec\s*on/gi, "Section")
+    .replace(/Descrip\s*on/gi, "Description")
+    .replace(/Opera\s*on/gi, "Operation")
+    .replace(/Strangula\s*on/gi, "Strangulation")
+    .replace(/Intersec\s*on/gi, "Intersection")
+    .replace(/Persona\s*on/gi, "Personation")
+    .replace(/Registra\s*on/gi, "Registration")
     .replace(/Possesion/gi, "Possession")
-    .replace(/Conservaon/g, "Conservation")
-    .replace(/Navigaon/g, "Navigation")
+    .replace(/Conserva\s*on/gi, "Conservation")
+    .replace(/Naviga\s*on/gi, "Navigation")
     .replace(/Suspen(?:s)?ion/g, "Suspension")
     .replace(/\s+/g, " ")
     .trim();
@@ -563,22 +564,11 @@ async function textWithPdfCli(buf: Uint8Array): Promise<string | null> {
   }
 }
 
-async function textWithPdfParse(buf: Uint8Array): Promise<string> {
-  const mod = await import("pdf-parse");
-  const PDFParse = mod.PDFParse;
-  const parser = new PDFParse({ data: buf });
-  try {
-    const result = await parser.getText();
-    return result.text ?? "";
-  } finally {
-    await parser.destroy();
-  }
-}
-
 function incidentHits(text: string): number {
   return (text.match(/Incident\s*Number:\s*NY\d+/gi) || []).length;
 }
 
+/** Prefer poppler (in Dockerfile). Never depend on pdf.worker.mjs in Nitro .output. */
 async function fetchPdf(url: string): Promise<{ text: string; how: "poppler" | "pdf-parse" }> {
   const res = await fetch(url, {
     headers: {
@@ -592,23 +582,20 @@ async function fetchPdf(url: string): Promise<{ text: string; how: "poppler" | "
   const buf = new Uint8Array(await res.arrayBuffer());
   if (buf.byteLength < 32) throw new Error("pdf-empty");
 
-  const candidates: { text: string; how: "poppler" | "pdf-parse"; n: number }[] = [];
-  const cli = await textWithPdfCli(buf);
-  if (cli) candidates.push({ text: cli, how: "pdf-parse", n: incidentHits(cli) });
+  // 1) Poppler first — durable in Railway Docker; no pdf.js worker packaging.
   const layout = await textWithPoppler(buf, ["-layout"]);
-  if (layout) candidates.push({ text: layout, how: "poppler", n: incidentHits(layout) });
+  if (layout && incidentHits(layout) > 0) return { text: layout, how: "poppler" };
   const raw = await textWithPoppler(buf, []);
-  if (raw) candidates.push({ text: raw, how: "poppler", n: incidentHits(raw) });
-  try {
-    const parsed = await textWithPdfParse(buf);
-    if (parsed) candidates.push({ text: parsed, how: "pdf-parse", n: incidentHits(parsed) });
-  } catch (err) {
-    console.error("[nysp] pdf-parse", url, err instanceof Error ? err.message : err);
-  }
-  candidates.sort((a, b) => b.n - a.n);
-  const best = candidates.find((c) => c.n > 0) ?? candidates.find((c) => c.text.length > 80);
-  if (!best) throw new Error("pdf-no-text");
-  return { text: best.text, how: best.how };
+  if (raw && incidentHits(raw) > 0) return { text: raw, how: "poppler" };
+
+  // 2) Last resort: pdf-parse CLI in a child process (still needs node_modules on disk).
+  // Skip in-process PDFParse — it looks for pdf.worker.mjs under .output/server/_libs and fails.
+  const cli = await textWithPdfCli(buf);
+  if (cli && (incidentHits(cli) > 0 || cli.length > 80)) return { text: cli, how: "pdf-parse" };
+
+  const leftover = layout || raw;
+  if (leftover && leftover.length > 80) return { text: leftover, how: "poppler" };
+  throw new Error("pdf-no-text");
 }
 
 export type BlotterReport = {
