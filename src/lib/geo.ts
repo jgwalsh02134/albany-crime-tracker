@@ -133,6 +133,7 @@ const ROADS: RoadRule[] = [
   { re: /\bny\s*32\b|\broute 32\b/i, at: { Albany: { lat: 42.64, lng: -73.76 }, "New Scotland": { lat: 42.62, lng: -73.9 }, Coeymans: { lat: 42.5, lng: -73.8 } }, fallback: { lat: 42.6, lng: -73.82 } },
   { re: /\bny\s*43\b|\broute 43\b/i, at: { "Sand Lake": { lat: 42.63, lng: -73.6 }, Stephentown: { lat: 42.55, lng: -73.4 }, "East Greenbush": { lat: 42.59, lng: -73.68 } }, fallback: { lat: 42.61, lng: -73.64 } },
   { re: /\bus\s*9\b|\broute 9\b/i, at: { Albany: { lat: 42.66, lng: -73.75 }, "Clifton Park": { lat: 42.86, lng: -73.78 }, Malta: { lat: 42.97, lng: -73.79 }, "Saratoga Springs": { lat: 43.08, lng: -73.78 }, Wilton: { lat: 43.15, lng: -73.74 } }, fallback: { lat: 42.86, lng: -73.78 } },
+  { re: /\bny\s*4\b|\broute 4\b|\brt\.?\s*4\b/i, at: { Colonie: { lat: 42.75, lng: -73.76 }, Latham: { lat: 42.75, lng: -73.76 }, Troy: { lat: 42.73, lng: -73.69 }, "North Greenbush": { lat: 42.74, lng: -73.68 } }, fallback: { lat: 42.75, lng: -73.76 } },
   { re: /\bvischer ferry\b/i, at: { "Clifton Park": { lat: 42.86, lng: -73.82 } }, fallback: { lat: 42.86, lng: -73.82 } },
   { re: /\bkinns\b/i, at: { "Clifton Park": { lat: 42.858, lng: -73.79 } }, fallback: { lat: 42.858, lng: -73.79 } },
   { re: /\bwolf\b/i, at: { Colonie: { lat: 42.74, lng: -73.8 } }, fallback: { lat: 42.74, lng: -73.8 } },
@@ -175,6 +176,10 @@ const STREETS: { re: RegExp; geo: Geo; label: string; stems?: string[] }[] = [
   { re: /\bfifth (st|street)|\b5th (st|street)\b/i, geo: { lat: 42.658, lng: -73.745 }, label: "5th St", stems: ["fifth", "5th"] },
   { re: /\bnorth pearl|n\.?\s*pearl\b/i, geo: { lat: 42.66, lng: -73.75 }, label: "N Pearl St", stems: ["north pearl"] },
   { re: /\bsouth pearl|s\.?\s*pearl\b/i, geo: { lat: 42.64, lng: -73.758 }, label: "S Pearl St", stems: ["south pearl"] },
+  { re: /\bkyler\b/i, geo: { lat: 42.641, lng: -73.76 }, label: "Kyler St", stems: ["kyler"] },
+  { re: /\bmatilda\b/i, geo: { lat: 42.642, lng: -73.761 }, label: "Matilda St", stems: ["matilda"] },
+  { re: /\btroy.?schenectady|troy schenectady\b/i, geo: { lat: 42.74, lng: -73.78 }, label: "Troy-Schenectady Rd", stems: ["troy schenectady"] },
+  { re: /\balbany.?shaker|shaker (rd|road)\b/i, geo: { lat: 42.74, lng: -73.78 }, label: "Albany Shaker Rd", stems: ["albany shaker", "shaker"] },
 ];
 
 const TOWN_NAMES = Object.keys(TOWN).sort((a, b) => b.length - a.length);
@@ -231,6 +236,29 @@ export type SpokenAddress = {
 /** Pull a spoken street / house number without inventing locations. */
 export function extractSpokenAddress(text: string): SpokenAddress | null {
   const t = text.replace(/\s+/g, " ").trim();
+
+  // Intersection of two known stems ("Kyler and Matilda", "Wolf and Central")
+  const inter = t.match(
+    /\b([A-Za-z][A-Za-z']+)\s+(?:and|&|at)\s+([A-Za-z][A-Za-z']+)\b/i,
+  );
+  if (inter) {
+    const a = inter[1]!;
+    const b = inter[2]!;
+    const stemHit = (name: string) =>
+      STREETS.find(
+        (s) =>
+          s.re.test(name) ||
+          (s.stems || []).some((stem) => new RegExp(`^${stem.replace(/\s+/g, "\\s+")}$`, "i").test(name)),
+      );
+    const sa = stemHit(a);
+    const sb = stemHit(b);
+    if (sa && sb) {
+      const label = `${sa.label.replace(/\s+(St|Ave|Rd|Blvd|Pl)$/, "")} & ${sb.label.replace(/\s+(St|Ave|Rd|Blvd|Pl)$/, "")}`;
+      // Midpoint between the two known pins.
+      const geo = { lat: (sa.geo.lat + sb.geo.lat) / 2, lng: (sa.geo.lng + sb.geo.lng) / 2 };
+      return { street: label, label, geo };
+    }
+  }
 
   // House number + known stem ("92 Central", "1400 Western Avenue")
   const numbered = t.match(
