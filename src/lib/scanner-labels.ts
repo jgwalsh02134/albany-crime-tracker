@@ -4,7 +4,13 @@
  * when a more specific agency or place can be inferred.
  */
 import talkgroups from "../data/talkgroups.json";
-import { extractSpokenAddress, placeFromText, type Geo } from "./geo";
+import {
+  extractSpokenAddress,
+  isLowConfidencePlace,
+  normalizeScannerSpeech,
+  placeFromText,
+  type Geo,
+} from "./geo";
 import { getScannerFeed, type ScannerFeed } from "./scanner-feeds";
 
 export type TalkgroupMeta = {
@@ -50,9 +56,9 @@ const FEED_AGENCIES: Record<string, AgencyLabel[]> = {
 /** Speech cues that point at a specific dual-feed agency. */
 const AGENCY_CUES: { re: RegExp; agency: string }[] = [
   // Colonie / Latham
-  { re: /\b(colonie|latham|loudonville|latham command|wolf\s*rd|wolf\s*road|route\s*9|ny\s*9|route\s*7|ny\s*7|route\s*2|ny\s*2|route\s*155|airport|albany airport|crossgates|colonie center|siena|troy.?schenectady)\b/i, agency: "Colonie PD" },
+  { re: /\b(colonie|latham|loudonville|latham command|wolf\s*rd|wolf\s*road|sand\s*creek|sandwich|route\s*9|ny\s*9|route\s*7|ny\s*7|route\s*2|ny\s*2|route\s*155|airport|albany airport|crossgates|colonie center|siena|troy.?schenectady|albany\s*shaker|fuller)\b/i, agency: "Colonie PD" },
   // Albany city streets / units
-  { re: /\b(albany\s*(pd|police|city)|central\s*(ave|avenue)|western\s*(ave|avenue)|lark|pearl|madison|henry\s*johnson|new\s*scotland|delaware\s*(ave|avenue)|southern\s*(blvd|boulevard)|quail|ontario|clinton\s*(ave|avenue)|morton|holland|everett|kyler|matilda|second\s*st|2nd\s*st|north\s*swan|south\s*end|arbor\s*hill|pine\s*hills|center\s*square)\b/i, agency: "Albany PD" },
+  { re: /\b(albany\s*(pd|police|city)|central\s*(ave|avenue)|western(?:\s*(ave|avenue))?|west\s+granite|lark|pearl|madison|henry\s*johnson|new\s*scotland|delaware\s*(ave|avenue)|southern\s*(blvd|boulevard)|quail|ontario|clinton\s*(ave|avenue)|morton|holland|everett|kyler|matilda|spring(?:steen|\s*st)?|second\s*st|2nd\s*st|north\s*swan|south\s*end|arbor\s*hill|pine\s*hills|center\s*square)\b/i, agency: "Albany PD" },
   // Bethlehem
   { re: /\b(bethlehem|delmar|selkirk|glenmont|elsmere|slingerlands)\b/i, agency: "Bethlehem PD" },
   // Fire / EMS overrides on mixed feeds
@@ -186,13 +192,12 @@ export function resolveScannerAgency(input: {
   // Single-agency feed → that label.
   if (candidates.length === 1) return candidates[0]!;
 
-  // Dual feed with no cue: prefer discipline from feed, avoid dual blob.
+  // Dual feed with no cue: prefer discipline from feed, avoid dual blob AND bare "Police".
   if (candidates.length > 1) {
     if (feed?.discipline === "fire") {
       const fire = candidates.find((c) => c.discipline === "fire");
       if (fire) return fire;
     }
-    // Speech nature may still imply fire/ems on a PD feed.
     if (/\b(fire|engine|truck|ladder|structure)\b/i.test(spoken)) {
       const fire = candidates.find((c) => c.discipline === "fire");
       if (fire) return fire;
@@ -201,20 +206,39 @@ export function resolveScannerAgency(input: {
       const ems = candidates.find((c) => c.discipline === "ems");
       if (ems) return ems;
     }
-    // Unresolved dual PD — generic "Police" (not "Albany / Colonie PD").
-    return { agency: "Police", abbr: "PD", discipline: "police" };
+    // Prefer primary feed agency from scanner-feeds (never bare "Police").
+    const primary =
+      candidates.find((c) => c.discipline === "police") ||
+      candidates.find((c) => c.discipline === feed?.discipline) ||
+      candidates[0]!;
+    return primary;
+  }
+
+  // Prefer agencies listed on the feed record when FEED_AGENCIES missed them.
+  if (feed?.agencies?.length) {
+    const named = feed.agencies[0]!;
+    const fromCand = feedCandidates(input.feedId).find((c) => c.agency === named);
+    if (fromCand) return fromCand;
+    const disc =
+      feed.discipline === "fire" || feed.discipline === "ems" || feed.discipline === "police"
+        ? feed.discipline
+        : "police";
+    return {
+      agency: named,
+      abbr: feed.shortName.slice(0, 6).toUpperCase(),
+      municipalityHint: named.replace(/\s*(PD|Fire|EMS)$/i, "").trim() || undefined,
+      discipline: disc,
+    };
   }
 
   // Unknown feed id — derive a short label from feed metadata, stripping dual blobs.
   if (feed) {
-    const name = feed.name
-      .replace(/\s*\/\s*/g, " / ")
-      .trim();
+    const name = feed.name.replace(/\s*\/\s*/g, " / ").trim();
     if (/\/| & /.test(name)) {
-      // Dual-style feed name without candidates — discipline-only fallback.
       if (feed.discipline === "fire") return { agency: "Fire", abbr: "FD", discipline: "fire" };
       if (feed.discipline === "ems") return { agency: "EMS", abbr: "EMS", discipline: "ems" };
-      return { agency: "Police", abbr: "PD", discipline: "police" };
+      // Last resort for unknown dual feeds only — known Capital District feeds never reach here.
+      return { agency: "Scanner", abbr: "SCAN", discipline: "police" };
     }
     const short = name
       .replace(/\bPolice\b/i, "PD")
@@ -235,6 +259,7 @@ export function resolveScannerAgency(input: {
 const LANDMARKS: { re: RegExp; place: string; muni: string }[] = [
   { re: /\blatham\s*command\b/i, place: "Latham Command", muni: "Colonie" },
   { re: /\blatham\b/i, place: "Latham", muni: "Colonie" },
+  { re: /\bsand\s*creek\b|\bsandwich\b/i, place: "Sand Creek Rd", muni: "Colonie" },
   { re: /\bloudonville\b/i, place: "Loudonville", muni: "Colonie" },
   { re: /\bcrossgates\b/i, place: "Crossgates Mall", muni: "Guilderland" },
   { re: /\bcolonie\s*center\b/i, place: "Colonie Center", muni: "Colonie" },
@@ -318,38 +343,55 @@ export function resolveScannerPlace(input: {
   agency?: AgencyLabel;
   feed?: ScannerFeed | null;
 }): ScannerPlace {
-  const spoken = input.spoken || "";
+  const spoken = normalizeScannerSpeech(input.spoken || "");
   const addr = extractSpokenAddress(spoken);
   const intersection = extractIntersection(spoken);
   const route = extractRoute(spoken);
   const town = placeFromText(spoken);
   const landmark = LANDMARKS.find((row) => row.re.test(spoken));
 
-  let municipality =
-    landmark?.muni ||
-    town?.name ||
-    input.agency?.municipalityHint ||
-    "";
+  // Municipality only from speech cues — agency hint is NOT a place for the footer.
+  let municipality = landmark?.muni || town?.name || "";
 
   // Street gazetteer often implies Albany city; override when town/landmark clearer.
   if (!municipality && addr && addr.geo.lat !== 0) {
-    // Known Capital District street midpoints default to Albany unless cue says otherwise.
     municipality = "Albany";
   }
 
-  // Colonie-leaning roads when agency is Colonie.
-  if (!town && !landmark && input.agency?.agency === "Colonie PD") {
-    if (/\bwolf\b|\broute\s*9\b|\broute\s*7\b|\blatham\b/i.test(spoken)) municipality = "Colonie";
+  // Colonie-leaning roads when agency is Colonie or cues lean that way.
+  if (
+    !town &&
+    !landmark &&
+    (input.agency?.agency === "Colonie PD" ||
+      /\bsand\s*creek|wolf|latham|loudonville/i.test(spoken))
+  ) {
+    if (
+      /\bwolf\b|\broute\s*9\b|\broute\s*7\b|\blatham\b|\bsand\s*creek|sandwich|albany\s*shaker|fuller/i.test(
+        spoken,
+      )
+    ) {
+      municipality = "Colonie";
+    }
   }
 
   let placeLabel = "";
-  if (addr?.label) placeLabel = addr.label;
-  else if (intersection) placeLabel = intersection;
-  else if (route) placeLabel = route;
-  else if (landmark) placeLabel = landmark.place;
-  else if (town) placeLabel = town.name;
+  // Prefer house-number + known Capital District street (pinned gazetteer).
+  if (addr?.label && !isLowConfidencePlace(addr.label) && addr.geo.lat !== 0) {
+    placeLabel = addr.label;
+  } else if (intersection && !isLowConfidencePlace(intersection)) {
+    placeLabel = intersection;
+  } else if (route) {
+    placeLabel = route;
+  } else if (landmark) {
+    placeLabel = landmark.place;
+  } else if (town) {
+    placeLabel = town.name;
+  }
 
-  const known = Boolean(placeLabel || municipality);
+  if (placeLabel && isLowConfidencePlace(placeLabel)) placeLabel = "";
+
+  // known = reliable speech place only (not agency municipality alone).
+  const known = Boolean(placeLabel);
 
   let address: string;
   if (placeLabel && municipality) {
@@ -358,20 +400,22 @@ export function resolveScannerPlace(input: {
       : `${placeLabel} · ${municipality}`;
   } else if (placeLabel) {
     address = placeLabel;
-  } else if (municipality) {
-    address = municipality;
   } else {
+    // No reliable place — keep specific agency elsewhere; footer stays area unknown.
     address = "area unknown";
   }
 
-  // Never pass through dual coverage strings.
   if (/City of Albany\s*&\s*Town of Colonie|Albany\s*\/\s*Colonie/i.test(address)) {
     address = placeLabel || "area unknown";
-    if (!municipality) municipality = "";
+    if (!placeLabel) municipality = "";
+  }
+
+  if (!municipality && known && input.agency?.municipalityHint) {
+    municipality = input.agency.municipalityHint;
   }
 
   return {
-    municipality: municipality || (address === "area unknown" ? "" : municipality),
+    municipality,
     address,
     placeLabel,
     known,
@@ -402,11 +446,11 @@ export function natureOf(text: string): string {
  */
 export function scannerTitle(spoken: string, agency: AgencyLabel, place: ScannerPlace): string {
   const nature = natureOf(spoken);
-  const placeBit = place.placeLabel || "";
+  const placeBit =
+    place.placeLabel && !isLowConfidencePlace(place.placeLabel) ? place.placeLabel : "";
   const agencyBit = agency.agency;
 
   if (nature && placeBit) {
-    // "Wolf Rd crash" / "Latham crash"
     const natureWord = nature;
     if (new RegExp(natureWord.replace(/\s+/g, "\\s+"), "i").test(placeBit)) {
       return `${agencyBit} · ${placeBit}`;
@@ -416,7 +460,15 @@ export function scannerTitle(spoken: string, agency: AgencyLabel, place: Scanner
   if (nature) return `${agencyBit} · ${nature}`;
   if (placeBit) return `${agencyBit} · ${placeBit}`;
 
-  const t = spoken.replace(/\s+/g, " ").trim();
+  // Never promote STT garbage ("Across This Triumph Street") into the title.
+  const t = normalizeScannerSpeech(spoken).replace(/\s+/g, " ").trim();
+  if (isLowConfidencePlace(t) || /\bacross\b/i.test(t) || /\b(triumph|trion)\b/i.test(t)) {
+    return `${agencyBit} · radio`;
+  }
+  // Prefer short non-address clips only when they look like dispatch, not street hallucinations.
+  if (/\b(street|st\.?|avenue|ave\.?|road|rd\.?)\b/i.test(t) && !placeBit) {
+    return `${agencyBit} · radio`;
+  }
   const clip = t.length <= 56 ? t : `${t.slice(0, 52).replace(/\s+\S*$/, "")}…`;
   return `${agencyBit} · ${clip || "radio"}`;
 }
@@ -437,4 +489,24 @@ export function placeGeoHint(place: ScannerPlace, spoken: string): { geo?: Geo; 
 
 export function isDualBlobAgency(name: string): boolean {
   return /Albany\s*\/\s*Colonie|City of Albany\s*&\s*Town of Colonie/i.test(name);
+}
+
+/** Compact signature for near-dupe matching across garbled STT variants. */
+export function callFingerprint(spoken: string): string {
+  const t = normalizeScannerSpeech(spoken);
+  const nature = natureOf(t) || "";
+  const addr = extractSpokenAddress(t);
+  const place = (addr?.street || extractIntersection(t) || extractRoute(t) || "").toLowerCase();
+  const house = addr?.house || "";
+  return `${nature}|${house}|${place}`.replace(/\s+/g, " ").trim();
+}
+
+/** Pure unit-status with no place — demote from Live. */
+export function isUnitStatusOnly(spoken: string): boolean {
+  const t = normalizeScannerSpeech(spoken);
+  if (extractSpokenAddress(t) || extractIntersection(t) || extractRoute(t)) return false;
+  if (LANDMARKS.some((row) => row.re.test(t)) || placeFromText(t)) return false;
+  return /\b(en route|in service|out of service|in quarters|10-4|10-8|10-7|10-6|10-19|copy that|roger|affirmative|standing by|clear the air)\b/i.test(
+    t,
+  );
 }

@@ -180,6 +180,11 @@ const STREETS: { re: RegExp; geo: Geo; label: string; stems?: string[] }[] = [
   { re: /\bmatilda\b/i, geo: { lat: 42.642, lng: -73.761 }, label: "Matilda St", stems: ["matilda"] },
   { re: /\btroy.?schenectady|troy schenectady\b/i, geo: { lat: 42.74, lng: -73.78 }, label: "Troy-Schenectady Rd", stems: ["troy schenectady"] },
   { re: /\balbany.?shaker|shaker (rd|road)\b/i, geo: { lat: 42.74, lng: -73.78 }, label: "Albany Shaker Rd", stems: ["albany shaker", "shaker"] },
+  { re: /\bsand\s*creek\b/i, geo: { lat: 42.73, lng: -73.78 }, label: "Sand Creek Rd", stems: ["sand creek"] },
+  { re: /\bspringsteen\b|\bspring\s+(?:st|street)\b/i, geo: { lat: 42.655, lng: -73.755 }, label: "Spring St", stems: ["spring", "springsteen"] },
+  { re: /\bmorris\b/i, geo: { lat: 42.655, lng: -73.78 }, label: "Morris St", stems: ["morris"] },
+  { re: /\bfuller\b/i, geo: { lat: 42.69, lng: -73.85 }, label: "Fuller Rd", stems: ["fuller"] },
+  { re: /\bwatervliet\s*(ave|avenue)\b/i, geo: { lat: 42.68, lng: -73.74 }, label: "Watervliet Ave", stems: ["watervliet ave"] },
 ];
 
 const TOWN_NAMES = Object.keys(TOWN).sort((a, b) => b.length - a.length);
@@ -233,35 +238,94 @@ export type SpokenAddress = {
   geo: Geo;
 };
 
+/** Common STT garbling → Capital District street phrasing before gazetteer match. */
+const STT_STREET_FIXES: [RegExp, string][] = [
+  [/\bwest\s+granite\b/gi, "Western"],
+  [/\bwestern\s+granite\b/gi, "Western"],
+  [/\bwest\s+granit\b/gi, "Western"],
+  [/\bsandwich\b/gi, "Sand Creek"],
+  [/\bsand\s+wich\b/gi, "Sand Creek"],
+  [/\bspringsteen\b/gi, "Spring Street"],
+  [/\bwest\s+rn\b/gi, "Western"],
+  [/\bcenteral\b/gi, "Central"],
+  [/\bworshington\b/gi, "Washington"],
+  [/\bnew\s+scotlan[dt]\b/gi, "New Scotland"],
+];
+
+/** Function words / STT nonsense that must never become a street title. */
+const PLACE_STOP_STEMS = new Set(
+  "this is that the a an across for to on in at of with from unit car copy respond please check triumph trion en route quarters service".split(
+    " ",
+  ),
+);
+
+const GARBAGE_PLACE_RE =
+  /\b(across\s+(this|is|the|a|an)\b|triumph\s+street|trion\s+street|across\s+this\s+triumph|across\s+is\s+trion)\b/i;
+
+/** Normalize STT street garbling for place extraction. */
+export function normalizeScannerSpeech(text: string): string {
+  let t = text.replace(/\s+/g, " ").trim();
+  for (const [re, rep] of STT_STREET_FIXES) t = t.replace(re, rep);
+  return t;
+}
+
+/** True when a candidate place phrase is STT garbage / low confidence. */
+export function isLowConfidencePlace(label: string): boolean {
+  const s = label.replace(/\s+/g, " ").trim();
+  if (!s) return true;
+  if (GARBAGE_PLACE_RE.test(s)) return true;
+  if (/^across\b/i.test(s)) return true;
+  const stem = s
+    .replace(/^\d{1,5}\s+/, "")
+    .replace(/\b(north|south|east|west|n\.?|s\.?|e\.?|w\.?)\s+/i, "")
+    .replace(/\s+(street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?|place|pl\.?|drive|dr\.?|lane|ln\.?|court|ct\.?|parkway|pkwy\.?)$/i, "")
+    .trim()
+    .toLowerCase();
+  if (!stem || PLACE_STOP_STEMS.has(stem)) return true;
+  // Multi-word stems that are all stop-ish ("this triumph")
+  const parts = stem.split(/\s+/);
+  if (parts.every((p) => PLACE_STOP_STEMS.has(p) || p.length <= 2)) return true;
+  if (/\b(triumph|trion)\b/i.test(stem)) return true;
+  return false;
+}
+
+function streetByStem(name: string) {
+  return STREETS.find(
+    (s) =>
+      s.re.test(name) ||
+      (s.stems || []).some((stem) => new RegExp(`^${stem.replace(/\s+/g, "\\s+")}$`, "i").test(name)),
+  );
+}
+
 /** Pull a spoken street / house number without inventing locations. */
 export function extractSpokenAddress(text: string): SpokenAddress | null {
-  const t = text.replace(/\s+/g, " ").trim();
+  const t = normalizeScannerSpeech(text);
+  if (GARBAGE_PLACE_RE.test(t)) {
+    // Still try gazetteer hits elsewhere in the utterance; strip garbage clause first.
+  }
+  const cleaned = t
+    .replace(/\bacross\s+(this|is|the|a|an)\s+[A-Za-z']+(?:\s+[A-Za-z']+)?\s+(?:street|st\.?|avenue|ave\.?|road|rd\.?)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
   // Intersection of two known stems ("Kyler and Matilda", "Wolf and Central")
-  const inter = t.match(
+  const inter = cleaned.match(
     /\b([A-Za-z][A-Za-z']+)\s+(?:and|&|at)\s+([A-Za-z][A-Za-z']+)\b/i,
   );
   if (inter) {
     const a = inter[1]!;
     const b = inter[2]!;
-    const stemHit = (name: string) =>
-      STREETS.find(
-        (s) =>
-          s.re.test(name) ||
-          (s.stems || []).some((stem) => new RegExp(`^${stem.replace(/\s+/g, "\\s+")}$`, "i").test(name)),
-      );
-    const sa = stemHit(a);
-    const sb = stemHit(b);
+    const sa = streetByStem(a);
+    const sb = streetByStem(b);
     if (sa && sb) {
       const label = `${sa.label.replace(/\s+(St|Ave|Rd|Blvd|Pl)$/, "")} & ${sb.label.replace(/\s+(St|Ave|Rd|Blvd|Pl)$/, "")}`;
-      // Midpoint between the two known pins.
       const geo = { lat: (sa.geo.lat + sb.geo.lat) / 2, lng: (sa.geo.lng + sb.geo.lng) / 2 };
       return { street: label, label, geo };
     }
   }
 
-  // House number + known stem ("92 Central", "1400 Western Avenue")
-  const numbered = t.match(
+  // House number + known stem ("92 Central", "1400 Western Avenue", "1225 West Granite"→Western)
+  const numbered = cleaned.match(
     /\b(\d{1,5})\s+((?:north|south|east|west|n\.?|s\.?|e\.?|w\.?)\s+)?([A-Za-z][A-Za-z']+(?:\s+[A-Za-z][A-Za-z']+){0,2})(?:\s+(street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?|place|pl\.?|drive|dr\.?|lane|ln\.?|court|ct\.?|parkway|pkwy\.?))?\b/i,
   );
   if (numbered) {
@@ -274,33 +338,43 @@ export function extractSpokenAddress(text: string): SpokenAddress | null {
       const hit =
         s.re.test(`${stemHay} ${suffix}`) ||
         s.re.test(`${house} ${stemHay}`) ||
+        s.re.test(stemHay) ||
         (s.stems || []).some((stem) => new RegExp(`\\b${stem.replace(/\s+/g, "\\s+")}\\b`, "i").test(stemHay));
       if (!hit) continue;
-      const label = house ? `${house} ${s.label}` : s.label;
+      const label = `${house} ${s.label}`;
       return { house, street: s.label, label, geo: s.geo };
     }
-    if (suffix) {
+    // Numbered + unknown street suffix: only keep if stem is not garbage (still un-pinned).
+    if (suffix && !isLowConfidencePlace(`${house} ${stemHay} ${suffix}`)) {
       const pretty = `${house} ${dir ? dir + " " : ""}${name} ${suffix}`
         .replace(/\s+/g, " ")
         .trim()
         .replace(/\b\w/g, (c) => c.toUpperCase());
-      return { house, street: pretty, label: pretty, geo: { lat: 0, lng: 0 } };
+      // Prefer known streets only for Live titles — unmarked generics stay null for place resolution.
+      // Keep a weak pin only when house+suffix look like a real address phrase.
+      if (name.length >= 4 && !PLACE_STOP_STEMS.has(name.toLowerCase())) {
+        return { house, street: pretty, label: pretty, geo: { lat: 0, lng: 0 } };
+      }
     }
   }
 
-  // Ordinal / named street without house number
+  // Ordinal / named street without house number — gazetteer only (never invent Triumph St).
   for (const s of STREETS) {
-    if (s.re.test(t)) return { street: s.label, label: s.label, geo: s.geo };
+    if (s.re.test(cleaned)) return { street: s.label, label: s.label, geo: s.geo };
+    const stemHit = (s.stems || []).some((stem) => {
+      if (stem.length < 5 && !/\s/.test(stem)) {
+        // Short single-token stems need a street suffix nearby ("Spring Street").
+        return new RegExp(
+          `\\b${stem.replace(/\s+/g, "\\s+")}\\s+(?:street|st\\.?|avenue|ave\\.?|road|rd\\.?|boulevard|blvd\\.?)\\b`,
+          "i",
+        ).test(cleaned);
+      }
+      return new RegExp(`\\b${stem.replace(/\s+/g, "\\s+")}\\b`, "i").test(cleaned);
+    });
+    if (stemHit) return { street: s.label, label: s.label, geo: s.geo };
   }
 
-  // Generic "… Street/Ave" phrase
-  const generic = t.match(
-    /\b((?:north|south|east|west|n\.?|s\.?|e\.?|w\.?)\s+)?([A-Za-z][A-Za-z']+(?:\s+[A-Za-z][A-Za-z']+){0,2})\s+(street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd\.?)\b/i,
-  );
-  if (generic) {
-    const pretty = generic[0]!.replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
-    return { street: pretty, label: pretty, geo: { lat: 0, lng: 0 } };
-  }
+  // Generic "… Street/Ave" without gazetteer hit — reject (was source of hallucinated titles).
   return null;
 }
 
