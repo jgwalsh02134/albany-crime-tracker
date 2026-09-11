@@ -1,13 +1,10 @@
 import { useRef, useState } from "react";
 import { Drawer } from "vaul";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { IncidentCard } from "@/components/incident-card";
 import { NewsView } from "@/components/views/news-view";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { areaCounts } from "@/lib/data";
 import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
-import { submitCitizenTip } from "@/lib/social-sources";
 import { type WireHealth, sourceMix } from "@/lib/sources";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import type { Incident, NewsStory, SourceLens } from "@/lib/types";
@@ -233,8 +230,6 @@ function LiveList({
           <GroupedList items={liveItems} onSelect={onSelect} />
         )}
       </div>
-
-      {wireLive ? <ReportButton onRefresh={onRefresh} /> : null}
     </div>
   );
 }
@@ -338,7 +333,7 @@ function SourcePipes({
     health.scanner ? `${health.scanner} radio` : "",
     health.news ? `${health.news} news` : "",
     (health.facebook ?? 0) ? `${health.facebook} fb` : "",
-    (health.reddit ?? 0) + (health.citizen ?? 0) ? `${(health.reddit ?? 0) + (health.citizen ?? 0)} tips` : "",
+    (health.reddit ?? 0) ? `${health.reddit} reddit` : "",
   ].filter(Boolean);
 
   return (
@@ -378,7 +373,7 @@ function SourcePipes({
                   ["X", health.x ?? 0, "NYSP, Albany Fire, CBS6, NEWS10, Times Union when they tweet crime."],
                   ["Town civic", health.civic ?? 0, "Bethlehem / Guilderland / Albany news flashes — crashes and arrests only."],
                   ["Newsrooms", health.news, "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight, Gazette, FOX23."],
-                  ["Citizens", (health.reddit ?? 0) + (health.citizen ?? 0), "Reddit r/Albany, r/Troy, r/Schenectady and in-app reports. Not 911."],
+                  ["Citizens", health.reddit ?? 0, "Reddit r/Albany, r/Troy, r/Schenectady. Not 911."],
                   ["NWS warnings", health.nws ?? 0, "Tornado, flash flood, severe thunderstorm, blizzard. Not routine weather."],
                 ].map(([name, n, why]) => (
                   <li key={String(name)} className="rounded-lg border border-border bg-surface-2 px-3 py-2">
@@ -423,137 +418,6 @@ function SourcePipes({
               <p className="mt-3 text-xs leading-relaxed text-subtle">
                 511 construction, CDTA notices, and hiring posts are fetched then dropped so Live stays public-safety.
               </p>
-            </div>
-          </Drawer.Content>
-        </Drawer.Portal>
-      </Drawer.Root>
-    </>
-  );
-}
-
-const NATURES = [
-  { id: "crash", label: "Crash" },
-  { id: "fire", label: "Fire" },
-  { id: "police", label: "Police activity" },
-  { id: "shots", label: "Shots fired" },
-  { id: "other", label: "Other" },
-] as const;
-
-function ReportButton({ onRefresh }: { onRefresh?: () => Promise<void> | void }) {
-  const [open, setOpen] = useState(false);
-  const [nature, setNature] = useState<(typeof NATURES)[number]["id"]>("police");
-  const [where, setWhere] = useState("");
-  const [whenText, setWhenText] = useState("");
-  const [details, setDetails] = useState("");
-  const [contact, setContact] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submit() {
-    setBusy(true);
-    setError("");
-    try {
-      const res = await submitCitizenTip({ data: { nature, where, details, whenText, contact } });
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      setWhere("");
-      setWhenText("");
-      setDetails("");
-      setContact("");
-      setOpen(false);
-      await onRefresh?.();
-    } catch {
-      setError("Could not post that report.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="Share what you saw"
-        className="absolute right-3 bottom-3 z-30 flex size-12 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg active:scale-95"
-      >
-        <Plus className="size-6" strokeWidth={2.4} />
-      </button>
-      <Drawer.Root open={open} onOpenChange={setOpen}>
-        <Drawer.Portal>
-          <Drawer.Overlay className="fixed inset-0 z-40 bg-bg/70" />
-          <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-xl border border-border bg-surface px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 outline-none">
-            <div className="mx-auto h-1.5 w-12 rounded-full bg-border" />
-            <Drawer.Title className="mt-3 text-base font-semibold">Share what you saw</Drawer.Title>
-            <p className="mt-1 text-xs leading-relaxed text-subtle">
-              Call 911 for emergencies. This is not a police report — it posts as an unconfirmed citizen tip on Live.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {NATURES.map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => setNature(n.id)}
-                  className={cn(
-                    "h-10 rounded-full border px-3 text-sm font-medium",
-                    nature === n.id ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface-2 text-muted",
-                  )}
-                >
-                  {n.label}
-                </button>
-              ))}
-            </div>
-            <label className="mt-3 text-xs font-semibold uppercase tracking-wide text-subtle">
-              Street or intersection
-              <Input
-                className="mt-1"
-                value={where}
-                onChange={(e) => setWhere(e.target.value)}
-                placeholder="Western Ave & Quail"
-                maxLength={80}
-              />
-            </label>
-            <label className="mt-3 text-xs font-semibold uppercase tracking-wide text-subtle">
-              When (optional)
-              <Input
-                className="mt-1"
-                value={whenText}
-                onChange={(e) => setWhenText(e.target.value)}
-                placeholder="About 10 minutes ago"
-                maxLength={80}
-              />
-            </label>
-            <label className="mt-3 text-xs font-semibold uppercase tracking-wide text-subtle">
-              Details (optional)
-              <textarea
-                className="mt-1 min-h-20 w-full rounded-md border border-border bg-surface px-3 py-2 text-base text-fg placeholder:text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-                value={details}
-                onChange={(e) => setDetails(e.target.value)}
-                placeholder="What you saw — no names of victims."
-                maxLength={280}
-              />
-            </label>
-            <label className="mt-3 text-xs font-semibold uppercase tracking-wide text-subtle">
-              Contact (optional, private)
-              <Input
-                className="mt-1"
-                value={contact}
-                onChange={(e) => setContact(e.target.value)}
-                placeholder="Phone or email — not shown on Live"
-                maxLength={120}
-                autoComplete="off"
-              />
-            </label>
-            {error ? <p className="mt-2 text-sm text-sev-high">{error}</p> : null}
-            <div className="mt-4 flex gap-2">
-              <Button variant="secondary" className="flex-1" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button className="flex-1" disabled={busy} onClick={() => void submit()}>
-                {busy ? "Posting…" : "Post to Live"}
-              </Button>
             </div>
           </Drawer.Content>
         </Drawer.Portal>

@@ -70,7 +70,7 @@ export const SOURCES = [
   {
     name: "Citizens",
     tier: "Unconfirmed",
-    detail: "Reddit r/Albany, r/Troy, r/Schenectady and in-app ‘Saw something’ notes. Not 911. Citizen App, Ring, and Nextdoor have no public feed.",
+    detail: "Reddit r/Albany, r/Troy, r/Schenectady. Not 911. Citizen App, Ring, and Nextdoor have no public feed.",
   },
   {
     name: "NWS warnings",

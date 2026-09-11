@@ -19,7 +19,7 @@ export type IncidentCardMeta = {
 const FALLBACK: IncidentCardMeta = {
   id: "",
   title: "Albany County Crime Tracker",
-  description: "Live crime intelligence for Albany County, NY — incident feed, map, scanner, and tips.",
+  description: "Live crime intelligence for Albany County, NY — incident feed, map, and scanner.",
   place: "Albany County, NY",
   when: "",
   caveat: "",
