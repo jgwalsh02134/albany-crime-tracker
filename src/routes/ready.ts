@@ -7,6 +7,7 @@ import {
 } from "@/lib/superfeedr";
 import { isAdminAuthorized } from "@/lib/security/admin-token.server";
 import { rateLimitRequest, rateLimitResponse } from "@/lib/security/rate-limit.server";
+import { pipeHealth } from "@/lib/pipe-health";
 
 /**
  * Public health: minimal `{ ok: true }`.
@@ -61,6 +62,7 @@ export const Route = createFileRoute("/ready")({
             ageSec: scan.ageSec,
             lastError: scan.lastError || undefined,
           },
+          pipes: pipeHealth(),
         });
       },
     },

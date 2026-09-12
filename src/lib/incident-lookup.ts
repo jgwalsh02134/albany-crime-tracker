@@ -56,6 +56,7 @@ export async function lookupIncidentCard(id: string): Promise<IncidentCardMeta> 
     const incidents = wireToIncidents(wire.items ?? []);
     const hit =
       incidents.find((i) => i.id === raw) ??
+      incidents.find((i) => i.memberIds?.includes(raw)) ??
       incidents.find((i) => i.id.endsWith(raw) || raw.endsWith(i.id)) ??
       null;
     if (!hit) {

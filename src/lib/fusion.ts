@@ -1,0 +1,424 @@
+/**
+ * Cluster FuseItems into one incident when time, place, and call-type agree.
+ * Corroboration scores independent source families so a lone scanner cannot
+ * outrank blotter + 511 + news. This is not CAD and does not invent a dispatch board.
+ */
+import type { Incident, IncidentSource, SourceKind, SourceTier, Verification } from "./types";
+
+export type FuseKind = "news" | "blotter" | "scanner" | "traffic" | "social";
+
+/** Structural subset of FuseItem — kept here to avoid a cycle with sources.ts. */
+export type FuseItem = {
+  id: string;
+  title: string;
+  url: string;
+  outlet: string;
+  summary: string;
+  publishedAt: string;
+  minutesAgo: number;
+  kind?: FuseKind;
+  municipality?: string;
+  address?: string;
+  agency?: string;
+  category?: string;
+  status?: string;
+  lat?: number;
+  lng?: number;
+};
+
+export type CallClass = {
+  type: string;
+  category: Incident["category"];
+  severity: Incident["severity"];
+  family: string;
+};
+
+export type SeenOnChip = { key: string; label: string };
+
+export type Corroboration = {
+  score: number;
+  families: string[];
+  independent: number;
+  why: string;
+};
+
+const GENERIC_MUNI = /^(albany county|capital district|countywide|unknown|area unknown)$/i;
+
+const MUNI_ALIAS: Record<string, string> = {
+  delmar: "bethlehem",
+  selkirk: "bethlehem",
+  glenmont: "bethlehem",
+  elsmere: "bethlehem",
+  slingerlands: "bethlehem",
+  latham: "colonie",
+  loudonville: "colonie",
+  altamont: "guilderland",
+  voorheesville: "new scotland",
+  ravena: "coeymans",
+};
+
+const FAMILY_OF: Record<string, string> = {
+  "shots-fired": "violent",
+  assault: "violent",
+  robbery: "violent",
+  domestic: "violent",
+  crash: "crash",
+  dwi: "crash",
+  "disabled-vehicle": "crash",
+  fire: "fire",
+  burglary: "property",
+  larceny: "property",
+  alarm: "property",
+  drugs: "other",
+  "welfare-check": "other",
+  disturbance: "other",
+  trespass: "other",
+  suspicious: "other",
+  arrest: "other",
+  "missing-person": "other",
+  "public-safety": "other",
+};
+
+export function classifyCall(title: string): CallClass {
+  const t = title.toLowerCase();
+  if (/\b(shot|shooting|homicide|murder|stab)\b/.test(t)) {
+    return { type: "shots-fired", category: "violent", severity: "critical", family: "violent" };
+  }
+  if (/\b(fire|blaze|2-alarm|two-alarm)\b/.test(t)) {
+    return { type: "fire", category: "other", severity: "high", family: "fire" };
+  }
+  if (/\bfatal crash\b|\baccident - fatal\b/.test(t)) {
+    return { type: "crash", category: "other", severity: "critical", family: "crash" };
+  }
+  if (/\b(crash|collision|hit-and-run|hit & run|accident - )\b/.test(t)) {
+    return { type: "crash", category: "other", severity: "high", family: "crash" };
+  }
+  if (/\bdwi|intoxicat/.test(t)) return { type: "dwi", category: "other", severity: "high", family: "crash" };
+  if (/\bdomestic\b/.test(t)) return { type: "domestic", category: "violent", severity: "high", family: "violent" };
+  if (/\b(robbery|carjack)\b/.test(t)) return { type: "robbery", category: "violent", severity: "high", family: "violent" };
+  if (/\b(panic alarm|hold-?up alarm|burglar alarm)\b/.test(t)) {
+    return { type: "alarm", category: "other", severity: "high", family: "property" };
+  }
+  if (/\bassault\b/.test(t)) return { type: "assault", category: "violent", severity: "high", family: "violent" };
+  if (/\b(burglary|break-in|alarm - burglary)\b/.test(t)) {
+    return { type: "burglary", category: "property", severity: "medium", family: "property" };
+  }
+  if (/\b(theft|stolen|larceny)\b/.test(t)) {
+    return { type: "larceny", category: "property", severity: "medium", family: "property" };
+  }
+  if (/\bdrug\b|\babc violation\b/.test(t)) {
+    return { type: "drugs", category: "other", severity: "medium", family: "other" };
+  }
+  if (/\bwelfare check\b|\bchild welfare\b/.test(t)) {
+    return { type: "welfare-check", category: "other", severity: "medium", family: "other" };
+  }
+  if (/\bdisturbance\b|\bdisorderly\b|\bscreaming\b/.test(t)) {
+    return { type: "disturbance", category: "other", severity: "medium", family: "other" };
+  }
+  if (/\b(harassment|trespass|menacing)\b/.test(t)) {
+    return { type: "trespass", category: "other", severity: "medium", family: "other" };
+  }
+  if (/\bsuspicious\b/.test(t)) return { type: "suspicious", category: "other", severity: "low", family: "other" };
+  if (/\b(arrest|charged|indicted)\b/.test(t)) {
+    return { type: "arrest", category: "other", severity: "medium", family: "other" };
+  }
+  if (/\bdisabled vehicle\b/.test(t)) {
+    return { type: "disabled-vehicle", category: "other", severity: "low", family: "crash" };
+  }
+  if (/\blocate person\b|\bmissing child\b/.test(t)) {
+    return { type: "missing-person", category: "other", severity: "high", family: "other" };
+  }
+  return { type: "public-safety", category: "other", severity: "medium", family: "other" };
+}
+
+export function tokens(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !/^(albany|county|police|street|avenue|road|that|with|from|this|have|been)\b/.test(w));
+}
+
+export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const la1 = (a.lat * Math.PI) / 180;
+  const la2 = (b.lat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+export function normMuni(raw?: string): string {
+  const s = (raw || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!s) return "";
+  return MUNI_ALIAS[s] || s;
+}
+
+function hay(item: FuseItem): string {
+  return `${item.title} ${item.summary} ${item.address ?? ""} ${item.category ?? ""}`;
+}
+
+function callOf(item: FuseItem): CallClass {
+  return classifyCall(`${item.title} ${item.category ?? ""} ${item.summary ?? ""}`);
+}
+
+function kindsCompatible(a: CallClass, b: CallClass): boolean {
+  if (a.type === b.type) return true;
+  if (a.family === b.family && a.family !== "other") return true;
+  return false;
+}
+
+function windowMin(a: FuseItem, b: FuseItem): number {
+  const kinds = new Set([a.kind ?? "news", b.kind ?? "news"]);
+  if (kinds.has("blotter") && (kinds.has("news") || kinds.has("social") || kinds.has("scanner") || kinds.has("traffic"))) {
+    return 16 * 60;
+  }
+  if (kinds.has("news") && kinds.has("news")) return 8 * 60;
+  if (kinds.has("scanner") && kinds.has("traffic")) return 90;
+  if (kinds.has("scanner") && kinds.has("news")) return 4 * 60;
+  if (kinds.has("scanner") && kinds.has("scanner")) return 45;
+  if (kinds.has("traffic") && kinds.has("news")) return 4 * 60;
+  if (kinds.has("social")) return 8 * 60;
+  return 90;
+}
+
+function hasPin(item: FuseItem): boolean {
+  return typeof item.lat === "number" && typeof item.lng === "number" && Number.isFinite(item.lat) && Number.isFinite(item.lng);
+}
+
+function geoClose(a: FuseItem, b: FuseItem): boolean {
+  const ma = normMuni(a.municipality);
+  const mb = normMuni(b.municipality);
+  const genericA = !ma || GENERIC_MUNI.test(ma);
+  const genericB = !mb || GENERIC_MUNI.test(mb);
+  if (hasPin(a) && hasPin(b)) {
+    const km = haversineKm({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! });
+    if (km <= 1.6) return true;
+    if (km <= 4 && ma && mb && ma === mb && !genericA) return true;
+    return false;
+  }
+  if (ma && mb && ma === mb && !genericA && !genericB) return true;
+  return false;
+}
+
+function tokenHit(a: FuseItem, b: FuseItem): number {
+  const wa = tokens(hay(a));
+  const wb = new Set(tokens(hay(b)));
+  return wa.filter((w) => wb.has(w)).length;
+}
+
+export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
+  if (a.id === b.id) return true;
+  const ca = callOf(a);
+  const cb = callOf(b);
+  if (!kindsCompatible(ca, cb)) return false;
+  if (Math.abs(a.minutesAgo - b.minutesAgo) > windowMin(a, b)) return false;
+  const place = geoClose(a, b);
+  const hit = tokenHit(a, b);
+  if (place) return hit >= 1 || ca.type === cb.type;
+  // Weak geo: only fuse when titles clearly overlap (same street / same event words).
+  const need = Math.max(3, Math.ceil(Math.min(tokens(a.title).length, tokens(b.title).length) * 0.5));
+  return hit >= need;
+}
+
+export function clusterLiveItems(items: FuseItem[]): FuseItem[][] {
+  const groups: FuseItem[][] = [];
+  for (const item of items) {
+    const found = groups.find((g) => g.some((member) => shouldFuse(item, member)));
+    if (found) found.push(item);
+    else groups.push([item]);
+  }
+  return groups;
+}
+
+function officialSocial(outlet: string): boolean {
+  return /Facebook ·|Civic ·|X · NYSP|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
+    outlet,
+  );
+}
+
+export function sourceFamily(kind: FuseKind | undefined, outlet: string): string {
+  const activity = kind ?? "news";
+  if (activity === "blotter") return "blotter";
+  if (activity === "scanner") return "scanner";
+  if (outlet === "511NY" || (activity === "traffic" && /511/i.test(outlet))) return "511";
+  if (outlet === "NWS" || /National Weather/i.test(outlet)) return "nws";
+  if (/^Civic ·/i.test(outlet)) return "civic";
+  if (activity === "social") return officialSocial(outlet) ? "press" : "social";
+  if (activity === "traffic") return "511";
+  return "news";
+}
+
+export function familyChip(family: string): SeenOnChip {
+  switch (family) {
+    case "blotter":
+      return { key: "blotter", label: "Blotter" };
+    case "scanner":
+      return { key: "scanner", label: "Scanner" };
+    case "511":
+      return { key: "511", label: "511" };
+    case "nws":
+      return { key: "nws", label: "NWS" };
+    case "civic":
+    case "press":
+      return { key: "civic", label: "Civic" };
+    case "social":
+      return { key: "social", label: "Social" };
+    default:
+      return { key: "news", label: "News" };
+  }
+}
+
+export function seenOnFromItems(items: FuseItem[]): SeenOnChip[] {
+  const seen = new Set<string>();
+  const out: SeenOnChip[] = [];
+  for (const item of items) {
+    const chip = familyChip(sourceFamily(item.kind, item.outlet));
+    if (seen.has(chip.key)) continue;
+    seen.add(chip.key);
+    out.push(chip);
+  }
+  return out;
+}
+
+export function seenOnFromSources(sources: IncidentSource[]): SeenOnChip[] {
+  const seen = new Set<string>();
+  const out: SeenOnChip[] = [];
+  for (const s of sources) {
+    const family =
+      s.kind === "blotter"
+        ? "blotter"
+        : s.kind === "scanner"
+          ? "scanner"
+          : s.kind === "cfs" || /511/i.test(s.name)
+            ? "511"
+            : /NWS/i.test(s.name)
+              ? "nws"
+              : s.kind === "social"
+                ? "social"
+                : s.kind === "press" || /Civic/i.test(s.name)
+                  ? "civic"
+                  : "news";
+    const chip = familyChip(family);
+    if (seen.has(chip.key)) continue;
+    seen.add(chip.key);
+    out.push(chip);
+  }
+  return out;
+}
+
+function familyTier(family: string): SourceTier {
+  if (family === "blotter" || family === "511" || family === "nws" || family === "civic" || family === "press") {
+    return "official";
+  }
+  if (family === "scanner" || family === "social") return "unconfirmed";
+  return "context";
+}
+
+/**
+ * Independent-family corroboration. Official > context > unconfirmed.
+ * A lone scanner is capped so it cannot outrank a multi-source cluster.
+ */
+export function scoreCorroboration(items: FuseItem[]): Corroboration {
+  const families = [...new Set(items.map((i) => sourceFamily(i.kind, i.outlet)))];
+  const newsOutlets = new Set(
+    items.filter((i) => sourceFamily(i.kind, i.outlet) === "news").map((i) => i.outlet.toLowerCase()),
+  );
+  let score = 0;
+  const official = families.filter((f) => familyTier(f) === "official");
+  const context = families.filter((f) => familyTier(f) === "context");
+  const unconfirmed = families.filter((f) => familyTier(f) === "unconfirmed");
+  score += official.length * 36;
+  score += context.length * 18;
+  score += Math.min(2, newsOutlets.size) * 6;
+  score += unconfirmed.length * 8;
+  if (families.length >= 2) score += 16;
+  if (families.length >= 3) score += 12;
+  if (official.length && (context.length || unconfirmed.length)) score += 10;
+
+  const onlyScanner = families.length === 1 && families[0] === "scanner";
+  const onlySocial = families.length === 1 && families[0] === "social";
+  if (onlyScanner || onlySocial) score = Math.min(score, 22);
+
+  score = Math.max(0, Math.min(100, score));
+  const why = onlyScanner
+    ? "Scanner only — unconfirmed radio, not CAD."
+    : onlySocial
+      ? "Citizen or social post — not a 911 or CAD call."
+      : official.length && families.length > 1
+        ? `Official ${official.join(" + ")} plus ${families.length - official.length} independent source${families.length - official.length === 1 ? "" : "s"}.`
+        : official.length
+          ? `Official ${official.join(" + ")}.`
+          : `${families.length} independent source famil${families.length === 1 ? "y" : "ies"} (${families.join(", ")}).`;
+  return { score, families, independent: families.length, why };
+}
+
+export function compareFused(a: { corroborationScore?: number; minutesAgo: number }, b: { corroborationScore?: number; minutesAgo: number }): number {
+  const sa = a.corroborationScore ?? 0;
+  const sb = b.corroborationScore ?? 0;
+  if (sb !== sa) return sb - sa;
+  return a.minutesAgo - b.minutesAgo;
+}
+
+export function pickPrimary(group: FuseItem[]): FuseItem {
+  const rank = (item: FuseItem): number => {
+    const family = sourceFamily(item.kind, item.outlet);
+    const tier = familyTier(family);
+    const tierN = tier === "official" ? 3 : tier === "context" ? 2 : 1;
+    const recency = Math.max(0, 2000 - item.minutesAgo);
+    return tierN * 10_000 + recency;
+  };
+  return [...group].sort((a, b) => rank(b) - rank(a))[0]!;
+}
+
+export function itemToSource(item: FuseItem): IncidentSource {
+  const activity = item.kind ?? "news";
+  const family = sourceFamily(activity, item.outlet);
+  const kind: SourceKind =
+    family === "blotter"
+      ? "blotter"
+      : family === "scanner"
+        ? "scanner"
+        : family === "511"
+          ? "cfs"
+          : family === "social"
+            ? "social"
+            : family === "civic" || family === "press" || family === "nws"
+              ? "press"
+              : "news";
+  return {
+    kind,
+    name: item.outlet,
+    tier: familyTier(family),
+    url: item.url,
+    excerpt: item.summary || item.title,
+  };
+}
+
+export function verificationFor(items: FuseItem[], sources: IncidentSource[]): Verification {
+  if (sources.some((s) => s.tier === "official")) return "confirmed";
+  if (sources.length > 0 && sources.every((s) => s.kind === "scanner")) return "scanner";
+  const families = new Set(items.map((i) => sourceFamily(i.kind, i.outlet)));
+  if (families.size === 1 && families.has("scanner")) return "scanner";
+  return "developing";
+}
+
+export function fuseId(group: FuseItem[], primary: FuseItem): string {
+  if (group.length === 1) {
+    const item = group[0]!;
+    if (item.id.startsWith("nysp-") || item.id.startsWith("scan-") || item.id.startsWith("citizen-") || item.id.startsWith("511-")) {
+      return item.id;
+    }
+  }
+  const official = group.find((g) => g.id.startsWith("nysp-") || g.id.startsWith("511-"));
+  if (official) return official.id;
+  let h = 0;
+  const key = group
+    .map((g) => g.id)
+    .sort()
+    .join("|");
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  if (primary.id.startsWith("scan-") && group.length === 1) return primary.id;
+  return `fuse-${Math.abs(h).toString(36)}`;
+}

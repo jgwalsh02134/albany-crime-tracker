@@ -179,6 +179,24 @@ export function IncidentDrawer({ incident }: { incident: Incident | null }) {
               {verificationWhy(incident)}
             </p>
           )}
+          {incident.seenOn && incident.seenOn.length ? (
+            <p className="mt-3 flex flex-wrap items-center gap-1 text-xs text-subtle">
+              <span>Seen on:</span>
+              {incident.seenOn.map((chip) => (
+                <span
+                  key={chip.key}
+                  className="rounded-full border border-border bg-surface-2 px-2 py-0.5 font-medium text-muted"
+                >
+                  {chip.label}
+                </span>
+              ))}
+              {typeof incident.corroborationScore === "number" ? (
+                <span className="ml-auto font-mono tabular-nums">
+                  {incident.corroborationScore}/100
+                </span>
+              ) : null}
+            </p>
+          ) : null}
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div>
               <dt className="text-xs uppercase tracking-wide text-subtle">Agency</dt>

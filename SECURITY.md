@@ -41,3 +41,8 @@ Attackers are assumed to be internet-anonymous (spam bots, scrapers) and opportu
 - Set `SUPERFEEDR_ADMIN_TOKEN` (or `READY_ADMIN_TOKEN`) for rich `/ready` and subscribe.
 - Optionally set `REDIS_URL` or Upstash REST env vars for multi-instance rate limiting.
 - Confirm the site is served over HTTPS so HSTS applies.
+
+## Open-source honesty
+
+Pipes we poll vs probes that failed are in [docs/sources.md](docs/sources.md). We do not invent CAD, PulsePoint, OpenMHz, Nixle, Waze, or jail feeds. Admin `/ready` includes per-pipe last success/count behind the existing admin token.
+
