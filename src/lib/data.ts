@@ -60,12 +60,12 @@ export const SOURCES = [
   {
     name: "Town civic alerts",
     tier: "Official",
-    detail: "Bethlehem, Guilderland, and Albany CivicPlus news flashes when they are crashes, arrests, or fires — not hiring or parking. Alert Center RSS is empty unless the city posts.",
+    detail: "Bethlehem, Guilderland PD + town, Albany, Cohoes, Menands, and Voorheesville public RSS. Incident-only filter. Colonie / Watervliet civic RSS is not public.",
   },
   {
     name: "Newsrooms",
     tier: "Newsroom",
-    detail: "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight, Daily Gazette, FOX23. Breaking crime under 24h also appears on Live.",
+    detail: "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight, Daily Gazette, FOX23, Spectrum, Troy Record, plus Cohoes/Watervliet/Menands and Guilderland Google News queries. Breaking crime under 24h also appears on Live.",
   },
   {
     name: "Citizens",

@@ -1,5 +1,17 @@
 import type { Incident, IncidentSource, ScannerCall, SourceKind, SourceLens, SourceTier, Verification } from "./types";
 import { placeFromText, spreadItems } from "./geo";
+import {
+  classifyCall,
+  clusterLiveItems,
+  compareFused,
+  fuseId,
+  itemToSource,
+  pickPrimary,
+  scoreCorroboration,
+  seenOnFromItems,
+  tokens,
+  verificationFor,
+} from "./fusion";
 
 export const OFFICIAL_KINDS = new Set<SourceKind>(["blotter", "cfs", "nixle", "press", "opendata"]);
 
@@ -61,7 +73,7 @@ function sourceUrl(kind: SourceKind, name: string, agencyAbbr: string): string {
 function sourceLabel(kind: SourceKind, name: string, agencyAbbr: string): string {
   if (kind === "blotter") return `${agencyAbbr} blotter`;
   if (kind === "press") return `${agencyAbbr} press`;
-  if (kind === "cfs") return "Calls for service";
+  if (kind === "cfs") return "511NY";
   if (kind === "nixle") return "Nixle";
   if (kind === "scanner") return name.includes("Fire") ? "Albany Fire radio" : "Broadcastify P25";
   return name;
@@ -72,7 +84,7 @@ export function kindLabel(kind: SourceKind): string {
     case "blotter":
       return "Blotter";
     case "cfs":
-      return "CAD";
+      return "511";
     case "nixle":
       return "Nixle";
     case "press":
@@ -210,13 +222,6 @@ export type LiveWireItem = {
   lng?: number;
 };
 
-function tokens(s: string): string[] {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 3);
-}
 
 export function fuseLiveWire(incidents: Incident[], wire: LiveWireItem[]): Incident[] {
   if (!wire.length) return incidents;
@@ -253,32 +258,9 @@ function placeOf(text: string): { name: string; lat: number; lng: number } {
   return placeFromText(text) ?? { name: "Albany County", lat: 42.6526, lng: -73.7562 };
 }
 
-function classify(title: string): { type: string; category: Incident["category"]; severity: Incident["severity"] } {
-  const t = title.toLowerCase();
-  if (/\b(shot|shooting|homicide|murder|stab)\b/.test(t)) {
-    return { type: "shots-fired", category: "violent", severity: "critical" };
-  }
-  if (/\b(fire|blaze|2-alarm|two-alarm)\b/.test(t)) return { type: "fire", category: "other", severity: "high" };
-  if (/\bfatal crash\b|\baccident - fatal\b/.test(t)) return { type: "crash", category: "other", severity: "critical" };
-  if (/\b(crash|collision|hit-and-run|hit & run|accident - )\b/.test(t)) {
-    return { type: "crash", category: "other", severity: "high" };
-  }
-  if (/\bdwi|intoxicat/.test(t)) return { type: "dwi", category: "other", severity: "high" };
-  if (/\bdomestic\b/.test(t)) return { type: "domestic", category: "violent", severity: "high" };
-  if (/\b(robbery|carjack)\b/.test(t)) return { type: "robbery", category: "violent", severity: "high" };
-  if (/\b(panic alarm|hold-?up alarm|burglar alarm)\b/.test(t)) return { type: "alarm", category: "other", severity: "high" };
-  if (/\bassault\b/.test(t)) return { type: "assault", category: "violent", severity: "high" };
-  if (/\b(burglary|break-in|alarm - burglary)\b/.test(t)) return { type: "burglary", category: "property", severity: "medium" };
-  if (/\b(theft|stolen|larceny)\b/.test(t)) return { type: "larceny", category: "property", severity: "medium" };
-  if (/\bdrug\b|\babc violation\b/.test(t)) return { type: "drugs", category: "other", severity: "medium" };
-  if (/\bwelfare check\b|\bchild welfare\b/.test(t)) return { type: "welfare-check", category: "other", severity: "medium" };
-  if (/\bdisturbance\b|\bdisorderly\b|\bscreaming\b/.test(t)) return { type: "disturbance", category: "other", severity: "medium" };
-  if (/\b(harassment|trespass|menacing)\b/.test(t)) return { type: "trespass", category: "other", severity: "medium" };
-  if (/\bsuspicious\b/.test(t)) return { type: "suspicious", category: "other", severity: "low" };
-  if (/\b(arrest|charged|indicted)\b/.test(t)) return { type: "arrest", category: "other", severity: "medium" };
-  if (/\bdisabled vehicle\b/.test(t)) return { type: "disabled-vehicle", category: "other", severity: "low" };
-  if (/\blocate person\b|\bmissing child\b/.test(t)) return { type: "missing-person", category: "other", severity: "high" };
-  return { type: "public-safety", category: "other", severity: "medium" };
+export function classify(title: string): { type: string; category: Incident["category"]; severity: Incident["severity"] } {
+  const c = classifyCall(title);
+  return { type: c.type, category: c.category, severity: c.severity };
 }
 
 function hashId(s: string): string {
@@ -287,13 +269,32 @@ function hashId(s: string): string {
   return `wire-${Math.abs(h).toString(36)}`;
 }
 
+function agencyAbbrFor(item: LiveWireItem, activity: ActivityKind): string {
+  if (activity === "blotter") return "NYSP";
+  if (activity === "scanner") {
+    if (/colonie/i.test(item.agency || "")) return "CPD";
+    if (/albany\s*pd|albany police/i.test(item.agency || "")) return "APD";
+    if (/bethlehem/i.test(item.agency || "")) return "BPD";
+    if (/albany\s*fire/i.test(item.agency || "")) return "AFD";
+    if (/thruway|nysta/i.test(item.agency || "")) return "NYSTA";
+    if (/nysp/i.test(item.agency || "")) return "NYSP";
+    return "SCAN";
+  }
+  if (activity === "social") {
+    if (/albany pd/i.test(item.outlet)) return "APD";
+    if (/colonie/i.test(item.outlet)) return "CPD";
+    if (/bethlehem/i.test(item.outlet)) return "BPD";
+    if (/reddit/i.test(item.outlet)) return "RDT";
+    if (/citizen/i.test(item.outlet)) return "TIP";
+    return "SOC";
+  }
+  return item.outlet.replace(/\s+/g, "").slice(0, 6).toUpperCase();
+}
+
 export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
-  const news = wire.filter((w) => (w.kind ?? "news") === "news");
-  const other = wire.filter((w) => (w.kind ?? "news") !== "news");
-  const clustered = clusterWire(news);
-  const groups: LiveWireItem[][] = [...other.map((w) => [w]), ...clustered];
+  const groups = clusterLiveItems(wire);
   const incidents = groups.map((group) => {
-    const item = group[0]!;
+    const item = pickPrimary(group);
     const hay = group.map((g) => `${g.title} ${g.summary}`).join(" ");
     const placed = item.municipality
       ? { name: item.municipality, lat: item.lat ?? 42.6526, lng: item.lng ?? -73.7562 }
@@ -310,56 +311,17 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
     for (const g of group) {
       if (seen.has(g.url)) continue;
       seen.add(g.url);
-      const activity = g.kind ?? "news";
-      sources.push({
-        kind:
-          activity === "blotter"
-            ? "blotter"
-            : activity === "scanner"
-              ? "scanner"
-              : activity === "traffic"
-                ? "cfs"
-                : activity === "social"
-                  ? /Facebook ·|X · NYSP|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
-                      g.outlet,
-                    )
-                    ? "press"
-                    : "social"
-                  : /^Civic ·|^NWS$/i.test(g.outlet)
-                    ? "press"
-                    : "news",
-        name: g.outlet,
-        tier:
-          activity === "blotter" || activity === "traffic" || /^Civic ·|^NWS$/i.test(g.outlet)
-            ? "official"
-            : activity === "scanner"
-              ? "unconfirmed"
-              : activity === "social"
-                ? /Facebook ·|X · NYSP|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
-                    g.outlet,
-                  )
-                  ? "official"
-                  : "unconfirmed"
-                : "context",
-        url: g.url,
-        excerpt: g.summary || g.title,
-      });
+      sources.push(itemToSource(g));
     }
+    const corr = scoreCorroboration(group);
+    const seenOn = seenOnFromItems(group);
     const activity = item.kind ?? "news";
-    const officialSocial =
-      activity === "social" &&
-      /Facebook ·|X · NYSP|X · Albany (PD|Fire)|X · Colonie|X · Bethlehem/i.test(item.outlet);
-    const verification: Incident["verification"] =
-      activity === "blotter" || activity === "traffic" || officialSocial
-        ? "confirmed"
-        : activity === "scanner"
-          ? "scanner"
-          : "developing";
+    const verification = verificationFor(group, sources);
     return {
-      id: item.id.startsWith("nysp-") || item.id.startsWith("scan-") || item.id.startsWith("citizen-")
+      id: fuseId(group, item) || (item.id.startsWith("nysp-") || item.id.startsWith("scan-") || item.id.startsWith("citizen-")
         ? item.id
-        : hashId(item.url),
-      minutesAgo: item.minutesAgo,
+        : hashId(item.url)),
+      minutesAgo: Math.min(...group.map((g) => g.minutesAgo)),
       occurredAt: item.publishedAt,
       title: item.title,
       type: kind.type,
@@ -371,64 +333,18 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       lat: item.lat ?? placed.lat,
       lng: item.lng ?? placed.lng,
       agency: item.agency || item.outlet,
-      agencyAbbr:
-        activity === "blotter"
-          ? "NYSP"
-          : activity === "scanner"
-            ? /colonie/i.test(item.agency || "")
-              ? "CPD"
-              : /albany\s*pd|albany police/i.test(item.agency || "")
-                ? "APD"
-                : /bethlehem/i.test(item.agency || "")
-                  ? "BPD"
-                  : /albany\s*fire/i.test(item.agency || "")
-                    ? "AFD"
-                    : /thruway|nysta/i.test(item.agency || "")
-                      ? "NYSTA"
-                      : /nysp/i.test(item.agency || "")
-                        ? "NYSP"
-                        : "SCAN"
-            : activity === "social"
-              ? /albany pd/i.test(item.outlet)
-                ? "APD"
-                : /colonie/i.test(item.outlet)
-                  ? "CPD"
-                  : /bethlehem/i.test(item.outlet)
-                    ? "BPD"
-                    : /reddit/i.test(item.outlet)
-                      ? "RDT"
-                      : /citizen/i.test(item.outlet)
-                        ? "TIP"
-                        : "SOC"
-              : item.outlet.replace(/\s+/g, "").slice(0, 6).toUpperCase(),
+      agencyAbbr: agencyAbbrFor(item, activity),
       description: item.summary || item.title,
       sources,
       verification,
       origin: "live",
       disposition: item.status,
+      corroborationScore: corr.score,
+      seenOn,
+      memberIds: group.map((g) => g.id),
     } satisfies Incident;
   });
-  return spreadItems(incidents).sort((a, b) => a.minutesAgo - b.minutesAgo);
-}
-
-function clusterWire(items: LiveWireItem[]): LiveWireItem[][] {
-  const groups: LiveWireItem[][] = [];
-  for (const item of items) {
-    const kind = classify(item.title);
-    const words = tokens(item.title);
-    const found = groups.find((g) => {
-      const head = g[0]!;
-      if (classify(head.title).type !== kind.type) return false;
-      if (Math.abs(item.minutesAgo - head.minutesAgo) > 8 * 60) return false;
-      const other = tokens(head.title);
-      const hit = words.filter((w) => other.includes(w)).length;
-      const need = Math.max(4, Math.ceil(Math.min(words.length, other.length) * 0.55));
-      return hit >= need;
-    });
-    if (found) found.push(item);
-    else groups.push([item]);
-  }
-  return groups;
+  return spreadItems(incidents).sort(compareFused);
 }
 
 export function mergeLiveFeed(_seed: Incident[], wire: LiveWireItem[]): Incident[] {

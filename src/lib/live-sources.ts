@@ -7,6 +7,7 @@ import { collectSocial, socialLive, socialNews } from "./social-sources";
 import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
 import { superfeedrItems } from "./superfeedr";
 import { enrichStoryImages, pickBestImage } from "./news-thumbs";
+import { recordPipeFail, recordPipeOk } from "./pipe-health";
 
 const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
@@ -16,8 +17,33 @@ const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   { url: "https://www.wamc.org/news.rss", outlet: "WAMC" },
   { url: "https://patch.com/new-york/albany/rss", outlet: "Patch Albany" },
   {
-    url: "https://news.google.com/rss/search?q=Albany+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI+OR+trooper)+when:1d&hl=en-US&gl=US&ceid=US:en",
+    url: "https://news.google.com/rss/search?q=Albany+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI+OR+trooper+OR+stabbing+OR+homicide+OR+wanted)+when:1d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Google News",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=(Cohoes+OR+Watervliet+OR+Menands+OR+%22Green+Island%22)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "North cities",
+    crimeOnly: true,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=(Guilderland+OR+Altamont+OR+Voorheesville)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI+OR+blotter)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Guilderland news",
+    crimeOnly: true,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:spectrumlocalnews.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Spectrum",
+    crimeOnly: true,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=%22Albany+County+Sheriff%22+(arrest+OR+crash+OR+shooting+OR+DWI)+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "ACSO",
+    crimeOnly: true,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:troyrecord.com+(albany+OR+troy+OR+rensselaer)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Troy Record",
+    crimeOnly: true,
   },
   {
     url: "https://news.google.com/rss/search?q=site:timesunion.com+(crash+OR+shooting+OR+arrest+OR+DWI+OR+homicide+OR+stabbing)+(albany+OR+colonie+OR+delmar+OR+latham+OR+bethlehem+OR+guilderland)+when:3d&hl=en-US&gl=US&ceid=US:en",
@@ -193,15 +219,21 @@ async function collectNews(now: number) {
           },
           signal: AbortSignal.timeout(8000),
         });
-        if (!res.ok) return { outlet: feed.outlet, news: [] as LiveWireItem[], crime: [] as LiveWireItem[] };
+        if (!res.ok) {
+          recordPipeFail(`news:${feed.outlet}`, feed.outlet, `HTTP ${res.status}`);
+          return { outlet: feed.outlet, news: [] as LiveWireItem[], crime: [] as LiveWireItem[] };
+        }
         const xml = await res.text();
-        if (!xml.includes("<item")) return { outlet: feed.outlet, news: [] as LiveWireItem[], crime: [] as LiveWireItem[] };
-        return {
-          outlet: feed.outlet,
-          news: parseRss(xml, feed.outlet, now, Boolean(feed.crimeOnly)),
-          crime: parseRss(xml, feed.outlet, now, true),
-        };
-      } catch {
+        if (!xml.includes("<item")) {
+          recordPipeOk(`news:${feed.outlet}`, feed.outlet, 0);
+          return { outlet: feed.outlet, news: [] as LiveWireItem[], crime: [] as LiveWireItem[] };
+        }
+        const news = parseRss(xml, feed.outlet, now, Boolean(feed.crimeOnly));
+        const crime = parseRss(xml, feed.outlet, now, true);
+        recordPipeOk(`news:${feed.outlet}`, feed.outlet, news.length);
+        return { outlet: feed.outlet, news, crime };
+      } catch (err) {
+        recordPipeFail(`news:${feed.outlet}`, feed.outlet, err instanceof Error ? err.message : "news-error");
         return { outlet: feed.outlet, news: [] as LiveWireItem[], crime: [] as LiveWireItem[] };
       }
     }),
@@ -271,7 +303,10 @@ async function fetch511(now: number): Promise<LiveWireItem[]> {
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      recordPipeFail("511ny", "511NY", `HTTP ${res.status}`);
+      return [];
+    }
     const events = (await res.json()) as DotEvent[];
     const out: LiveWireItem[] = [];
     for (const e of events) {
@@ -305,8 +340,10 @@ async function fetch511(now: number): Promise<LiveWireItem[]> {
         lng: typeof e.Longitude === "number" ? e.Longitude : undefined,
       });
     }
+    recordPipeOk("511ny", "511NY", out.length);
     return out;
-  } catch {
+  } catch (err) {
+    recordPipeFail("511ny", "511NY", err instanceof Error ? err.message : "511-error");
     return [];
   }
 }
@@ -317,7 +354,10 @@ async function fetchNyspPress(now: number): Promise<LiveWireItem[]> {
       headers: { "User-Agent": UA, Accept: "text/html" },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      recordPipeFail("nysp-press", "NYSP press", `HTTP ${res.status}`);
+      return [];
+    }
     const html = await res.text();
     const out: LiveWireItem[] = [];
     const seen = new Set<string>();
@@ -351,8 +391,10 @@ async function fetchNyspPress(now: number): Promise<LiveWireItem[]> {
         lng: place?.lng,
       });
     }
+    recordPipeOk("nysp-press", "NYSP press", out.length);
     return out;
-  } catch {
+  } catch (err) {
+    recordPipeFail("nysp-press", "NYSP press", err instanceof Error ? err.message : "press-error");
     return [];
   }
 }
@@ -397,7 +439,15 @@ async function collectWire() {
     fetchNws(now).catch(() => [] as LiveWireItem[]),
   ]);
   const blotter = blotterRes.items;
+  if (blotterRes.failed && !blotter.length) {
+    recordPipeFail("nysp-blotter", "NYSP blotter", `failed ${blotterRes.failed}/${blotterRes.tried}`);
+  } else {
+    recordPipeOk("nysp-blotter", "NYSP blotter", blotter.length);
+  }
   const scan = scannerItems(now);
+  const scanStats = scannerHealth();
+  recordPipeOk("scanner", "Scanner", scan.length);
+  if (scanStats.lastError) recordPipeFail("scanner", "Scanner", scanStats.lastError);
   const pushed = superfeedrItems(now);
   const socialNow = socialLive(social.items);
   const socialOlder = socialNews(social.items);
@@ -434,7 +484,6 @@ async function collectWire() {
     social.reddit || social.citizen ? "Citizens" : "",
     ...news.liveOutlets,
   ].filter(Boolean);
-  const scanStats = scannerHealth();
   const health: WireHealth = {
     blotter: blotterLive.length,
     blotterFailed: blotterRes.failed,

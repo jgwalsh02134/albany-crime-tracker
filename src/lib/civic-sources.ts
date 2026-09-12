@@ -1,5 +1,6 @@
 import { placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
+import { recordPipeFail, recordPipeOk } from "./pipe-health";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const LIVE_MIN = 24 * 60;
@@ -26,9 +27,29 @@ const CIVIC_FEEDS: CivicFeed[] = [
     agency: "Guilderland PD",
   },
   {
+    url: "https://www.townofguilderland.gov/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Guilderland",
+    agency: "Town of Guilderland",
+  },
+  {
     url: "https://www.albanyny.gov/RSSFeed.aspx?ModID=1&CID=All-news",
     outlet: "Civic · Albany",
     agency: "City of Albany",
+  },
+  {
+    url: "https://www.cohoes-ny.gov/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Cohoes",
+    agency: "City of Cohoes",
+  },
+  {
+    url: "https://menandsny.gov/feed/",
+    outlet: "Civic · Menands",
+    agency: "Village of Menands",
+  },
+  {
+    url: "https://www.villageofvoorheesville.gov/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Voorheesville",
+    agency: "Village of Voorheesville",
   },
 ];
 
@@ -51,13 +72,20 @@ function tag(block: string, name: string): string {
   return m ? decode(m[1]!) : "";
 }
 
+function pipeId(outlet: string): string {
+  return `civic:${outlet.replace(/^Civic · /i, "").toLowerCase().replace(/\s+/g, "-")}`;
+}
+
 async function fetchCivicFeed(feed: CivicFeed, now: number): Promise<LiveWireItem[]> {
   try {
     const res = await fetch(feed.url, {
       headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml, */*" },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      recordPipeFail(pipeId(feed.outlet), feed.outlet, `HTTP ${res.status}`);
+      return [];
+    }
     const xml = await res.text();
     const out: LiveWireItem[] = [];
     for (const match of xml.matchAll(/<item[\s\S]*?<\/item>/gi)) {
@@ -88,8 +116,10 @@ async function fetchCivicFeed(feed: CivicFeed, now: number): Promise<LiveWireIte
         lng: place?.lng,
       });
     }
+    recordPipeOk(pipeId(feed.outlet), feed.outlet, out.length);
     return out;
-  } catch {
+  } catch (err) {
+    recordPipeFail(pipeId(feed.outlet), feed.outlet, err instanceof Error ? err.message : "civic-error");
     return [];
   }
 }
@@ -125,7 +155,10 @@ export async function fetchNws(now: number): Promise<LiveWireItem[]> {
       headers: { "User-Agent": UA, Accept: "application/geo+json" },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      recordPipeFail("nws", "NWS", `HTTP ${res.status}`);
+      return [];
+    }
     const body = (await res.json()) as { features?: NwsFeature[] };
     const out: LiveWireItem[] = [];
     for (const f of body.features ?? []) {
@@ -154,8 +187,10 @@ export async function fetchNws(now: number): Promise<LiveWireItem[]> {
         lng: place?.lng,
       });
     }
+    recordPipeOk("nws", "NWS", out.length);
     return out;
-  } catch {
+  } catch (err) {
+    recordPipeFail("nws", "NWS", err instanceof Error ? err.message : "nws-error");
     return [];
   }
 }

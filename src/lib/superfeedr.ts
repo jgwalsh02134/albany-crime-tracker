@@ -270,8 +270,11 @@ export const SUPERFEEDR_TOPICS: { topic: string; outlet: string }[] = [
   { topic: "https://wnyt.com/feed/", outlet: "WNYT" },
   { topic: "https://www.wamc.org/news.rss", outlet: "WAMC" },
   { topic: "https://patch.com/new-york/albany/rss", outlet: "Patch Albany" },
-  { topic: "https://www.timesunion.com/news/feed/", outlet: "Times Union" },
-  { topic: "https://www.timesunion.com/local/feed/", outlet: "Times Union Local" },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=site:timesunion.com+(crash+OR+shooting+OR+arrest+OR+DWI+OR+homicide+OR+stabbing)+(albany+OR+colonie+OR+delmar+OR+latham+OR+bethlehem+OR+guilderland)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Times Union",
+  },
   {
     topic:
       "https://news.google.com/rss/search?q=site:spotlightnews.com+(arrest+OR+crash+OR+blotter+OR+DWI+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
@@ -298,6 +301,47 @@ export const SUPERFEEDR_TOPICS: { topic: string; outlet: string }[] = [
   {
     topic: "https://www.albanyny.gov/RSSFeed.aspx?ModID=1&CID=All-news",
     outlet: "Civic · Albany",
+  },
+  {
+    topic: "https://www.townofguilderland.gov/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Guilderland",
+  },
+  {
+    topic: "https://www.cohoes-ny.gov/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Cohoes",
+  },
+  {
+    topic: "https://menandsny.gov/feed/",
+    outlet: "Civic · Menands",
+  },
+  {
+    topic: "https://www.villageofvoorheesville.gov/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Voorheesville",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=(Cohoes+OR+Watervliet+OR+Menands+OR+%22Green+Island%22)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "North cities",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=(Guilderland+OR+Altamont+OR+Voorheesville)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI+OR+blotter)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Guilderland news",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=site:spectrumlocalnews.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Spectrum",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=%22Albany+County+Sheriff%22+(arrest+OR+crash+OR+shooting+OR+DWI)+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "ACSO",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=site:troyrecord.com+(albany+OR+troy+OR+rensselaer)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Troy Record",
   },
 ];
 

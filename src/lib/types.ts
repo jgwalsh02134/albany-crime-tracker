@@ -37,6 +37,12 @@ export type Incident = {
   verification: Verification;
   origin?: "live" | "snapshot";
   disposition?: string;
+  /** 0–100 independent-family score. Lone scanner is capped below multi-source. */
+  corroborationScore?: number;
+  /** Provenance chips, e.g. Blotter / Scanner / 511 / News. */
+  seenOn?: { key: string; label: string }[];
+  /** Wire ids folded into this fused card (share / lookup). */
+  memberIds?: string[];
 };
 
 export type NewsStory = {

@@ -1,5 +1,6 @@
 import { placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
+import { recordPipeOk } from "./pipe-health";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const REDDIT_UA =
@@ -321,13 +322,13 @@ export async function collectSocial(now: number): Promise<SocialBundle> {
     items.push(row);
   }
   items.sort((a, b) => a.minutesAgo - b.minutesAgo);
-  return {
-    items,
-    facebook: items.filter((i) => i.outlet.startsWith("Facebook")).length,
-    x: items.filter((i) => i.outlet.startsWith("X ·")).length,
-    reddit: items.filter((i) => i.outlet.startsWith("Reddit")).length,
-    citizen: 0,
-  };
+  const facebook = items.filter((i) => i.outlet.startsWith("Facebook")).length;
+  const xCount = items.filter((i) => i.outlet.startsWith("X ·")).length;
+  const redditCount = items.filter((i) => i.outlet.startsWith("Reddit")).length;
+  recordPipeOk("social:facebook", "Facebook", facebook);
+  recordPipeOk("social:x", "X", xCount);
+  recordPipeOk("social:reddit", "Reddit", redditCount);
+  return { items, facebook, x: xCount, reddit: redditCount, citizen: 0 };
 }
 
 export function isOfficialSocial(outlet: string): boolean {
