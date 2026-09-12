@@ -90,8 +90,9 @@ test("sanitize/headers/admin-token behavior", async () => {
     const csp = contentSecurityPolicy();
     assert.match(csp, /frame-ancestors 'none'/);
     assert.match(csp, /fonts\.googleapis\.com/);
-    assert.match(csp, /arcgisonline/);
     assert.match(csp, /broadcastify/);
+    assert.match(csp, /img-src[^;]*https:/);
+    assert.match(csp, /default-src 'self'/);
 
     const store = new Map();
     applySecurityHeaders(

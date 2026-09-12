@@ -1,6 +1,6 @@
 /**
  * Shared security header values for Nitro middleware / route responses.
- * Honest defense-in-depth: CSP allows Map tiles, Google Fonts, Broadcastify HLS.
+ * Honest defense-in-depth: CSP allows Map tiles, Google Fonts, Broadcastify HLS, HTTPS images.
  */
 
 export const SECURITY_HEADER_NAMES = [
@@ -13,7 +13,7 @@ export const SECURITY_HEADER_NAMES = [
   "Strict-Transport-Security",
 ] as const;
 
-/** CSP tuned for this app's Map (Esri), fonts, and Broadcastify media — not "unhackable". */
+/** CSP tuned for Map (Esri), fonts, Broadcastify, and HTTPS news thumbs — not "unhackable". */
 export function contentSecurityPolicy(): string {
   const directives = [
     "default-src 'self'",
@@ -21,7 +21,8 @@ export function contentSecurityPolicy(): string {
     "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
-    "img-src 'self' data: blob: https://server.arcgisonline.com https://*.arcgisonline.com https://*.broadcastify.com",
+    // https: for publisher thumbs (News10/CBS6/etc); scripts/connect stay locked down.
+    "img-src 'self' data: blob: https:",
     "media-src 'self' blob: https://*.broadcastify.com https://hls-o1.broadcastify.com https://hls-o2.broadcastify.com",
     "connect-src 'self' https://*.broadcastify.com https://server.arcgisonline.com https://*.arcgisonline.com",
     "worker-src 'self' blob:",
