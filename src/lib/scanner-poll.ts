@@ -1,7 +1,7 @@
 import { extractAudioFromMpegTs, parseM3u8 } from "./scanner-hls";
 import { http2Get, http2GetText } from "./http2-get";
 import { transcribeAudioFile } from "./transcribe";
-import { getScannerFeed, SCANNER_FEEDS } from "./scanner-feeds";
+import { getScannerFeed, SCANNER_FEEDS, hlsCandidateUrls } from "./scanner-feeds";
 import type { LiveWireItem } from "./sources";
 import { geocodeSpoken, locateSpoken, placeFromText, TOWN } from "./geo";
 import {
@@ -293,9 +293,52 @@ function rememberCaption(feedId: string, feedName: string, spoken: string) {
   if (state.captions.length > 80) state.captions.length = 80;
 }
 
+
+const LISTEN_UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
+const playlistCache = new Map<string, { url: string; at: number }>();
+const PLAYLIST_TTL_MS = 5 * 60_000;
+
+async function resolvePlaylistUrl(feedId: string, fallback: string): Promise<string> {
+  const hit = playlistCache.get(feedId);
+  if (hit && Date.now() - hit.at < PLAYLIST_TTL_MS) return hit.url;
+
+  const extracted: string[] = [];
+  try {
+    const res = await fetch(`https://www.broadcastify.com/listen/feed/${feedId}`, {
+      headers: { "User-Agent": LISTEN_UA, Accept: "text/html" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const raw = html.match(/hlsUrl:\s*"((?:\\.|[^"])*)"/)?.[1] ?? "";
+      const unescaped = raw
+        .replace(/\\u([0-9a-fA-F]{4})/g, (_, h: string) => String.fromCharCode(Number.parseInt(h, 16)))
+        .replace(/\\(.)/g, "$1");
+      const hlsUrl = unescaped.split("?")[0] ?? "";
+      if (hlsUrl.startsWith("http")) extracted.push(hlsUrl);
+    }
+  } catch {
+    /* listen-page probe optional */
+  }
+
+  const candidates = hlsCandidateUrls(fallback, extracted);
+  let lastErr: unknown;
+  for (const url of candidates) {
+    try {
+      await http2GetText(url, 8000);
+      playlistCache.set(feedId, { url, at: Date.now() });
+      return url;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("hls-resolve-failed");
+}
+
 async function tickFeed(feedId: string) {
   const feed = getScannerFeed(feedId) ?? SCANNER_FEEDS[0]!;
-  const playlistUrl = feed.hlsFallback;
+  const playlistUrl = await resolvePlaylistUrl(feedId, feed.hlsFallback);
   const playlist = await http2GetText(playlistUrl, 8000);
   const segs = parseM3u8(playlist, playlistUrl);
   const window = segs.slice(-3);
