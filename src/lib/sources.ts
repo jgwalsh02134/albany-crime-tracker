@@ -125,6 +125,13 @@ export function deriveVerification(sources: IncidentSource[], fallback: Verifica
   return fallback;
 }
 
+function hasScannerSource(inc: Incident): boolean {
+  if (inc.sources.some((s) => s.kind === "scanner")) return true;
+  if (inc.seenOn?.some((c) => c.key === "scanner")) return true;
+  if (inc.verification === "scanner") return true;
+  return false;
+}
+
 export function matchesSourceLens(inc: Incident, lens: SourceLens): boolean {
   if (lens === "all") return true;
   if (lens === "official") return inc.sources.some((s) => OFFICIAL_KINDS.has(s.kind));
@@ -133,6 +140,7 @@ export function matchesSourceLens(inc: Incident, lens: SourceLens): boolean {
       (s) => s.kind === "social" || /Facebook|X ·|Reddit|Citizen/i.test(s.name),
     );
   }
+  if (lens === "scanner") return hasScannerSource(inc);
   return inc.sources.some((s) => s.kind === lens);
 }
 
@@ -148,7 +156,7 @@ export function sourceMix(incidents: Incident[]): {
   let social = 0;
   for (const inc of incidents) {
     if (inc.sources.some((s) => OFFICIAL_KINDS.has(s.kind))) official += 1;
-    if (inc.sources.some((s) => s.kind === "scanner")) scanner += 1;
+    if (hasScannerSource(inc)) scanner += 1;
     if (inc.sources.some((s) => s.kind === "news")) news += 1;
     if (inc.sources.some((s) => s.kind === "social" || /Facebook|X ·|Reddit|Citizen/i.test(s.name))) {
       social += 1;
@@ -183,6 +191,16 @@ export function verificationWhy(inc: Incident): string {
 
 export type ActivityKind = "news" | "blotter" | "scanner" | "traffic" | "social";
 
+export type WirePipeSnap = {
+  id: string;
+  label: string;
+  lastCount: number;
+  ageSec: number;
+  lastError?: string;
+  ok: number;
+  fail: number;
+};
+
 export type WireHealth = {
   blotter: number;
   blotterFailed: number;
@@ -201,6 +219,11 @@ export type WireHealth = {
   citizen?: number;
   civic?: number;
   nws?: number;
+  /** True when 511 + civic + NWS all returned 0 this refresh (may be healthy-empty). */
+  daytimePipesDry?: boolean;
+  /** True when one or more daytime pipes failed (not merely empty). */
+  daytimePipesFailing?: boolean;
+  pipes?: WirePipeSnap[];
 };
 
 export type LiveWireItem = {

@@ -175,3 +175,57 @@ describe("corroboration", () => {
     assert.equal(sourceFamily("traffic", "511NY"), "511");
   });
 });
+
+describe("scanner fusion honesty", () => {
+  it("does not dissolve a weak unknown-place scanner into overnight blotter", () => {
+    const blotter = item({
+      id: "nysp-old",
+      title: "Suspicious vehicle — Central Avenue",
+      kind: "blotter",
+      outlet: "NYSP blotter",
+      municipality: "Albany",
+      address: "Central Avenue",
+      minutesAgo: 520,
+      lat: 42.68,
+      lng: -73.78,
+    });
+    const scan = item({
+      id: "scan-1",
+      title: "Suspicious person",
+      summary: "Unconfirmed radio — area unclear",
+      kind: "scanner",
+      outlet: "Scanner",
+      municipality: "Unknown",
+      address: "area unknown",
+      minutesAgo: 12,
+      lat: 42.68,
+      lng: -73.82,
+    });
+    assert.equal(shouldFuse(blotter, scan), false);
+    const groups = clusterLiveItems([blotter, scan]);
+    assert.equal(groups.length, 2);
+  });
+
+  it("still fuses scanner + blotter when street and call-type agree", () => {
+    const blotter = item({
+      id: "nysp-2",
+      title: "Personal injury crash — Wolf Road, Latham",
+      kind: "blotter",
+      outlet: "NYSP blotter",
+      municipality: "Colonie",
+      address: "Wolf Road",
+      minutesAgo: 90,
+    });
+    const scan = item({
+      id: "scan-2",
+      title: "Colonie PD · Wolf Road crash",
+      summary: "Personal injury crash on Wolf Road",
+      kind: "scanner",
+      outlet: "Scanner",
+      municipality: "Colonie",
+      address: "Wolf Road · Colonie",
+      minutesAgo: 20,
+    });
+    assert.equal(shouldFuse(blotter, scan), true);
+  });
+});

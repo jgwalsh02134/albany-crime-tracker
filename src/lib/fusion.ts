@@ -208,6 +208,19 @@ function tokenHit(a: FuseItem, b: FuseItem): number {
   return wa.filter((w) => wb.has(w)).length;
 }
 
+function weakScannerPlace(item: FuseItem): boolean {
+  if ((item.kind ?? "") !== "scanner") return false;
+  const addr = (item.address || "").trim();
+  const muni = normMuni(item.municipality);
+  if (!addr || /^area unknown$/i.test(addr) || isLowConfAddr(addr)) return true;
+  if (!muni || GENERIC_MUNI.test(muni)) return true;
+  return false;
+}
+
+function isLowConfAddr(addr: string): boolean {
+  return /triumph|trion|across|unknown/i.test(addr);
+}
+
 export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
   if (a.id === b.id) return true;
   const ca = callOf(a);
@@ -216,10 +229,26 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
   if (Math.abs(a.minutesAgo - b.minutesAgo) > windowMin(a, b)) return false;
   const place = geoClose(a, b);
   const hit = tokenHit(a, b);
+  // Do not let a weak/unknown-place scanner dissolve into blotter/news on muni alone —
+  // that zeros the Radio lens and hides real captions from Last 3 hours.
+  const weakScan = weakScannerPlace(a) || weakScannerPlace(b);
+  const kinds = [a.kind, b.kind];
+  const crossOfficial =
+    kinds.includes("scanner") &&
+    kinds.some((k) => k === "blotter" || k === "news" || k === "social");
+  if (weakScan && crossOfficial) {
+    return hit >= 3 && Boolean(extractStreetHint(a) && extractStreetHint(b));
+  }
   if (place) return hit >= 1 || ca.type === cb.type;
   // Weak geo: only fuse when titles clearly overlap (same street / same event words).
   const need = Math.max(3, Math.ceil(Math.min(tokens(a.title).length, tokens(b.title).length) * 0.5));
   return hit >= need;
+}
+
+function extractStreetHint(item: FuseItem): boolean {
+  return /\b(?:street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd|route|highway|wolf|western|central|lark|pearl)\b/i.test(
+    `${item.title} ${item.address ?? ""} ${item.summary ?? ""}`,
+  );
 }
 
 export function clusterLiveItems(items: FuseItem[]): FuseItem[][] {

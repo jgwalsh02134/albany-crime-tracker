@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { extractAudioFromMpegTs } from "./scanner-hls";
 import { getScannerFeed, SCANNER_FEEDS } from "./scanner-feeds";
+import { isSttJunk } from "./stt-junk";
 
 const LISTEN_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -131,16 +132,7 @@ async function resolveHls(feedId: string): Promise<ResolvedFeed> {
 }
 
 function looksBlank(text: string): boolean {
-  const t = text.trim();
-  if (!t) return true;
-  if (t.length < 3) return true;
-  if (/^(silence|\[?(blank|silence|inaudible|music)\]?|\(+.*?quiet.*?\)+)$/i.test(t)) return true;
-  if (/thanks for watching|subscribe to|please like|\[music\]/i.test(t)) return true;
-  if (/brooklyn north|automatic line/i.test(t)) return true;
-  if ((t.match(/10-\d+/g) || []).length >= 3) return true;
-  if (/copy\s+en route\s+on scene/i.test(t)) return true;
-  if ((t.match(/,/g) || []).length >= 6) return true;
-  return false;
+  return isSttJunk(text);
 }
 
 export function tidyRadio(text: string): string {

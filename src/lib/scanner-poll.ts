@@ -16,8 +16,9 @@ import {
   type AgencyLabel,
 } from "./scanner-labels";
 import { isLowConfidencePlace, normalizeScannerSpeech } from "./geo";
+import { isSttJunk } from "./stt-junk";
 
-const TICK_MS = 12000;
+const TICK_MS = 10000;
 const MAX_ITEMS = 120;
 const MIN_AUDIO = 1400;
 const EXTRA_FEEDS = ["1440", "37206", "36327"] as const;
@@ -170,15 +171,10 @@ function stopZombie() {
 }
 
 function looksCaption(text: string): boolean {
+  if (isSttJunk(text)) return false;
   const t = text.replace(/\s+/g, " ").trim();
   if (t.length < 3) return false;
   if (!/[a-z0-9]/i.test(t)) return false;
-  if (/^(silence|inaudible|music|blank|\.+)$/i.test(t)) return false;
-  if (/thanks for watching|subscribe to|please like|\[music\]/i.test(t)) return false;
-  if (/brooklyn|queens|bronx|manhattan|automatic line|brooklyn north/i.test(t)) return false;
-  if ((t.match(/10-\d+/g) || []).length >= 3) return false;
-  if (/copy\s+en route\s+on scene/i.test(t)) return false;
-  if ((t.match(/,/g) || []).length >= 6) return false;
   return true;
 }
 
@@ -373,10 +369,13 @@ async function tickFeed(feedId: string) {
   state.seenSeq.set(feedId, seen);
 
   if (!spoken) return;
+  if (isSttJunk(spoken) || !looksCaption(spoken)) {
+    // Never promote Whisper boilerplate into health.scannerHeard or captions.
+    return;
+  }
   state.stats.lastSpoken = spoken.slice(0, 160);
   state.stats.lastSpokenAt = Date.now();
   state.stats.lastFeed = feedId;
-  if (!looksCaption(spoken)) return;
   rememberCaption(feedId, feed.name, spoken);
   if (!looksDispatch(spoken)) return;
   // Quieter Live: demote pure unit-status chatter with no place.
@@ -469,7 +468,8 @@ async function tick() {
     const jobs = [tickFeed("3626")];
     const listen = state.listenFeed && Date.now() < state.listenUntil ? state.listenFeed : null;
     if (listen && listen !== "3626") jobs.push(tickFeed(listen));
-    else if (state.stats.ticks % 3 === 0) {
+    // Daytime keep-alive: rotate extra Albany-area feeds every other tick (was every 3rd).
+    else if (state.stats.ticks % 2 === 0) {
       jobs.push(tickFeed(EXTRA_FEEDS[state.cursor % EXTRA_FEEDS.length]!));
       state.cursor += 1;
     }
