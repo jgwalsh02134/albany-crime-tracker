@@ -1,3 +1,4 @@
+import { keepSocialItem } from "./live-keep";
 import { placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeOk } from "./pipe-health";
@@ -8,8 +9,6 @@ const REDDIT_UA =
 
 const LOCAL =
   /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g|clifton park|troy|schenectady|rensselaer|sand lake|schodack|east greenbush|wolf road|western ave|central ave|new scotland|delaware ave|madison ave)\b/i;
-const INCIDENT =
-  /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrests?|arrested|fire|blaze|killed|injured|fatal|burglary|assault|charg(?:e|ed|es|ing)|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|investigation|narcotics|gunfire|shots fired|missing (?:person|child)|quality-of-life|large gatherings|traffic alert|lanes blocked|person down)\b/i;
 const DROP =
   /\b(hiring|join our team|join the|found pet|found rabbit|lost pet|back-to-school|supply drive|dog days|pup was having|sworn in|lateral transfer|exam|academy|christmas|holiday travel|mlk|martin luther|ice cream|sprinkles|adopt|palmer is a|birthday|girlboss|vendor spots|flipped off|jokes write themselves|celebrate 50|co-op|full moon|well groomed cat|season preview|recipe|install news app|trusted by millions|police reform|nibrs|lanternfl|patroons|nightlife|travers)\b/i;
 const NOT_OURS =
@@ -196,12 +195,21 @@ function stripSource(title: string): string {
 
 function keep(title: string, summary: string, feed: SocialFeed, now: number, published: number): boolean {
   const hay = `${title} ${summary}`;
-  if (DROP.test(hay) || NOT_OURS.test(hay)) return false;
-  if (feed.needsLocal && !LOCAL.test(hay)) return false;
   if (feed.titleMust && !feed.titleMust.test(title)) return false;
-  if (feed.official) {
-    if (!INCIDENT.test(hay)) return false;
-  } else if (!TITLE_CRIME.test(title)) {
+  if (
+    !keepSocialItem(
+      {
+        title,
+        summary,
+        official: feed.official,
+        needsLocal: feed.needsLocal,
+        localMatch: LOCAL.test(hay),
+      },
+      DROP,
+      NOT_OURS,
+      TITLE_CRIME,
+    )
+  ) {
     return false;
   }
   const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));

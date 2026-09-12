@@ -8,6 +8,7 @@ import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
 import { superfeedrItems } from "./superfeedr";
 import { enrichStoryImages, pickBestImage } from "./news-thumbs";
 import { pipeHealth, recordPipeFail, recordPipeOk } from "./pipe-health";
+import { keepLiveNewsItem, OUT_OF_AREA } from "./live-keep";
 
 const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
@@ -182,7 +183,7 @@ function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean):
     if (!title || !url || seen.has(url)) continue;
     const summary = tag(block, "description") || tag(block, "content:encoded");
     const hay = `${title} ${summary}`;
-    if (DROP.test(hay) || NYC_NOT_OURS.test(hay) || !LOCAL.test(hay)) continue;
+    if (DROP.test(hay) || NYC_NOT_OURS.test(hay) || OUT_OF_AREA.test(hay) || !LOCAL.test(hay)) continue;
     if (crimeOnly && !CRIME.test(hay)) continue;
     seen.add(url);
     const published = Date.parse(tag(block, "pubDate") || tag(block, "dc:date")) || now;
@@ -468,16 +469,10 @@ async function collectWire() {
   const blotterLive = blotter.filter((r) => r.minutesAgo <= BLOTTER_LIVE_MIN);
   const blotterNews = blotter.filter((r) => r.minutesAgo > BLOTTER_LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
   // Daytime push: prefer Superfeedr-pushed rows first so hub.notify lands on Live quickly.
-  const liveNews = [...pushed, ...news.crime, ...news.stories, ...press].filter((r) => {
-    const hay = `${r.title} ${r.summary}`;
-    return (
-      r.minutesAgo <= LIVE_MIN &&
-      CRIME.test(hay) &&
-      !COURT_ONLY.test(hay) &&
-      !NOT_LIVE_NEWS.test(hay) &&
-      !NYC_NOT_OURS.test(hay)
-    );
-  });
+  // Prefer a larger share of Capital Region public-safety from pipes (not CRIME-only).
+  const liveNews = [...pushed, ...news.crime, ...news.stories, ...press].filter((r) =>
+    keepLiveNewsItem({ title: r.title, summary: r.summary, minutesAgo: r.minutesAgo, local: true }),
+  );
   const items = mergeActivity([blotterLive, scan, traffic, nws, liveNews, socialNow, civicNow]);
   const storiesCore = mergeActivity([
     news.stories,
@@ -520,9 +515,10 @@ async function collectWire() {
     scannerError: scanStats.lastError || undefined,
     scannerHeard: scanStats.lastSpoken || undefined,
     scannerCaptioned: scanStats.captions,
-    facebook: social.facebook,
-    x: social.x,
-    reddit: social.reddit,
+    // Counts that match Live lens (≤24h), not full pipe harvest.
+    facebook: socialNow.filter((i) => i.outlet.startsWith("Facebook")).length,
+    x: socialNow.filter((i) => i.outlet.startsWith("X ·")).length,
+    reddit: socialNow.filter((i) => i.outlet.startsWith("Reddit")).length,
     citizen: social.citizen,
     civic: civic.length,
     nws: nws.length,
