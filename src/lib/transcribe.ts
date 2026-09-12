@@ -2,6 +2,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { extractAudioFromMpegTs } from "./scanner-hls";
 import { getScannerFeed, SCANNER_FEEDS } from "./scanner-feeds";
 import { isSttJunk } from "./stt-junk";
+import {
+  formatProviderErrorBody,
+  prepareAudioForWhisper,
+} from "./audio-for-whisper";
 
 const LISTEN_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -206,10 +210,15 @@ async function transcribeWithOpenAiWhisper(
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("missing-openai-key");
 
+  const prepared = await prepareAudioForWhisper(bytes, filename, mime);
+  if (prepared.remuxed) {
+    console.info("[stt] remuxed audio for whisper", filename, "->", prepared.filename);
+  }
+
   const form = new FormData();
   form.append("model", process.env.SCANNER_TRANSCRIBE_MODEL?.trim() || "whisper-1");
   form.append("language", "en");
-  form.append("file", fileCopy(bytes, filename, mime));
+  form.append("file", fileCopy(prepared.bytes, prepared.filename, prepared.mime));
 
   const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -218,19 +227,80 @@ async function transcribeWithOpenAiWhisper(
     signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) {
-    throw new Error(`whisper-${res.status}`);
+    const body = await res.text().catch(() => "");
+    const msg = formatProviderErrorBody(res.status, body, "whisper");
+    console.error("[stt] whisper error", msg);
+    throw new Error(msg);
   }
-  const body = (await res.json()) as { text?: string; duration?: number };
-  return { text: tidyRadio(body.text?.trim() ?? ""), duration: body.duration ?? 0 };
+  const json = (await res.json()) as { text?: string; duration?: number };
+  return { text: tidyRadio(json.text?.trim() ?? ""), duration: json.duration ?? 0 };
+}
+
+async function transcribeWithGroqWhisper(
+  bytes: Uint8Array,
+  filename: string,
+  mime: string,
+): Promise<{ text: string; duration: number }> {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error("missing-groq-key");
+
+  const prepared = await prepareAudioForWhisper(bytes, filename, mime);
+  const form = new FormData();
+  form.append("model", process.env.GROQ_TRANSCRIBE_MODEL?.trim() || "whisper-large-v3");
+  form.append("language", "en");
+  form.append("file", fileCopy(prepared.bytes, prepared.filename, prepared.mime));
+
+  const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    const msg = formatProviderErrorBody(res.status, body, "groq");
+    console.error("[stt] groq whisper error", msg);
+    throw new Error(msg);
+  }
+  const json = (await res.json()) as { text?: string; duration?: number };
+  return { text: tidyRadio(json.text?.trim() ?? ""), duration: json.duration ?? 0 };
+}
+
+/** Prefer OpenAI Whisper, then Groq — used while xAI ACL is broken. */
+async function transcribeWithWhisperFallback(
+  bytes: Uint8Array,
+  filename: string,
+  mime: string,
+): Promise<{ text: string; duration: number }> {
+  const errors: string[] = [];
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      return await transcribeWithOpenAiWhisper(bytes, filename, mime);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "whisper";
+      errors.push(msg);
+      if (msg.includes("429")) throw err instanceof Error ? err : new Error(msg);
+    }
+  }
+  if (process.env.GROQ_API_KEY) {
+    try {
+      return await transcribeWithGroqWhisper(bytes, filename, mime);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "groq";
+      errors.push(msg);
+      if (msg.includes("429")) throw err instanceof Error ? err : new Error(msg);
+    }
+  }
+  throw new Error(errors[0] || "whisper-fallback-unavailable");
 }
 
 export function sttProvidersConfigured(): boolean {
-  return Boolean(process.env.XAI_API_KEY || process.env.OPENAI_API_KEY);
+  return Boolean(process.env.XAI_API_KEY || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY);
 }
 
 /**
- * Prefer xAI STT; on 401/403 (ACL) hard-backoff xAI and fall back to OpenAI Whisper
- * when OPENAI_API_KEY is set so captions recover without waiting on xAI ACL.
+ * Prefer Whisper/Groq while xAI is ACL-blocked (or when SCANNER_STT_PREFER=whisper).
+ * Never mask a Whisper failure as stt-403 — surface the real provider error.
  */
 export async function transcribeAudioFile(
   bytes: Uint8Array,
@@ -238,10 +308,23 @@ export async function transcribeAudioFile(
   mime: string,
 ): Promise<{ text: string; duration: number }> {
   const hasXai = Boolean(process.env.XAI_API_KEY);
-  const hasOpenAi = Boolean(process.env.OPENAI_API_KEY);
-  if (!hasXai && !hasOpenAi) throw new Error("missing-key");
+  const hasWhisper = Boolean(process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY);
+  if (!hasXai && !hasWhisper) throw new Error("missing-key");
 
+  // Default to Whisper/Groq when configured — xAI ACL is currently broken in prod.
+  // Set SCANNER_STT_PREFER=xai to force xAI-first again after ACL is fixed.
+  const preferEnv = (process.env.SCANNER_STT_PREFER || "").trim().toLowerCase();
+  const preferWhisper =
+    preferEnv === "whisper" ||
+    preferEnv === "openai" ||
+    preferEnv === "groq" ||
+    (preferEnv !== "xai" && hasWhisper);
   const xaiBlocked = Date.now() < xaiSttBlockedUntil;
+
+  if (hasWhisper && (preferWhisper || xaiBlocked || !hasXai)) {
+    return await transcribeWithWhisperFallback(bytes, filename, mime);
+  }
+
   if (hasXai && !xaiBlocked) {
     try {
       return await transcribeWithXai(bytes, filename, mime);
@@ -250,27 +333,25 @@ export async function transcribeAudioFile(
       if (msg === "stt-401" || msg === "stt-403") {
         xaiSttBlockedUntil = Date.now() + XAI_ACL_BACKOFF_MS;
         console.error("[stt] xai acl", msg, "backoff_ms", XAI_ACL_BACKOFF_MS);
-        if (hasOpenAi) {
-          try {
-            return await transcribeWithOpenAiWhisper(bytes, filename, mime);
-          } catch (fallbackErr) {
-            const fmsg = fallbackErr instanceof Error ? fallbackErr.message : "whisper";
-            console.error("[stt] whisper fallback failed", fmsg);
-            if (fmsg.includes("429")) {
-              throw fallbackErr instanceof Error ? fallbackErr : new Error(fmsg);
-            }
-            throw new Error(msg);
-          }
+        if (hasWhisper) {
+          // Surface Whisper/Groq errors as-is — do not rethrow stt-403.
+          return await transcribeWithWhisperFallback(bytes, filename, mime);
         }
       }
       throw err instanceof Error ? err : new Error("stt");
     }
   }
 
-  if (hasOpenAi) {
-    return await transcribeWithOpenAiWhisper(bytes, filename, mime);
+  if (hasWhisper) {
+    return await transcribeWithWhisperFallback(bytes, filename, mime);
   }
-  throw new Error("stt-403");
+  throw new Error(xaiBlocked ? "stt-403" : "missing-key");
+}
+
+/** Test helper: whether Whisper fallback error should replace an xAI ACL code. */
+export function preferFallbackError(xaiAclMsg: string, fallbackMsg: string): string {
+  if (fallbackMsg && fallbackMsg !== xaiAclMsg) return fallbackMsg;
+  return xaiAclMsg;
 }
 
 export const getScannerPlaylist = createServerFn({ method: "POST" })
