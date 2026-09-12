@@ -38,6 +38,11 @@ export function isSttJunk(text: string): boolean {
   if (/subscribe/i.test(t) && t.length < 60 && !/\b(?:street|avenue|albany|colonie|crash|fire)\b/i.test(t)) {
     return true;
   }
+  // Whisper filler on silence / ads: "you you", "uh uh", "yeah yeah".
+  const FILLER = new Set(["you", "uh", "um", "ah", "oh", "yeah", "yep", "okay", "ok", "hmm", "mm", "mmm", "huh", "ha", "hey"]);
+  const words = t.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean);
+  if (words.length >= 1 && words.length <= 6 && words.every((w) => FILLER.has(w))) return true;
+  if (words.length >= 2 && new Set(words).size === 1 && words[0]!.length <= 4) return true;
   return false;
 }
 
@@ -58,6 +63,9 @@ export const STT_JUNK_SAMPLES = [
   "copy en route on scene",
   "Bye bye",
   "See you next time",
+  "you you",
+  "uh uh",
+  "yeah yeah",
 ] as const;
 
 export const STT_KEEP_SAMPLES = [

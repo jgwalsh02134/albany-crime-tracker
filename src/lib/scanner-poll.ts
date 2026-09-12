@@ -423,11 +423,11 @@ async function tickFeed(feedId: string) {
     // Never promote Whisper boilerplate into health.scannerHeard or captions.
     return;
   }
+  if (!looksDispatch(spoken)) return;
   state.stats.lastSpoken = spoken.slice(0, 160);
   state.stats.lastSpokenAt = Date.now();
   state.stats.lastFeed = feedId;
   rememberCaption(feedId, feed.name, spoken);
-  if (!looksDispatch(spoken)) return;
   // Quieter Live: demote pure unit-status chatter with no place.
   if (isUnitStatusChatter(spoken) || isUnitStatusOnly(spoken)) return;
   const key = spoken.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
