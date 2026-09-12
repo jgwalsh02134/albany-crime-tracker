@@ -166,6 +166,13 @@ function Hero({ story }: { story: NewsStory }) {
   );
 }
 
+/** Client-side mirror of server generic-stock filter — prefer outlet chip over logo/seal. */
+function looksGenericThumb(url: string): boolean {
+  return /(?:logo|seal|favicon|site[-_]?icon|placeholder|default[-_]?(?:og|share|image)?|generic|firegeneric|ambulance\.webp|gnews\/logo|cropped-[^/]*icon)(?:[./?]|$)/i.test(
+    url,
+  );
+}
+
 function Thumb({
   src,
   label,
@@ -176,7 +183,7 @@ function Thumb({
   className?: string;
 }) {
   const [broken, setBroken] = useState(false);
-  if (!src || broken) {
+  if (!src || broken || looksGenericThumb(src)) {
     return (
       <div className={cn("flex items-center justify-center bg-surface-2", className)}>
         <span className="px-2 text-center text-xs font-semibold uppercase tracking-wide text-subtle">

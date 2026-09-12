@@ -6,6 +6,7 @@ import { placeFromText } from "./geo";
 import { collectSocial, socialLive, socialNews } from "./social-sources";
 import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
 import { superfeedrItems } from "./superfeedr";
+import { enrichStoryImages, pickBestImage } from "./news-thumbs";
 
 const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
@@ -139,16 +140,7 @@ function parseImage(block: string): string | undefined {
   }
   const img = block.match(/<img[^>]+src=["']([^"']+)["']/i);
   if (img?.[1]) found.push(img[1]);
-  for (const raw of found) {
-    const url = raw.replace(/&/g, "&");
-    if (!/^https?:\/\//i.test(url)) continue;
-    if (/\.(m3u8|mp4|mp3)(\?|$)/i.test(url) || /fuel-streaming|\/video/i.test(url)) continue;
-    if (!/\.(jpe?g|png|webp|gif)(\?|$)/i.test(url) && !/\/media2\/|wp-content\/uploads|resources\/media/i.test(url)) {
-      continue;
-    }
-    return url;
-  }
-  return undefined;
+  return pickBestImage(found);
 }
 
 function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean): LiveWireItem[] {
@@ -462,11 +454,21 @@ async function collectWire() {
     civic: civic.length,
     nws: nws.length,
   };
+  const storiesCapped = stories.slice(0, 52);
+  const enrichedStories = await enrichStoryImages(storiesCapped, { max: 10 });
+  // Propagate enriched thumbs onto matching live wire items (same id/url) for consistency.
+  const thumbById = new Map(
+    enrichedStories.filter((s) => s.image).map((s) => [s.id, s.image!] as const),
+  );
+  const itemsOut = items.slice(0, 200).map((row) => {
+    if (row.image || !thumbById.has(row.id)) return row;
+    return { ...row, image: thumbById.get(row.id) };
+  });
   return {
     ok: true as const,
     at: now,
-    items: items.slice(0, 200),
-    stories: stories.slice(0, 52),
+    items: itemsOut,
+    stories: enrichedStories,
     outlets,
     health,
   };
