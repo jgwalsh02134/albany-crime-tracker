@@ -86,7 +86,20 @@ export function AppShell() {
 
   useEffect(() => {
     void pullWire();
-    const id = window.setInterval(() => void pullWire(), 45_000);
+    // Daytime honesty: poll open pipes faster so 511 / news / Superfeedr land on Live.
+    const daytime = (() => {
+      try {
+        const h = Number(
+          new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "numeric", hour12: false }).format(
+            new Date(),
+          ),
+        );
+        return h >= 7 && h < 22;
+      } catch {
+        return true;
+      }
+    })();
+    const id = window.setInterval(() => void pullWire(), daytime ? 25_000 : 45_000);
     return () => window.clearInterval(id);
   }, [pullWire]);
 

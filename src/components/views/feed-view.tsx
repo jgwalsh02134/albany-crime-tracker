@@ -6,6 +6,7 @@ import { NewsView } from "@/components/views/news-view";
 import { areaCounts } from "@/lib/data";
 import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
 import { type WireHealth, sourceMix } from "@/lib/sources";
+import { liveWindowHonesty } from "@/lib/live-honesty";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import type { Incident, NewsStory, SourceLens } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -223,11 +224,11 @@ function LiveList({
         {liveItems.length === 0 ? (
           <p className="rounded-lg border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
             {wireLive
-              ? "Nothing in this filter. Radio and 511 cover the hours since the 7 AM blotter."
+              ? liveWindowHonesty({ health: wireHealth, nowItems: [], liveItems: [], sourceLens }).emptyFilterCopy
               : "Pulling blotter, radio, and newsrooms…"}
           </p>
         ) : (
-          <GroupedList items={liveItems} onSelect={onSelect} />
+          <GroupedList items={liveItems} onSelect={onSelect} wireHealth={wireHealth} sourceLens={sourceLens} />
         )}
       </div>
     </div>
@@ -237,14 +238,19 @@ function LiveList({
 function GroupedList({
   items,
   onSelect,
+  wireHealth,
+  sourceLens,
 }: {
   items: Incident[];
   onSelect: (id: string) => void;
+  wireHealth: WireHealth | null;
+  sourceLens: SourceLens;
 }) {
   const since7 = minutesSinceNy7am();
   const nowItems = items.filter((i) => i.minutesAgo <= 180);
   const today = items.filter((i) => i.minutesAgo > 180 && i.minutesAgo <= since7);
   const overnight = items.filter((i) => i.minutesAgo > since7);
+  const honesty = liveWindowHonesty({ health: wireHealth, nowItems, liveItems: items, sourceLens });
   return (
     <div className="flex flex-col gap-3">
       <section>
@@ -259,7 +265,7 @@ function GroupedList({
           </ul>
         ) : (
           <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
-            Quiet in the last 3 hours. Blotter is the 7 AM dump — radio still runs.
+            {honesty.last3hCopy}
           </p>
         )}
       </section>
@@ -363,6 +369,15 @@ function SourcePipes({
               <p className="mt-1 text-xs leading-relaxed text-muted">
                 Albany, Colonie, and Bethlehem do not publish live CAD. Counts below are what this refresh actually pulled.
               </p>
+              {health.daytimePipesFailing ? (
+                <p className="mt-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-fg">
+                  One or more daytime pipes failed this refresh — empty counts may mean the pipe is down, not that nothing happened.
+                </p>
+              ) : health.daytimePipesDry ? (
+                <p className="mt-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
+                  511, civic, and NWS all returned 0 this refresh. That can be a quiet hour on those feeds — not a county-wide all-clear.
+                </p>
+              ) : null}
               <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Wired this refresh</h3>
               <ul className="mt-2 space-y-2">
                 {[
@@ -385,6 +400,24 @@ function SourcePipes({
                   </li>
                 ))}
               </ul>
+              {health.pipes?.some((p) => p.lastError) ? (
+                <>
+                  <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Pipe errors this process</h3>
+                  <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-muted">
+                    {health.pipes
+                      .filter((p) => p.lastError)
+                      .slice(0, 8)
+                      .map((p) => (
+                        <li key={p.id} className="rounded-lg border border-border bg-surface-2 px-3 py-2">
+                          <span className="font-medium text-fg">{p.label}</span>
+                          {" — "}
+                          {p.lastError}
+                          {p.ageSec >= 0 ? ` · last ok ${p.ageSec}s ago` : " · never ok"}
+                        </li>
+                      ))}
+                  </ul>
+                </>
+              ) : null}
               <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Tried and blocked</h3>
               <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-muted">
                 <li>

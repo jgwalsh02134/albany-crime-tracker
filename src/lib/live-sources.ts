@@ -7,7 +7,7 @@ import { collectSocial, socialLive, socialNews } from "./social-sources";
 import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
 import { superfeedrItems } from "./superfeedr";
 import { enrichStoryImages, pickBestImage } from "./news-thumbs";
-import { recordPipeFail, recordPipeOk } from "./pipe-health";
+import { pipeHealth, recordPipeFail, recordPipeOk } from "./pipe-health";
 
 const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
@@ -294,7 +294,19 @@ function inCapital511(e: DotEvent): boolean {
   if (CAP_COUNTIES.has(county)) return true;
   const lat = e.Latitude;
   const lng = e.Longitude;
-  return typeof lat === "number" && typeof lng === "number" && lat > 42.4 && lat < 43.25 && lng > -74.25 && lng < -73.5;
+  if (typeof lat === "number" && typeof lng === "number" && lat > 42.4 && lat < 43.25 && lng > -74.25 && lng < -73.5) {
+    return true;
+  }
+  // Some 511 rows omit CountyName — keep Capital District crashes via roadway text + NY box.
+  const hay = `${e.RoadwayName || ""} ${e.Description || ""}`;
+  if (!/\b(?:albany|colonie|bethlehem|latham|guilderland|cohoes|watervliet|menands|delmar|northway|i-?87|i-?90|i-?787|thruway)\b/i.test(hay)) {
+    return false;
+  }
+  if (typeof lat === "number" && typeof lng === "number") {
+    // Reject obvious downstate pins even when the text mentions I-87.
+    return lat > 42.35 && lat < 43.5 && lng > -74.5 && lng < -73.4;
+  }
+  return true;
 }
 
 async function fetch511(now: number): Promise<LiveWireItem[]> {
@@ -455,9 +467,16 @@ async function collectWire() {
   const civicOlder = civicNews(civic);
   const blotterLive = blotter.filter((r) => r.minutesAgo <= BLOTTER_LIVE_MIN);
   const blotterNews = blotter.filter((r) => r.minutesAgo > BLOTTER_LIVE_MIN && r.minutesAgo <= NEWS_MIN && notable(r));
-  const liveNews = [...news.crime, ...news.stories, ...press, ...pushed].filter((r) => {
+  // Daytime push: prefer Superfeedr-pushed rows first so hub.notify lands on Live quickly.
+  const liveNews = [...pushed, ...news.crime, ...news.stories, ...press].filter((r) => {
     const hay = `${r.title} ${r.summary}`;
-    return r.minutesAgo <= LIVE_MIN && CRIME.test(hay) && !COURT_ONLY.test(hay) && !NOT_LIVE_NEWS.test(hay) && !NYC_NOT_OURS.test(hay);
+    return (
+      r.minutesAgo <= LIVE_MIN &&
+      CRIME.test(hay) &&
+      !COURT_ONLY.test(hay) &&
+      !NOT_LIVE_NEWS.test(hay) &&
+      !NYC_NOT_OURS.test(hay)
+    );
   });
   const items = mergeActivity([blotterLive, scan, traffic, nws, liveNews, socialNow, civicNow]);
   const storiesCore = mergeActivity([
@@ -484,6 +503,11 @@ async function collectWire() {
     social.reddit || social.citizen ? "Citizens" : "",
     ...news.liveOutlets,
   ].filter(Boolean);
+  const pipes = pipeHealth();
+  const daytimePipeRows = pipes.filter((p) => p.id === "511ny" || p.id === "nws" || p.id.startsWith("civic:"));
+  // Fail when errors dominate successes — empty-but-ok pipes stay daytimePipesDry only.
+  const daytimeFailing = daytimePipeRows.some((p) => Boolean(p.lastError) && p.fail >= p.ok && p.fail > 0);
+  const daytimePipesDry = traffic.length === 0 && civic.length === 0 && nws.length === 0;
   const health: WireHealth = {
     blotter: blotterLive.length,
     blotterFailed: blotterRes.failed,
@@ -502,6 +526,17 @@ async function collectWire() {
     citizen: social.citizen,
     civic: civic.length,
     nws: nws.length,
+    daytimePipesDry,
+    daytimePipesFailing: daytimeFailing,
+    pipes: pipes.map((p) => ({
+      id: p.id,
+      label: p.label,
+      lastCount: p.lastCount,
+      ageSec: p.ageSec,
+      lastError: p.lastError,
+      ok: p.ok,
+      fail: p.fail,
+    })),
   };
   const storiesCapped = stories.slice(0, 52);
   const enrichedStories = await enrichStoryImages(storiesCapped, { max: 10 });
