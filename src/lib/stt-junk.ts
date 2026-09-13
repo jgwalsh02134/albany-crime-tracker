@@ -38,6 +38,28 @@ export function isSttJunk(text: string): boolean {
   if (/subscribe/i.test(t) && t.length < 60 && !/\b(?:street|avenue|albany|colonie|crash|fire)\b/i.test(t)) {
     return true;
   }
+  // Whisper news-article / distant-agency hallucinations (classic on silence/ads).
+  if (/https?:\/\/|www\.|\.(?:com|org|net|gov)\b/i.test(t)) return true;
+  if (/for more information|visit www|press release|arrest warrant was issued|counts? in the office of a federal/i.test(t)) return true;
+  if (/\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+20\d{2}\b/i.test(t)) return true;
+  // Far-away agencies / cities that are not Capital Region radio.
+  if (/\b(?:portland|seattle|chicago|houston|dallas|phoenix|miami|atlanta|denver|boston|los angeles|san francisco|san diego|baltimore|detroit|minneapolis|milwaukee)\b/i.test(t)) {
+    return true;
+  }
+  if (/\b(?:portlandpolice|lapd|nypd|chicago\s+pd)\b/i.test(t)) return true;
+  // Long past-tense news prose (radio is short clipped speech).
+  const sentences = t.split(/[.!?]+/).map((s) => s.trim()).filter((s) => s.length > 20);
+  if (sentences.length >= 3 && t.length > 160) {
+    const pasty = sentences.filter((s) =>
+      /\b(?:was|were|reported|arrested|issued|eventually|killing|killed|charged)\b/i.test(s),
+    ).length;
+    if (pasty >= 2) return true;
+  }
+  // Extremely long single caption — radio lines are short.
+  if (t.length > 280 && !/\b(?:central|western|wolf|albany|colonie|bethlehem|guilderland)\b/i.test(t)) {
+    return true;
+  }
+
   // Whisper filler on silence / ads: "you you", "uh uh", "yeah yeah".
   const FILLER = new Set(["you", "uh", "um", "ah", "oh", "yeah", "yep", "okay", "ok", "hmm", "mm", "mmm", "huh", "ha", "hey"]);
   const words = t.toLowerCase().split(/[^a-z0-9']+/).filter(Boolean);
@@ -66,6 +88,8 @@ export const STT_JUNK_SAMPLES = [
   "you you",
   "uh uh",
   "yeah yeah",
+  "Operator, police chase a man reported killing a man on the street. Other police officers eventually arrested the man. An arrest warrant was issued for him on December 18, 2015 for three counts in the office of a federal police officer. For more information, visit www.PortlandPolice.com",
+  "For more information visit www.example.com",
 ] as const;
 
 export const STT_KEEP_SAMPLES = [

@@ -580,7 +580,8 @@ export function setListenFeed(feedId: string | null) {
 
 export function captionLines(feedId?: string): CaptionLine[] {
   const rows = feedId ? state.captions.filter((c) => c.feedId === feedId) : state.captions;
-  return rows.slice(0, 40);
+  // Safety net: never surface stored hallucinations if junk rules tightened after capture.
+  return rows.filter((c) => !isSttJunk(c.text)).slice(0, 40);
 }
 
 export async function awaitScannerTick(ms = 12000): Promise<void> {
