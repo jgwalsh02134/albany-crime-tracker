@@ -98,11 +98,24 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
   const [lastSpokenAt, setLastSpokenAt] = useState<number | null>(null);
   const [lastFeed, setLastFeed] = useState("");
   const [lastError, setLastError] = useState("");
+  const [lastSpoken, setLastSpoken] = useState("");
+  const [sttState, setSttState] = useState<"ok" | "busy" | "error" | "quiet" | "no-key">("quiet");
+  const [sttBlockedSec, setSttBlockedSec] = useState(0);
   const [ticks, setTicks] = useState(0);
   const [nowTick, setNowTick] = useState(Date.now());
+  const [hideUnitSpam, setHideUnitSpam] = useState(true);
 
   const feed = SCANNER_FEEDS.find((f) => f.id === feedId) ?? SCANNER_FEEDS[0]!;
-  const visible = thisFeedOnly ? transcript.filter((l) => l.feedName === feed.name || l.feedId === feedId) : transcript;
+  const feedFiltered = thisFeedOnly
+    ? transcript.filter((l) => l.feedName === feed.name || l.feedId === feedId)
+    : transcript;
+  const UNIT_ONLY =
+    /\b(en route|in service|out of service|in quarters|10-4|10-8|10-7|copy that|roger|affirmative|standing by)\b/i;
+  const looksUnitSpam = (t: string) =>
+    UNIT_ONLY.test(t) &&
+    t.length < 48 &&
+    !/\b(crash|fire|domestic|welfare|central|western|wolf|street|avenue|road|albany|colonie)\b/i.test(t);
+  const visible = hideUnitSpam ? feedFiltered.filter((l) => !looksUnitSpam(l.text)) : feedFiltered;
   const liveCalls = calls.filter((c) => c.minutesAgo <= 180).slice(0, 12);
 
   function destroyHls() {
@@ -356,8 +369,11 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
           })),
         );
         setLastSpokenAt(res.lastSpokenAt || null);
+        setLastSpoken(res.lastSpoken || "");
         setLastFeed(res.lastFeed || "");
         setLastError(res.lastError || "");
+        setSttState((res as { sttState?: typeof sttState }).sttState || "quiet");
+        setSttBlockedSec((res as { sttBlockedSec?: number }).sttBlockedSec || 0);
         setTicks(res.ticks || 0);
       } catch {
         /* next poll */
@@ -384,14 +400,23 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
 
   let captionStatus = "Captions paused";
   if (transcribing) {
-    if (lastError === "no-key") captionStatus = "Captions unavailable in this environment";
-    else if (lastError.includes("429")) captionStatus = "Speech API busy — retrying";
-    else if (ticks === 0) captionStatus = "Connecting to Broadcastify…";
-    else if (heardAgo) {
-      const from = SCANNER_FEEDS.find((f) => f.id === lastFeed)?.shortName;
+    const from = SCANNER_FEEDS.find((f) => f.id === lastFeed)?.shortName;
+    const lastBit = lastSpoken
+      ? ` · last: “${lastSpoken.length > 72 ? `${lastSpoken.slice(0, 68)}…` : lastSpoken}”`
+      : "";
+    if (sttState === "no-key" || lastError === "no-key") {
+      captionStatus = "Captions unavailable in this environment";
+    } else if (sttState === "busy" || lastError.includes("429")) {
+      captionStatus = `Speech API busy — retrying${sttBlockedSec ? ` (~${sttBlockedSec}s)` : ""}${lastBit}`;
+    } else if (sttState === "error" && lastError) {
+      captionStatus = `Caption error — keeping last good local line${lastBit}`;
+    } else if (ticks === 0) {
+      captionStatus = "Connecting to Broadcastify…";
+    } else if (heardAgo) {
       captionStatus = `Heard ${heardAgo}${from ? ` · ${from}` : ""}`;
+    } else {
+      captionStatus = "Listening — quiet between calls (not an error)";
     }
-    else captionStatus = "Listening — dispatch is often quiet between calls";
   }
 
   return (
@@ -522,6 +547,17 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
             >
               This feed
             </button>
+            <button
+              type="button"
+              onClick={() => setHideUnitSpam((v) => !v)}
+              className={cn(
+                "h-9 rounded-full px-3 text-xs font-semibold",
+                hideUnitSpam ? "bg-surface-2 text-fg border border-border" : "text-muted",
+              )}
+              title="Hide short unit-status lines"
+            >
+              {hideUnitSpam ? "Calls" : "All lines"}
+            </button>
             <a
               href={feed.url}
               target="_blank"
@@ -556,15 +592,31 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
           aria-live="polite"
         >
           {visible.length === 0 ? (
-            <p className="px-2 py-10 text-center text-sm text-muted">
-              {transcribing
-                ? ticks === 0
-                  ? "Connecting to Albany-area radio…"
-                  : "Quiet right now. Short unit chatter will show as soon as dispatch talks."
-                : "Captions paused. Tap the caption button to listen again."}
-            </p>
+            <div className="px-2 py-8 text-center text-sm text-muted">
+              {transcribing ? (
+                ticks === 0 ? (
+                  <p>Connecting to Albany-area radio…</p>
+                ) : sttState === "busy" ? (
+                  <p>
+                    Speech API busy — retrying.
+                    {lastSpoken ? (
+                      <span className="mt-2 block text-xs text-subtle">Last good: {lastSpoken}</span>
+                    ) : null}
+                  </p>
+                ) : (
+                  <p>
+                    Quiet right now — not an error. Dispatch captions appear when units talk.
+                    {lastSpoken ? (
+                      <span className="mt-2 block text-xs text-subtle">Last good: {lastSpoken}</span>
+                    ) : null}
+                  </p>
+                )
+              ) : (
+                <p>Captions paused. Tap the caption button to listen again.</p>
+              )}
+            </div>
           ) : (
-            <ul className="flex flex-col gap-3">
+            <ul className="flex flex-col gap-2">
               {visible.map((line) => {
                 const hint = tenHint(line.text);
                 const nature = natureChip(line.text);

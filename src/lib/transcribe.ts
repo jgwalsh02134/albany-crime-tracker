@@ -409,6 +409,8 @@ export const getScannerCaptions = createServerFn({ method: "POST" })
       ticks: health.ticks,
       kept: health.kept,
       ageSec: health.ageSec,
+      sttState: health.sttState,
+      sttBlockedSec: health.sttBlockedSec,
     };
   });
 
@@ -472,12 +474,12 @@ export const transcribeAudioChunk = createServerFn({ method: "POST" })
           error: "Transcript is not available in this environment.",
         };
       }
-      if (msg.startsWith("stt-429") || msg.startsWith("whisper-429")) {
-        return { ok: false as const, fatal: false, error: "Transcript is busy. Retrying…" };
+      if (msg.includes("429") || msg.startsWith("stt-429") || msg.startsWith("whisper-429") || msg.startsWith("groq-429")) {
+        return { ok: false as const, fatal: false, error: "Speech API busy — retrying shortly." };
       }
       if (msg === "stt-401" || msg === "stt-403") {
-        return { ok: false as const, fatal: false, error: "Transcript auth issue — using fallback when available." };
+        return { ok: false as const, fatal: false, error: "Speech API auth issue — Whisper fallback when available." };
       }
-      return { ok: false as const, fatal: false, error: "Caption skipped — trying the next clip." };
+      return { ok: false as const, fatal: false, error: "Caption glitch — keeping last good local caption." };
     }
   });

@@ -43,10 +43,15 @@ export function isSttJunk(text: string): boolean {
   if (/for more information|visit www|press release|arrest warrant was issued|counts? in the office of a federal/i.test(t)) return true;
   if (/\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+20\d{2}\b/i.test(t)) return true;
   // Far-away agencies / cities that are not Capital Region radio.
-  if (/\b(?:portland|seattle|chicago|houston|dallas|phoenix|miami|atlanta|denver|boston|los angeles|san francisco|san diego|baltimore|detroit|minneapolis|milwaukee)\b/i.test(t)) {
+  if (/\b(?:portland|seattle|chicago|houston|dallas|phoenix|miami|atlanta|denver|boston|los angeles|san francisco|san diego|baltimore|detroit|minneapolis|milwaukee|louisiana|new orleans|baton rouge|mississippi|alabama|philippines)\b/i.test(t)) {
     return true;
   }
-  if (/\b(?:portlandpolice|lapd|nypd|chicago\s+pd)\b/i.test(t)) return true;
+  if (/\b(?:portlandpolice|lapd|nypd|chicago\s+pd|nopd|orleans\s+parish)\b/i.test(t)) return true;
+  // Distant "police department" news prose without Capital Region place.
+  if (/\bpolice\s+department\b/i.test(t) && /\b(?:operator|for more information|arrest warrant)\b/i.test(t)
+    && !/\b(?:albany|colonie|bethlehem|guilderland|central|western|wolf|latham|delmar)\b/i.test(t)) {
+    return true;
+  }
   // Long past-tense news prose (radio is short clipped speech).
   const sentences = t.split(/[.!?]+/).map((s) => s.trim()).filter((s) => s.length > 20);
   if (sentences.length >= 3 && t.length > 160) {
@@ -90,6 +95,8 @@ export const STT_JUNK_SAMPLES = [
   "yeah yeah",
   "Operator, police chase a man reported killing a man on the street. Other police officers eventually arrested the man. An arrest warrant was issued for him on December 18, 2015 for three counts in the office of a federal police officer. For more information, visit www.PortlandPolice.com",
   "For more information visit www.example.com",
+  "Louisiana State Police issued a press release on January 4, 2024",
+  "New Orleans police arrested a man after a shooting downtown",
 ] as const;
 
 export const STT_KEEP_SAMPLES = [
@@ -97,4 +104,6 @@ export const STT_KEEP_SAMPLES = [
   "Welfare check at 200 Central Avenue Albany",
   "Structure fire Delaware Avenue Bethlehem",
   "Engine 1 en route to Western Avenue",
+  "92 Central Avenue welfare check",
+  "Traffic stop Central and Quail",
 ] as const;
