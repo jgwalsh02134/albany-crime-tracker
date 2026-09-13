@@ -55,7 +55,7 @@ export function applyTheme(theme: Theme) {
 }
 
 export const useAppStore = create<AppState>()((set, get) => ({
-  view: "map",
+  view: "feed",
   homeMode: "live",
   theme: "dark",
   severities: [...SEVERITIES],
