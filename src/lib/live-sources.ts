@@ -499,9 +499,15 @@ async function collectWire() {
     ...news.liveOutlets,
   ].filter(Boolean);
   const pipes = pipeHealth();
-  const daytimePipeRows = pipes.filter((p) => p.id === "511ny" || p.id === "nws" || p.id.startsWith("civic:"));
-  // Fail when errors dominate successes — empty-but-ok pipes stay daytimePipesDry only.
-  const daytimeFailing = daytimePipeRows.some((p) => Boolean(p.lastError) && p.fail >= p.ok && p.fail > 0);
+  const coreDaytime = pipes.filter((p) => p.id === "511ny" || p.id === "nws");
+  const civicDaytime = pipes.filter((p) => p.id.startsWith("civic:"));
+  const pipeHardFail = (p: (typeof pipes)[number]) =>
+    Boolean(p.lastError) && p.fail >= p.ok && p.fail > 0;
+  // One civic 403 (e.g. Menands) must not claim the whole Live feed is erroring.
+  // Empty-but-ok 511/NWS stay daytimePipesDry only.
+  const civicFailing = civicDaytime.filter(pipeHardFail).length;
+  const daytimeFailing =
+    coreDaytime.some(pipeHardFail) || (civicDaytime.length > 0 && civicFailing >= Math.max(3, Math.ceil(civicDaytime.length * 0.5)));
   const daytimePipesDry = traffic.length === 0 && civic.length === 0 && nws.length === 0;
   const health: WireHealth = {
     blotter: blotterLive.length,
