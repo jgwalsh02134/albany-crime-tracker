@@ -266,8 +266,13 @@ async function transcribeWithGroqWhisper(
   return { text: tidyRadio(json.text?.trim() ?? ""), duration: json.duration ?? 0 };
 }
 
-/** Prefer OpenAI Whisper, then Groq — used while xAI ACL is broken. */
-async function transcribeWithWhisperFallback(
+/**
+ * Prefer OpenAI Whisper, then Groq.
+ * Never abort the chain on OpenAI 429 while Groq is configured — prod hits
+ * whisper-429 (no credits) with GROQ_API_KEY set and must still caption.
+ * Exported for unit tests (fetch-mocked cascades).
+ */
+export async function transcribeWithWhisperFallback(
   bytes: Uint8Array,
   filename: string,
   mime: string,
@@ -279,7 +284,8 @@ async function transcribeWithWhisperFallback(
     } catch (err) {
       const msg = err instanceof Error ? err.message : "whisper";
       errors.push(msg);
-      if (msg.includes("429")) throw err instanceof Error ? err : new Error(msg);
+      console.error("[stt] openai whisper failed; trying next", msg);
+      // Continue to Groq even on 429 — do not throw until the chain is exhausted.
     }
   }
   if (process.env.GROQ_API_KEY) {
@@ -288,10 +294,16 @@ async function transcribeWithWhisperFallback(
     } catch (err) {
       const msg = err instanceof Error ? err.message : "groq";
       errors.push(msg);
-      if (msg.includes("429")) throw err instanceof Error ? err : new Error(msg);
+      console.error("[stt] groq whisper failed", msg);
     }
   }
-  throw new Error(errors[0] || "whisper-fallback-unavailable");
+  // Prefer the last (most recent / useful) error over the first.
+  throw new Error(errors.at(-1) || errors[0] || "whisper-fallback-unavailable");
+}
+
+/** Test helper: clear in-process xAI ACL backoff. */
+export function resetXaiSttBackoff(): void {
+  xaiSttBlockedUntil = 0;
 }
 
 export function sttProvidersConfigured(): boolean {
