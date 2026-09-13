@@ -263,23 +263,29 @@ function storyKicker(title: string): string {
   if (/\b(fire|blaze)\b/.test(t)) return "Fire";
   if (/\b(crash|collision|fatal)\b/.test(t)) return "Crash";
   if (/\b(arrest|charged|sentenced|prison|indicted)\b/.test(t)) return "Courts";
+  if (/\b(dwi|intoxicated)\b/.test(t)) return "DWI";
   return "Local";
 }
 
+const CLIENT_OUT_OF_AREA =
+  /\b(philippines|mississippi|louisiana|portland|seattle|chicago|brooklyn|queens|bronx|manhattan|albany,? georgia|albany,? oregon|new orleans)\b/i;
+
 function mergeWireNews(seed: NewsStory[], wire: LiveWireItem[]): NewsStory[] {
-  const extra: NewsStory[] = wire.map((w) => ({
-    id: w.id,
-    minutesAgo: w.minutesAgo,
-    occurredAt: w.publishedAt,
-    kicker: storyKicker(w.title),
-    title: w.title,
-    summary: w.summary || "Capital Region coverage.",
-    outlet: w.outlet,
-    municipality: "Albany County",
-    url: w.url,
-    category: "other",
-    image: w.image,
-  }));
+  const extra: NewsStory[] = wire
+    .filter((w) => !CLIENT_OUT_OF_AREA.test(`${w.title} ${w.summary}`))
+    .map((w) => ({
+      id: w.id,
+      minutesAgo: w.minutesAgo,
+      occurredAt: w.publishedAt,
+      kicker: storyKicker(w.title),
+      title: w.title,
+      summary: w.summary || "Capital Region coverage.",
+      outlet: w.outlet,
+      municipality: w.municipality || w.address || "Capital Region",
+      url: w.url,
+      category: "other" as const,
+      image: w.image,
+    }));
   const urls = new Set(extra.map((e) => e.url));
-  return [...extra, ...seed.filter((n) => !urls.has(n.url))];
+  return [...extra, ...seed.filter((n) => !urls.has(n.url) && !CLIENT_OUT_OF_AREA.test(`${n.title} ${n.summary}`))];
 }

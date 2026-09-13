@@ -1,10 +1,21 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ShareButton } from "@/components/share-button";
 import { relativeTime } from "@/lib/format";
 import { newsSharePayload } from "@/lib/share";
 import type { NewsStory } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+function isBlotterStory(s: NewsStory): boolean {
+  return /\b(NYSP blotter|blotter)\b/i.test(s.outlet) || /\bnotable\s+dwi|week in review\b/i.test(s.title);
+}
+
+function timeLabel(minutesAgo: number, occurredAt: string): string {
+  if (minutesAgo <= 45) return relativeTime(occurredAt);
+  if (minutesAgo <= 180) return relativeTime(occurredAt);
+  if (minutesAgo <= 24 * 60) return relativeTime(occurredAt);
+  return relativeTime(occurredAt);
+}
 
 export function NewsView({ stories }: { stories: NewsStory[] }) {
   const [outlet, setOutlet] = useState("all");
@@ -16,13 +27,24 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
     if (kicker !== "all" && s.kicker !== kicker) return false;
     return true;
   });
-  const featured = filtered.find((s) => s.image) ?? filtered[0];
-  const rest = filtered.filter((s) => s.id !== featured?.id);
+
+  const { headlines, blotter } = useMemo(() => {
+    const h: NewsStory[] = [];
+    const b: NewsStory[] = [];
+    for (const s of filtered) {
+      if (isBlotterStory(s)) b.push(s);
+      else h.push(s);
+    }
+    return { headlines: h, blotter: b };
+  }, [filtered]);
+
+  const featured = headlines.find((s) => s.image) ?? headlines[0];
+  const rest = headlines.filter((s) => s.id !== featured?.id);
   const top = rest.filter((s) => s.image).slice(0, 4);
   const used = new Set([featured?.id, ...top.map((s) => s.id)]);
   const developing = rest.filter((s) => !used.has(s.id) && s.minutesAgo <= 12 * 60);
   const latest = rest.filter((s) => !used.has(s.id) && s.minutesAgo > 12 * 60);
-  const hour = stories.filter((s) => s.minutesAgo <= 60).length;
+  const hour = headlines.filter((s) => s.minutesAgo <= 60).length;
 
   if (!stories.length) {
     return (
@@ -36,9 +58,13 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
     <div className="flex flex-col gap-4">
       <div>
         <p className="mb-1.5 text-xs text-subtle">
-          <span className="font-semibold text-fg">{stories.length}</span> stories
+          <span className="font-semibold text-fg">{headlines.length}</span> headlines
+          {blotter.length ? <span> · {blotter.length} blotter</span> : null}
           <span> · {outlets.length} outlets</span>
           {hour ? <span> · {hour} last hour</span> : null}
+        </p>
+        <p className="mb-2 text-xs leading-relaxed text-muted">
+          Capital Region coverage only. Out-of-area wires are dropped. Overnight NYSP blotter is listed separately so it does not drown newsroom updates.
         </p>
         <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 scrollbar-none snap-x">
           <Chip active={kicker === "all" && outlet === "all"} onClick={() => { setKicker("all"); setOutlet("all"); }} label="All" />
@@ -69,7 +95,8 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
                     <p className="text-xs font-semibold uppercase tracking-wide text-cyan">{s.kicker}</p>
                     <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-snug">{s.title}</h3>
                     <p className="mt-1.5 text-xs text-subtle">
-                      {s.outlet} · {relativeTime(s.occurredAt)}
+                      {s.outlet} · {timeLabel(s.minutesAgo, s.occurredAt)}
+                      {s.municipality && s.municipality !== "Albany County" ? ` · ${s.municipality}` : ""}
                     </p>
                   </div>
                 </a>
@@ -90,15 +117,29 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
 
       <StoryList title="Developing" items={developing} />
       <StoryList title="Latest headlines" items={latest} />
+      <StoryList
+        title="NYSP overnight blotter"
+        items={blotter}
+        note="Official overnight dump — not live dispatch. Capped so it does not crowd newsroom stories."
+      />
     </div>
   );
 }
 
-function StoryList({ title, items }: { title: string; items: NewsStory[] }) {
+function StoryList({
+  title,
+  items,
+  note,
+}: {
+  title: string;
+  items: NewsStory[];
+  note?: string;
+}) {
   if (!items.length) return null;
   return (
     <section>
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-subtle">{title}</h2>
+      <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-subtle">{title}</h2>
+      {note ? <p className="mb-2 text-xs text-muted">{note}</p> : null}
       <div className="flex flex-col gap-2">
         {items.map((s) => (
           <div key={s.id} className="relative overflow-hidden rounded-lg border border-border bg-surface">
@@ -112,10 +153,15 @@ function StoryList({ title, items }: { title: string; items: NewsStory[] }) {
               <div className="min-w-0 flex-1 py-0.5">
                 <div className="flex items-center gap-2">
                   <Badge tone={s.kicker === "Crime" || s.kicker === "Fire" ? "high" : "cyan"}>{s.kicker}</Badge>
-                  <span className="font-mono text-xs tabular-nums text-subtle">{relativeTime(s.occurredAt)}</span>
+                  <span className="font-mono text-xs tabular-nums text-subtle">
+                    {timeLabel(s.minutesAgo, s.occurredAt)}
+                  </span>
                 </div>
                 <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-snug">{s.title}</h3>
-                <p className="mt-1 truncate text-xs text-subtle">{s.outlet}</p>
+                <p className="mt-1 truncate text-xs text-subtle">
+                  {s.outlet}
+                  {s.municipality && s.municipality !== "Albany County" ? ` · ${s.municipality}` : ""}
+                </p>
               </div>
             </a>
             <div className="absolute right-1.5 top-1.5">
@@ -149,7 +195,8 @@ function Hero({ story }: { story: NewsStory }) {
             <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">{story.summary}</p>
           ) : null}
           <p className="mt-1.5 text-xs text-subtle">
-            {story.outlet} · {relativeTime(story.occurredAt)}
+            {story.outlet} · {timeLabel(story.minutesAgo, story.occurredAt)}
+            {story.municipality && story.municipality !== "Albany County" ? ` · ${story.municipality}` : ""}
           </p>
         </div>
       </a>

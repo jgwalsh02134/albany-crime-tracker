@@ -17,7 +17,7 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
   {
     id: "3626",
     name: "Albany / Colonie PD",
-    shortName: "PD",
+    shortName: "APD/CPD",
     coverage: "City of Albany & Town of Colonie",
     system: "P25 + analog simulcast",
     discipline: "police",
@@ -40,7 +40,7 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
   {
     id: "1440",
     name: "Albany Fire",
-    shortName: "Fire",
+    shortName: "AFD",
     coverage: "City of Albany Fire",
     system: "AFD dispatch",
     discipline: "fire",
@@ -51,7 +51,7 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
   {
     id: "37206",
     name: "County volunteer fire",
-    shortName: "Vol. fire",
+    shortName: "Vol fire",
     coverage: "Albany County volunteer companies",
     system: "County fire dispatch",
     discipline: "fire",

@@ -8,7 +8,7 @@ import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
 import { superfeedrItems } from "./superfeedr";
 import { enrichStoryImages, pickBestImage } from "./news-thumbs";
 import { pipeHealth, recordPipeFail, recordPipeOk } from "./pipe-health";
-import { keepLiveNewsItem, OUT_OF_AREA } from "./live-keep";
+import { keepLiveNewsItem, keepNewsTabItem, rankNewsItems, OUT_OF_AREA } from "./live-keep";
 
 const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   { url: "https://www.news10.com/feed/", outlet: "News10" },
@@ -69,6 +69,16 @@ const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   {
     url: "https://news.google.com/rss/search?q=site:fox23news.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
     outlet: "FOX23",
+    crimeOnly: true,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=(%22Central+Avenue%22+OR+%22Western+Avenue%22+OR+%22Wolf+Road%22)+(Albany+OR+Colonie)+(crash+OR+arrest+OR+fire+OR+shooting+OR+police)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Corridor news",
+    crimeOnly: true,
+  },
+  {
+    url: "https://news.google.com/rss/search?q=(Bethlehem+OR+Delmar+OR+Latham)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Town news",
     crimeOnly: true,
   },
 ];
@@ -484,20 +494,36 @@ async function collectWire() {
   // Daytime push: prefer Superfeedr-pushed rows first so hub.notify lands on Live quickly.
   // Prefer a larger share of Capital Region public-safety from pipes (not CRIME-only).
   const liveNews = [...pushed, ...news.crime, ...news.stories, ...press].filter((r) =>
-    keepLiveNewsItem({ title: r.title, summary: r.summary, minutesAgo: r.minutesAgo, local: true }),
+    keepLiveNewsItem({
+      title: r.title,
+      summary: r.summary,
+      minutesAgo: r.minutesAgo,
+      local: LOCAL.test(`${r.title} ${r.summary}`),
+    }),
   );
-  const items = mergeActivity([blotterLive, scan, traffic, nws, liveNews, socialNow, civicNow]);
-  const storiesCore = mergeActivity([
+  // Prefer radio / 511 / civic / fresh newsrooms ahead of overnight blotter.
+  const items = mergeActivity([scan, traffic, nws, liveNews, socialNow, civicNow, blotterLive]);
+  // News tab: newsrooms first; cap blotter so overnight dumps do not drown headlines.
+  const blotterAsNews = blotterNews.map((r) => ({ ...r, kind: "news" as const })).slice(0, 6);
+  const storiesRaw = mergeActivity([
     news.stories,
     press.filter((r) => r.minutesAgo <= NEWS_MIN),
     pushed.filter((r) => r.minutesAgo <= NEWS_MIN),
-    blotterNews.map((r) => ({ ...r, kind: "news" as const })),
     socialOlder.filter((r) => r.minutesAgo <= NEWS_MIN),
     civicOlder.filter((r) => r.minutesAgo <= NEWS_MIN),
-  ]).slice(0, 40);
-  const seenStories = new Set(storiesCore.map((s) => s.id));
-  const extraSocial = [...socialOlder, ...civicOlder].filter((r) => !seenStories.has(r.id)).slice(0, 12);
-  const stories = [...storiesCore, ...extraSocial];
+    blotterAsNews,
+  ]);
+  const seenStories = new Set<string>();
+  const storiesDeduped: LiveWireItem[] = [];
+  for (const row of storiesRaw) {
+    if (seenStories.has(row.id)) continue;
+    if (!keepNewsTabItem({ title: row.title, summary: row.summary, outlet: row.outlet, minutesAgo: row.minutesAgo, kind: row.kind })) {
+      continue;
+    }
+    seenStories.add(row.id);
+    storiesDeduped.push(row);
+  }
+  const stories = rankNewsItems(storiesDeduped).slice(0, 48);
   const outlets = [
     blotterLive.length ? "NYSP blotter" : "",
     scan.length ? "Scanner" : "",
@@ -528,7 +554,8 @@ async function collectWire() {
     scanner: scan.length,
     traffic: traffic.length,
     news: liveNews.length,
-    captions: Boolean(process.env.XAI_API_KEY || process.env.OPENAI_API_KEY),
+    stories: stories.length,
+    captions: Boolean(process.env.XAI_API_KEY || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY),
     extractor: blotterRes.extractor,
     scannerTicks: scanStats.ticks,
     scannerError: scanStats.lastError || undefined,
@@ -553,8 +580,7 @@ async function collectWire() {
       fail: p.fail,
     })),
   };
-  const storiesCapped = stories.slice(0, 52);
-  const enrichedStories = await enrichStoryImages(storiesCapped, { max: 10 });
+  const enrichedStories = await enrichStoryImages(stories, { max: 12 });
   // Propagate enriched thumbs onto matching live wire items (same id/url) for consistency.
   const thumbById = new Map(
     enrichedStories.filter((s) => s.image).map((s) => [s.id, s.image!] as const),

@@ -529,7 +529,7 @@ async function tick() {
   state.stats.ticks += 1;
   state.stats.lastTickAt = Date.now();
   try {
-    if (!process.env.XAI_API_KEY && !process.env.OPENAI_API_KEY) {
+    if (!process.env.XAI_API_KEY && !process.env.OPENAI_API_KEY && !process.env.GROQ_API_KEY) {
       state.stats.lastError = "no-key";
       state.stats.lastErrorAt = Date.now();
       return;
@@ -581,7 +581,11 @@ export function setListenFeed(feedId: string | null) {
 export function captionLines(feedId?: string): CaptionLine[] {
   const rows = feedId ? state.captions.filter((c) => c.feedId === feedId) : state.captions;
   // Safety net: never surface stored hallucinations if junk rules tightened after capture.
-  return rows.filter((c) => !isSttJunk(c.text)).slice(0, 40);
+  const clean = rows.filter((c) => !isSttJunk(c.text));
+  // Main transcript: prefer dispatch over cryptic unit-only spam.
+  const primary = clean.filter((c) => !isUnitStatusChatter(c.text) && !isUnitStatusOnly(c.text));
+  const unit = clean.filter((c) => isUnitStatusChatter(c.text) || isUnitStatusOnly(c.text));
+  return [...primary, ...unit.slice(0, 4)].slice(0, 40);
 }
 
 export async function awaitScannerTick(ms = 12000): Promise<void> {
@@ -594,6 +598,18 @@ export async function awaitScannerTick(ms = 12000): Promise<void> {
   }
 }
 
+export type SttUiState = "ok" | "busy" | "error" | "quiet" | "no-key";
+
+/** Map scanner STT health to Radio UI copy — busy vs quiet vs error. */
+export function classifySttState(now = Date.now()): SttUiState {
+  const err = state.stats.lastError || "";
+  if (err === "no-key") return "no-key";
+  if (now < state.sttBlockedUntil || /429/.test(err)) return "busy";
+  if (err && err !== "tick-timeout" && now - (state.stats.lastErrorAt || 0) < 90_000) return "error";
+  if (state.stats.lastSpoken && now - state.stats.lastSpokenAt < 180_000) return "ok";
+  return "quiet";
+}
+
 export function scannerHealth(): {
   ticks: number;
   kept: number;
@@ -604,7 +620,10 @@ export function scannerHealth(): {
   lastFeed: string;
   ageSec: number;
   captions: number;
+  sttState: SttUiState;
+  sttBlockedSec: number;
 } {
+  const now = Date.now();
   return {
     ticks: state.stats.ticks,
     kept: state.stats.kept,
@@ -613,8 +632,10 @@ export function scannerHealth(): {
     lastSpoken: state.stats.lastSpoken,
     lastSpokenAt: state.stats.lastSpokenAt,
     lastFeed: state.stats.lastFeed,
-    ageSec: state.stats.lastTickAt ? Math.round((Date.now() - state.stats.lastTickAt) / 1000) : -1,
-    captions: state.captions.length,
+    ageSec: state.stats.lastTickAt ? Math.round((now - state.stats.lastTickAt) / 1000) : -1,
+    captions: state.captions.filter((c) => !isSttJunk(c.text)).length,
+    sttState: classifySttState(now),
+    sttBlockedSec: Math.max(0, Math.ceil((state.sttBlockedUntil - now) / 1000)),
   };
 }
 

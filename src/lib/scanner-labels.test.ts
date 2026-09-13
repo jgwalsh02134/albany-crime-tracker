@@ -247,3 +247,26 @@ describe("dedupe fingerprints + unit status", () => {
     assert.equal(isUnitStatusOnly("en route to Wolf Road crash"), false);
   });
 });
+
+describe("Central Ave corridor + better titles", () => {
+  it("extracts Central Ave place and Albany PD agency", () => {
+    const spoken = "Welfare check at 200 Central Avenue Albany";
+    const agency = resolveScannerAgency({ feedId: "3626", spoken });
+    assert.equal(agency.agency, "Albany PD");
+    const place = resolveScannerPlace({ spoken, agency, feed: getScannerFeed("3626") });
+    assert.match(place.placeLabel, /Central/i);
+    assert.equal(place.known, true);
+    const title = scannerTitle(spoken, agency, place);
+    assert.match(title, /Albany PD/);
+    assert.match(title, /Central|welfare/i);
+    assert.equal(/· radio$/.test(title), false);
+  });
+
+  it("titles nature without inventing CAD when place is weak", () => {
+    const spoken = "domestic in progress";
+    const agency = resolveScannerAgency({ feedId: "3626", spoken });
+    const place = resolveScannerPlace({ spoken, agency, feed: getScannerFeed("3626") });
+    const title = scannerTitle(spoken, agency, place);
+    assert.match(title, /domestic/i);
+  });
+});

@@ -134,3 +134,15 @@ describe("parcel public fields", () => {
     assert.match(s!.address, /Test/);
   });
 });
+
+describe("Central Ave STT normalize", () => {
+  it("maps sentral / on the central to Central Avenue", () => {
+    const a = normalizeScannerSpeech("respond sentral for a crash");
+    assert.match(a, /Central/i);
+    const b = normalizeScannerSpeech("on the central welfare check");
+    assert.match(b, /Central Avenue/i);
+    const addr = extractSpokenAddress("92 Central Avenue welfare check");
+    assert.ok(addr);
+    assert.match(addr!.label, /Central/i);
+  });
+});

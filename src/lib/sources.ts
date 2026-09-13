@@ -207,6 +207,8 @@ export type WireHealth = {
   scanner: number;
   traffic: number;
   news: number;
+  /** News tab rows after local/out-of-area filter (what users see on News). */
+  stories?: number;
   captions: boolean;
   extractor?: string;
   scannerTicks?: number;

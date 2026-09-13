@@ -425,18 +425,25 @@ export function resolveScannerPlace(input: {
 export function natureOf(text: string): string {
   if (/panic/i.test(text)) return "panic alarm";
   if (/hold.?up|robbery/i.test(text)) return "robbery";
-  if (/shots? fired|shoot/i.test(text)) return "shots fired";
+  if (/shots? fired|shoot|active\s+shooter/i.test(text)) return "shots fired";
   if (/domestic/i.test(text)) return "domestic";
   if (/welfare/i.test(text)) return "welfare check";
   if (/personal injury|\bpi\b|injury crash/i.test(text)) return "injury crash";
-  if (/crash|collision|accident|mva/i.test(text)) return "crash";
+  if (/hit.?and.?run|10-57/i.test(text)) return "hit and run";
+  if (/crash|collision|accident|mva|10-50/i.test(text)) return "crash";
   if (/structure fire|building fire/i.test(text)) return "structure fire";
   if (/\bfire\b/i.test(text)) return "fire";
+  if (/person down|man down/i.test(text)) return "person down";
   if (/ems|ambulance|medical|overdose|unconscious/i.test(text)) return "EMS";
   if (/burglar/i.test(text)) return "burglar alarm";
   if (/\balarm\b/i.test(text)) return "alarm";
+  if (/traffic stop/i.test(text)) return "traffic stop";
+  if (/disturbance|disorderly/i.test(text)) return "disturbance";
   if (/suspicious/i.test(text)) return "suspicious";
-  if (/dwi|intoxicated/i.test(text)) return "DWI";
+  if (/dwi|intoxicated|10-55/i.test(text)) return "DWI";
+  if (/pursuit|10-80/i.test(text)) return "pursuit";
+  if (/backup|10-78/i.test(text)) return "backup";
+  if (/wanted|warrant/i.test(text)) return "wanted";
   return "";
 }
 
@@ -463,14 +470,18 @@ export function scannerTitle(spoken: string, agency: AgencyLabel, place: Scanner
   // Never promote STT garbage ("Across This Triumph Street") into the title.
   const t = normalizeScannerSpeech(spoken).replace(/\s+/g, " ").trim();
   if (isLowConfidencePlace(t) || /\bacross\b/i.test(t) || /\b(triumph|trion)\b/i.test(t)) {
-    return `${agencyBit} · radio`;
+    return nature ? `${agencyBit} · ${nature}` : `${agencyBit} · radio traffic`;
   }
   // Prefer short non-address clips only when they look like dispatch, not street hallucinations.
   if (/\b(street|st\.?|avenue|ave\.?|road|rd\.?)\b/i.test(t) && !placeBit) {
-    return `${agencyBit} · radio`;
+    return nature ? `${agencyBit} · ${nature}` : `${agencyBit} · radio traffic`;
+  }
+  // Unit-status-only without place — honest stub, not a fake CAD title.
+  if (/\b(en route|in service|10-4|10-8|copy that|roger)\b/i.test(t) && t.length < 40) {
+    return `${agencyBit} · unit status`;
   }
   const clip = t.length <= 56 ? t : `${t.slice(0, 52).replace(/\s+\S*$/, "")}…`;
-  return `${agencyBit} · ${clip || "radio"}`;
+  return `${agencyBit} · ${clip || "radio traffic"}`;
 }
 
 export function withDisclaimer(spoken: string, agency: string): string {

@@ -387,7 +387,8 @@ function SourcePipes({
                   ["Department Facebook", health.facebook ?? 0, "APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland."],
                   ["X", health.x ?? 0, "NYSP, Albany Fire, CBS6, NEWS10, Times Union when they tweet crime."],
                   ["Town civic", health.civic ?? 0, "Bethlehem, Guilderland, Albany, Cohoes, Menands, Voorheesville — crashes and arrests only. Empty civic RSS stays wired."],
-                  ["Newsrooms", health.news, "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight, Gazette, FOX23, Spectrum, Troy Record, north-city / Guilderland queries."],
+                  ["Live news lens", health.news, "Capital Region public-safety headlines in the last 24h on Live (out-of-area dropped)."],
+                  ["News tab", health.stories ?? health.news, "Headlines on the News tab after local keep + fresher ranking. Blotter is capped so it does not drown newsrooms."],
                   ["Citizens", health.reddit ?? 0, "Reddit r/Albany, r/Troy, r/Schenectady. Not 911."],
                   ["NWS warnings", health.nws ?? 0, "Tornado, flash flood, severe thunderstorm, blizzard. Not routine weather."],
                 ].map(([name, n, why]) => (
