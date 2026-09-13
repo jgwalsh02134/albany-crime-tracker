@@ -475,6 +475,7 @@ export function extractNyspText(
       status: prettyStatus(status) || status,
       lat: pin.lat,
       lng: pin.lng,
+      geoPrecision: roadPretty || interPretty ? "road" : "town",
     });
   }
   return out;

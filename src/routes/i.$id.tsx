@@ -39,7 +39,7 @@ function IncidentDeepLinkPage() {
   useEffect(() => {
     const target = meta.incident?.id ?? id;
     select(target);
-    setView("feed");
+    setView("map");
     setHomeMode("live");
   }, [id, meta.incident?.id, select, setView, setHomeMode]);
 

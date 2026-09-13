@@ -301,3 +301,59 @@
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+
+.act-tip-agency {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.act-pin-approx {
+  opacity: 0.85;
+}
+
+.act-pin-badge {
+  background: transparent !important;
+  border: none !important;
+}
+
+.act-pin-badge-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--m) 92%, black);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 800;
+  box-shadow: 0 0 0 2px color-mix(in oklab, white 70%, transparent);
+}
+
+.leaflet-popup.act-parcel-popup .leaflet-popup-content-wrapper {
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px color-mix(in oklab, black 35%, transparent);
+}
+
+.leaflet-popup.act-parcel-popup .leaflet-popup-tip {
+  background: var(--surface);
+}
+
+.act-parcel-tip .act-parcel-k {
+  display: inline-block;
+  min-width: 4.2rem;
+  margin-right: 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--subtle);
+}

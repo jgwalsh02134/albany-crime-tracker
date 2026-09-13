@@ -30,6 +30,8 @@ export type Incident = {
   address: string;
   lat: number;
   lng: number;
+  /** Street / intersection / town / county — map approx styling when coarse. */
+  geoPrecision?: "street" | "intersection" | "landmark" | "road" | "town" | "county" | "unknown";
   agency: string;
   agencyAbbr: string;
   description: string;

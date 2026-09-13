@@ -1,8 +1,8 @@
+import { locateSpoken, placeFromText } from "./geo";
 import { createServerFn } from "@tanstack/react-start";
 import type { LiveWireItem, WireHealth } from "./sources";
 import { fetchNyspBlotter, parseNyWhen } from "./nysp-blotter";
 import { scannerHealth, scannerItems, startScannerPoll } from "./scanner-poll";
-import { placeFromText } from "./geo";
 import { collectSocial, socialLive, socialNews } from "./social-sources";
 import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
 import { superfeedrItems } from "./superfeedr";
@@ -336,6 +336,18 @@ async function fetch511(now: number): Promise<LiveWireItem[]> {
           ? "Capital District"
           : "Capital District";
       const sev = e.Severity && e.Severity !== "Unknown" ? `${e.Severity} crash` : "Crash";
+      let lat = typeof e.Latitude === "number" ? e.Latitude : undefined;
+      let lng = typeof e.Longitude === "number" ? e.Longitude : undefined;
+      let geoPrecision: import("./geo").GeoPrecision | undefined =
+        lat != null && lng != null ? "street" : undefined;
+      let address = road;
+      if (lat == null || lng == null) {
+        const pin = locateSpoken(`${road} ${desc}`, placeFromText(desc)?.name || place.replace(/ County$/i, "") || "Albany");
+        lat = pin.geo.lat;
+        lng = pin.geo.lng;
+        geoPrecision = pin.precision;
+        if (pin.road) address = pin.road;
+      }
       out.push({
         id: `511-${e.ID || road}-${at}`,
         title: `${sev} — ${road}`,
@@ -346,10 +358,11 @@ async function fetch511(now: number): Promise<LiveWireItem[]> {
         minutesAgo,
         kind: "traffic",
         municipality: place,
-        address: road,
+        address,
         agency: "NYSDOT 511",
-        lat: typeof e.Latitude === "number" ? e.Latitude : undefined,
-        lng: typeof e.Longitude === "number" ? e.Longitude : undefined,
+        lat,
+        lng,
+        geoPrecision,
       });
     }
     recordPipeOk("511ny", "511NY", out.length);

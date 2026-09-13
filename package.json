@@ -15,7 +15,7 @@
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/scanner-labels.test.ts src/lib/fusion.test.ts src/lib/stt-junk.test.ts src/lib/live-honesty.test.ts",
+    "test": "node --import tsx --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/scanner-labels.test.ts src/lib/fusion.test.ts src/lib/stt-junk.test.ts src/lib/live-honesty.test.ts src/lib/geo.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
