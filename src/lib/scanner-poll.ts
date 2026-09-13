@@ -23,7 +23,7 @@ const MAX_ITEMS = 120;
 const MIN_AUDIO = 1400;
 const EXTRA_FEEDS = ["1440", "37206", "36327"] as const;
 const CALL =
-  /\b(panic|alarm|welfare|domestic|crash|collision|accident|personal injury|\bpi\b|fire|ems|ambulance|shoot|shots|gun|stab|fight|assault|burglary|robbery|larceny|theft|stolen|suspicious|wanted|dwi|intoxicated|overdose|unconscious|medical|rescue|injury|injured|hit.?and.?run|pursuit|missing|trespass|harass|person down|man down|priority|hold.?up|weapon|carjack|disabled|breakdown|speedway|10-1[0-9]|10-5[0-9]|10-8[0-9])\b/i;
+  /\b(panic|alarm|welfare|domestic|crash|collision|accident|personal injury|\bpi\b|fire|ems|ambulance|shoot|shots|gun|stab|fight|assault|burglary|robbery|larceny|theft|stolen|suspicious|wanted|dwi|intoxicated|overdose|unconscious|medical|rescue|injury|injured|hit.?and.?run|pursuit|missing|trespass|harass|person down|man down|priority|hold.?up|weapon|carjack|disabled|breakdown|speedway|police|officer|units?|backup|suspect|traffic stop|disturbance|armed|knife|in progress|responding|shots fired|active\s+shooter|swat|10-1[0-9]|10-3[0-9]|10-5[0-9]|10-8[0-9])\b/i;
 const PLACE =
   /\b(street|st\.|avenue|ave\.|road|rd\.|boulevard|blvd|place|pl\.|parkway|pkwy|highway|hwy|interstate|i-?8[79]|i-?90|i-?787|route|western|west granite|central|lark|pearl|madison|washington|new scotland|delaware|southern|broadway|wolf road|sand creek|sandwich|springsteen|henry johnson|colonie|latham|bethlehem|guilderland|albany|cohoes|watervliet|menands|delmar|loudonville|selkirk|glenmont|troy)\b/i;
 
@@ -178,12 +178,17 @@ function looksCaption(text: string): boolean {
   return true;
 }
 
-function looksDispatch(text: string): boolean {
+export function looksDispatch(text: string): boolean {
   if (!looksCaption(text)) return false;
-  if (text.replace(/\s+/g, " ").trim().length < 12) return false;
-  if (CALL.test(text) || PLACE.test(text)) return true;
-  if (extractIntersection(text) || extractRoute(text)) return true;
-  return streetsOf(text).length > 0;
+  const t = text.replace(/\s+/g, " ").trim();
+  // Whisper often truncates PD traffic — keep short lines if they name a place/call.
+  if (t.length < 8) return false;
+  if (CALL.test(t) || PLACE.test(t)) return true;
+  if (extractIntersection(t) || extractRoute(t)) return true;
+  if (streetsOf(t).length > 0) return true;
+  // House number + word (garbled Central Ave / Western Ave STT).
+  if (/\b\d{1,5}\s+[A-Za-z][A-Za-z']{2,}/.test(t)) return true;
+  return false;
 }
 
 function streetsOf(text: string): string[] {
@@ -429,9 +434,15 @@ async function tickFeed(feedId: string) {
   state.stats.lastSpokenAt = Date.now();
   state.stats.lastFeed = feedId;
   rememberCaption(feedId, feed.name, spoken);
-  if (!looksDispatch(spoken)) return;
+  if (!looksDispatch(spoken)) {
+    console.info("[scanner] drop-not-dispatch", feedId, spoken.slice(0, 120));
+    return;
+  }
   // Quieter Live: demote pure unit-status chatter with no place.
-  if (isUnitStatusChatter(spoken) || isUnitStatusOnly(spoken)) return;
+  if (isUnitStatusChatter(spoken) || isUnitStatusOnly(spoken)) {
+    console.info("[scanner] drop-unit-status", feedId, spoken.slice(0, 120));
+    return;
+  }
   const key = spoken.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   if (key === state.lastText.get(feedId)) return;
 
@@ -517,13 +528,18 @@ async function tick() {
       return;
     }
     if (Date.now() < state.sttBlockedUntil) return;
+    // Albany/Colonie PD (3626) is the primary Live radio — always poll it.
     const jobs = [tickFeed("3626")];
     const listen = state.listenFeed && Date.now() < state.listenUntil ? state.listenFeed : null;
-    if (listen && listen !== "3626") jobs.push(tickFeed(listen));
-    // Daytime keep-alive: rotate extra Albany-area feeds every other tick (was every 3rd).
-    else if (state.stats.ticks % 2 === 0) {
+    if (listen && listen !== "3626") {
+      jobs.push(tickFeed(listen));
+    } else if (state.stats.ticks % 3 === 0) {
+      // Rotate fire/Bethlehem keep-alive less often so PD gets more STT budget.
       jobs.push(tickFeed(EXTRA_FEEDS[state.cursor % EXTRA_FEEDS.length]!));
       state.cursor += 1;
+    } else if (state.stats.ticks % 2 === 0) {
+      // Second PD pass on alternate ticks when extras are idle.
+      jobs.push(tickFeed("3626"));
     }
     await Promise.race([
       Promise.all(jobs),
