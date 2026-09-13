@@ -24,8 +24,8 @@ import type { NewsStory, ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const TABS: { id: ViewId; label: string; icon: typeof Bolt }[] = [
-  { id: "map", label: "Map", icon: MapIcon },
   { id: "feed", label: "Live", icon: Bolt },
+  { id: "map", label: "Map", icon: MapIcon },
   { id: "scanner", label: "Radio", icon: Radio },
   { id: "directory", label: "Agencies", icon: Shield },
 ];
