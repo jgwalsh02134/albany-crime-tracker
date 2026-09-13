@@ -24,6 +24,7 @@ export type FuseItem = {
   status?: string;
   lat?: number;
   lng?: number;
+  geoPrecision?: "street" | "intersection" | "landmark" | "road" | "town" | "county" | "unknown";
 };
 
 export type CallClass = {

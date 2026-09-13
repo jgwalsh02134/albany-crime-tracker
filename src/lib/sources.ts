@@ -1,5 +1,5 @@
 import type { Incident, IncidentSource, ScannerCall, SourceKind, SourceLens, SourceTier, Verification } from "./types";
-import { placeFromText, spreadItems } from "./geo";
+import { COUNTY_CENTROID, locateSpoken, placeFromText, spreadItems, type GeoPrecision } from "./geo";
 import {
   classifyCall,
   clusterLiveItems,
@@ -243,6 +243,7 @@ export type LiveWireItem = {
   status?: string;
   lat?: number;
   lng?: number;
+  geoPrecision?: GeoPrecision;
 };
 
 
@@ -277,8 +278,14 @@ export function fuseLiveWire(incidents: Incident[], wire: LiveWireItem[]): Incid
   });
 }
 
-function placeOf(text: string): { name: string; lat: number; lng: number } {
-  return placeFromText(text) ?? { name: "Albany County", lat: 42.6526, lng: -73.7562 };
+function placeOf(text: string): { name: string; lat: number; lng: number; precision: GeoPrecision } {
+  const pin = locateSpoken(text, "");
+  const town = placeFromText(text);
+  if (pin.road) {
+    return { name: town?.name || "Albany County", lat: pin.geo.lat, lng: pin.geo.lng, precision: pin.precision };
+  }
+  if (town) return { name: town.name, lat: town.lat, lng: town.lng, precision: "town" };
+  return { name: "Albany County", lat: COUNTY_CENTROID.lat, lng: COUNTY_CENTROID.lng, precision: "county" };
 }
 
 export function classify(title: string): { type: string; category: Incident["category"]; severity: Incident["severity"] } {
@@ -319,9 +326,22 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
   const incidents = groups.map((group) => {
     const item = pickPrimary(group);
     const hay = group.map((g) => `${g.title} ${g.summary}`).join(" ");
-    const placed = item.municipality
-      ? { name: item.municipality, lat: item.lat ?? 42.6526, lng: item.lng ?? -73.7562 }
-      : placeOf(hay);
+    const hayPlace = placeOf(hay);
+    const placed = item.lat != null && item.lng != null
+      ? {
+          name: item.municipality || hayPlace.name,
+          lat: item.lat,
+          lng: item.lng,
+          precision: (item.geoPrecision || hayPlace.precision) as GeoPrecision,
+        }
+      : item.municipality && item.municipality !== "Albany County" && item.municipality !== "Capital District"
+        ? {
+            name: item.municipality,
+            lat: item.lat ?? hayPlace.lat,
+            lng: item.lng ?? hayPlace.lng,
+            precision: (item.geoPrecision || (item.lat != null ? hayPlace.precision : "town")) as GeoPrecision,
+          }
+        : hayPlace;
     const kind = classify(`${item.title} ${item.category ?? ""} ${item.summary ?? ""}`);
     const muni =
       item.municipality && item.municipality !== "Albany County"
@@ -352,9 +372,10 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       severity: kind.severity,
       status: item.minutesAgo <= 180 ? "active" : item.minutesAgo <= 24 * 60 ? "developing" : "closed",
       municipality: muni,
-      address: item.address || (placed.name === "Albany County" ? "Countywide" : placed.name),
+      address: item.address || (placed.name === "Albany County" ? "area unknown" : placed.name),
       lat: item.lat ?? placed.lat,
       lng: item.lng ?? placed.lng,
+      geoPrecision: item.geoPrecision || placed.precision || (item.address && item.address !== "area unknown" ? undefined : "town"),
       agency: item.agency || item.outlet,
       agencyAbbr: agencyAbbrFor(item, activity),
       description: item.summary || item.title,

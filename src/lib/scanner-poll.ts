@@ -3,7 +3,7 @@ import { http2Get, http2GetText } from "./http2-get";
 import { transcribeAudioFile } from "./transcribe";
 import { getScannerFeed, SCANNER_FEEDS, hlsCandidateUrls } from "./scanner-feeds";
 import type { LiveWireItem } from "./sources";
-import { geocodeSpoken, locateSpoken, placeFromText, TOWN } from "./geo";
+import { COUNTY_CENTROID, geocodeSpoken, locateSpoken, placeFromText, TOWN, type GeoPrecision } from "./geo";
 import {
   callFingerprint,
   extractIntersection,
@@ -214,6 +214,7 @@ async function labelSpoken(feedId: string, spoken: string, talkgroupId?: string 
   address: string;
   lat: number;
   lng: number;
+  geoPrecision: GeoPrecision;
 }> {
   const feed = getScannerFeed(feedId) ?? SCANNER_FEEDS[0]!;
   const agency = resolveScannerAgency({ feedId, spoken, talkgroupId });
@@ -233,17 +234,20 @@ async function labelSpoken(feedId: string, spoken: string, talkgroupId?: string 
   } else if (!place.known) {
     address = "area unknown";
   }
-  const geo = pin.geo;
-  // If area unknown, avoid pretending a precise downtown pin — use town centroid only when muni known.
-  let lat = geo.lat;
-  let lng = geo.lng;
-  if (!place.known && !muni) {
-    // Soft county centroid — map still needs a number; address stays "area unknown".
-    lat = 42.68;
-    lng = -73.82;
-  } else if (!place.placeLabel && muni && TOWN[muni]) {
+  // Prefer street/intersection/landmark pins; never overwrite them with town centroids.
+  let lat = pin.geo.lat;
+  let lng = pin.geo.lng;
+  let geoPrecision: GeoPrecision = pin.precision;
+  if (pin.road && (pin.precision === "street" || pin.precision === "intersection" || pin.precision === "landmark" || pin.precision === "road")) {
+    // keep geocoded pin
+  } else if (!place.known && !muni) {
+    lat = COUNTY_CENTROID.lat;
+    lng = COUNTY_CENTROID.lng;
+    geoPrecision = "county";
+  } else if (!pin.road && muni && TOWN[muni]) {
     lat = TOWN[muni]!.lat;
     lng = TOWN[muni]!.lng;
+    geoPrecision = "town";
   }
   return {
     agency,
@@ -254,6 +258,7 @@ async function labelSpoken(feedId: string, spoken: string, talkgroupId?: string 
     address,
     lat,
     lng,
+    geoPrecision,
   };
 }
 
@@ -477,6 +482,7 @@ async function tickFeed(feedId: string) {
       dup.agency = labeled.agency.agency;
       dup.lat = labeled.lat;
       dup.lng = labeled.lng;
+      dup.geoPrecision = labeled.geoPrecision;
       dup.publishedAt = new Date(now).toISOString();
       dup.minutesAgo = 0;
     }
@@ -500,6 +506,7 @@ async function tickFeed(feedId: string) {
     agency: labeled.agency.agency,
     lat: labeled.lat,
     lng: labeled.lng,
+    geoPrecision: labeled.geoPrecision,
   };
   state.buffer.unshift(item);
   // Prefer address + call-type toward the front when re-sorting recent scanner rows.
@@ -631,6 +638,21 @@ function relabelSync(row: LiveWireItem): LiveWireItem {
   if (/City of Albany\s*&\s*Town of Colonie|Albany\s*\/\s*Colonie/i.test(address)) {
     address = place.placeLabel || "area unknown";
   }
+  const lat = pin.road
+    ? pin.geo.lat
+    : place.known && muni && TOWN[muni]
+      ? TOWN[muni]!.lat
+      : pin.geo.lat;
+  const lng = pin.road
+    ? pin.geo.lng
+    : place.known && muni && TOWN[muni]
+      ? TOWN[muni]!.lng
+      : pin.geo.lng;
+  const geoPrecision: GeoPrecision = pin.road
+    ? pin.precision
+    : place.known && muni
+      ? "town"
+      : pin.precision;
   return {
     ...row,
     title: scannerTitle(spoken, agency, place),
@@ -638,8 +660,9 @@ function relabelSync(row: LiveWireItem): LiveWireItem {
     municipality: muni || (address === "area unknown" ? "Unknown" : muni),
     address,
     agency: agency.agency,
-    lat: pin.road ? pin.geo.lat : place.known && muni && TOWN[muni] ? TOWN[muni]!.lat : pin.geo.lat,
-    lng: pin.road ? pin.geo.lng : place.known && muni && TOWN[muni] ? TOWN[muni]!.lng : pin.geo.lng,
+    lat,
+    lng,
+    geoPrecision,
   };
 }
 

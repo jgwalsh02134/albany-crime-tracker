@@ -1,4 +1,4 @@
-import { placeFromText } from "./geo";
+import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
 
@@ -99,7 +99,8 @@ async function fetchCivicFeed(feed: CivicFeed, now: number): Promise<LiveWireIte
       const published = Date.parse(tag(block, "pubDate")) || now;
       const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
       if (minutesAgo > OFFICIAL_NEWS_MIN) continue;
-      const place = placeFromText(hay);
+      const town = placeFromText(hay);
+      const pin = locateSpoken(hay, town?.name || "");
       out.push({
         id: url,
         title,
@@ -109,11 +110,12 @@ async function fetchCivicFeed(feed: CivicFeed, now: number): Promise<LiveWireIte
         publishedAt: new Date(published).toISOString(),
         minutesAgo,
         kind: "news",
-        municipality: place?.name,
-        address: place?.name,
+        municipality: town?.name,
+        address: pin.road || town?.name,
         agency: feed.agency,
-        lat: place?.lat,
-        lng: place?.lng,
+        lat: pin.geo.lat,
+        lng: pin.geo.lng,
+        geoPrecision: pin.precision,
       });
     }
     recordPipeOk(pipeId(feed.outlet), feed.outlet, out.length);
@@ -171,6 +173,7 @@ export async function fetchNws(now: number): Promise<LiveWireItem[]> {
       const minutesAgo = Math.max(0, Math.round((now - at) / 60_000));
       if (minutesAgo > LIVE_MIN) continue;
       const place = placeFromText(p.areaDesc || hay);
+      const pin = locateSpoken(`${p.areaDesc || ""} ${hay}`, place?.name || "");
       out.push({
         id: p.id || `nws-${event}-${at}`,
         title: headline.slice(0, 180),
@@ -183,8 +186,9 @@ export async function fetchNws(now: number): Promise<LiveWireItem[]> {
         municipality: place?.name || "Albany County",
         address: (p.areaDesc || "Capital District").split(";")[0]?.trim(),
         agency: "National Weather Service",
-        lat: place?.lat,
-        lng: place?.lng,
+        lat: pin.geo.lat,
+        lng: pin.geo.lng,
+        geoPrecision: pin.precision,
       });
     }
     recordPipeOk("nws", "NWS", out.length);
