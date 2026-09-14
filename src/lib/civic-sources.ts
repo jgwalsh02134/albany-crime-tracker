@@ -1,6 +1,7 @@
 import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
+import { decodeHtmlEntities } from "./html";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const LIVE_MIN = 24 * 60;
@@ -89,14 +90,11 @@ const CIVIC_FEEDS: CivicFeed[] = [
 ];
 
 function decode(raw: string): string {
-  return raw
+  const s = raw
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/&nbsp;/gi, " ")
-    .replace(/&#160;/g, " ")
-    .replace(/&/g, "&")
-    .replace(/</g, "<")
-    .replace(/>/g, ">")
-    .replace(/"/g, '"')
+    .replace(/&#160;/g, " ");
+  return decodeHtmlEntities(s)
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();

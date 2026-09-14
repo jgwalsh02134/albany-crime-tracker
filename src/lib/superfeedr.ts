@@ -4,6 +4,7 @@ import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
 import { NEWS_FEEDS } from "./news-feeds";
+import { decodeHtmlEntities } from "./html";
 
 const LOCAL =
   /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g|clifton park|troy|schenectady|rensselaer|sand lake|schodack|east greenbush)\b/i;
@@ -33,14 +34,10 @@ function state(): PushState {
 }
 
 function decode(raw: string): string {
-  return raw
+  const s = raw
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/gi, " ");
+  return decodeHtmlEntities(s)
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();

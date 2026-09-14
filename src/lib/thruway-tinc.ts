@@ -1,6 +1,7 @@
 import type { LiveWireItem } from "./sources";
 import { locateSpoken, placeFromText } from "./geo";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
+import { decodeHtmlEntities } from "./html";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const URL = "https://tincevents.thruway.ny.gov/tincview.aspx?zone=albany";
@@ -13,13 +14,8 @@ type Cache = { at: number; items: LiveWireItem[] } | null;
 const g = globalThis as unknown as { __actTincAlbany?: Cache };
 
 function decodeHtml(raw: string): string {
-  return raw
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"')
+  const s = raw.replace(/&nbsp;/gi, " ");
+  return decodeHtmlEntities(s)
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();

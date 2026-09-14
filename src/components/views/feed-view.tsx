@@ -275,7 +275,7 @@ function LiveList({
             <p className="py-1.5 text-xs text-subtle">{wireLive ? `${showing.length} calls` : "Connecting…"}</p>
           )}
           <div className="flex flex-col gap-1.5">
-            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
               <Chip
                 active={liveKind === "all"}
                 onClick={() => setLiveKind("all")}
@@ -286,7 +286,7 @@ function LiveList({
               <Chip active={liveKind === "fire"} onClick={() => setLiveKind("fire")} label="Fire" />
               <Chip active={liveKind === "traffic"} onClick={() => setLiveKind("traffic")} label="Traffic" />
             </div>
-            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
               <Chip
                 active={sourceLens === "all"}
                 onClick={() => setSourceLens("all")}
@@ -297,7 +297,7 @@ function LiveList({
               <Chip active={sourceLens === "news"} onClick={() => setSourceLens("news")} label={`News ${mix.news}`} />
               <Chip active={sourceLens === "social"} onClick={() => setSourceLens("social")} label={`Social ${mix.social}`} />
             </div>
-            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
               <Chip
                 active={!nearActive}
                 onClick={() => setLiveNearMe(false)}
@@ -519,7 +519,7 @@ function Chip({
       type="button"
       onClick={onClick}
       className={cn(
-        "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium active:opacity-80",
+        "h-10 shrink-0 rounded-full border px-3 text-xs font-medium active:opacity-80",
         active ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
       )}
     >
