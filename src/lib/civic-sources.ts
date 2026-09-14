@@ -22,6 +22,11 @@ const CIVIC_FEEDS: CivicFeed[] = [
     agency: "Bethlehem PD",
   },
   {
+    url: "https://www.townofbethlehem.org/RSSFeed.aspx?ModID=1&CID=Police-Press-Releases-5",
+    outlet: "Civic · Bethlehem PD press",
+    agency: "Bethlehem PD",
+  },
+  {
     url: "https://www.guilderlandpd.org/RSSFeed.aspx?ModID=1&CID=All-news",
     outlet: "Civic · Guilderland PD",
     agency: "Guilderland PD",

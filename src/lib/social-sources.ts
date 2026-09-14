@@ -1,7 +1,7 @@
 import { keepSocialItem } from "./live-keep";
 import { placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
-import { recordPipeOk } from "./pipe-health";
+import { recordPipeFail, recordPipeOk } from "./pipe-health";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const REDDIT_UA =
@@ -19,6 +19,9 @@ const TITLE_CRIME =
 const LIVE_MIN = 24 * 60;
 const NEWS_MIN = 72 * 60;
 const OFFICIAL_NEWS_MIN = 7 * 24 * 60;
+
+let redditBlockedUntil = 0;
+const REDDIT_BACKOFF_MS = 10 * 60_000;
 
 type SocialFeed = {
   url: string;
@@ -287,7 +290,17 @@ function tidySummary(title: string, summary: string): string {
   return s.slice(0, 360);
 }
 
+function pipeIdFor(feed: SocialFeed): string {
+  if (feed.outlet.startsWith("Facebook")) return "social:facebook";
+  if (feed.outlet.startsWith("X ·")) return "social:x";
+  if (feed.outlet.startsWith("Reddit")) return "social:reddit";
+  return `social:${feed.outlet.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").slice(0, 36)}`;
+}
+
 async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]> {
+  if (feed.outlet.startsWith("Reddit") && Date.now() < redditBlockedUntil) {
+    return [];
+  }
   try {
     const res = await fetch(feed.url, {
       headers: {
@@ -296,12 +309,23 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
       },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const id = pipeIdFor(feed);
+      const label = feed.outlet.startsWith("Facebook") ? "Facebook" : feed.outlet.startsWith("X ·") ? "X" : "Reddit";
+      recordPipeFail(id, label, `HTTP ${res.status}`);
+      if (res.status === 429 && feed.outlet.startsWith("Reddit")) {
+        redditBlockedUntil = Date.now() + REDDIT_BACKOFF_MS;
+      }
+      return [];
+    }
     const xml = await res.text();
     if (feed.format === "atom") return parseAtom(xml, feed, now);
     if (!xml.includes("<item")) return [];
     return parseRss(xml, feed, now);
-  } catch {
+  } catch (err) {
+    const id = pipeIdFor(feed);
+    const label = feed.outlet.startsWith("Facebook") ? "Facebook" : feed.outlet.startsWith("X ·") ? "X" : "Reddit";
+    recordPipeFail(id, label, err instanceof Error ? err.message : "social-error");
     return [];
   }
 }
