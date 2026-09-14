@@ -49,9 +49,9 @@ export const SCANNER_FEEDS: ScannerFeed[] = [
   },
   {
     id: "37206",
-    name: "County volunteer fire",
+    name: "County volunteer fire (includes Colonie Fire/EMS)",
     shortName: "Vol fire",
-    coverage: "Albany County volunteer companies",
+    coverage: "Albany County volunteer fire/EMS talkgroups (Colonie Fire dispatch/ops are clear here)",
     system: "County fire dispatch",
     discipline: "fire",
     url: "https://www.broadcastify.com/listen/feed/37206",

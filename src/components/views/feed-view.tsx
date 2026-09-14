@@ -51,6 +51,8 @@ export function FeedView({
   }, undefined);
   const mix = sourceMix(liveAll);
   const selected = selectedId ? incidents.find((i) => i.id === selectedId) ?? null : null;
+  const colonieFocused =
+    areaFilter === "Colonie" || (municipalities.length === 1 && municipalities[0] === "Colonie");
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col">
@@ -89,6 +91,7 @@ export function FeedView({
                 onSelect={select}
                 refreshing={refreshing}
                 onRefresh={onRefresh}
+                colonieFocused={colonieFocused}
               />
             </div>
             <aside className="hidden min-h-0 flex-1 flex-col border-l border-border bg-bg lg:flex">
@@ -160,6 +163,7 @@ function LiveList({
   onSelect,
   refreshing,
   onRefresh,
+  colonieFocused: colonieFocusedProp,
 }: {
   liveItems: Incident[];
   liveKind: LiveKind;
@@ -173,6 +177,7 @@ function LiveList({
   onSelect: (id: string) => void;
   refreshing: boolean;
   onRefresh?: () => Promise<void> | void;
+  colonieFocused: boolean;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const startY = useRef<number | null>(null);
@@ -183,6 +188,11 @@ function LiveList({
   const setLiveNearMiles = useAppStore((s) => s.setLiveNearMiles);
   const [pos, setPos] = useState<{ lat: number; lng: number; accM: number; at: number } | null>(null);
   const [locateErr, setLocateErr] = useState<string>("");
+  const colonieNear =
+    liveNearMe && pos
+      ? haversineKm({ lat: pos.lat, lng: pos.lng }, { lat: 42.7179, lng: -73.8373 }) <= 10
+      : false;
+  const colonieFocused = colonieFocusedProp || colonieNear;
 
   function requestLocation() {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -338,7 +348,12 @@ function LiveList({
         </div>
 
         {showing.length === 0 ? (
-          <p className="rounded-lg border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
+          <div className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
+            {wireLive && colonieFocused ? (
+              <div className="mb-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-fg">
+                Police radio encrypted — official alerts &amp; fire/EMS only.
+              </div>
+            ) : null}
             {wireLive ? (
               nearActive ? (
                 <>
@@ -348,12 +363,12 @@ function LiveList({
                   </span>
                 </>
               ) : (
-                liveWindowHonesty({ health: wireHealth, nowItems: [], liveItems: [], sourceLens }).emptyFilterCopy
+                <p>{liveWindowHonesty({ health: wireHealth, nowItems: [], liveItems: [], sourceLens }).emptyFilterCopy}</p>
               )
             ) : (
-              "Pulling blotter, radio, and newsrooms…"
+              <p>Pulling blotter, radio, and newsrooms…</p>
             )}
-          </p>
+          </div>
         ) : (
           <GroupedList items={showing} onSelect={onSelect} wireHealth={wireHealth} sourceLens={sourceLens} />
         )}
@@ -547,7 +562,7 @@ function SourcePipes({
             <div className="overflow-y-auto px-4 pb-8 pt-3 scrollbar-thin">
               <Drawer.Title className="text-base font-semibold">Live source map</Drawer.Title>
               <p className="mt-1 text-xs leading-relaxed text-muted">
-                Albany, Colonie, and Bethlehem do not publish live CAD. Counts below are what this refresh actually pulled.
+                Albany, Colonie, and Bethlehem do not publish live CAD. Colonie Police radio is encrypted. Counts below are what this refresh actually pulled.
               </p>
               {health.daytimePipesFailing ? (
                 <p className="mt-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-fg">
@@ -562,7 +577,7 @@ function SourcePipes({
               <ul className="mt-2 space-y-2">
                 {[
                   ["NYSP blotter", health.blotter, "Official 7 AM dump. Not a live dispatch board."],
-                  ["Radio captions", health.scanner, "Albany/Colonie PD, Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire. Unconfirmed."],
+                  ["Radio captions", health.scanner, "Albany PD (Colonie PD encrypted), Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire (includes Colonie Fire/EMS), Thruway. Unconfirmed."],
                   ["511NY crashes", health.traffic, "Capital District accidents only. Construction is ignored."],
                   ["Thruway TINC", health.pipes?.find((p) => p.id.startsWith("tinc:"))?.lastCount ?? 0, "NYSTA incident board for Albany area. Closures and major incidents."],
                   ["Nixle", health.pipes?.filter((p) => p.id.startsWith("nixle:")).reduce((a, p) => a + (p.lastCount || 0), 0) ?? 0, "Agency alert centers (public Nixle pages)."],

@@ -45,7 +45,8 @@ export const SOURCES = [
   {
     name: "Broadcastify radio",
     tier: "Scanner",
-    detail: "Albany/Colonie PD, Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire, Thruway. Captions are unconfirmed. OpenMHz is blocked (403).",
+    detail:
+      "Albany PD (Colonie PD is encrypted), Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire (includes Colonie Fire/EMS), Thruway. Captions are unconfirmed. OpenMHz is blocked (403).",
   },
   {
     name: "511NY crashes",
@@ -82,7 +83,8 @@ export const SOURCES = [
   {
     name: "Not public",
     tier: "Blocked",
-    detail: "No live CAD from Albany, Colonie, or Bethlehem. PulsePoint, OpenMHz, SpotCrime, CrimeMapping, Nixle, jail bookings, NY-Alert, Waze, and Meta Graph are closed or empty.",
+    detail:
+      "No live CAD from Albany, Colonie, or Bethlehem. PulsePoint, OpenMHz, SpotCrime, CrimeMapping, jail bookings, NY-Alert, Waze, and Meta Graph are closed or empty. Colonie Police radio is encrypted (not monitorable); fire/EMS radio remains clear.",
   },
   {
     name: "Agency directory",
