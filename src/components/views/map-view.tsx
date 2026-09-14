@@ -481,7 +481,7 @@ export function MapView({
   }
 
   return (
-    <div className="act-map relative h-full min-h-0">
+    <div className="act-map relative flex-1 min-h-0 w-full">
       <div
         ref={el}
         className="absolute inset-0"
