@@ -604,7 +604,7 @@ function SourcePipes({
               ) : null}
               {radioDown ? (
                 <p className="mt-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
-                  Radio captions are down right now ({radioDownReason || "no recent captions"}). Live will lean on news and official sources until they recover.
+                  Radio captions are down right now ({radioDownReason || "no recent captions"}). This is a reporting gap: Live may still show other feeds, but it will miss early radio reporting until captions recover.
                 </p>
               ) : null}
               <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Wired this refresh</h3>
@@ -614,7 +614,7 @@ function SourcePipes({
                   [
                     "Radio captions",
                     health.scanner,
-                    `Albany PD (Colonie PD encrypted), Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire (includes Colonie Fire/EMS), Thruway. Unconfirmed.${
+                    `Albany PD (Colonie PD encrypted), Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire (includes Colonie Fire/EMS), Thruway. Early reporting signal; may be wrong.${
                       radioDownReason && (health.scanner ?? 0) === 0 ? ` (${radioDownReason})` : ""
                     }`,
                   ],
