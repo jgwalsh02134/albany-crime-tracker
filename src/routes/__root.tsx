@@ -1,6 +1,7 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
+import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import appCss from "../styles.css?url";
 
 const APP_NAME = "Albany County Crime Tracker";
@@ -45,6 +46,7 @@ export const Route = createRootRoute({
         <HeadContent />
       </head>
       <body className="bg-bg text-fg">
+        <ServiceWorkerRegister />
         <PreviewHostBridge />
         <AuthProvider>
           <Outlet />
