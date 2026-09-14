@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { ChevronRight, LocateFixed, Megaphone } from "lucide-react";
+import { CoverageDrawer } from "@/components/coverage-drawer";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentDetail } from "@/components/incident-detail";
 import { NewsView } from "@/components/views/news-view";
+import { coverageSummary } from "@/lib/coverage";
 import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
 import { type WireHealth, sourceMix } from "@/lib/sources";
 import { liveWindowHonesty } from "@/lib/live-honesty";
@@ -198,6 +200,20 @@ function LiveList({
       ? haversineKm({ lat: pos.lat, lng: pos.lng }, { lat: 42.7179, lng: -73.8373 }) <= 10
       : false;
   const colonieFocused = colonieFocusedProp || colonieNear;
+  const [coverageOpen, setCoverageOpen] = useState(false);
+  const coverage = useMemo(
+    () => coverageSummary({ health: wireHealth, colonieFocused }),
+    [wireHealth, colonieFocused],
+  );
+
+  const coverageDot =
+    coverage.tone === "down"
+      ? "bg-rose-500"
+      : coverage.tone === "warn"
+        ? "bg-amber-500"
+        : coverage.tone === "ok"
+          ? "bg-emerald-500"
+          : "bg-border";
 
   function requestLocation() {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -287,6 +303,22 @@ function LiveList({
           ) : (
             <p className="py-1.5 text-xs text-subtle">{wireLive ? `${showing.length} calls` : "Connecting…"}</p>
           )}
+          {wireHealth ? (
+            <button
+              type="button"
+              onClick={() => setCoverageOpen(true)}
+              className="mt-1 inline-flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 text-left text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+              aria-label="Open coverage"
+            >
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <span className={cn("size-2 shrink-0 rounded-full", coverageDot)} aria-hidden />
+                <span className="truncate">Coverage (reporting gaps)</span>
+              </span>
+              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-subtle">
+                {coverage.shortLabel}
+              </span>
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setWitnessOpen(true)}
@@ -373,7 +405,7 @@ function LiveList({
           <div className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
             {wireLive && colonieFocused ? (
               <div className="mb-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-fg">
-                Police radio encrypted — official alerts & fire/EMS only.
+                Colonie Police radio is encrypted — treat missing police calls as a coverage gap.
               </div>
             ) : null}
             {wireLive ? (
@@ -418,6 +450,13 @@ function LiveList({
           <GroupedList items={showing} onSelect={onSelect} wireHealth={wireHealth} sourceLens={sourceLens} />
         )}
       </div>
+
+      <CoverageDrawer
+        open={coverageOpen}
+        onOpenChange={setCoverageOpen}
+        health={wireHealth}
+        colonieFocused={colonieFocused}
+      />
     </div>
   );
 }

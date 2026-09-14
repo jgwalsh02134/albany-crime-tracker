@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Supercluster from "supercluster";
 import { Drawer } from "vaul";
-import { Filter, Home, List, LocateFixed, Maximize2, Megaphone, Radio, X } from "lucide-react";
+import { Filter, Home, List, LocateFixed, Maximize2, Megaphone, Radio, ShieldAlert, X } from "lucide-react";
 import { ShareButton } from "@/components/share-button";
+import { CoverageDrawer } from "@/components/coverage-drawer";
 import { Button } from "@/components/ui/button";
+import { coverageSummary } from "@/lib/coverage";
 import { lastHours } from "@/lib/data";
 import { isApproxPrecision } from "@/lib/geo";
 import { decodeHtmlEntities } from "@/lib/html";
@@ -15,6 +17,7 @@ import type { MapKind, MapSourceGroup, MapTimeWindowHours, MapVerification } fro
 import { type Incident, type Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
+import type { WireHealth } from "@/lib/sources";
 
 const FALLBACK: Record<Severity, string> = {
   critical: "#ff8a22",
@@ -162,7 +165,7 @@ export function MapView({
   incidents: Incident[];
   active: boolean;
   wireLive: boolean;
-  wireHealth: { daytimePipesFailing?: boolean; daytimePipesDry?: boolean } | null;
+  wireHealth: WireHealth | null;
 }) {
   const reduceMotion = useMemo(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
@@ -172,7 +175,8 @@ export function MapView({
   const listToggle = useRef<HTMLButtonElement>(null);
   const mapRef = useRef<{
     map: import("leaflet").Map;
-    layer: import("leaflet").LayerGroup;
+    pinLayer: import("leaflet").LayerGroup;
+    coverageLayer: import("leaflet").LayerGroup;
     L: typeof import("leaflet");
     renderer: import("leaflet").Renderer;
   } | null>(null);
@@ -180,6 +184,7 @@ export function MapView({
   const byIdRef = useRef<Map<string, Incident>>(new Map());
   const rafRef = useRef<number | null>(null);
   const [mapFilterOpen, setMapFilterOpen] = useState(false);
+  const [coverageOpen, setCoverageOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [locateErr, setLocateErr] = useState<string>("");
@@ -206,6 +211,12 @@ export function MapView({
   const witnessPickingOnMap = useAppStore((s) => s.witnessPickingOnMap);
   const setWitnessPickingOnMap = useAppStore((s) => s.setWitnessPickingOnMap);
   const setWitnessDraft = useAppStore((s) => s.setWitnessDraft);
+  const mapCoverage = useAppStore((s) => s.mapCoverage);
+  const setMapCoverage = useAppStore((s) => s.setMapCoverage);
+  const theme = useAppStore((s) => s.theme);
+
+  const colonieFocused = areaFilter === "Colonie" || (municipalities.length === 1 && municipalities[0] === "Colonie");
+  const coverage = useMemo(() => coverageSummary({ health: wireHealth, colonieFocused }), [wireHealth, colonieFocused]);
 
   const base = useMemo(
     () => incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens })),
@@ -250,8 +261,9 @@ export function MapView({
       }).addTo(map);
       L.tileLayer(esriUrl("Canvas/World_Dark_Gray_Reference"), tiles).addTo(map);
       const renderer = L.canvas({ padding: 0.3 });
-      const layer = L.layerGroup().addTo(map);
-      mapRef.current = { map, layer, L, renderer };
+      const coverageLayer = L.layerGroup().addTo(map);
+      const pinLayer = L.layerGroup().addTo(map);
+      mapRef.current = { map, pinLayer, coverageLayer, L, renderer };
       setReady(true);
     })();
     return () => {
@@ -261,6 +273,44 @@ export function MapView({
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const ctx = mapRef.current;
+    if (!ctx) return;
+    const { L, coverageLayer } = ctx;
+    coverageLayer.clearLayers();
+    if (!mapCoverage) return;
+
+    const accent = cssVar("--accent", "#ff8a22");
+    const ring = withAlpha(accent, 0.65);
+    const fill = withAlpha(accent, 0.10);
+
+    // v1: Colonie PD encrypted zone (approx).
+    const COLONIE = { lat: 42.7179, lng: -73.8373 };
+    const circle = L.circle([COLONIE.lat, COLONIE.lng], {
+      radius: 7800,
+      color: ring,
+      weight: 2,
+      dashArray: "6 8",
+      fillColor: fill,
+      fillOpacity: 1,
+      interactive: false,
+    });
+    circle.addTo(coverageLayer);
+
+    const label = L.marker([COLONIE.lat, COLONIE.lng], {
+      interactive: false,
+      keyboard: false,
+      icon: L.divIcon({
+        className: "act-coverage-label",
+        html: `<div class="act-coverage-pill"><span class="act-coverage-dot"></span><span>Colonie PD police radio encrypted</span></div>`,
+        iconSize: [220, 26],
+        iconAnchor: [110, 13],
+      }),
+    });
+    label.addTo(coverageLayer);
+  }, [ready, mapCoverage, theme]);
 
   useEffect(() => {
     if (!active || !ready) return;
@@ -389,8 +439,8 @@ export function MapView({
     const ctx = mapRef.current;
     const index = indexRef.current;
     if (!ctx || !index) return;
-    const { map, layer, L, renderer } = ctx;
-    layer.clearLayers();
+    const { map, pinLayer, L, renderer } = ctx;
+    pinLayer.clearLayers();
     const b = map.getBounds();
     const bbox: [number, number, number, number] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     const z = Math.round(map.getZoom());
@@ -419,7 +469,7 @@ export function MapView({
           const nextZ = Math.min(18, index.getClusterExpansionZoom(p.cluster_id));
           map.flyTo([lat, lng], nextZ, { animate: !reduceMotion, duration: reduceMotion ? 0 : 0.6 });
         });
-        m.addTo(layer);
+        m.addTo(pinLayer);
         const node = m.getElement();
         if (node) {
           node.setAttribute("role", "img");
@@ -451,7 +501,7 @@ export function MapView({
       });
       marker.bindTooltip(tipNode(inc), { direction: "top", opacity: 1, className: "act-tip", sticky: true });
       marker.on("click", () => select(inc.id));
-      marker.addTo(layer);
+      marker.addTo(pinLayer);
       const node = marker.getElement();
       if (node) {
         node.setAttribute("role", "img");
@@ -553,6 +603,15 @@ export function MapView({
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={() => setCoverageOpen(true)}
+            className={cn(chip, "text-fg")}
+            aria-label="Open coverage"
+          >
+            <ShieldAlert className="mr-1 inline size-4" aria-hidden />
+            Coverage
+          </button>
           <button
             ref={listToggle}
             type="button"
@@ -717,7 +776,15 @@ export function MapView({
             <span className="block text-xs font-semibold uppercase tracking-wide text-subtle">shown</span>
           </p>
           <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-fg">
-            {wireHealth?.daytimePipesFailing ? "Some sources failing — map may be incomplete." : wireHealth?.daytimePipesDry ? "Quiet window — sources returned 0." : approxShown ? `${approxShown} approx pin${approxShown === 1 ? "" : "s"} shown` : "Street-level pins where available"}
+            {coverage.tone === "down"
+              ? "Coverage degraded — reporting gap, not all clear."
+              : coverage.tone === "warn"
+                ? "Coverage limited — treat gaps as missing signal."
+                : wireHealth?.daytimePipesDry
+                  ? "Daytime pipes returned 0 — treat as a feed gap."
+                  : approxShown
+                    ? `${approxShown} approx pin${approxShown === 1 ? "" : "s"} shown`
+                    : "Street-level pins where available"}
           </p>
           <ShareButton
             payload={mapSharePayload(filtered.length, mapWindowHours)}
@@ -892,6 +959,14 @@ export function MapView({
           </Drawer.Content>
         </Drawer.Portal>
       </Drawer.Root>
+
+      <CoverageDrawer
+        open={coverageOpen}
+        onOpenChange={setCoverageOpen}
+        health={wireHealth}
+        colonieFocused={colonieFocused}
+        mapToggle={{ on: mapCoverage, setOn: setMapCoverage }}
+      />
     </div>
   );
 }
