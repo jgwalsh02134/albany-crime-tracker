@@ -18,7 +18,7 @@ export type LocatedPin = { geo: Geo; road: string; precision: GeoPrecision };
 export const COUNTY_CENTROID: Geo = { lat: 42.68, lng: -73.82 };
 
 /** Nominatim / map bias box: Albany County + near neighbors (W,S,E,N). */
-export const ALBANY_VIEWBOX = "-74.12,42.40,-73.55,42.85";
+export const CAPITAL_VIEWBOX = "-74.50,42.35,-73.20,43.35";
 
 export const TOWN: Record<string, Geo> = {
   Albany: { lat: 42.6526, lng: -73.7562 },
@@ -234,6 +234,7 @@ const TOWN_NAMES = Object.keys(TOWN).sort((a, b) => b.length - a.length);
 
 const GEOCODE_UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch; contact@albany.watch)";
 const geocodeCache = new Map<string, { geo: Geo; road: string; at: number } | null>();
+const geocodeNegCache = new Map<string, number>();
 const GEOCODE_TTL = 6 * 60 * 60_000;
 let geocodeLastAt = 0;
 
@@ -438,14 +439,15 @@ export function extractSpokenAddress(text: string): SpokenAddress | null {
 }
 
 function inCapitalDistrict(lat: number, lng: number): boolean {
-  return lat > 42.35 && lat < 43.35 && lng > -74.35 && lng < -73.3;
+  return lat > 42.35 && lat < 43.35 && lng > -74.55 && lng < -73.15;
 }
 
 async function nominatimGeocode(query: string): Promise<Geo | null> {
   const key = query.toLowerCase().replace(/\s+/g, " ").trim();
   const cached = geocodeCache.get(key);
   if (cached !== undefined && cached && Date.now() - cached.at < GEOCODE_TTL) return cached.geo;
-  if (cached === null && Date.now() - (geocodeCache.get(`$${key}`)?.at ?? 0) < 30 * 60_000) return null;
+  const negAt = geocodeNegCache.get(key) ?? 0;
+  if (cached === null && negAt && Date.now() - negAt < 30 * 60_000) return null;
 
   const wait = Math.max(0, 1100 - (Date.now() - geocodeLastAt));
   if (wait) await new Promise((r) => setTimeout(r, wait));
@@ -458,8 +460,9 @@ async function nominatimGeocode(query: string): Promise<Geo | null> {
     url.searchParams.set("format", "json");
     url.searchParams.set("limit", "3");
     url.searchParams.set("countrycodes", "us");
-    url.searchParams.set("viewbox", ALBANY_VIEWBOX);
-    url.searchParams.set("bounded", "0");
+    url.searchParams.set("viewbox", CAPITAL_VIEWBOX);
+    // Enforce in-box results; we also post-filter to Capital District bounds.
+    url.searchParams.set("bounded", "1");
     url.searchParams.set("addressdetails", "1");
     const res = await fetch(url, {
       headers: { "User-Agent": GEOCODE_UA, Accept: "application/json" },
@@ -467,6 +470,7 @@ async function nominatimGeocode(query: string): Promise<Geo | null> {
     });
     if (!res.ok) {
       geocodeCache.set(key, null);
+      geocodeNegCache.set(key, Date.now());
       return null;
     }
     const rows = (await res.json()) as Array<{
@@ -494,12 +498,15 @@ async function nominatimGeocode(query: string): Promise<Geo | null> {
     const best = ranked[0];
     if (!best) {
       geocodeCache.set(key, null);
+      geocodeNegCache.set(key, Date.now());
       return null;
     }
     geocodeCache.set(key, { geo: best.geo, road: query, at: Date.now() });
+    geocodeNegCache.delete(key);
     return best.geo;
   } catch {
     geocodeCache.set(key, null);
+    geocodeNegCache.set(key, Date.now());
     return null;
   }
 }

@@ -1,5 +1,5 @@
 import { keepSocialItem } from "./live-keep";
-import { placeFromText } from "./geo";
+import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
 
@@ -245,7 +245,9 @@ function toItem(
   outlet: string,
   official: boolean,
 ): LiveWireItem {
-  const place = placeFromText(`${title} ${summary}`);
+  const hay = `${title} ${summary}`;
+  const place = placeFromText(hay);
+  const pin = locateSpoken(hay, place?.name || "");
   const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
   return {
     id: url,
@@ -257,10 +259,11 @@ function toItem(
     minutesAgo,
     kind: "social",
     municipality: place?.name,
-    address: place?.name,
+    address: pin.road || place?.name,
     agency: official ? outlet.replace(/^Facebook · |^X · /, "") : outlet,
-    lat: place?.lat,
-    lng: place?.lng,
+    lat: pin.geo.lat,
+    lng: pin.geo.lng,
+    geoPrecision: pin.precision,
   };
 }
 
