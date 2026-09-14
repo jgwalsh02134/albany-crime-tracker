@@ -32,6 +32,7 @@ function renderCard(opts: {
   place: string;
   when: string;
   caveat: string;
+  kind?: "incident" | "story";
 }): string {
   const titleLines = wrap(opts.title, 36);
   const meta = [opts.place, opts.when].filter(Boolean).join(" · ");
@@ -53,7 +54,7 @@ function renderCard(opts: {
   <rect width="1200" height="630" fill="url(#bg)"/>
   <rect x="36" y="36" width="1128" height="558" rx="28" fill="#121A33" stroke="#2A365C" stroke-width="2"/>
   <rect x="36" y="36" width="14" height="558" rx="8" fill="#3D7EFF"/>
-  <text x="64" y="100" fill="#8FA0C8" font-size="22" font-weight="600" letter-spacing="2" font-family="Barlow, Helvetica, Arial, sans-serif">ALBANY WATCH · INCIDENT</text>
+  <text x="64" y="100" fill="#8FA0C8" font-size="22" font-weight="600" letter-spacing="2" font-family="Barlow, Helvetica, Arial, sans-serif">ALBANY WATCH · ${escapeXml((opts.kind ?? "incident").toUpperCase())}</text>
   ${titleTs}
   <text x="64" y="${188 + titleLines.length * 52 + 28}" fill="#C5D0EA" font-size="28" font-family="IBM Plex Mono, Menlo, monospace">${escapeXml(meta.slice(0, 80))}</text>
   <text x="64" y="540" fill="#8FA0C8" font-size="24" font-family="Barlow, Helvetica, Arial, sans-serif">${escapeXml(caveat.slice(0, 110))}</text>
@@ -71,6 +72,7 @@ export const Route = createFileRoute("/api/og/$id")({
           place: meta.place,
           when: meta.when,
           caveat: meta.caveat,
+          kind: meta.kind,
         });
         return new Response(svg, {
           headers: {
