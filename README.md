@@ -4,6 +4,10 @@ Mobile-first public-safety dashboard for Albany County, NY.
 
 Live feed (newsroom wire + county snapshot), map, Broadcastify scanner with captions, directory, trends, and a Grok assistant.
 
+## Public API
+
+See `docs/public-api.md` for the unauthenticated, rate-limited public endpoints (JSON + RSS) intended for newsrooms and bots.
+
 ## Run locally
 
 ```bash
