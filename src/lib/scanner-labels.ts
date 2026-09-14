@@ -40,7 +40,6 @@ export type AgencyLabel = {
 const FEED_AGENCIES: Record<string, AgencyLabel[]> = {
   "3626": [
     { agency: "Albany PD", abbr: "APD", municipalityHint: "Albany", discipline: "police" },
-    { agency: "Colonie PD", abbr: "CPD", municipalityHint: "Colonie", discipline: "police" },
   ],
   "36327": [
     { agency: "Bethlehem PD", abbr: "BPD", municipalityHint: "Bethlehem", discipline: "police" },
@@ -56,8 +55,6 @@ const FEED_AGENCIES: Record<string, AgencyLabel[]> = {
 
 /** Speech cues that point at a specific dual-feed agency. */
 const AGENCY_CUES: { re: RegExp; agency: string }[] = [
-  // Colonie / Latham
-  { re: /\b(colonie|latham|loudonville|latham command|wolf\s*rd|wolf\s*road|sand\s*creek|sandwich|route\s*9|ny\s*9|route\s*7|ny\s*7|route\s*2|ny\s*2|route\s*155|airport|albany airport|crossgates|colonie center|siena|troy.?schenectady|albany\s*shaker|fuller)\b/i, agency: "Colonie PD" },
   // Albany city streets / units
   { re: /\b(albany\s*(pd|police|city)|central\s*(ave|avenue)|western(?:\s*(ave|avenue))?|west\s+granite|lark|pearl|madison|henry\s*johnson|new\s*scotland|delaware\s*(ave|avenue)|southern\s*(blvd|boulevard)|quail|ontario|clinton\s*(ave|avenue)|morton|holland|everett|kyler|matilda|spring(?:steen|\s*st)?|second\s*st|2nd\s*st|north\s*swan|south\s*end|arbor\s*hill|pine\s*hills|center\s*square)\b/i, agency: "Albany PD" },
   // Bethlehem
@@ -83,7 +80,8 @@ function shortAgencyFromTalkgroup(meta: TalkgroupMeta): AgencyLabel {
   const muniHint = /county|capital|downtown/i.test(muni) ? undefined : muni.replace(/\s*\/.*/, "").trim();
 
   if (/Albany Police/i.test(a)) return { agency: "Albany PD", abbr: "APD", municipalityHint: "Albany", discipline: "police" };
-  if (/Colonie Police/i.test(a)) return { agency: "Colonie PD", abbr: "CPD", municipalityHint: "Colonie", discipline: "police" };
+  // Colonie PD talkgroups are encrypted in the Capital Region — do not imply monitorable radio.
+  if (/Colonie Police/i.test(a)) return { agency: "Colonie PD (encrypted)", abbr: "CPD", municipalityHint: "Colonie", discipline: "police" };
   if (/Bethlehem Police/i.test(a)) return { agency: "Bethlehem PD", abbr: "BPD", municipalityHint: "Bethlehem", discipline: "police" };
   if (/Guilderland Police/i.test(a)) return { agency: "Guilderland PD", abbr: "GPD", municipalityHint: "Guilderland", discipline: "police" };
   if (/Cohoes Police/i.test(a)) return { agency: "Cohoes PD", abbr: "COPD", municipalityHint: "Cohoes", discipline: "police" };

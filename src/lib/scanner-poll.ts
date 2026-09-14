@@ -103,11 +103,13 @@ export type CaptionLine = {
 };
 
 type ScanState = {
-  ver: 4;
+  ver: 5;
   buffer: LiveWireItem[];
   captions: CaptionLine[];
   seenSeq: Map<string, Set<number>>;
   lastText: Map<string, string>;
+  lastSttAt: Map<string, number>;
+  lastLiveAt: number;
   stats: {
     ticks: number;
     kept: number;
@@ -135,11 +137,13 @@ const g = globalThis as unknown as {
 
 function freshState(): ScanState {
   return {
-    ver: 4,
+    ver: 5,
     buffer: [],
     captions: [],
     seenSeq: new Map(),
     lastText: new Map(),
+    lastSttAt: new Map(),
+    lastLiveAt: 0,
     stats: {
       ticks: 0,
       kept: 0,
@@ -158,7 +162,7 @@ function freshState(): ScanState {
   };
 }
 
-if (!g.__actScan || g.__actScan.ver !== 4) g.__actScan = freshState();
+if (!g.__actScan || g.__actScan.ver !== 5) g.__actScan = freshState();
 const state = g.__actScan;
 
 function stopZombie() {
@@ -356,13 +360,38 @@ async function tickFeed(feedId: string) {
   if (!last) return;
   const seen = state.seenSeq.get(feedId) ?? new Set<number>();
   if (seen.has(last.seq)) return;
-  if (Date.now() < state.sttBlockedUntil) return;
 
   const fresh = window.filter((s) => !seen.has(s.seq));
   if (!fresh.length) return;
   const firstFresh = fresh[0]!.seq;
   const context = segs.filter((s) => s.seq === firstFresh - 1);
   const toFetch = [...context, ...fresh];
+
+  const now = Date.now();
+  const spike = fresh.length >= 2;
+  const recentSpeech = state.stats.lastSpokenAt > 0 && now - state.stats.lastSpokenAt < 2 * 60_000;
+  const listen = state.listenFeed === feedId && now < state.listenUntil;
+  const lastStt = state.lastSttAt.get(feedId) ?? 0;
+  const minInterval = listen ? 15_000 : recentSpeech ? 20_000 : feedId === "3626" ? 70_000 : 120_000;
+
+  // When rate-limited/backed off, mark segments seen to avoid hammering the same seq window.
+  if (now < state.sttBlockedUntil) {
+    for (const seg of fresh) seen.add(seg.seq);
+    state.seenSeq.set(feedId, seen);
+    return;
+  }
+
+  const allow =
+    listen ||
+    (now - lastStt >= minInterval &&
+      (spike || recentSpeech || (feedId === "3626" && state.stats.ticks % 4 === 0)));
+
+  // Extras stay quiet unless there is a clear burst or a manual listen.
+  if (!allow || (feedId !== "3626" && !listen && !spike && !recentSpeech)) {
+    for (const seg of fresh) seen.add(seg.seq);
+    state.seenSeq.set(feedId, seen);
+    return;
+  }
 
   const parts: Uint8Array[] = [];
   let mime = "audio/mpeg";
@@ -394,6 +423,7 @@ async function tickFeed(feedId: string) {
       state.seenSeq.set(feedId, seen);
       return;
     }
+    state.lastSttAt.set(feedId, Date.now());
     const result = await transcribeAudioFile(merged, filename, mime);
     spoken = result.text.trim();
     for (const seg of fresh) seen.add(seg.seq);
@@ -408,7 +438,7 @@ async function tickFeed(feedId: string) {
     // Whisper fallback inside transcribeAudioFile usually absorbs 401/403 when
     // OPENAI_API_KEY is set; this path runs when transcription still failed.
     if (msg.includes("429") || msg.startsWith("whisper-429") || msg.startsWith("groq-429")) {
-      state.sttBlockedUntil = Date.now() + 60_000;
+      state.sttBlockedUntil = Date.now() + 120_000;
     } else if (
       msg === "stt-401" ||
       msg === "stt-403" ||
@@ -416,7 +446,7 @@ async function tickFeed(feedId: string) {
       msg.startsWith("stt-403:")
     ) {
       // Only xAI ACL codes — never treat whisper-400 as ACL.
-      state.sttBlockedUntil = Date.now() + 60_000;
+      state.sttBlockedUntil = Date.now() + 120_000;
     }
     state.seenSeq.set(feedId, seen);
     return;
@@ -519,6 +549,7 @@ async function tickFeed(feedId: string) {
     return ta;
   });
   state.stats.kept += 1;
+  state.lastLiveAt = Date.now();
   if (state.buffer.length > MAX_ITEMS) state.buffer.length = MAX_ITEMS;
 }
 
@@ -534,7 +565,6 @@ async function tick() {
       state.stats.lastErrorAt = Date.now();
       return;
     }
-    if (Date.now() < state.sttBlockedUntil) return;
     // Albany/Colonie PD (3626) is the primary Live radio — always poll it.
     const jobs = [tickFeed("3626")];
     const listen = state.listenFeed && Date.now() < state.listenUntil ? state.listenFeed : null;
