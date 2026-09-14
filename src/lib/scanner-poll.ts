@@ -288,8 +288,8 @@ async function labelSpoken(feedId: string, spoken: string, talkgroupId?: string 
 
 
 function spokenFrom(row: LiveWireItem): string {
-  if (/Unconfirmed .* radio/i.test(row.summary)) {
-    return row.summary.replace(/\. Unconfirmed[\s\S]*$/i, "").trim();
+  if (/\b(?:Unconfirmed|Early report)\b.*\bradio\b/i.test(row.summary)) {
+    return row.summary.replace(/[.!?…]\s+(?:Unconfirmed|Early report)[\s\S]*$/i, "").trim();
   }
   return row.title;
 }

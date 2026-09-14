@@ -414,13 +414,13 @@ function GroupedList({
         {nowItems.length ? (
           <div className="flex flex-col gap-3">
             {now.confirmed.length ? (
-              <Lane label="Confirmed" items={now.confirmed} onSelect={onSelect} />
+              <Lane label="Official" items={now.confirmed} onSelect={onSelect} />
             ) : null}
             {now.developing.length ? (
               <Lane label="Developing" items={now.developing} onSelect={onSelect} />
             ) : null}
             {now.scanner.length ? (
-              <Lane label="Scanner" items={now.scanner} onSelect={onSelect} />
+              <Lane label="Scanner (early)" items={now.scanner} onSelect={onSelect} />
             ) : null}
           </div>
         ) : (
@@ -438,13 +438,13 @@ function GroupedList({
           </div>
           <div className="flex flex-col gap-3">
             {today.confirmed.length ? (
-              <Lane label="Confirmed" items={today.confirmed} onSelect={onSelect} />
+              <Lane label="Official" items={today.confirmed} onSelect={onSelect} />
             ) : null}
             {today.developing.length ? (
               <Lane label="Developing" items={today.developing} onSelect={onSelect} />
             ) : null}
             {today.scanner.length ? (
-              <Lane label="Scanner" items={today.scanner} onSelect={onSelect} />
+              <Lane label="Scanner (early)" items={today.scanner} onSelect={onSelect} />
             ) : null}
           </div>
         </section>
@@ -453,8 +453,8 @@ function GroupedList({
       {overnight.length ? (
         <section>
           <div className="mb-1.5 flex items-baseline justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Confirmed</h2>
-            <p className="text-[11px] text-subtle">Overnight (NYSP)</p>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Overnight</h2>
+            <p className="text-[11px] text-subtle">NYSP blotter</p>
           </div>
           <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-1">
             {overnight.map((inc) => (

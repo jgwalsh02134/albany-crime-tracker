@@ -14,18 +14,18 @@ export function incidentDeepLink(id: string, origin = APP_ORIGIN): string {
 
 export function sourceCaveat(incident: Incident): string {
   if (incident.sources.some((s) => s.kind === "social" || /Citizen/i.test(s.name))) {
-    return "Unconfirmed citizen/social tip — not a 911 or CAD call.";
+    return "Citizen/social tip — early report, not a 911/CAD log. May be wrong.";
   }
   if (incident.verification === "scanner") {
-    return "Unconfirmed scanner traffic — not an official CAD incident.";
+    return "Scanner traffic — early report, not a CAD log. May be wrong.";
   }
   if (incident.verification === "developing") {
-    return "Developing / newsroom report — not a confirmed blotter call.";
+    return "Developing / newsroom report — official source not yet in the mix.";
   }
   if (incident.sources.some((s) => s.tier === "official" || s.kind === "blotter")) {
     return "From official blotter or agency sources.";
   }
-  return "Source unverified — treat as developing.";
+  return "Thin sourcing — treat as developing.";
 }
 
 export type SharePayload = {

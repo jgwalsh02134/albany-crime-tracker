@@ -141,7 +141,7 @@ function sourceLabel(group: MapSourceGroup): string {
 }
 
 function verificationLabel(v: MapVerification): string {
-  return v === "confirmed" ? "Confirmed" : v === "developing" ? "Developing" : "Scanner unconfirmed";
+  return v === "confirmed" ? "Official" : v === "developing" ? "Developing" : "Scanner (early)";
 }
 
 function clusterBadgeHtml(n: number, color: string, tone: "official" | "scanner" | "mixed") {
@@ -742,7 +742,7 @@ export function MapView({
                 ))}
               </div>
 
-              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Verification</h3>
+              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Signal</h3>
               <div className="mt-2 grid grid-cols-1 gap-2">
                 {(["confirmed", "developing", "scanner"] as const).map((v) => (
                   <label
@@ -792,7 +792,7 @@ export function MapView({
                 </p>
                 <p>
                   <span className="font-semibold text-fg">Cluster badges</span> show the count. A <span className="font-semibold text-fg">✓</span> indicates the cluster includes official sources;{" "}
-                  <span className="font-semibold text-fg">…</span> indicates scanner-unconfirmed activity.
+                  <span className="font-semibold text-fg">…</span> indicates scanner/early reporting activity.
                 </p>
                 <p>
                   <span className="font-semibold text-fg">Color</span> follows severity (critical/high/medium/low).

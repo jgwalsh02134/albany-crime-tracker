@@ -640,7 +640,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
           )}
         </div>
         <p className="mt-2 text-xs leading-relaxed text-subtle">
-          Unconfirmed radio. 10-codes and names can be wrong. Play is optional — captions run from the stream
+          Early radio reports. 10-codes and names can be wrong. Play is optional — captions run from the stream
           even if the speaker is blocked.
         </p>
       </div>
