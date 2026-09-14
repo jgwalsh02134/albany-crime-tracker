@@ -55,78 +55,93 @@ export function FilterDrawer() {
 
   return (
     <SheetFrame open={open} onOpenChange={setOpen}>
-      <div className="overflow-y-auto px-4 pb-8 pt-3 scrollbar-thin">
-        <Drawer.Title className="text-base font-semibold">Filter incidents</Drawer.Title>
-        <p className="mt-1 text-xs text-subtle">Severity, municipality, and source. Applied instantly.</p>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3 scrollbar-thin">
+          <Drawer.Title className="text-base font-semibold">Filter incidents</Drawer.Title>
+          <p className="mt-1 text-xs text-subtle">Severity, municipality, and source. Applied instantly.</p>
 
-        <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Severity</h3>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          {SEVERITIES.map((s) => (
-            <label
-              key={s}
-              className={cn(
-                "flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm capitalize",
-                severities.includes(s) ? "border-accent/50 bg-surface-2" : "border-border",
-              )}
-            >
-              <input
-                type="checkbox"
-                className="accent-accent"
-                checked={severities.includes(s)}
-                onChange={() => toggleSev(s)}
-              />
-              {s}
-            </label>
-          ))}
+          <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Severity</h3>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {SEVERITIES.map((s) => (
+              <label
+                key={s}
+                className={cn(
+                  "flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm capitalize",
+                  severities.includes(s) ? "border-accent/50 bg-surface-2" : "border-border",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="accent-accent"
+                  checked={severities.includes(s)}
+                  onChange={() => toggleSev(s)}
+                />
+                {s}
+              </label>
+            ))}
+          </div>
+
+          <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Source</h3>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {SOURCE_LENSES.map((lens) => (
+              <button
+                key={lens.id}
+                type="button"
+                onClick={() => setSourceLens(lens.id)}
+                className={cn(
+                  "flex min-h-11 items-center justify-center rounded-md border px-3 text-sm font-medium",
+                  sourceLens === lens.id ? "border-accent/50 bg-surface-2" : "border-border",
+                )}
+              >
+                {lens.label}
+              </button>
+            ))}
+          </div>
+
+          <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">
+            Municipality
+          </h3>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {MUNICIPALITIES.map((m) => (
+              <label
+                key={m}
+                className={cn(
+                  "flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm",
+                  municipalities.includes(m) ? "border-accent/50 bg-surface-2" : "border-border",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="accent-accent"
+                  checked={municipalities.includes(m)}
+                  onChange={() => toggleMuni(m)}
+                />
+                {m}
+              </label>
+            ))}
+          </div>
         </div>
 
-        <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Source</h3>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          {SOURCE_LENSES.map((lens) => (
-            <button
-              key={lens.id}
+        <div className="px-4 pt-2" data-vaul-no-drag>
+          <div className="flex gap-2">
+            <Button
               type="button"
-              onClick={() => setSourceLens(lens.id)}
-              className={cn(
-                "flex min-h-11 items-center justify-center rounded-md border px-3 text-sm font-medium",
-                sourceLens === lens.id ? "border-accent/50 bg-surface-2" : "border-border",
-              )}
+              variant="secondary"
+              className="flex-1"
+              onPointerDownCapture={(e) => e.stopPropagation()}
+              onClick={reset}
             >
-              {lens.label}
-            </button>
-          ))}
-        </div>
-
-        <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">
-          Municipality
-        </h3>
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          {MUNICIPALITIES.map((m) => (
-            <label
-              key={m}
-              className={cn(
-                "flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm",
-                municipalities.includes(m) ? "border-accent/50 bg-surface-2" : "border-border",
-              )}
+              Reset
+            </Button>
+            <Button
+              type="button"
+              className="flex-1"
+              onPointerDownCapture={(e) => e.stopPropagation()}
+              onClick={() => setOpen(false)}
             >
-              <input
-                type="checkbox"
-                className="accent-accent"
-                checked={municipalities.includes(m)}
-                onChange={() => toggleMuni(m)}
-              />
-              {m}
-            </label>
-          ))}
-        </div>
-
-        <div className="mt-6 flex gap-2">
-          <Button variant="secondary" className="flex-1" onClick={reset}>
-            Reset
-          </Button>
-          <Button className="flex-1" onClick={() => setOpen(false)}>
-            Done
-          </Button>
+              Done
+            </Button>
+          </div>
         </div>
       </div>
     </SheetFrame>
