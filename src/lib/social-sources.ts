@@ -550,7 +550,9 @@ function toItem(
 ): LiveWireItem {
   const hay = `${title} ${summary}`;
   const place = placeFromText(hay);
-  const pin = locateSpoken(hay, place?.name || "");
+  const outletHint = municipalityHintFromOutlet(outlet);
+  const muni = place?.name || outletHint;
+  const pin = locateSpoken(hay, muni || "");
   const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
   return {
     id: url,
@@ -561,13 +563,27 @@ function toItem(
     publishedAt: new Date(published).toISOString(),
     minutesAgo,
     kind: "social",
-    municipality: place?.name,
-    address: pin.road || place?.name,
+    municipality: muni,
+    address: pin.road || muni,
     agency: official ? outlet.replace(/^Facebook · |^X · /, "") : outlet,
     lat: pin.geo.lat,
     lng: pin.geo.lng,
     geoPrecision: pin.precision,
   };
+}
+
+function municipalityHintFromOutlet(outlet: string): string | undefined {
+  const o = outlet.trim();
+  if (/^(?:Facebook|X)\s+·\s+Colonie\b/i.test(o)) return "Colonie";
+  // Colonie volunteer companies often post without "Latham/Loudonville" in the title text.
+  if (/^Facebook\s+·\s+(?:Latham Fire|Fuller Road VFD|Midway Fire|Shaker Road–Loudonville FD)\b/i.test(o)) return "Colonie";
+  if (/^Facebook\s+·\s+Albany\b/i.test(o) || /^X\s+·\s+Albany\b/i.test(o)) return "Albany";
+  if (/^Facebook\s+·\s+Bethlehem\b/i.test(o) || /^X\s+·\s+Bethlehem\b/i.test(o)) return "Bethlehem";
+  if (/^Facebook\s+·\s+Guilderland\b/i.test(o) || /^X\s+·\s+Guilderland\b/i.test(o)) return "Guilderland";
+  if (/^Facebook\s+·\s+Cohoes\b/i.test(o) || /^X\s+·\s+Cohoes\b/i.test(o)) return "Cohoes";
+  if (/^Facebook\s+·\s+Watervliet\b/i.test(o) || /^X\s+·\s+Watervliet\b/i.test(o)) return "Watervliet";
+  if (/^X\s+·\s+Thruway\b/i.test(o)) return "Albany";
+  return undefined;
 }
 
 function parseRss(xml: string, feed: SocialFeed, now: number): LiveWireItem[] {

@@ -10,7 +10,7 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | --- | --- | --- |
 | NYSP Troop G / T blotter PDFs | Poll | Official overnight dump. Not live dispatch. |
 | NYSP newsroom HTML | Poll | Local-only press clips. No public RSS (`troopers.ny.gov/rss.xml` is a stub). |
-| Broadcastify scanner | Poll + STT | Albany/Colonie PD, Bethlehem, Albany Fire, volunteer fire, Thruway. Unconfirmed. |
+| Broadcastify scanner | Poll + STT | Albany PD is monitorable; **Colonie PD is encrypted (silent hole)**. Fire/EMS traffic is clear via volunteer fire feeds. Unconfirmed. |
 | 511NY accidents | Poll `511ny.org/api/getevents` | Capital District crashes only. Construction dropped. **Stays wired.** |
 | NWS alerts | Poll `api.weather.gov` | Severe warnings at Albany point. Advisories skipped. **Stays wired.** |
 | News10 / CBS6 / WNYT / WAMC | RSS + Superfeedr | Native feeds. |
@@ -25,21 +25,6 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Reddit r/Albany, r/Troy, r/Schenectady | Atom | Citizen, unconfirmed. |
 | Nixle: Colonie PD | HTML parse | Public agency page. Advisory / community alerts. |
 
-## Social upgrades (this PR)
-
-- **Facebook/X**: expanded the set of **official agency** pages/handles and added curated newsroom queries; all are still filtered through the public-safety keep rules (fluff dropped).
-- **Reddit**:
-  - **Preferred**: official Reddit API when credentials exist (stops anonymous 429 thrash, provides cleaner health/backoff).
-  - **Fallback**: RSS search feeds with longer cache + backoff; health reports rate-limit backoff honestly.
-
-### Optional env vars (unlock better Reddit ingest)
-- `REDDIT_CLIENT_ID`
-- `REDDIT_CLIENT_SECRET`
-- `REDDIT_REFRESH_TOKEN`
-
-### Optional env vars (future enhancement)
-- `X_BEARER_TOKEN` (or equivalent): would allow direct X API ingest. Not required for this PR; current path uses public Google News RSS queries + Superfeedr push.
-
 ## Tried and blocked (do not invent)
 
 | Probe | Result | Why we stay honest |
@@ -48,7 +33,7 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | PulsePoint | Albany NY not listed; API 401 | No public path. Later PR only if one appears. |
 | OpenMHz `albanycony` | Browser-live, server 403 (Cloudflare) | Not wired. |
 | SeeClickFix API v2 | 403 (Cloudflare) from server IP | Cannot rely on a pipe that blocks programmatic fetch. Only wire if a public, stable API path works without bypass. |
-| Nixle / NY-Alert | Login wall | APD Alert Center RSS empty until the city posts. |
+| Albany Nixle / NY-Alert | Login wall | APD Alert Center RSS empty until the city posts. |
 | SpotCrime / CrimeMapping / RAIDS | No public JSON; SpotCrime 403 | Not wired. |
 | Citizen App, Ring, Nextdoor, Waze | No public feed | Later PR only if a public path appears. |
 | Meta Graph / Instagram | App-review token | We index public Facebook posts via Google News instead. |
@@ -66,7 +51,7 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Spectrum `/feed` | 404 | GNews site query instead. |
 | UAlbany UPD daily crime log | DevExpress callbacks / stateful export | No clean, stable unauthenticated CSV/RSS endpoint found; revisit if UPD publishes a direct daily-record file or API. |
 
-## Fusion (this PR)
+## Fusion
 
 LiveWire items cluster when **call-type family**, **time window**, and **geo** agree (≈1.6 km or same town). One card lists provenance chips (`Seen on: Blotter · Scanner · 511 · News`). Corroboration scores independent families: official (blotter / 511 / civic / NWS) > context (news) > unconfirmed (scanner / citizen). Lone scanner is capped at 22/100 so it cannot outrank a multi-source card.
 

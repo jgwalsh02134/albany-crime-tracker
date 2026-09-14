@@ -315,6 +315,7 @@ function agencyAbbrFor(item: LiveWireItem, activity: ActivityKind): string {
   }
   if (activity === "social") {
     if (/albany pd/i.test(item.outlet)) return "APD";
+    if (/colonie\s+ems/i.test(item.outlet)) return "EMS";
     if (/colonie/i.test(item.outlet)) return "CPD";
     if (/bethlehem/i.test(item.outlet)) return "BPD";
     if (/reddit/i.test(item.outlet)) return "RDT";

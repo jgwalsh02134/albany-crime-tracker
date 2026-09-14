@@ -11,6 +11,8 @@ type NixleAgency = {
   label: string;
   url: string;
   agency: string;
+  /** Fallback municipality when alert text is generic (helps filtering/ranking). */
+  municipalityHint?: string;
 };
 
 function decodeJsString(raw: string): string {
@@ -109,7 +111,8 @@ async function fetchNixleAgency(agency: NixleAgency, now = Date.now()): Promise<
       const body = stripHtml(decodeJsString(bodyRaw));
       const summary = (body && body.length >= 24 ? body : headline).slice(0, 260);
       const place = placeFromText(`${headline} ${summary}`);
-      const pin = locateSpoken(`${headline} ${summary}`, place?.name || "Albany");
+      const muni = place?.name || agency.municipalityHint;
+      const pin = locateSpoken(`${headline} ${summary}`, muni || "Albany");
 
       out.push({
         id: stableId,
@@ -121,8 +124,8 @@ async function fetchNixleAgency(agency: NixleAgency, now = Date.now()): Promise<
         minutesAgo,
         kind: "news",
         agency: agency.agency,
-        municipality: place?.name,
-        address: pin.road || place?.name,
+        municipality: muni,
+        address: pin.road || muni,
         lat: pin.geo.lat,
         lng: pin.geo.lng,
         geoPrecision: pin.precision,
@@ -146,6 +149,7 @@ export async function fetchNixleApd(now = Date.now()): Promise<LiveWireItem[]> {
       label: "Nixle · Albany PD",
       url: "https://nixle.us/albany-police-department",
       agency: "Albany Police Department",
+      municipalityHint: "Albany",
     },
     now,
   );
@@ -158,6 +162,7 @@ export async function fetchNixleGuilderlandPd(now = Date.now()): Promise<LiveWir
       label: "Nixle · Guilderland PD",
       url: "https://nixle.us/guilderland-police-department",
       agency: "Guilderland Police Department",
+      municipalityHint: "Guilderland",
     },
     now,
   );
@@ -170,6 +175,7 @@ export async function fetchNixleWatervliet(now = Date.now()): Promise<LiveWireIt
       label: "Nixle · Watervliet",
       url: "https://nixle.us/city-of-watervliet",
       agency: "City of Watervliet",
+      municipalityHint: "Watervliet",
     },
     now,
   );
@@ -182,6 +188,7 @@ export async function fetchNixleAltamont(now = Date.now()): Promise<LiveWireItem
       label: "Nixle · Altamont",
       url: "https://nixle.us/village-of-altamont-ny",
       agency: "Village of Altamont",
+      municipalityHint: "Altamont",
     },
     now,
   );
@@ -194,6 +201,7 @@ export async function fetchNixleColoniePd(now = Date.now()): Promise<LiveWireIte
       label: "Nixle · Colonie PD",
       url: "https://nixle.us/town-of-colonie-police-ny",
       agency: "Town of Colonie Police Department",
+      municipalityHint: "Colonie",
     },
     now,
   );
