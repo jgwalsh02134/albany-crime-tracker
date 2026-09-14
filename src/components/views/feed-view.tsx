@@ -10,6 +10,7 @@ import { liveWindowHonesty } from "@/lib/live-honesty";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import { compareNowLane, nowUrgencyScore } from "@/lib/live-rank";
 import { haversineKm } from "@/lib/geo";
+import { selectNearMeEmptyState, type LocateErrorKind, type NearMePos } from "@/lib/near-me-empty-state";
 import type { Incident, NewsStory, SourceLens, LiveKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -186,8 +187,9 @@ function LiveList({
   const setLiveNearMe = useAppStore((s) => s.setLiveNearMe);
   const liveNearMiles = useAppStore((s) => s.liveNearMiles);
   const setLiveNearMiles = useAppStore((s) => s.setLiveNearMiles);
-  const [pos, setPos] = useState<{ lat: number; lng: number; accM: number; at: number } | null>(null);
+  const [pos, setPos] = useState<NearMePos | null>(null);
   const [locateErr, setLocateErr] = useState<string>("");
+  const [locateErrorKind, setLocateErrorKind] = useState<LocateErrorKind | null>(null);
   const colonieNear =
     liveNearMe && pos
       ? haversineKm({ lat: pos.lat, lng: pos.lng }, { lat: 42.7179, lng: -73.8373 }) <= 10
@@ -197,16 +199,23 @@ function LiveList({
   function requestLocation() {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setLocateErr("Location isn’t available in this browser.");
+      setLocateErrorKind("unavailable");
       return;
     }
     setLocateErr("");
+    setLocateErrorKind(null);
     navigator.geolocation.getCurrentPosition(
       (p) => {
         setPos({ lat: p.coords.latitude, lng: p.coords.longitude, accM: p.coords.accuracy || 0, at: Date.now() });
       },
       (err) => {
-        if (err.code === err.PERMISSION_DENIED) setLocateErr("Location permission denied.");
-        else setLocateErr("Couldn’t fetch your location.");
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocateErr("Location permission denied.");
+          setLocateErrorKind("denied");
+        } else {
+          setLocateErr("Couldn’t fetch your location.");
+          setLocateErrorKind("unavailable");
+        }
       },
       { enableHighAccuracy: false, timeout: 9000, maximumAge: 60_000 },
     );
@@ -227,9 +236,7 @@ function LiveList({
         : liveItems;
   const showing = withinNear;
   const nearActive = liveNearMe;
-  const nearLocating = nearActive && !pos && !locateErr;
-  const nearDenied = nearActive && !pos && /\bpermission denied\b/i.test(locateErr);
-  const nearUnavailable = nearActive && !pos && Boolean(locateErr) && !nearDenied;
+  const nearEmptyState = selectNearMeEmptyState({ nearActive, pos, locateErrorKind });
 
   function onTouchStart(e: React.TouchEvent) {
     if (!scroller.current || scroller.current.scrollTop > 0) {
@@ -312,6 +319,7 @@ function LiveList({
                   if (nearActive) {
                     setLiveNearMe(false);
                     setLocateErr("");
+                    setLocateErrorKind(null);
                   } else {
                     setLiveNearMe(true);
                     requestLocation();
@@ -360,33 +368,33 @@ function LiveList({
             {wireLive ? (
               nearActive ? (
                 <>
-                  {nearDenied ? (
+                  {nearEmptyState === "denied" ? (
                     <>
                       <span className="block font-medium text-fg">Location permission denied.</span>
                       <span className="mt-1 block">
                         Near me needs location access. You can still view county-wide calls by switching to <span className="font-semibold">All area</span>.
                       </span>
                     </>
-                  ) : nearUnavailable ? (
+                  ) : nearEmptyState === "unavailable" ? (
                     <>
                       <span className="block font-medium text-fg">Location unavailable.</span>
                       <span className="mt-1 block">
                         Near me can’t run without a location fix. You can still view county-wide calls by switching to <span className="font-semibold">All area</span>.
                       </span>
                     </>
-                  ) : nearLocating ? (
+                  ) : nearEmptyState === "locating" ? (
                     <>
                       <span className="block font-medium text-fg">Waiting for location…</span>
                       <span className="mt-1 block">Allow location to see calls near you, or switch to <span className="font-semibold">All area</span>.</span>
                     </>
-                  ) : (
+                  ) : nearEmptyState === "quiet" ? (
                     <>
                       <span className="block font-medium text-fg">No calls reported within ~{liveNearMiles} mi right now.</span>
                       <span className="mt-1 block">
                         Could be a quiet moment — or a reporting gap (dark pipes, encrypted radio). Pull to refresh or switch to All sources to sanity-check coverage.
                       </span>
                     </>
-                  )}
+                  ) : null}
                 </>
               ) : (
                 <p>{liveWindowHonesty({ health: wireHealth, nowItems: [], liveItems: [], sourceLens }).emptyFilterCopy}</p>
