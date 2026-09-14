@@ -19,6 +19,10 @@ const GARBAGE_FILLER =
 const OUTRO_ONLY =
   /^(?:thank(?:s|\s+you)?[.!]?\s*)?(?:for\s+watching|bye[- ]?bye|goodbye|see\s+you(?:\s+next\s+time)?|have\s+a\s+(?:nice|good)\s+day)[.!]*$/i;
 
+/** Short courtesy/apology filler often hallucinated on silence/ads. */
+const COURTESY_ONLY =
+  /^(?:thank(?:s|\s+you)?|sorry|i(?:\s*'?m|\s+am)\s+sorry|apologies|excuse me|stand by|one moment)(?:[.!]|\s+)+.*$/i;
+
 export function isSttJunk(text: string): boolean {
   const t = text.replace(/\s+/g, " ").trim();
   if (!t) return true;
@@ -29,6 +33,16 @@ export function isSttJunk(text: string): boolean {
   if (BOILERPLATE.test(t)) return true;
   if (GARBAGE_FILLER.test(t)) return true;
   if (FOREIGN_DISPATCH.test(t)) return true;
+  // "Thank you. I'm sorry." style filler with no Capital Region / dispatch cues.
+  if (
+    t.length <= 60 &&
+    COURTESY_ONLY.test(t) &&
+    !/\b(?:albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|central|western|wolf|crash|fire|shots|welfare|domestic|engine|ambulance|unit|dispatch)\b/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
   // Hallucinated ten-code salad / comma spam (classic Whisper on silence).
   if ((t.match(/10-\d+/g) || []).length >= 3) return true;
   if (/copy\s+en\s+route\s+on\s+scene/i.test(t)) return true;

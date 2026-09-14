@@ -13,7 +13,8 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Broadcastify scanner | Poll + STT | Albany/Colonie PD, Bethlehem, Albany Fire, volunteer fire, Thruway. Unconfirmed. |
 | 511NY accidents | Poll `511ny.org/api/getevents` | Capital District crashes only. Construction dropped. **Stays wired.** |
 | NWS alerts | Poll `api.weather.gov` | Severe warnings at Albany point. Advisories skipped. **Stays wired.** |
-| News10 / CBS6 / WNYT / WAMC / Patch Albany | RSS + Superfeedr | Native feeds. |
+| News10 / CBS6 / WNYT / WAMC | RSS + Superfeedr | Native feeds. |
+| Patch Albany | Google News RSS + Superfeedr | Patch’s legacy `.../new-york/albany/rss` 404s; `albany-ny` coverage comes from `site:patch.com` Google News RSS. |
 | Times Union / Spotlight / Gazette / FOX23 | Google News RSS + Superfeedr | Native TU RSS 404s — we do not pretend they work. |
 | Spectrum, Troy Record, ACSO, north cities, Guilderland | Google News RSS + Superfeedr | Gap queries (Cohoes / Watervliet / Menands / Green Island; Guilderland / Altamont / Voorheesville). |
 | CivicPlus: Bethlehem, Guilderland PD, Guilderland town, Albany, Cohoes, Voorheesville | RSS + Superfeedr | Incident-keyword filter. Feeds may be empty and still count as wired. |
@@ -41,6 +42,7 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Green Island civic RSS | 403 / NXDOMAIN | Not wired. |
 | Times Union native `/news/feed/` and `/local/feed/` | 404 | Superfeedr now uses the working GNews TU query. |
 | Patch Colonie / Latham / Bethlehem / Guilderland `/rss` | 404 | GNews `site:patch.com` queries instead. |
+| Patch Albany `/rss` | 404 | Patch moved to `patch.com/new-york/albany-ny` with no public RSS; we use Google News RSS `site:patch.com/new-york/albany-ny` instead. |
 | NYSP `rss.xml` | 200 stub, 0 items | HTML newsroom scrape stays. |
 | Spectrum `/feed` | 404 | GNews site query instead. |
 

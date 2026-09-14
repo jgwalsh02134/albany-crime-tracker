@@ -26,6 +26,7 @@ const REDDIT_BACKOFF_MS = 10 * 60_000;
 type SocialFeed = {
   url: string;
   outlet: string;
+  pipe: "facebook" | "x" | "reddit";
   official: boolean;
   needsLocal: boolean;
   format: "rss" | "atom";
@@ -36,6 +37,7 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:facebook.com/AlbanyNYPolice+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Facebook · Albany PD",
+    pipe: "facebook",
     official: true,
     needsLocal: false,
     format: "rss",
@@ -43,6 +45,7 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:facebook.com/ColoniePD+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Facebook · Colonie PD",
+    pipe: "facebook",
     official: true,
     needsLocal: false,
     format: "rss",
@@ -50,6 +53,7 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=%22Bethlehem+Police%22+(Delmar+OR+Glenmont)+site:facebook.com+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Facebook · Bethlehem PD",
+    pipe: "facebook",
     official: true,
     needsLocal: true,
     format: "rss",
@@ -58,6 +62,7 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:facebook.com/CohoesPD+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Facebook · Cohoes PD",
+    pipe: "facebook",
     official: true,
     needsLocal: false,
     format: "rss",
@@ -65,6 +70,7 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:facebook.com/WatervlietPolice+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Facebook · Watervliet PD",
+    pipe: "facebook",
     official: true,
     needsLocal: false,
     format: "rss",
@@ -72,6 +78,7 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:facebook.com/guilderlandpolice+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Facebook · Guilderland PD",
+    pipe: "facebook",
     official: true,
     needsLocal: false,
     format: "rss",
@@ -82,6 +89,7 @@ const X_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:x.com/nyspolice+(albany+OR+colonie+OR+latham+OR+guilderland+OR+bethlehem+OR+delmar+OR+cohoes)+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "X · NYSP",
+    pipe: "x",
     official: true,
     needsLocal: true,
     format: "rss",
@@ -89,6 +97,7 @@ const X_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:x.com/FD_AlbanyNY+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "X · Albany Fire",
+    pipe: "x",
     official: true,
     needsLocal: false,
     format: "rss",
@@ -96,6 +105,7 @@ const X_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:x.com/CBS6Albany+(crash+OR+shooting+OR+fire+OR+arrest+OR+police)+when:2d&hl=en-US&gl=US&ceid=US:en",
     outlet: "X · CBS6",
+    pipe: "x",
     official: false,
     needsLocal: true,
     format: "rss",
@@ -103,6 +113,7 @@ const X_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:x.com/wten+(crash+OR+shooting+OR+fire+OR+arrest)+when:2d&hl=en-US&gl=US&ceid=US:en",
     outlet: "X · NEWS10",
+    pipe: "x",
     official: false,
     needsLocal: true,
     format: "rss",
@@ -110,6 +121,7 @@ const X_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:x.com/timesunion+(crash+OR+shooting+OR+arrest+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
     outlet: "X · Times Union",
+    pipe: "x",
     official: false,
     needsLocal: true,
     format: "rss",
@@ -120,6 +132,7 @@ const REDDIT_FEEDS: SocialFeed[] = [
   {
     url: "https://www.reddit.com/r/Albany/search.rss?q=police+OR+crash+OR+fire+OR+shooting+OR+arrest+OR+accident&sort=new&restrict_sr=on",
     outlet: "Reddit · r/Albany",
+    pipe: "reddit",
     official: false,
     needsLocal: false,
     format: "atom",
@@ -127,6 +140,7 @@ const REDDIT_FEEDS: SocialFeed[] = [
   {
     url: "https://www.reddit.com/r/Albany/.rss",
     outlet: "Reddit · r/Albany",
+    pipe: "reddit",
     official: false,
     needsLocal: false,
     format: "atom",
@@ -134,6 +148,7 @@ const REDDIT_FEEDS: SocialFeed[] = [
   {
     url: "https://www.reddit.com/r/Troy/search.rss?q=police+OR+crash+OR+fire+OR+shooting+OR+arrest&sort=new&restrict_sr=on",
     outlet: "Reddit · r/Troy",
+    pipe: "reddit",
     official: false,
     needsLocal: false,
     format: "atom",
@@ -141,6 +156,7 @@ const REDDIT_FEEDS: SocialFeed[] = [
   {
     url: "https://www.reddit.com/r/Schenectady/search.rss?q=police+OR+crash+OR+fire+OR+shooting+OR+arrest&sort=new&restrict_sr=on",
     outlet: "Reddit · r/Schenectady",
+    pipe: "reddit",
     official: false,
     needsLocal: false,
     format: "atom",
@@ -290,13 +306,6 @@ function tidySummary(title: string, summary: string): string {
   return s.slice(0, 360);
 }
 
-function pipeIdFor(feed: SocialFeed): string {
-  if (feed.outlet.startsWith("Facebook")) return "social:facebook";
-  if (feed.outlet.startsWith("X ·")) return "social:x";
-  if (feed.outlet.startsWith("Reddit")) return "social:reddit";
-  return `social:${feed.outlet.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").slice(0, 36)}`;
-}
-
 async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]> {
   if (feed.outlet.startsWith("Reddit") && Date.now() < redditBlockedUntil) {
     return [];
@@ -310,10 +319,12 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) {
-      const id = pipeIdFor(feed);
-      const label = feed.outlet.startsWith("Facebook") ? "Facebook" : feed.outlet.startsWith("X ·") ? "X" : "Reddit";
-      recordPipeFail(id, label, `HTTP ${res.status}`);
-      if (res.status === 429 && feed.outlet.startsWith("Reddit")) {
+      recordPipeFail(
+        `social:${feed.pipe}`,
+        feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook",
+        `HTTP ${res.status}`,
+      );
+      if (res.status === 429 && feed.pipe === "reddit") {
         redditBlockedUntil = Date.now() + REDDIT_BACKOFF_MS;
       }
       return [];
@@ -323,9 +334,11 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
     if (!xml.includes("<item")) return [];
     return parseRss(xml, feed, now);
   } catch (err) {
-    const id = pipeIdFor(feed);
-    const label = feed.outlet.startsWith("Facebook") ? "Facebook" : feed.outlet.startsWith("X ·") ? "X" : "Reddit";
-    recordPipeFail(id, label, err instanceof Error ? err.message : "social-error");
+    recordPipeFail(
+      `social:${feed.pipe}`,
+      feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook",
+      err instanceof Error ? err.message : "social-error",
+    );
     return [];
   }
 }

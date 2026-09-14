@@ -1,16 +1,24 @@
 /** Defense-in-depth input scrubbing — not a full HTML sanitizer. */
 
 const TAG_RE = /<[^>]*>/g;
-const CTRL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+
+function stripControlChars(input: string): string {
+  // Avoid control-char regexes (lint no-control-regex) while keeping behavior explicit.
+  let out = "";
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+    // 0x00-0x1F and DEL 0x7F
+    if (c < 0x20 || c === 0x7f) continue;
+    out += input[i]!;
+  }
+  return out;
+}
 
 /** Strip tags and control chars; collapse whitespace. */
 export function stripHtml(input: string, maxLen: number): string {
-  return String(input ?? "")
-    .replace(TAG_RE, " ")
-    .replace(CTRL_RE, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLen);
+  const withoutTags = String(input ?? "").replace(TAG_RE, " ");
+  const clean = stripControlChars(withoutTags);
+  return clean.replace(/\s+/g, " ").trim().slice(0, maxLen);
 }
 
 const WEBHOOK_OK_TYPES = [

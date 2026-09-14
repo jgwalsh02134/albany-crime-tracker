@@ -168,6 +168,75 @@ function looksLikeMpegTs(bytes: Uint8Array): boolean {
 let xaiSttBlockedUntil = 0;
 const XAI_ACL_BACKOFF_MS = 10 * 60_000;
 
+type WhisperProvider = "openai" | "groq";
+
+/**
+ * Provider-level backoff for 429s (and other rate-limit style failures).
+ * This avoids hammering a single tier when feeds are hot or credits are exhausted.
+ */
+let openaiWhisperBlockedUntil = 0;
+let groqWhisperBlockedUntil = 0;
+let openai429s = 0;
+let groq429s = 0;
+
+function parseRetryAfterMs(res: Response): number | null {
+  const raw = res.headers.get("retry-after") || res.headers.get("Retry-After") || "";
+  const s = raw.trim();
+  if (!s) return null;
+  const n = Number(s);
+  if (Number.isFinite(n) && n > 0) return Math.min(30 * 60_000, Math.round(n * 1000));
+  const t = Date.parse(s);
+  if (Number.isFinite(t)) {
+    const ms = t - Date.now();
+    if (ms > 0) return Math.min(30 * 60_000, ms);
+  }
+  return null;
+}
+
+function providerBlockedUntil(provider: WhisperProvider): number {
+  return provider === "openai" ? openaiWhisperBlockedUntil : groqWhisperBlockedUntil;
+}
+
+function setProviderBlocked(provider: WhisperProvider, until: number): void {
+  if (provider === "openai") openaiWhisperBlockedUntil = until;
+  else groqWhisperBlockedUntil = until;
+}
+
+function bumpProvider429(provider: WhisperProvider, res?: Response): number {
+  const retry = res ? parseRetryAfterMs(res) : null;
+  if (retry != null) {
+    const until = Date.now() + retry;
+    setProviderBlocked(provider, until);
+    return until;
+  }
+  const base = provider === "openai" ? 45_000 : 75_000;
+  const max = provider === "openai" ? 6 * 60_000 : 10 * 60_000;
+  if (provider === "openai") openai429s += 1;
+  else groq429s += 1;
+  const n = provider === "openai" ? openai429s : groq429s;
+  const ms = Math.min(max, base * 2 ** Math.min(6, n - 1));
+  const jitter = Math.round(ms * (0.12 * Math.random()));
+  const until = Date.now() + ms + jitter;
+  setProviderBlocked(provider, until);
+  return until;
+}
+
+function clearProvider429(provider: WhisperProvider): void {
+  if (provider === "openai") openai429s = 0;
+  else groq429s = 0;
+}
+
+function whisperModels(envKey: string, fallbackModel: string): string[] {
+  const list = (process.env[envKey] || "").trim();
+  if (list) {
+    return list
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return [fallbackModel];
+}
+
 function fileCopy(bytes: Uint8Array, filename: string, mime: string): File {
   const copy = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(copy).set(bytes);
@@ -209,31 +278,46 @@ async function transcribeWithOpenAiWhisper(
 ): Promise<{ text: string; duration: number }> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("missing-openai-key");
+  if (Date.now() < openaiWhisperBlockedUntil) throw new Error("openai-429");
 
   const prepared = await prepareAudioForWhisper(bytes, filename, mime);
   if (prepared.remuxed) {
     console.info("[stt] remuxed audio for whisper", filename, "->", prepared.filename);
   }
 
-  const form = new FormData();
-  form.append("model", process.env.SCANNER_TRANSCRIBE_MODEL?.trim() || "whisper-1");
-  form.append("language", "en");
-  form.append("file", fileCopy(prepared.bytes, prepared.filename, prepared.mime));
+  const models = whisperModels(
+    "SCANNER_TRANSCRIBE_MODELS",
+    (process.env.SCANNER_TRANSCRIBE_MODEL?.trim() || "whisper-1").trim(),
+  );
 
-  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!res.ok) {
+  const errors: string[] = [];
+  for (const model of models) {
+    const form = new FormData();
+    form.append("model", model);
+    form.append("language", "en");
+    form.append("file", fileCopy(prepared.bytes, prepared.filename, prepared.mime));
+
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(30000),
+    });
+    if (res.ok) {
+      clearProvider429("openai");
+      const json = (await res.json()) as { text?: string; duration?: number };
+      return { text: tidyRadio(json.text?.trim() ?? ""), duration: json.duration ?? 0 };
+    }
+    if (res.status === 429) bumpProvider429("openai", res);
     const body = await res.text().catch(() => "");
     const msg = formatProviderErrorBody(res.status, body, "whisper");
+    errors.push(msg);
     console.error("[stt] whisper error", msg);
+    // If the model name is wrong, try the next configured model.
+    if (res.status === 400 && models.length > 1) continue;
     throw new Error(msg);
   }
-  const json = (await res.json()) as { text?: string; duration?: number };
-  return { text: tidyRadio(json.text?.trim() ?? ""), duration: json.duration ?? 0 };
+  throw new Error(errors.at(-1) || "whisper");
 }
 
 async function transcribeWithGroqWhisper(
@@ -243,27 +327,41 @@ async function transcribeWithGroqWhisper(
 ): Promise<{ text: string; duration: number }> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error("missing-groq-key");
+  if (Date.now() < groqWhisperBlockedUntil) throw new Error("groq-429");
 
   const prepared = await prepareAudioForWhisper(bytes, filename, mime);
-  const form = new FormData();
-  form.append("model", process.env.GROQ_TRANSCRIBE_MODEL?.trim() || "whisper-large-v3");
-  form.append("language", "en");
-  form.append("file", fileCopy(prepared.bytes, prepared.filename, prepared.mime));
+  const models = whisperModels(
+    "GROQ_TRANSCRIBE_MODELS",
+    (process.env.GROQ_TRANSCRIBE_MODEL?.trim() || "whisper-large-v3").trim(),
+  );
 
-  const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!res.ok) {
+  const errors: string[] = [];
+  for (const model of models) {
+    const form = new FormData();
+    form.append("model", model);
+    form.append("language", "en");
+    form.append("file", fileCopy(prepared.bytes, prepared.filename, prepared.mime));
+
+    const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+      signal: AbortSignal.timeout(30000),
+    });
+    if (res.ok) {
+      clearProvider429("groq");
+      const json = (await res.json()) as { text?: string; duration?: number };
+      return { text: tidyRadio(json.text?.trim() ?? ""), duration: json.duration ?? 0 };
+    }
+    if (res.status === 429) bumpProvider429("groq", res);
     const body = await res.text().catch(() => "");
     const msg = formatProviderErrorBody(res.status, body, "groq");
+    errors.push(msg);
     console.error("[stt] groq whisper error", msg);
+    if (res.status === 400 && models.length > 1) continue;
     throw new Error(msg);
   }
-  const json = (await res.json()) as { text?: string; duration?: number };
-  return { text: tidyRadio(json.text?.trim() ?? ""), duration: json.duration ?? 0 };
+  throw new Error(errors.at(-1) || "groq");
 }
 
 /**
@@ -278,7 +376,7 @@ export async function transcribeWithWhisperFallback(
   mime: string,
 ): Promise<{ text: string; duration: number }> {
   const errors: string[] = [];
-  if (process.env.OPENAI_API_KEY) {
+  if (process.env.OPENAI_API_KEY && Date.now() >= providerBlockedUntil("openai")) {
     try {
       return await transcribeWithOpenAiWhisper(bytes, filename, mime);
     } catch (err) {
@@ -288,7 +386,7 @@ export async function transcribeWithWhisperFallback(
       // Continue to Groq even on 429 — do not throw until the chain is exhausted.
     }
   }
-  if (process.env.GROQ_API_KEY) {
+  if (process.env.GROQ_API_KEY && Date.now() >= providerBlockedUntil("groq")) {
     try {
       return await transcribeWithGroqWhisper(bytes, filename, mime);
     } catch (err) {
@@ -304,6 +402,10 @@ export async function transcribeWithWhisperFallback(
 /** Test helper: clear in-process xAI ACL backoff. */
 export function resetXaiSttBackoff(): void {
   xaiSttBlockedUntil = 0;
+  openaiWhisperBlockedUntil = 0;
+  groqWhisperBlockedUntil = 0;
+  openai429s = 0;
+  groq429s = 0;
 }
 
 export function sttProvidersConfigured(): boolean {

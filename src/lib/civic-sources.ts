@@ -6,8 +6,10 @@ const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const LIVE_MIN = 24 * 60;
 const OFFICIAL_NEWS_MIN = 7 * 24 * 60;
 
+// CivicPlus posts include non-crime public-safety alerts (closures, missing persons, evacuations).
+// Keep it conservative — we are not an "all announcements" feed.
 const INCIDENT =
-  /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrests?|arrested|fire|blaze|killed|injured|fatal|burglary|assault|charg(?:e|ed|es|ing)|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|investigation|narcotics|gunfire|missing|head-on|vehicle)\b/i;
+  /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrests?|arrested|fire|blaze|killed|injured|fatal|burglary|assault|charg(?:e|ed|es|ing)|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|investigation|narcotics|gunfire|missing|head-on|vehicle|road closure|lane closure|road closed|traffic alert|shelter(?:-|\s*)in(?:-|\s*)place|evacuat(?:e|ion)|boil water|water main break|hazmat|gas leak|power lines? down)\b/i;
 const DROP =
   /\b(help wanted|hiring|playground|rabies|no parking|sewer|assistant coordinator|records clerk|budget|fiscal|midyear|phishing scam|found dog|found pet)\b/i;
 const SEVERE_WX =

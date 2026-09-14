@@ -7,7 +7,7 @@ const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 
 /** Outlet logos, seals, default share cards, and obvious stock art — not story photos. */
 const GENERIC_IMAGE_RE =
-  /(?:^|[\/_-])(?:logo|seal|brand|favicon|sprite|masthead|wordmark|placeholder|default[-_]?(?:image|og|share|social|thumb)?|site[-_]?icon|apple[-_]?touch|og[-_]?default|social[-_]?share|generic|stock|ambulance\.webp|firegeneric|news[-_]?10[-_]?site[-_]?icon|cropped-[^/]*icon|gnews\/logo|google_news_\d+)(?:[./_?-]|$)/i;
+  /(?:^|[/_-])(?:logo|seal|brand|favicon|sprite|masthead|wordmark|placeholder|default[-_]?(?:image|og|share|social|thumb)?|site[-_]?icon|apple[-_]?touch|og[-_]?default|social[-_]?share|generic|stock|ambulance\.webp|firegeneric|news[-_]?10[-_]?site[-_]?icon|cropped-[^/]*icon|gnews\/logo|google_news_\d+)(?:[./_?-]|$)/i;
 
 const GOOGLE_NEWS_HOST_RE = /(?:^|\.)news\.google\.com$/i;
 const GNEWS_LOGO_RE = /googleusercontent\.com\/.*(?:=w(?:16|24|32|48|64|96)\b)|gstatic\.com\/gnews\/logo/i;
@@ -154,10 +154,31 @@ async function decodeGoogleNewsArticleUrl(url: string): Promise<string | undefin
   const articleId = decodeURIComponent(m[1]);
   // Embedded http(s) in older base64 payloads.
   try {
-    const pad = "=".repeat((4 - (articleId.length % 4)) % 4);
     const raw = Buffer.from(articleId.replace(/-/g, "+").replace(/_/g, "/"), "base64");
-    const embedded = raw.toString("latin1").match(/https?:\/\/[^\x00-\x1f\x7f-\xff]{12,300}/);
-    if (embedded?.[0] && !isGoogleNewsUrl(embedded[0])) return embedded[0];
+    const bytes = raw.toString("latin1");
+    const start = Math.max(0, bytes.indexOf("https://"));
+    const alt = start > 0 ? start : bytes.indexOf("http://");
+    const idx = alt >= 0 ? alt : -1;
+    if (idx >= 0) {
+      let end = idx;
+      while (end < bytes.length) {
+        const c = bytes.charCodeAt(end);
+        // Stop at control chars and DEL; keep typical URL punctuation.
+        if (c < 0x20 || c === 0x7f) break;
+        end += 1;
+      }
+      const candidate = bytes.slice(idx, end).trim();
+      if (candidate.length >= 12 && candidate.length <= 400 && /^https?:\/\//i.test(candidate) && !isGoogleNewsUrl(candidate)) {
+        // Validate parse; reject obvious truncations.
+        try {
+          // eslint-disable-next-line no-new
+          new URL(candidate);
+          return candidate;
+        } catch {
+          /* ignore */
+        }
+      }
+    }
   } catch {
     /* continue */
   }

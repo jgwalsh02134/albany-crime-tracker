@@ -32,7 +32,7 @@ function encodeCommand(args: string[]): string {
   return out;
 }
 
-function readRedisReply(buf: Buffer): { value: unknown; rest: Buffer } | null {
+function readRedisReply(buf: Buffer<ArrayBufferLike>): { value: unknown; rest: Buffer<ArrayBufferLike> } | null {
   if (buf.length < 3) return null;
   const kind = String.fromCharCode(buf[0]!);
   if (kind === "+" || kind === "-" || kind === ":") {

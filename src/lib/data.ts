@@ -65,7 +65,8 @@ export const SOURCES = [
   {
     name: "Newsrooms",
     tier: "Newsroom",
-    detail: "News10, CBS6, WNYT, WAMC, Patch, Times Union, Spotlight, Daily Gazette, FOX23, Spectrum, Troy Record, plus Cohoes/Watervliet/Menands and Guilderland Google News queries. Breaking crime under 24h also appears on Live.",
+    detail:
+      "News10, CBS6, WNYT, WAMC, Patch (via Google News RSS), Times Union, Spotlight, Daily Gazette, FOX23, Spectrum, Troy Record, plus Cohoes/Watervliet/Menands and Guilderland Google News queries. Breaking crime under 24h also appears on Live.",
   },
   {
     name: "Citizens",

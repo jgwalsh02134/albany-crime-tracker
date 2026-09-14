@@ -41,6 +41,7 @@ export const Route = createFileRoute("/ready")({
           stt: {
             xai: Boolean(process.env.XAI_API_KEY),
             openai: Boolean(process.env.OPENAI_API_KEY),
+            groq: Boolean(process.env.GROQ_API_KEY),
           },
           superfeedr: {
             secretConfigured: Boolean((process.env.SUPERFEEDR_SECRET || "").trim()),
@@ -61,6 +62,11 @@ export const Route = createFileRoute("/ready")({
             captions: scan.captions,
             ageSec: scan.ageSec,
             lastError: scan.lastError || undefined,
+            sttState: scan.sttState,
+            sttBlockedSec: scan.sttBlockedSec,
+            lastSpoken: scan.lastSpoken || undefined,
+            lastSpokenAt: scan.lastSpokenAt || undefined,
+            lastFeed: scan.lastFeed || undefined,
           },
           pipes: pipeHealth(),
         });

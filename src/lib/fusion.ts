@@ -415,6 +415,10 @@ export function scoreCorroboration(items: FuseItem[]): Corroboration {
 export function compareFused(a: { corroborationScore?: number; minutesAgo: number }, b: { corroborationScore?: number; minutesAgo: number }): number {
   const sa = a.corroborationScore ?? 0;
   const sb = b.corroborationScore ?? 0;
+  // Live feed should feel live: when two incidents are far apart in time,
+  // prefer recency over corroboration so yesterday's blotter doesn't pin the top.
+  const gap = Math.abs(a.minutesAgo - b.minutesAgo);
+  if (gap >= 6 * 60) return a.minutesAgo - b.minutesAgo;
   if (sb !== sa) return sb - sa;
   return a.minutesAgo - b.minutesAgo;
 }
