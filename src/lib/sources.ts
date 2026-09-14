@@ -58,7 +58,7 @@ function normalizeTier(raw: string, kind: SourceKind): SourceTier {
 
 function sourceUrl(kind: SourceKind, name: string, agencyAbbr: string): string {
   if (kind === "scanner") return "https://www.broadcastify.com/listen/feed/3626";
-  if (kind === "nixle") return "https://local.nixle.com/albany-police-department/";
+  if (kind === "nixle") return "https://nixle.us/albany-police-department";
   if (kind === "cfs" || kind === "opendata") return "https://data.albanyny.gov/";
   if (kind === "news") {
     const n = name.toLowerCase();
@@ -306,7 +306,6 @@ function hashId(s: string): string {
 function agencyAbbrFor(item: LiveWireItem, activity: ActivityKind): string {
   if (activity === "blotter") return "NYSP";
   if (activity === "scanner") {
-    if (/colonie/i.test(item.agency || "")) return "CPD";
     if (/albany\s*pd|albany police/i.test(item.agency || "")) return "APD";
     if (/bethlehem/i.test(item.agency || "")) return "BPD";
     if (/albany\s*fire/i.test(item.agency || "")) return "AFD";
@@ -356,8 +355,11 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
     const seen = new Set<string>();
     const sources: IncidentSource[] = [];
     for (const g of group) {
-      if (seen.has(g.url)) continue;
-      seen.add(g.url);
+      // Keep provenance even when multiple rows link to the same landing page (e.g. 511 region).
+      // Dedupe on per-wire identity rather than URL alone so we don't silently drop origins.
+      const key = `${g.id}|${g.outlet}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
       sources.push(itemToSource(g));
     }
     const corr = scoreCorroboration(group);

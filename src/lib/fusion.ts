@@ -272,6 +272,8 @@ export function sourceFamily(kind: FuseKind | undefined, outlet: string): string
   const activity = kind ?? "news";
   if (activity === "blotter") return "blotter";
   if (activity === "scanner") return "scanner";
+  if (/^Nixle\b/i.test(outlet)) return "nixle";
+  if (/\bTINC\b/i.test(outlet) || /\bNYSTA\b/i.test(outlet)) return "tinc";
   if (outlet === "511NY" || (activity === "traffic" && /511/i.test(outlet))) return "511";
   if (outlet === "NWS" || /National Weather/i.test(outlet)) return "nws";
   if (/^Civic ·/i.test(outlet)) return "civic";
@@ -284,6 +286,10 @@ export function familyChip(family: string): SeenOnChip {
   switch (family) {
     case "blotter":
       return { key: "blotter", label: "Blotter" };
+    case "nixle":
+      return { key: "nixle", label: "Nixle" };
+    case "tinc":
+      return { key: "tinc", label: "Thruway" };
     case "scanner":
       return { key: "scanner", label: "Scanner" };
     case "511":
@@ -319,6 +325,8 @@ export function seenOnFromSources(sources: IncidentSource[]): SeenOnChip[] {
     const family =
       s.kind === "blotter"
         ? "blotter"
+        : s.kind === "nixle"
+          ? "nixle"
         : s.kind === "scanner"
           ? "scanner"
           : s.kind === "cfs" || /511/i.test(s.name)
@@ -339,11 +347,31 @@ export function seenOnFromSources(sources: IncidentSource[]): SeenOnChip[] {
 }
 
 function familyTier(family: string): SourceTier {
-  if (family === "blotter" || family === "511" || family === "nws" || family === "civic" || family === "press") {
+  if (
+    family === "blotter" ||
+    family === "nixle" ||
+    family === "tinc" ||
+    family === "511" ||
+    family === "nws" ||
+    family === "civic" ||
+    family === "press"
+  ) {
     return "official";
   }
   if (family === "scanner" || family === "social") return "unconfirmed";
   return "context";
+}
+
+function confidenceRank(family: string): number {
+  // Higher = more trustworthy / authoritative in Live.
+  // official > blotter > nixle > news > scanner_stt > social
+  if (family === "tinc" || family === "511" || family === "nws" || family === "civic" || family === "press") return 6;
+  if (family === "blotter") return 5;
+  if (family === "nixle") return 4;
+  if (family === "news") return 3;
+  if (family === "scanner") return 2;
+  if (family === "social") return 1;
+  return 0;
 }
 
 /**
@@ -400,8 +428,9 @@ export function pickPrimary(group: FuseItem[]): FuseItem {
     const family = sourceFamily(item.kind, item.outlet);
     const tier = familyTier(family);
     const tierN = tier === "official" ? 3 : tier === "context" ? 2 : 1;
+    const conf = confidenceRank(family);
     const recency = Math.max(0, 2000 - item.minutesAgo);
-    return tierN * 10_000 + recency;
+    return conf * 20_000 + tierN * 10_000 + recency;
   };
   return [...group].sort((a, b) => rank(b) - rank(a))[0]!;
 }
@@ -412,6 +441,10 @@ export function itemToSource(item: FuseItem): IncidentSource {
   const kind: SourceKind =
     family === "blotter"
       ? "blotter"
+      : family === "nixle"
+        ? "nixle"
+        : family === "tinc"
+          ? "cfs"
       : family === "scanner"
         ? "scanner"
         : family === "511"
@@ -441,18 +474,49 @@ export function verificationFor(items: FuseItem[], sources: IncidentSource[]): V
 export function fuseId(group: FuseItem[], primary: FuseItem): string {
   if (group.length === 1) {
     const item = group[0]!;
-    if (item.id.startsWith("nysp-") || item.id.startsWith("scan-") || item.id.startsWith("citizen-") || item.id.startsWith("511-")) {
+    if (
+      item.id.startsWith("nysp-") ||
+      item.id.startsWith("scan-") ||
+      item.id.startsWith("citizen-") ||
+      item.id.startsWith("511-") ||
+      item.id.startsWith("nws-") ||
+      item.id.startsWith("nixle-") ||
+      item.id.startsWith("tinc-")
+    ) {
       return item.id;
     }
   }
-  const official = group.find((g) => g.id.startsWith("nysp-") || g.id.startsWith("511-"));
+  const official = group.find(
+    (g) =>
+      g.id.startsWith("nysp-") ||
+      g.id.startsWith("511-") ||
+      g.id.startsWith("nws-") ||
+      g.id.startsWith("nixle-") ||
+      g.id.startsWith("tinc-"),
+  );
   if (official) return official.id;
-  let h = 0;
-  const key = group
-    .map((g) => g.id)
-    .sort()
-    .join("|");
-  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
-  if (primary.id.startsWith("scan-") && group.length === 1) return primary.id;
-  return `fuse-${Math.abs(h).toString(36)}`;
+
+  // Soft cluster identity (no hard ids): geo+time bucket+call family. Stable across refreshes even
+  // when individual URLs change or scanner seq rolls.
+  const family = callOf(primary).family || "other";
+  const muni = normMuni(primary.municipality) || "unknown";
+  const addr = (primary.address || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const road =
+    addr
+      .match(
+        /\b(?:north|south|east|west|n|s|e|w)?\s*[a-z][a-z0-9']+(?:\s+[a-z][a-z0-9']+){0,2}\s+(?:street|st|avenue|ave|road|rd|boulevard|blvd|place|pl|drive|dr)\b/i,
+      )?.[0]
+      ?.replace(/\s+/g, " ")
+      .trim() ?? "";
+  const at = Date.parse(primary.publishedAt);
+  const bucketMs = 15 * 60_000;
+  const t = Number.isFinite(at) ? Math.floor(at / bucketMs) * bucketMs : 0;
+  const geo =
+    typeof primary.lat === "number" && typeof primary.lng === "number" && Number.isFinite(primary.lat) && Number.isFinite(primary.lng)
+      ? `${Math.round(primary.lat * 100) / 100},${Math.round(primary.lng * 100) / 100}`
+      : muni;
+  const soft = `${family}|${muni}|${geo}|${road}|${t}`;
+  let hs = 0;
+  for (let i = 0; i < soft.length; i++) hs = (hs * 31 + soft.charCodeAt(i)) | 0;
+  return `evt-${Math.abs(hs).toString(36)}`;
 }

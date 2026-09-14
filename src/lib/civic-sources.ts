@@ -24,6 +24,11 @@ const CIVIC_FEEDS: CivicFeed[] = [
     agency: "Bethlehem PD",
   },
   {
+    url: "https://www.townofbethlehem.org/RSSFeed.aspx?ModID=1&CID=Police-Press-Releases-5",
+    outlet: "Civic · Bethlehem PD press",
+    agency: "Bethlehem PD",
+  },
+  {
     url: "https://www.guilderlandpd.org/RSSFeed.aspx?ModID=1&CID=All-news",
     outlet: "Civic · Guilderland PD",
     agency: "Guilderland PD",
@@ -52,6 +57,21 @@ const CIVIC_FEEDS: CivicFeed[] = [
     url: "https://www.villageofvoorheesville.gov/RSSFeed.aspx?ModID=1&CID=All-news",
     outlet: "Civic · Voorheesville",
     agency: "Village of Voorheesville",
+  },
+  {
+    url: "https://www.rensco.com/RSSFeed.aspx?ModID=1&CID=District-Attorney-News-23",
+    outlet: "Civic · Rensco DA",
+    agency: "Rensselaer County District Attorney",
+  },
+  {
+    url: "https://www.rensco.com/RSSFeed.aspx?ModID=1&CID=Public-Safety-15",
+    outlet: "Civic · Rensco Public Safety",
+    agency: "Rensselaer County Public Safety",
+  },
+  {
+    url: "https://www.troyny.gov/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Troy",
+    agency: "City of Troy",
   },
 ];
 

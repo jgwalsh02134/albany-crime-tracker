@@ -20,6 +20,9 @@ const LIVE_MIN = 24 * 60;
 const NEWS_MIN = 72 * 60;
 const OFFICIAL_NEWS_MIN = 7 * 24 * 60;
 
+let redditBlockedUntil = 0;
+const REDDIT_BACKOFF_MS = 10 * 60_000;
+
 type SocialFeed = {
   url: string;
   outlet: string;
@@ -304,6 +307,9 @@ function tidySummary(title: string, summary: string): string {
 }
 
 async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]> {
+  if (feed.outlet.startsWith("Reddit") && Date.now() < redditBlockedUntil) {
+    return [];
+  }
   try {
     const res = await fetch(feed.url, {
       headers: {
@@ -313,7 +319,14 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) {
-      recordPipeFail(`social:${feed.pipe}`, feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook", `HTTP ${res.status}`);
+      recordPipeFail(
+        `social:${feed.pipe}`,
+        feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook",
+        `HTTP ${res.status}`,
+      );
+      if (res.status === 429 && feed.pipe === "reddit") {
+        redditBlockedUntil = Date.now() + REDDIT_BACKOFF_MS;
+      }
       return [];
     }
     const xml = await res.text();

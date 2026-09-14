@@ -16,15 +16,14 @@ export type ScannerFeed = {
 export const SCANNER_FEEDS: ScannerFeed[] = [
   {
     id: "3626",
-    name: "Albany / Colonie PD",
-    shortName: "APD/CPD",
-    coverage: "City of Albany & Town of Colonie",
+    name: "Albany PD (Colonie PD encrypted)",
+    shortName: "APD",
+    coverage: "City of Albany police. Colonie Police is encrypted (not monitorable).",
     system: "P25 + analog simulcast",
     discipline: "police",
     url: "https://www.broadcastify.com/listen/feed/3626",
     hlsFallback: "https://hls-o2.broadcastify.com/s0/feed/3626/playlist.m3u8",
-    // Dual simulcast — resolve Albany PD vs Colonie PD from talkgroup / speech.
-    agencies: ["Albany PD", "Colonie PD"],
+    agencies: ["Albany PD"],
   },
   {
     id: "36327",

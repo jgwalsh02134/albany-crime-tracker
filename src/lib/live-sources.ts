@@ -5,6 +5,8 @@ import { fetchNyspBlotter, parseNyWhen } from "./nysp-blotter";
 import { scannerHealth, scannerItems, startScannerPoll } from "./scanner-poll";
 import { collectSocial, socialLive, socialNews } from "./social-sources";
 import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
+import { fetchNixleAltamont, fetchNixleApd, fetchNixleGuilderlandPd, fetchNixleWatervliet } from "./nixle-sources";
+import { fetchThruwayTincAlbany } from "./thruway-tinc";
 import { superfeedrItems } from "./superfeedr";
 import { enrichStoryImages, pickBestImage } from "./news-thumbs";
 import { pipeHealth, recordPipeFail, recordPipeOk } from "./pipe-health";
@@ -363,8 +365,9 @@ async function fetch511(now: number): Promise<LiveWireItem[]> {
         geoPrecision = pin.precision;
         if (pin.road) address = pin.road;
       }
+      const stableId = e.ID ? `511-${e.ID}` : `511-${road}-${at}`;
       out.push({
-        id: `511-${e.ID || road}-${at}`,
+        id: stableId,
         title: `${sev} — ${road}`,
         url: "https://511ny.org/region/Capital%20Region%20Albany%20Saratoga%20Area",
         outlet: "511NY",
@@ -460,7 +463,7 @@ function notable(row: LiveWireItem): boolean {
 async function collectWire() {
   const now = Date.now();
   startScannerPoll();
-  const [news, blotterRes, traffic, press, social, civic, nws] = await Promise.all([
+  const [news, blotterRes, traffic, press, social, civic, nws, nixleApd, nixleGpd, nixleWvl, nixleAlt, tinc] = await Promise.all([
     collectNews(now),
     fetchNyspBlotter(now).catch((err) => {
       console.error("[nysp] blotter", err instanceof Error ? err.message : err);
@@ -477,7 +480,13 @@ async function collectWire() {
     })),
     fetchCivic(now).catch(() => [] as LiveWireItem[]),
     fetchNws(now).catch(() => [] as LiveWireItem[]),
+    fetchNixleApd(now).catch(() => [] as LiveWireItem[]),
+    fetchNixleGuilderlandPd(now).catch(() => [] as LiveWireItem[]),
+    fetchNixleWatervliet(now).catch(() => [] as LiveWireItem[]),
+    fetchNixleAltamont(now).catch(() => [] as LiveWireItem[]),
+    fetchThruwayTincAlbany(now).catch(() => [] as LiveWireItem[]),
   ]);
+  const nixle = [...nixleApd, ...nixleGpd, ...nixleWvl, ...nixleAlt].sort((a, b) => a.minutesAgo - b.minutesAgo);
   const blotter = blotterRes.items;
   if (blotterRes.failed && !blotter.length) {
     recordPipeFail("nysp-blotter", "NYSP blotter", `failed ${blotterRes.failed}/${blotterRes.tried}`);
@@ -506,7 +515,7 @@ async function collectWire() {
     }),
   );
   // Prefer radio / 511 / civic / fresh newsrooms ahead of overnight blotter.
-  const items = mergeActivity([scan, traffic, nws, liveNews, socialNow, civicNow, blotterLive]);
+  const items = mergeActivity([scan, traffic, tinc, nws, nixle, liveNews, socialNow, civicNow, blotterLive]);
   // News tab: newsrooms first; cap blotter so overnight dumps do not drown headlines.
   const blotterAsNews = blotterNews.map((r) => ({ ...r, kind: "news" as const })).slice(0, 6);
   const storiesRaw = mergeActivity([
@@ -532,7 +541,9 @@ async function collectWire() {
     blotterLive.length ? "NYSP blotter" : "",
     scan.length ? "Scanner" : "",
     traffic.length ? "511NY" : "",
+    tinc.length ? "NYSTA TINC" : "",
     nws.length ? "NWS" : "",
+    nixle.length ? "Nixle" : "",
     press.length ? "NYSP press" : "",
     pushed.length ? "Superfeedr" : "",
     civic.length ? "Civic" : "",
