@@ -39,6 +39,7 @@ type AppState = {
   mapSourceGroups: MapSourceGroup[];
   mapVerifications: MapVerification[];
   mapShowApprox: boolean;
+  mapCoverage: boolean;
   heatmap: boolean;
   selectedId: string | null;
   filterOpen: boolean;
@@ -61,6 +62,7 @@ type AppState = {
   setMapSourceGroups: (g: MapSourceGroup[]) => void;
   setMapVerifications: (v: MapVerification[]) => void;
   setMapShowApprox: (o: boolean) => void;
+  setMapCoverage: (o: boolean) => void;
   resetMapFilters: () => void;
   setHeatmap: (h: boolean) => void;
   selectIncident: (id: string | null) => void;
@@ -113,6 +115,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   mapSourceGroups: ["official", "news", "scanner", "social"],
   mapVerifications: ["confirmed", "developing", "scanner"],
   mapShowApprox: true,
+  mapCoverage: false,
   heatmap: false,
   selectedId: null,
   filterOpen: false,
@@ -142,6 +145,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   setMapSourceGroups: (mapSourceGroups) => set({ mapSourceGroups }),
   setMapVerifications: (mapVerifications) => set({ mapVerifications }),
   setMapShowApprox: (mapShowApprox) => set({ mapShowApprox }),
+  setMapCoverage: (mapCoverage) => set({ mapCoverage }),
   resetMapFilters: () =>
     set({
       mapWindowHours: 6,
@@ -149,6 +153,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       mapSourceGroups: ["official", "news", "scanner", "social"],
       mapVerifications: ["confirmed", "developing", "scanner"],
       mapShowApprox: true,
+      mapCoverage: false,
     }),
   setHeatmap: (heatmap) => set({ heatmap }),
   selectIncident: (selectedId) => set({ selectedId }),
