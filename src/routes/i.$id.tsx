@@ -1,12 +1,161 @@
 import { useEffect, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
-import { lookupIncidentCard, ogMetaTags } from "@/lib/incident-lookup";
-import { incidentDeepLink } from "@/lib/share";
+import { ogMetaTags } from "@/lib/og-meta";
+import { clockTime } from "@/lib/format";
+import { incidentDeepLink, sourceCaveat } from "@/lib/share";
+import { wireToIncidents, type LiveWireItem } from "@/lib/sources";
 import { useAppStore } from "@/lib/store";
 
+type IncidentCardMeta = {
+  id: string;
+  title: string;
+  description: string;
+  place: string;
+  when: string;
+  caveat: string;
+  imagePath: string;
+  found: boolean;
+  incident: import("@/lib/types").Incident | null;
+  originalUrl?: string;
+  kind?: "incident" | "story";
+};
+
+const FALLBACK: IncidentCardMeta = {
+  id: "",
+  title: "Albany County Crime Tracker",
+  description: "Live crime intelligence for Albany County, NY.",
+  place: "Albany County, NY",
+  when: "",
+  caveat: "",
+  imagePath: "/og.jpg",
+  found: false,
+  incident: null,
+  kind: "incident",
+};
+
+function looksLikeExternalUrl(raw: string): boolean {
+  return /^https?:\/\//i.test(raw.trim());
+}
+
+function safeDecodeMaybe(raw: string): string {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  try {
+    const once = decodeURIComponent(s);
+    return once.includes("%") ? decodeURIComponent(once) : once;
+  } catch {
+    return s;
+  }
+}
+
+function cardMetaFromIncident(incident: import("@/lib/types").Incident, id: string): IncidentCardMeta {
+  const place = incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
+    ? incident.address
+    : `${incident.address}, ${incident.municipality}`;
+  const when = clockTime(incident.occurredAt);
+  const caveat = sourceCaveat(incident);
+  const description = [place, when, caveat].filter(Boolean).join(" · ");
+  return {
+    id,
+    title: incident.title,
+    description,
+    place,
+    when,
+    caveat,
+    imagePath: `/api/og/${encodeURIComponent(id)}`,
+    found: true,
+    incident,
+    kind: "incident",
+  };
+}
+
+function cardMetaFromStory(opts: {
+  id: string;
+  url: string;
+  title: string;
+  outlet: string;
+  summary?: string;
+  municipality?: string;
+  occurredAt?: string;
+}): IncidentCardMeta {
+  const when = opts.occurredAt ? clockTime(opts.occurredAt) : "";
+  const place = [opts.municipality, opts.outlet].filter(Boolean).join(" · ") || opts.outlet || "News story";
+  const description =
+    (opts.summary || "").trim().slice(0, 360) ||
+    `Newsroom coverage from ${opts.outlet || "a local outlet"}. Open Albany Watch for context and the source for the full story.`;
+  return {
+    id: opts.id,
+    title: opts.title || "News story on Albany Watch",
+    description,
+    place,
+    when,
+    caveat: "Newsroom coverage — open the source for the full story.",
+    imagePath: `/api/og/${encodeURIComponent(opts.id)}`,
+    found: true,
+    incident: null,
+    originalUrl: opts.url,
+    kind: "story",
+  };
+}
+
 export const Route = createFileRoute("/i/$id")({
-  loader: async ({ params }) => lookupIncidentCard(params.id),
+  loader: async ({ params }) => {
+    const raw = safeDecodeMaybe(String(params.id ?? ""));
+    if (!raw) return { ...FALLBACK, id: raw };
+    try {
+      const r = await fetch("/api/wire", { headers: { Accept: "application/json" } });
+      if (!r.ok) return { ...FALLBACK, id: raw, imagePath: `/api/og/${encodeURIComponent(raw)}` };
+      const wire = (await r.json()) as { ok?: boolean; items?: LiveWireItem[]; stories?: LiveWireItem[] };
+      if (!wire?.ok) return { ...FALLBACK, id: raw, imagePath: `/api/og/${encodeURIComponent(raw)}` };
+
+      if (looksLikeExternalUrl(raw)) {
+        const all = [...(wire.stories ?? []), ...(wire.items ?? [])];
+        const hit = all.find((w) => w.id === raw || w.url === raw) ?? null;
+        if (hit) {
+          return cardMetaFromStory({
+            id: raw,
+            url: hit.url || raw,
+            title: hit.title,
+            outlet: hit.outlet,
+            summary: hit.summary,
+            municipality: hit.municipality,
+            occurredAt: hit.publishedAt,
+          });
+        }
+        return {
+          ...FALLBACK,
+          id: raw,
+          title: "Story on Albany Watch",
+          description: "This story may have aged off the live feed. Open Albany Watch for the current headlines.",
+          imagePath: `/api/og/${encodeURIComponent(raw)}`,
+          found: false,
+          incident: null,
+          originalUrl: raw,
+          kind: "story",
+        };
+      }
+
+      const incidents = wireToIncidents(wire.items ?? []);
+      const hit =
+        incidents.find((i) => i.id === raw) ??
+        incidents.find((i) => i.memberIds?.includes(raw)) ??
+        incidents.find((i) => i.id.endsWith(raw) || raw.endsWith(i.id)) ??
+        null;
+      if (!hit) {
+        return {
+          ...FALLBACK,
+          id: raw,
+          title: "Incident on Albany Watch",
+          description: "This item may have aged off Live. Open Albany County Crime Tracker for the current feed.",
+          imagePath: `/api/og/${encodeURIComponent(raw)}`,
+        };
+      }
+      return cardMetaFromIncident(hit, hit.id);
+    } catch {
+      return { ...FALLBACK, id: raw, imagePath: `/api/og/${encodeURIComponent(raw)}` };
+    }
+  },
   head: ({ loaderData, params }) => {
     const id = params.id;
     const meta = loaderData ?? {

@@ -1,12 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  ingestSuperfeedrItems,
-  parseSuperfeedrBody,
-  recordSuperfeedrError,
-  verifySuperfeedrSignature,
-} from "@/lib/superfeedr";
 import { isAllowedWebhookContentType, MAX_WEBHOOK_BODY_BYTES } from "@/lib/security/sanitize";
-import { rateLimitRequest, rateLimitResponse } from "@/lib/security/rate-limit.server";
 
 async function readBodyCapped(request: Request, maxBytes: number): Promise<Uint8Array | null> {
   const lenHeader = request.headers.get("content-length");
@@ -23,6 +16,9 @@ export const Route = createFileRoute("/api/superfeedr/webhook")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        // Keep server-only imports out of the client bundle: route modules are imported into the route tree.
+        const { rateLimitRequest, rateLimitResponse } = await import("../lib/security/rate-limit.server");
+
         const limited = await rateLimitRequest(request, {
           name: "share-ingest-get",
           limit: 60,
@@ -46,6 +42,9 @@ export const Route = createFileRoute("/api/superfeedr/webhook")({
         });
       },
       POST: async ({ request }) => {
+        // Keep server-only imports out of the client bundle: route modules are imported into the route tree.
+        const { rateLimitRequest, rateLimitResponse } = await import("../lib/security/rate-limit.server");
+
         // Feed / share ingest — IP rate limit (external hub; no same-origin check).
         const limited = await rateLimitRequest(request, {
           name: "share-ingest",
@@ -70,6 +69,7 @@ export const Route = createFileRoute("/api/superfeedr/webhook")({
             request.headers.get("X-Hub-Signature") ||
             request.headers.get("x-hub-signature") ||
             "";
+          const { verifySuperfeedrSignature, recordSuperfeedrError } = await import("../lib/superfeedr");
           if (!verifySuperfeedrSignature(body, sig, secret)) {
             console.error("[superfeedr] signature mismatch");
             recordSuperfeedrError("signature-mismatch");
@@ -80,14 +80,17 @@ export const Route = createFileRoute("/api/superfeedr/webhook")({
         const raw = new TextDecoder("utf-8").decode(body);
         let items;
         try {
+          const { parseSuperfeedrBody } = await import("../lib/superfeedr");
           items = parseSuperfeedrBody(raw, contentType);
         } catch (err) {
           const msg = err instanceof Error ? err.message : "parse";
           console.error("[superfeedr] parse", msg);
+          const { recordSuperfeedrError } = await import("../lib/superfeedr");
           recordSuperfeedrError(msg);
           return Response.json({ ok: true, articles: 0 });
         }
 
+        const { ingestSuperfeedrItems } = await import("../lib/superfeedr");
         const added = ingestSuperfeedrItems(items);
         console.info("[superfeedr] webhook", { parsed: items.length, added });
         return Response.json({ ok: true, articles: items.length, added });

@@ -1,15 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  ensureSuperfeedrSubscriptions,
-  superfeedrSubscribeHealth,
-} from "@/lib/superfeedr";
-import { isAdminAuthorized } from "@/lib/security/admin-token.server";
-import { rateLimitRequest, rateLimitResponse } from "@/lib/security/rate-limit.server";
 
 export const Route = createFileRoute("/api/superfeedr/subscribe")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        // Keep server-only imports out of the client bundle: route modules are imported into the route tree.
+        const { rateLimitRequest, rateLimitResponse } = await import("../lib/security/rate-limit.server");
+
         const limited = await rateLimitRequest(request, {
           name: "superfeedr-subscribe",
           limit: 30,
@@ -18,12 +15,14 @@ export const Route = createFileRoute("/api/superfeedr/subscribe")({
         if (!limited.ok) return rateLimitResponse(limited);
 
         // Public: minimal. Rich health only with admin token.
+        const { isAdminAuthorized } = await import("../lib/security/admin-token.server");
         if (!isAdminAuthorized(request, false)) {
           return Response.json({
             ok: true,
             detail: "POST with admin token to run idempotent hub.subscribe",
           });
         }
+        const { superfeedrSubscribeHealth } = await import("../lib/superfeedr");
         return Response.json({
           ok: true,
           ...superfeedrSubscribeHealth(),
@@ -31,6 +30,9 @@ export const Route = createFileRoute("/api/superfeedr/subscribe")({
         });
       },
       POST: async ({ request }) => {
+        // Keep server-only imports out of the client bundle: route modules are imported into the route tree.
+        const { rateLimitRequest, rateLimitResponse } = await import("../lib/security/rate-limit.server");
+
         const limited = await rateLimitRequest(request, {
           name: "superfeedr-subscribe",
           limit: 10,
@@ -39,9 +41,11 @@ export const Route = createFileRoute("/api/superfeedr/subscribe")({
         if (!limited.ok) return rateLimitResponse(limited);
 
         // Allow if unset only on private deploys with no token configured.
+        const { isAdminAuthorized } = await import("../lib/security/admin-token.server");
         if (!isAdminAuthorized(request, true)) {
           return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
         }
+        const { ensureSuperfeedrSubscriptions } = await import("../lib/superfeedr");
         const report = await ensureSuperfeedrSubscriptions({
           force: true,
           requestUrl: request.url,
