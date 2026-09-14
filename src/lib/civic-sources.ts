@@ -5,6 +5,9 @@ import { recordPipeFail, recordPipeOk } from "./pipe-health";
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const LIVE_MIN = 24 * 60;
 const OFFICIAL_NEWS_MIN = 7 * 24 * 60;
+const CACHE_MS = 2 * 60_000;
+const FETCH_TIMEOUT_MS = 12_000;
+const CONCURRENCY = 4;
 
 // CivicPlus posts include non-crime public-safety alerts (closures, missing persons, evacuations).
 // Keep it conservative — we are not an "all announcements" feed.
@@ -73,6 +76,16 @@ const CIVIC_FEEDS: CivicFeed[] = [
     outlet: "Civic · Troy",
     agency: "City of Troy",
   },
+  {
+    url: "https://www.cityofschenectady.com/RSSFeed.aspx?ModID=1&CID=All-news",
+    outlet: "Civic · Schenectady",
+    agency: "City of Schenectady",
+  },
+  {
+    url: "https://www.cityofschenectady.com/RSSFeed.aspx?ModID=1&CID=Police-Press-Releases-18",
+    outlet: "Civic · Schenectady PD",
+    agency: "Schenectady Police Department",
+  },
 ];
 
 function decode(raw: string): string {
@@ -98,15 +111,27 @@ function pipeId(outlet: string): string {
   return `civic:${outlet.replace(/^Civic · /i, "").toLowerCase().replace(/\s+/g, "-")}`;
 }
 
+type CacheEntry = { at: number; items: LiveWireItem[] } | null;
+const g = globalThis as unknown as { __actCivicCache?: Map<string, CacheEntry> };
+function cacheMap(): Map<string, CacheEntry> {
+  if (!g.__actCivicCache) g.__actCivicCache = new Map();
+  return g.__actCivicCache;
+}
+
 async function fetchCivicFeed(feed: CivicFeed, now: number): Promise<LiveWireItem[]> {
+  const id = pipeId(feed.outlet);
+  const cache = cacheMap();
+  const hit = cache.get(id);
+  if (hit && now - hit.at < CACHE_MS) return hit.items;
+
   try {
     const res = await fetch(feed.url, {
       headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml, */*" },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
-      recordPipeFail(pipeId(feed.outlet), feed.outlet, `HTTP ${res.status}`);
-      return [];
+      recordPipeFail(id, feed.outlet, `HTTP ${res.status}`);
+      return hit?.items ?? [];
     }
     const xml = await res.text();
     const out: LiveWireItem[] = [];
@@ -140,16 +165,17 @@ async function fetchCivicFeed(feed: CivicFeed, now: number): Promise<LiveWireIte
         geoPrecision: pin.precision,
       });
     }
-    recordPipeOk(pipeId(feed.outlet), feed.outlet, out.length);
+    recordPipeOk(id, feed.outlet, out.length);
+    cache.set(id, { at: now, items: out });
     return out;
   } catch (err) {
-    recordPipeFail(pipeId(feed.outlet), feed.outlet, err instanceof Error ? err.message : "civic-error");
-    return [];
+    recordPipeFail(id, feed.outlet, err instanceof Error ? err.message : "civic-error");
+    return hit?.items ?? [];
   }
 }
 
 export async function fetchCivic(now: number): Promise<LiveWireItem[]> {
-  const batches = await Promise.all(CIVIC_FEEDS.map((f) => fetchCivicFeed(f, now)));
+  const batches = await mapLimit(CIVIC_FEEDS, CONCURRENCY, (f) => fetchCivicFeed(f, now));
   const seen = new Set<string>();
   const out: LiveWireItem[] = [];
   for (const row of batches.flat()) {
@@ -157,6 +183,20 @@ export async function fetchCivic(now: number): Promise<LiveWireItem[]> {
     seen.add(row.id);
     out.push(row);
   }
+  return out;
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let i = 0;
+  const workers = new Array(Math.max(1, Math.min(limit, items.length))).fill(0).map(async () => {
+    while (true) {
+      const idx = i++;
+      if (idx >= items.length) return;
+      out[idx] = await fn(items[idx]!);
+    }
+  });
+  await Promise.all(workers);
   return out;
 }
 
@@ -177,7 +217,7 @@ export async function fetchNws(now: number): Promise<LiveWireItem[]> {
   try {
     const res = await fetch("https://api.weather.gov/alerts/active?point=42.6526,-73.7562", {
       headers: { "User-Agent": UA, Accept: "application/geo+json" },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       recordPipeFail("nws", "NWS", `HTTP ${res.status}`);
