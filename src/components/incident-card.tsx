@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { ShareButton } from "@/components/share-button";
 import { clockTime, relativeTime, typeLabel } from "@/lib/format";
+import { decodeHtmlEntities } from "@/lib/html";
 import { incidentSharePayload } from "@/lib/share";
 import type { Incident, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -29,8 +30,11 @@ function sourceBadge(incident: Incident): { label: string; tone: "cyan" | "accen
 }
 
 function blurb(incident: Incident): string | null {
-  const raw = (incident.description || "").replace(/[.!?…]\s+(?:Unconfirmed|Early report)[\s\S]*$/i, "").trim();
-  if (!raw || raw === incident.title) return null;
+  const raw = decodeHtmlEntities(
+    (incident.description || "").replace(/[.!?…]\s+(?:Unconfirmed|Early report)[\s\S]*$/i, "").trim(),
+  );
+  const title = decodeHtmlEntities(incident.title);
+  if (!raw || raw === title) return null;
   return raw;
 }
 
@@ -47,6 +51,7 @@ export function IncidentCard({
   incident: Incident;
   onSelect: (id: string) => void;
 }) {
+  const title = decodeHtmlEntities(incident.title);
   const badge = sourceBadge(incident);
   const conf = confidenceBadge(incident);
   const loc = incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
@@ -64,7 +69,7 @@ export function IncidentCard({
         <span className={cn("absolute inset-y-2 left-0 w-1 rounded-full", rail[incident.severity])} />
         <div className="flex items-start justify-between gap-3">
           <h3 className="min-w-0 line-clamp-2 text-sm font-semibold leading-snug tracking-tight text-fg">
-            {incident.title}
+            {title}
           </h3>
           <div className="mt-0.5 shrink-0 text-right">
             <time className="block font-mono text-xs font-semibold tabular-nums text-fg">{relativeTime(incident.occurredAt)}</time>

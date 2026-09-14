@@ -1,4 +1,5 @@
 import { clockTime } from "./format";
+import { decodeHtmlEntities } from "./html";
 import type { Incident, NewsStory } from "./types";
 
 export const APP_ORIGIN =
@@ -35,6 +36,7 @@ export type SharePayload = {
 };
 
 export function incidentSharePayload(incident: Incident, origin = APP_ORIGIN): SharePayload {
+  const title = decodeHtmlEntities(incident.title);
   const place = incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
     ? incident.address
     : `${incident.address}, ${incident.municipality}`;
@@ -42,28 +44,29 @@ export function incidentSharePayload(incident: Incident, origin = APP_ORIGIN): S
   const caveat = sourceCaveat(incident);
   const url = incidentDeepLink(incident.id, origin);
   const text = [
-    incident.title,
+    title,
     `${place} · ${when}`,
     caveat,
     url,
   ].join("\n");
   return {
-    title: `${incident.title} · ${APP_SHARE_NAME}`,
+    title: `${title} · ${APP_SHARE_NAME}`,
     text,
     url,
   };
 }
 
 export function newsSharePayload(story: NewsStory, origin = APP_ORIGIN): SharePayload {
+  const title = decodeHtmlEntities(story.title);
   const url = incidentDeepLink(story.id, origin);
   const text = [
-    story.title,
+    title,
     [story.municipality, story.outlet].filter(Boolean).join(" · "),
     "Newsroom coverage — open the source for the full story.",
     url,
   ].join("\n");
   return {
-    title: `${story.title} · ${APP_SHARE_NAME}`,
+    title: `${title} · ${APP_SHARE_NAME}`,
     text,
     url,
   };

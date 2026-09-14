@@ -44,9 +44,9 @@ export function liveWindowHonesty(opts: {
     return {
       tone: "pipes-failing",
       last3hCopy:
-        "Live pipes are erroring — not proof the county is quiet. Check 511, civic, and NWS in source health.",
+        "Live pipes are erroring — this is a reporting gap, not proof the county is quiet. Check source health for what failed.",
       emptyFilterCopy:
-        "Source pipes reported failures this refresh. Try All sources or pull to refresh.",
+        "Reporting gap: one or more pipes failed this refresh. Try All sources or pull to refresh.",
     };
   }
 
@@ -54,9 +54,9 @@ export function liveWindowHonesty(opts: {
     return {
       tone: "pipes-dry",
       last3hCopy:
-        "Daytime pipes are empty this refresh (511 / civic / NWS / radio). That is a feed gap — not a quiet county.",
+        "Daytime pipes are empty this refresh (511 / civic / NWS / radio). Treat this as a feed gap — not a county-wide all-clear.",
       emptyFilterCopy:
-        "No open-pipe items in this filter. Blotter is the 7 AM dump; daytime sources returned nothing.",
+        "Nothing in this filter. Blotter is the 7 AM dump; daytime sources returned 0 this refresh.",
     };
   }
 
@@ -95,7 +95,7 @@ export function liveWindowHonesty(opts: {
     return {
       tone: "pipes-dry",
       last3hCopy:
-        "Nothing in the last 3 hours. 511, civic, and NWS are empty this refresh — do not read that as county-wide quiet.",
+        "Nothing in the last 3 hours. 511, civic, and NWS are empty this refresh — do not read this as county-wide quiet.",
       emptyFilterCopy:
         "Nothing in this filter. Daytime open pipes returned no rows.",
     };
@@ -106,6 +106,6 @@ export function liveWindowHonesty(opts: {
     last3hCopy:
       "Nothing in the last 3 hours in this view. Overnight blotter still lists under Since 7 AM / NYSP overnight.",
     emptyFilterCopy:
-      "Nothing in this filter. Radio and 511 cover the hours since the 7 AM blotter when they have traffic.",
+      "Nothing in this filter. Radio and 511 cover the hours since the 7 AM blotter when they have traffic (and when the pipes are up).",
   };
 }

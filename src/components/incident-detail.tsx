@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { kindLabel, verificationWhy } from "@/lib/sources";
 import { clockTime, relativeTime, typeLabel } from "@/lib/format";
+import { decodeHtmlEntities } from "@/lib/html";
 import { incidentSharePayload } from "@/lib/share";
 import { useAppStore } from "@/lib/store";
 import type { Incident } from "@/lib/types";
@@ -26,6 +27,8 @@ export function IncidentDetail({
 }) {
   const select = useAppStore((s) => s.selectIncident);
   const setView = useAppStore((s) => s.setView);
+  const title = decodeHtmlEntities(incident.title);
+  const description = decodeHtmlEntities(incident.description || "");
 
   return (
     <div className={cn(variant === "panel" ? "p-4" : "px-4 pb-8 pt-3")}>
@@ -47,7 +50,7 @@ export function IncidentDetail({
       </div>
 
       <h2 className={cn("mt-2 font-semibold leading-snug tracking-tight", variant === "panel" ? "text-lg" : "text-xl")}>
-        {incident.title}
+        {title}
       </h2>
       <p className="mt-1.5 text-sm text-muted">
         {incident.address}
@@ -56,7 +59,7 @@ export function IncidentDetail({
           : `, ${incident.municipality}`}
       </p>
 
-      <p className="mt-4 text-sm leading-relaxed text-fg">{incident.description}</p>
+      <p className="mt-4 text-sm leading-relaxed text-fg">{description}</p>
 
       {incident.origin === "live" &&
       incident.verification === "developing" &&

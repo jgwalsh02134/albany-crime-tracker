@@ -1,4 +1,5 @@
 import { clockTime } from "./format";
+import { decodeHtmlEntities } from "./html";
 import { fetchLiveWire } from "./live-sources";
 import { sourceCaveat } from "./share";
 import { wireToIncidents } from "./sources";
@@ -43,7 +44,7 @@ export function cardMetaFromIncident(incident: Incident, id: string): IncidentCa
   const description = [place, when, caveat].filter(Boolean).join(" · ");
   return {
     id,
-    title: incident.title,
+    title: decodeHtmlEntities(incident.title),
     description,
     place,
     when,
@@ -83,11 +84,11 @@ function cardMetaFromStory(opts: {
   const when = opts.occurredAt ? clockTime(opts.occurredAt) : "";
   const place = [opts.municipality, opts.outlet].filter(Boolean).join(" · ") || opts.outlet || "News story";
   const description =
-    (opts.summary || "").trim().slice(0, 360) ||
+    decodeHtmlEntities((opts.summary || "").trim().slice(0, 360)) ||
     `Newsroom coverage from ${opts.outlet || "a local outlet"}. Open Albany Watch for context and the source for the full story.`;
   return {
     id: opts.id,
-    title: opts.title || "News story on Albany Watch",
+    title: decodeHtmlEntities(opts.title || "News story on Albany Watch"),
     description,
     place,
     when,

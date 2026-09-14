@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { clockTimeSec, compactFromMinutes } from "@/lib/format";
+import { decodeHtmlEntities } from "@/lib/html";
 import { SCANNER_FEEDS } from "@/lib/scanner-feeds";
 import { getScannerCaptions, getScannerPlaylist, getScannerStatuses } from "@/lib/transcribe";
 import type { ScannerCall } from "@/lib/types";
@@ -120,6 +121,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
     !/\b(crash|fire|domestic|welfare|central|western|wolf|street|avenue|road|albany|colonie)\b/i.test(t);
   const visible = hideUnitSpam ? feedFiltered.filter((l) => !looksUnitSpam(l.text)) : feedFiltered;
   const liveCalls = calls.filter((c) => c.minutesAgo <= 180).slice(0, 12);
+  const decodedLiveCalls = liveCalls.map((c) => ({ ...c, summary: decodeHtmlEntities(c.summary) }));
 
   function destroyHls() {
     if (hlsRef.current) {
@@ -632,9 +634,9 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
           </div>
         </div>
 
-        {liveCalls.length ? (
+        {decodedLiveCalls.length ? (
           <div className="mt-2 flex gap-2 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none snap-x">
-            {liveCalls.map((c) => (
+            {decodedLiveCalls.map((c) => (
               <article
                 key={c.id}
                 className="w-52 shrink-0 snap-start rounded-lg border border-border bg-surface px-3 py-2"
@@ -690,8 +692,9 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
           ) : (
             <ul className="flex flex-col gap-2">
               {visible.map((line) => {
-                const hint = tenHint(line.text);
-                const nature = natureChip(line.text);
+                const text = decodeHtmlEntities(line.text);
+                const hint = tenHint(text);
+                const nature = natureChip(text);
                 const on = line.feedId === feedId || line.feedName === feed.name;
                 return (
                   <li key={line.id} className={cn("border-l-2 pl-3", on ? "border-cyan" : "border-border")}>
@@ -702,7 +705,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
                         <Badge tone={/shots|panic|pursuit|robbery/i.test(nature) ? "high" : "cyan"}>{nature}</Badge>
                       ) : null}
                     </p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-fg">{line.text}</p>
+                    <p className="mt-0.5 text-sm leading-relaxed text-fg">{text}</p>
                     {hint ? <p className="mt-0.5 text-xs text-muted">{hint}</p> : null}
                   </li>
                 );

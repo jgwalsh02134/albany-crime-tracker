@@ -6,6 +6,7 @@ import { ShareButton } from "@/components/share-button";
 import { Button } from "@/components/ui/button";
 import { lastHours } from "@/lib/data";
 import { isApproxPrecision } from "@/lib/geo";
+import { decodeHtmlEntities } from "@/lib/html";
 import { incidentMatchesSourceGroup, incidentVerification, isOfficialIncident, mapKindOf } from "@/lib/map";
 import { mapSharePayload } from "@/lib/share";
 import { clockTime, severityLabel, typeLabel } from "@/lib/format";
@@ -60,7 +61,8 @@ function pinColor(sev: Severity): string {
 function pinLabel(inc: Incident): string {
   const when = clockTime(inc.occurredAt);
   const approx = isApproxPrecision(inc.geoPrecision) ? "approximate location" : "street-level pin";
-  return [inc.agency, inc.title, inc.address, when, typeLabel(inc.type), severityLabel(inc.severity), approx]
+  const title = decodeHtmlEntities(inc.title);
+  return [inc.agency, title, inc.address, when, typeLabel(inc.type), severityLabel(inc.severity), approx]
     .filter(Boolean)
     .join(", ");
 }
@@ -69,7 +71,7 @@ function tipNode(inc: Incident): HTMLElement {
   const root = document.createElement("div");
   const title = document.createElement("p");
   title.className = "act-tip-title";
-  title.textContent = inc.title;
+  title.textContent = decodeHtmlEntities(inc.title);
   const agency = document.createElement("p");
   agency.className = "act-tip-agency";
   agency.textContent = inc.agency || inc.agencyAbbr || "";
@@ -618,7 +620,7 @@ export function MapView({
                         {incidentVerification(inc) === "scanner" ? " · scanner" : isOfficialIncident(inc) ? " · official" : ""}
                       </span>
                       <span className="mt-0.5 block text-sm font-semibold leading-snug tracking-tight text-fg">
-                        {inc.title}
+                        {decodeHtmlEntities(inc.title)}
                       </span>
                       <span className="mt-0.5 block text-sm leading-snug text-muted">
                         {inc.address}

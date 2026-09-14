@@ -351,7 +351,7 @@ function LiveList({
           <div className="rounded-lg border border-border bg-surface px-4 py-8 text-center text-sm text-muted">
             {wireLive && colonieFocused ? (
               <div className="mb-3 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-fg">
-                Police radio encrypted — official alerts &amp; fire/EMS only.
+                Police radio encrypted — official alerts & fire/EMS only.
               </div>
             ) : null}
             {wireLive ? (
@@ -359,7 +359,7 @@ function LiveList({
                 <>
                   <span className="block font-medium text-fg">No calls within ~{liveNearMiles} mi right now.</span>
                   <span className="mt-1 block">
-                    That can mean it’s quiet on your block — or that open pipes are dark/empty. Scanner gaps are normal in places like Colonie where police radio is often encrypted.
+                    Could be a quiet moment — or a reporting gap (dark pipes, encrypted radio). Pull to refresh or switch to All sources to sanity-check coverage.
                   </span>
                 </>
               ) : (
