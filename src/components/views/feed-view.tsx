@@ -384,8 +384,16 @@ function SourcePipes({
                   ["NYSP blotter", health.blotter, "Official 7 AM dump. Not a live dispatch board."],
                   ["Radio captions", health.scanner, "Albany/Colonie PD, Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire. Unconfirmed."],
                   ["511NY crashes", health.traffic, "Capital District accidents only. Construction is ignored."],
-                  ["Department Facebook", health.facebook ?? 0, "APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland."],
-                  ["X", health.x ?? 0, "NYSP, Albany Fire, CBS6, NEWS10, Times Union when they tweet crime."],
+                  [
+                    "Department Facebook",
+                    health.facebook ?? 0,
+                    "APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland PD; Colonie EMS; Schenectady Fire; Rensselaer County Sheriff; East Greenbush / Green Island / Menands / Rensselaer City police; volunteer fire; NYSP on Facebook.",
+                  ],
+                  [
+                    "X",
+                    health.x ?? 0,
+                    "NYSP, Albany Fire, ACSO, Albany Police, Colonie Police, Thruway TRANSalert, Spectrum, Gazette, WAMC, plus CBS6/NEWS10/Times Union when they tweet crime.",
+                  ],
                   ["Town civic", health.civic ?? 0, "Bethlehem, Guilderland, Albany, Cohoes, Menands, Voorheesville — crashes and arrests only. Empty civic RSS stays wired."],
                   ["Live news lens", health.news, "Capital Region public-safety headlines in the last 24h on Live (out-of-area dropped)."],
                   ["News tab", health.stories ?? health.news, "Headlines on the News tab after local keep + fresher ranking. Blotter is capped so it does not drown newsrooms."],

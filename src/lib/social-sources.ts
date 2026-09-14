@@ -33,6 +33,15 @@ type SocialFeed = {
   titleMust?: RegExp;
 };
 
+function feedHealthId(feed: SocialFeed): string {
+  const slug = feed.outlet
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 48);
+  return `social:${feed.pipe}:${slug || "feed"}`;
+}
+
 const FACEBOOK_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:facebook.com/AlbanyNYPolice+when:7d&hl=en-US&gl=US&ceid=US:en",
@@ -45,6 +54,14 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:facebook.com/ColoniePD+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Facebook · Colonie PD",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/ColonieEMS+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Colonie EMS",
     pipe: "facebook",
     official: true,
     needsLocal: false,
@@ -83,6 +100,134 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
     needsLocal: false,
     format: "rss",
   },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/SchenectadyFireDepartment+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Schenectady Fire",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/renscosheriff+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Rensselaer County Sheriff",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/EastGreenbushPoliceDept+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · East Greenbush Police",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/GuilderlandFD+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Guilderland Fire",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/WestmereFireDept+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Westmere Fire",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/LathamFireDept+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Latham Fire",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/nyspolice+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · NYSP",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/FullerRoadVFD+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Fuller Road VFD",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/midwayfiredept+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Midway Fire",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/srlfd+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Shaker Road–Loudonville FD",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/greenislandpolicedepartment+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Green Island Police",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/mpd.gov+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Menands Police",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/RensselaerCityPolice+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Rensselaer City Police",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/SpectrumNews1Albany+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Spectrum News 1",
+    pipe: "facebook",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/DailyGazette+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Daily Gazette",
+    pipe: "facebook",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/troyrecord+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Troy Record",
+    pipe: "facebook",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
 ];
 
 const X_FEEDS: SocialFeed[] = [
@@ -95,11 +240,67 @@ const X_FEEDS: SocialFeed[] = [
     format: "rss",
   },
   {
+    url: "https://news.google.com/rss/search?q=site:x.com/ACSOTWEET+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Albany County Sheriff",
+    pipe: "x",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/albanypolice+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Albany Police",
+    pipe: "x",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/colonie_police+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Colonie Police",
+    pipe: "x",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/ThruwayTraffic+(albany+OR+colonie+OR+guilderland+OR+troy+OR+schenectady+OR+rensselaer+OR+capital+region+OR+i-87+OR+i87+OR+northway)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Thruway TRANSalert",
+    pipe: "x",
+    official: true,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
     url: "https://news.google.com/rss/search?q=site:x.com/FD_AlbanyNY+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "X · Albany Fire",
     pipe: "x",
     official: true,
     needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/SpecNews1Albany+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Spectrum News 1",
+    pipe: "x",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/dgazette+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Daily Gazette",
+    pipe: "x",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/WAMCNews+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · WAMC",
+    pipe: "x",
+    official: false,
+    needsLocal: true,
     format: "rss",
   },
   {
@@ -313,6 +514,7 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
   if (feed.outlet.startsWith("Reddit") && Date.now() < redditBlockedUntil) {
     return [];
   }
+  const pipeId = feedHealthId(feed);
   try {
     const res = await fetch(feed.url, {
       headers: {
@@ -323,8 +525,8 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
     });
     if (!res.ok) {
       recordPipeFail(
-        `social:${feed.pipe}`,
-        feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook",
+        pipeId,
+        feed.outlet,
         `HTTP ${res.status}`,
       );
       if (res.status === 429 && feed.pipe === "reddit") {
@@ -333,13 +535,15 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
       return [];
     }
     const xml = await res.text();
-    if (feed.format === "atom") return parseAtom(xml, feed, now);
-    if (!xml.includes("<item")) return [];
-    return parseRss(xml, feed, now);
+    let items: LiveWireItem[] = [];
+    if (feed.format === "atom") items = parseAtom(xml, feed, now);
+    else if (xml.includes("<item")) items = parseRss(xml, feed, now);
+    recordPipeOk(pipeId, feed.outlet, items.length);
+    return items;
   } catch (err) {
     recordPipeFail(
-      `social:${feed.pipe}`,
-      feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook",
+      pipeId,
+      feed.outlet,
       err instanceof Error ? err.message : "social-error",
     );
     return [];
@@ -380,9 +584,7 @@ export async function collectSocial(now: number): Promise<SocialBundle> {
 }
 
 export function isOfficialSocial(outlet: string): boolean {
-  return /Facebook ·|Civic ·|X · NYSP|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
-    outlet,
-  );
+  return /Civic ·/i.test(outlet) || /^Facebook · (?:Albany PD|Colonie PD|Bethlehem PD|Cohoes PD|Watervliet PD|Guilderland PD|Colonie EMS|Schenectady Fire|Rensselaer County Sheriff|East Greenbush Police|Guilderland Fire|Westmere Fire|Latham Fire|NYSP|Fuller Road VFD|Midway Fire|Shaker Road–Loudonville FD|Green Island Police|Menands Police|Rensselaer City Police)$/i.test(outlet) || /^X · (?:NYSP|Albany Fire|Albany County Sheriff|Albany Police|Colonie Police|Thruway TRANSalert)$/i.test(outlet);
 }
 
 export function socialLive(items: LiveWireItem[]): LiveWireItem[] {

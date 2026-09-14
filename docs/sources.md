@@ -19,7 +19,7 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Spectrum, Troy Record, ACSO, north cities, Guilderland | Google News RSS + Superfeedr | Gap queries (Cohoes / Watervliet / Menands / Green Island; Guilderland / Altamont / Voorheesville). |
 | CivicPlus: Bethlehem, Guilderland PD, Guilderland town, Albany, Cohoes, Voorheesville | RSS + Superfeedr | Incident-keyword filter. Feeds may be empty and still count as wired. |
 | Menands village | `menandsny.gov/feed/` (WordPress) | Public civic RSS. Usually board/newsletter; crime items pass the filter if posted. |
-| Department Facebook / X (via Google News) | RSS | APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland, NYSP, Albany Fire, newsroom X. |
+| Department Facebook / X (via Google News) | RSS | APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland PD pages; Colonie EMS; Schenectady Fire; Rensselaer County Sheriff; East Greenbush / Green Island / Menands / Rensselaer City police; volunteer fire (Guilderland / Westmere / Latham / Fuller Road / Midway / Shaker Road–Loudonville); NYSP on X + Facebook; Albany Fire / ACSO / Albany Police / Colonie Police on X; plus a few newsroom social accounts (Spectrum, Gazette, WAMC, Troy Record). |
 | Reddit r/Albany, r/Troy, r/Schenectady | Atom | Citizen, unconfirmed. |
 
 ## Tried and blocked (do not invent)
