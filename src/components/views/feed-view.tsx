@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Drawer } from "vaul";
-import { ChevronRight, LocateFixed } from "lucide-react";
+import { ChevronRight, LocateFixed, Megaphone } from "lucide-react";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentDetail } from "@/components/incident-detail";
 import { NewsView } from "@/components/views/news-view";
@@ -187,6 +187,7 @@ function LiveList({
   const setLiveNearMe = useAppStore((s) => s.setLiveNearMe);
   const liveNearMiles = useAppStore((s) => s.liveNearMiles);
   const setLiveNearMiles = useAppStore((s) => s.setLiveNearMiles);
+  const setWitnessOpen = useAppStore((s) => s.setWitnessOpen);
   const [pos, setPos] = useState<NearMePos | null>(null);
   const [locateErr, setLocateErr] = useState<string>("");
   const [locateErrorKind, setLocateErrorKind] = useState<LocateErrorKind | null>(null);
@@ -284,6 +285,14 @@ function LiveList({
           ) : (
             <p className="py-1.5 text-xs text-subtle">{wireLive ? `${showing.length} calls` : "Connecting…"}</p>
           )}
+          <button
+            type="button"
+            onClick={() => setWitnessOpen(true)}
+            className="mt-1.5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-accent/35 bg-accent/10 px-3 text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+          >
+            <Megaphone className="size-4 text-accent" aria-hidden />
+            Report activity
+          </button>
           <div className="flex flex-col gap-1.5">
             <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
               <Chip

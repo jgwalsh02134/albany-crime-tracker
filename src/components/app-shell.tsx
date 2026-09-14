@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { FilterDrawer, IncidentDrawer, MoreDrawer } from "@/components/drawers";
 import { ShieldLogo } from "@/components/shield-logo";
+import { WitnessReportDrawer } from "@/components/witness-report-drawer";
 import { Button } from "@/components/ui/button";
 import { ChatView } from "@/components/views/chat-view";
 import { DirectoryView } from "@/components/views/directory-view";
@@ -118,6 +119,14 @@ export function AppShell() {
     })();
     const id = window.setInterval(() => void pullWire({ full: homeMode === "news" }), daytime ? 25_000 : 45_000);
     return () => window.clearInterval(id);
+  }, [pullWire, homeMode]);
+
+  useEffect(() => {
+    function onRefresh() {
+      void pullWire({ full: homeMode === "news" });
+    }
+    window.addEventListener("act:refresh-wire", onRefresh as EventListener);
+    return () => window.removeEventListener("act:refresh-wire", onRefresh as EventListener);
   }, [pullWire, homeMode]);
 
   async function refresh() {
@@ -270,6 +279,7 @@ export function AppShell() {
       <FilterDrawer />
       <IncidentDrawer incident={selected} />
       <MoreDrawer />
+      <WitnessReportDrawer />
     </div>
   );
 }

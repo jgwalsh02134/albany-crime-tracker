@@ -10,6 +10,8 @@ export type SourceTier = "official" | "context" | "unconfirmed";
 export type SourceLens = "all" | "official" | "scanner" | "news" | "social";
 export type LiveKind = "all" | "crime" | "crash" | "fire" | "traffic";
 
+export type WitnessKind = "police" | "fire" | "crash" | "other";
+
 export type IncidentSource = {
   kind: SourceKind;
   name: string;

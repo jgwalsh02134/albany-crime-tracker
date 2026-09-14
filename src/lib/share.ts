@@ -1,6 +1,7 @@
 import { clockTime } from "./format";
 import { decodeHtmlEntities } from "./html";
 import type { Incident, NewsStory } from "./types";
+import { isWitnessIncident } from "./witness";
 
 export const APP_ORIGIN =
   typeof window !== "undefined" && window.location?.origin
@@ -14,6 +15,9 @@ export function incidentDeepLink(id: string, origin = APP_ORIGIN): string {
 }
 
 export function sourceCaveat(incident: Incident): string {
+  if (isWitnessIncident(incident)) {
+    return "Witness report — early signal, not a 911/CAD log. May be wrong.";
+  }
   if (incident.sources.some((s) => s.kind === "social" || /Citizen/i.test(s.name))) {
     return "Citizen/social tip — early report, not a 911/CAD log. May be wrong.";
   }
