@@ -192,7 +192,7 @@ export function AppShell() {
           />
         </div>
         <div className={cn("absolute inset-0", view === "map" ? "z-[1]" : "invisible pointer-events-none")}>
-          <MapView incidents={incidents} active={view === "map"} />
+          <MapView incidents={incidents} active={view === "map"} wireLive={wireLive} wireHealth={wireHealth} />
         </div>
         <div className={cn("absolute inset-0", view === "scanner" ? "block" : "hidden")}>
           <ScannerView calls={scannerCalls} active={view === "scanner"} />
