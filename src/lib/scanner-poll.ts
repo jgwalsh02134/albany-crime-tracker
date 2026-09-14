@@ -604,9 +604,9 @@ export type SttUiState = "ok" | "busy" | "error" | "quiet" | "no-key";
 export function classifySttState(now = Date.now()): SttUiState {
   const err = state.stats.lastError || "";
   if (err === "no-key") return "no-key";
+  if (state.stats.lastSpoken && now - state.stats.lastSpokenAt < 180_000) return "ok";
   if (now < state.sttBlockedUntil || /429/.test(err)) return "busy";
   if (err && err !== "tick-timeout" && now - (state.stats.lastErrorAt || 0) < 90_000) return "error";
-  if (state.stats.lastSpoken && now - state.stats.lastSpokenAt < 180_000) return "ok";
   return "quiet";
 }
 
