@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+
 export function ShieldLogo({ className }: { className?: string }) {
   return (
     <img
@@ -5,7 +7,7 @@ export function ShieldLogo({ className }: { className?: string }) {
       alt=""
       width={180}
       height={180}
-      className={className}
+      className={cn("aspect-square object-contain", className)}
       draggable={false}
     />
   );
