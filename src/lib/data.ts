@@ -46,7 +46,7 @@ export const SOURCES = [
     name: "Broadcastify radio",
     tier: "Scanner",
     detail:
-      "Albany PD (Colonie PD is encrypted), Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire (includes Colonie Fire/EMS), Thruway. Captions are unconfirmed. OpenMHz is blocked (403).",
+      "Albany PD (Colonie PD is encrypted), Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire (includes Colonie Fire/EMS), Thruway. Captions are early reporting and can be wrong. OpenMHz is blocked (403).",
   },
   {
     name: "511NY crashes",
@@ -72,7 +72,7 @@ export const SOURCES = [
   },
   {
     name: "Citizens",
-    tier: "Unconfirmed",
+    tier: "Early reports",
     detail: "Reddit r/Albany, r/Troy, r/Schenectady. Not 911. Citizen App, Ring, and Nextdoor have no public feed.",
   },
   {

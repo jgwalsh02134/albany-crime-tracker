@@ -147,7 +147,7 @@ describe("corroboration", () => {
     assert.ok(lone.score <= 22, `lone scanner score ${lone.score}`);
     assert.ok(multi.score > lone.score, `multi ${multi.score} should beat lone ${lone.score}`);
     assert.ok(multi.independent >= 3);
-    assert.match(lone.why, /not CAD/i);
+    assert.match(lone.why, /not a CAD/i);
   });
 
   it("sorts multi-source ahead of a newer lone scanner", () => {
@@ -193,7 +193,7 @@ describe("scanner fusion honesty", () => {
     const scan = item({
       id: "scan-1",
       title: "Suspicious person",
-      summary: "Unconfirmed radio — area unclear",
+      summary: "Early report — area unclear",
       kind: "scanner",
       outlet: "Scanner",
       municipality: "Unknown",
@@ -236,7 +236,7 @@ describe("fusion upgrade QA", () => {
     const scan = item({
       id: "scan-early",
       title: "Wolf Road crash with injuries",
-      summary: "Unconfirmed radio: Wolf Road crash with injuries",
+      summary: "Early report: Wolf Road crash with injuries",
       kind: "scanner",
       outlet: "Scanner",
       agency: "Colonie PD",

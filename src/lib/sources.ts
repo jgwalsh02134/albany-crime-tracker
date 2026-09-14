@@ -169,7 +169,7 @@ export function verificationWhy(inc: Incident): string {
   const official = inc.sources.filter((s) => s.tier === "official");
   const others = inc.sources.length - official.length;
   if (official.length && others > 0) {
-    return `Confirmed by ${official[0]!.name} and ${others} independent source${others === 1 ? "" : "s"}.`;
+    return `Official source (${official[0]!.name}) plus ${others} independent source${others === 1 ? "" : "s"}.`;
   }
   if (official.length) {
     return `Official ${kindLabel(official[0]!.kind).toLowerCase()} from ${official[0]!.name}.`;
@@ -178,15 +178,15 @@ export function verificationWhy(inc: Incident): string {
   const hasScan = inc.sources.some((s) => s.kind === "scanner");
   const hasSocial = inc.sources.some((s) => s.kind === "social");
   if (hasSocial && !hasNews && !hasScan) {
-    return "Citizen or social post — not a CAD call. Treat as unconfirmed.";
+    return "Citizen or social post — early report, not a CAD log. May be wrong.";
   }
   if (inc.origin === "live" || (hasNews && !hasScan && official.length === 0)) {
-    return "Newsroom report only — not a confirmed CAD / blotter incident. Treat as developing.";
+    return "Newsroom report — official source not yet in the mix. Treat as developing.";
   }
-  if (hasNews && hasScan) return "Newsroom plus scanner traffic — treat as developing until an official source posts.";
-  if (hasScan) return "Scanner only. Radio traffic is not a confirmed incident.";
-  if (hasNews) return "Newsroom reporting only. No official blotter on this item yet.";
-  return "Source mix is thin — treat as unconfirmed.";
+  if (hasNews && hasScan) return "Newsroom plus scanner traffic — treat as developing (multiple early signals).";
+  if (hasScan) return "Scanner only. Radio traffic is early reporting and may be wrong.";
+  if (hasNews) return "Newsroom reporting only. Treat as developing.";
+  return "Source mix is thin — treat as developing.";
 }
 
 export type ActivityKind = "news" | "blotter" | "scanner" | "traffic" | "social";
@@ -423,7 +423,7 @@ export function wireToScannerCalls(wire: LiveWireItem[]): ScannerCall[] {
         occurredAt: w.publishedAt,
         talkgroup: w.agency || "Dispatch",
         discipline,
-        summary: (w.summary || w.title).replace(/\. Unconfirmed[\s\S]*$/i, "").trim() || w.title,
+        summary: (w.summary || w.title).replace(/[.!?…]\s+(?:Unconfirmed|Early report)[\s\S]*$/i, "").trim() || w.title,
         durationSec: 6,
         priority: /weapon|shots|priority|10-13/i.test(hay) ? "high" : "medium",
         agency: w.agency || "Scanner",

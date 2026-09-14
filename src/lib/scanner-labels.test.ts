@@ -239,8 +239,8 @@ describe("scannerTitle", () => {
 
   it("keeps unconfirmed radio caveat", () => {
     const s = withDisclaimer("Crash on Wolf Road", "Albany PD");
-    assert.match(s, /Unconfirmed Albany PD radio/);
-    assert.match(s, /not a CAD call/);
+    assert.match(s, /Early report from Albany PD radio/i);
+    assert.match(s, /not a CAD log/i);
   });
 });
 

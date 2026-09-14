@@ -19,7 +19,7 @@ export function ChatView() {
       id: "hello",
       role: "assistant",
       content:
-        "Ask me about crime in Albany County. I can summarize the live feed, compare areas, and separate scanner traffic from confirmed reports.",
+        "Ask me about crime in Albany County. I can summarize the live feed, compare areas, and separate official posts from early reports like scanner traffic.",
     },
   ]);
   const [input, setInput] = useState("");

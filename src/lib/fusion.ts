@@ -405,7 +405,7 @@ export function scoreCorroboration(items: FuseItem[]): Corroboration {
 
   score = Math.max(0, Math.min(100, score));
   const why = onlyScanner
-    ? "Scanner only — unconfirmed radio, not CAD."
+    ? "Scanner only — early report, not a CAD log. May be wrong."
     : onlySocial
       ? "Citizen or social post — not a 911 or CAD call."
       : official.length && families.length > 1

@@ -495,7 +495,7 @@ export function withDisclaimer(spoken: string, agency: string): string {
   const clip = spoken.replace(/\s+/g, " ").trim().slice(0, 220);
   const body = clip.length < spoken.trim().length ? `${clip.replace(/\s+\S*$/, "")}…` : clip;
   const punct = /[.!?…]$/.test(body) ? "" : ".";
-  return `${body}${punct} Unconfirmed ${agency} radio — not a CAD call.`;
+  return `${body}${punct} Early report from ${agency} radio — not a CAD log. May be wrong.`;
 }
 
 /** Sync geo hint for place — caller still runs geocodeSpoken when a road exists. */

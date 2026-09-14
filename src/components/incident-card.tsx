@@ -29,13 +29,13 @@ function sourceBadge(incident: Incident): { label: string; tone: "cyan" | "accen
 }
 
 function blurb(incident: Incident): string | null {
-  const raw = (incident.description || "").replace(/\. Unconfirmed[\s\S]*$/i, "").trim();
+  const raw = (incident.description || "").replace(/[.!?…]\s+(?:Unconfirmed|Early report)[\s\S]*$/i, "").trim();
   if (!raw || raw === incident.title) return null;
   return raw;
 }
 
 function confidenceBadge(incident: Incident): { label: string; tone: "cyan" | "accent" | "medium" | "muted" } {
-  if (incident.verification === "confirmed") return { label: "Confirmed", tone: "cyan" };
+  if (incident.verification === "confirmed") return { label: "Official", tone: "cyan" };
   if (incident.verification === "scanner") return { label: "Scanner", tone: "accent" };
   return { label: "Developing", tone: "muted" };
 }
@@ -93,7 +93,7 @@ export function IncidentCard({
         </div>
 
         {incident.verification === "scanner" ? (
-          <p className="mt-1 text-[11px] text-subtle">Unconfirmed radio — not a CAD call.</p>
+          <p className="mt-1 text-[11px] text-subtle">Early radio report — not a CAD log. May be wrong.</p>
         ) : null}
       </button>
       <div className="absolute right-1.5 top-1.5">

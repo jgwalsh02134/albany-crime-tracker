@@ -9,6 +9,12 @@ import { useAppStore } from "@/lib/store";
 import type { Incident } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
+function signalLabel(v: Incident["verification"]): string {
+  if (v === "confirmed") return "Official";
+  if (v === "scanner") return "Scanner (early)";
+  return "Developing";
+}
+
 export function IncidentDetail({
   incident,
   variant = "drawer",
@@ -56,15 +62,15 @@ export function IncidentDetail({
       incident.verification === "developing" &&
       incident.sources.some((s) => s.kind === "social") ? (
         <p className="mt-3 rounded-lg border border-sev-medium/30 bg-sev-medium/10 px-3 py-2 text-xs leading-relaxed text-muted">
-          Citizen or social post — not a 911 or CAD call. Treat as unconfirmed.
+          Citizen or social post — an early report, not a 911/CAD log. May be wrong.
         </p>
       ) : incident.origin === "live" && incident.verification === "developing" ? (
         <p className="mt-3 rounded-lg border border-cyan/30 bg-cyan/10 px-3 py-2 text-xs leading-relaxed text-muted">
-          Newsroom report — not a confirmed blotter or CAD call. Open the source for the original story.
+          Newsroom report — early signal without an official post in the mix yet. Open the source for the original story.
         </p>
       ) : incident.verification === "scanner" ? (
         <p className="mt-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-xs leading-relaxed text-muted">
-          Unconfirmed radio traffic. This is not a CAD incident.
+          Scanner traffic — early report, not a CAD log. May be wrong.
         </p>
       ) : (
         <p className="mt-3 rounded-lg bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
@@ -100,7 +106,7 @@ export function IncidentDetail({
         </div>
         <div>
           <dt className="text-xs uppercase tracking-wide text-subtle">Verification</dt>
-          <dd className="mt-0.5 font-medium capitalize">{incident.verification}</dd>
+          <dd className="mt-0.5 font-medium">{signalLabel(incident.verification)}</dd>
         </div>
         <div>
           <dt className="text-xs uppercase tracking-wide text-subtle">Category</dt>
