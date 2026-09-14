@@ -215,8 +215,13 @@ export type WireHealth = {
   scannerError?: string;
   scannerHeard?: string;
   scannerCaptioned?: number;
-  scannerSttState?: string;
+  scannerSttState?: "ok" | "busy" | "error" | "quiet" | "no-key";
   scannerSttBlockedSec?: number;
+  scannerHlsState?: "ok" | "error" | "quiet";
+  scannerHlsAgeSec?: number;
+  scannerHlsError?: string;
+  scannerHlsErrorAt?: number;
+  scannerHlsFeed?: string;
   facebook?: number;
   x?: number;
   reddit?: number;

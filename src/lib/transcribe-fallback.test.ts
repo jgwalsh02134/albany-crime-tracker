@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
   resetXaiSttBackoff,
+  sttBackoffHealth,
   transcribeAudioFile,
   transcribeWithWhisperFallback,
 } from "./transcribe.ts";
@@ -48,7 +49,7 @@ describe("transcribeWithWhisperFallback", () => {
           if (url.includes("api.openai.com")) {
             return new Response(JSON.stringify({ error: { message: "insufficient_quota" } }), {
               status: 429,
-              headers: { "content-type": "application/json" },
+              headers: { "content-type": "application/json", "retry-after": "60" },
             });
           }
           if (url.includes("api.groq.com")) {
@@ -65,6 +66,8 @@ describe("transcribeWithWhisperFallback", () => {
           assert.equal(result.text, "unit 42 Central Avenue");
           assert.ok(calls.some((u) => u.includes("api.openai.com")));
           assert.ok(calls.some((u) => u.includes("api.groq.com")));
+          const backoff = sttBackoffHealth();
+          assert.ok(backoff.openaiWhisperBlockedSec >= 40);
         } finally {
           globalThis.fetch = orig;
         }

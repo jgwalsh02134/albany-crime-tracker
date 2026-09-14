@@ -102,6 +102,8 @@ export type CaptionLine = {
   feedName: string;
 };
 
+export type ScannerHlsUiState = "ok" | "error" | "quiet";
+
 type ScanState = {
   ver: 5;
   buffer: LiveWireItem[];
@@ -118,6 +120,15 @@ type ScanState = {
     lastErrorAt: number;
     lastSpoken: string;
     lastSpokenAt: number;
+    lastFeed: string;
+  };
+  hls: {
+    ok: number;
+    fail: number;
+    lastOkAt: number;
+    lastFailAt: number;
+    lastError: string;
+    lastErrorAt: number;
     lastFeed: string;
   };
   ticking: boolean;
@@ -152,6 +163,15 @@ function freshState(): ScanState {
       lastErrorAt: 0,
       lastSpoken: "",
       lastSpokenAt: 0,
+      lastFeed: "",
+    },
+    hls: {
+      ok: 0,
+      fail: 0,
+      lastOkAt: 0,
+      lastFailAt: 0,
+      lastError: "",
+      lastErrorAt: 0,
       lastFeed: "",
     },
     ticking: false,
@@ -312,6 +332,23 @@ const LISTEN_UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const playlistCache = new Map<string, { url: string; at: number }>();
 const PLAYLIST_TTL_MS = 5 * 60_000;
 
+function recordHlsOk(feedId: string) {
+  state.hls.ok += 1;
+  state.hls.lastOkAt = Date.now();
+  state.hls.lastError = "";
+  state.hls.lastErrorAt = 0;
+  state.hls.lastFeed = feedId;
+}
+
+function recordHlsFail(feedId: string, err: unknown) {
+  const msg = err instanceof Error ? err.message : "hls";
+  state.hls.fail += 1;
+  state.hls.lastFailAt = Date.now();
+  state.hls.lastError = (msg || "hls").slice(0, 160);
+  state.hls.lastErrorAt = Date.now();
+  state.hls.lastFeed = feedId;
+}
+
 async function resolvePlaylistUrl(feedId: string, fallback: string): Promise<string> {
   const hit = playlistCache.get(feedId);
   if (hit && Date.now() - hit.at < PLAYLIST_TTL_MS) return hit.url;
@@ -352,9 +389,18 @@ async function resolvePlaylistUrl(feedId: string, fallback: string): Promise<str
 
 async function tickFeed(feedId: string) {
   const feed = getScannerFeed(feedId) ?? SCANNER_FEEDS[0]!;
-  const playlistUrl = await resolvePlaylistUrl(feedId, feed.hlsFallback);
-  const playlist = await http2GetText(playlistUrl, 8000);
-  const segs = parseM3u8(playlist, playlistUrl);
+  let playlistUrl = "";
+  let playlist = "";
+  let segs: ReturnType<typeof parseM3u8> = [];
+  try {
+    playlistUrl = await resolvePlaylistUrl(feedId, feed.hlsFallback);
+    playlist = await http2GetText(playlistUrl, 8000);
+    segs = parseM3u8(playlist, playlistUrl);
+    recordHlsOk(feedId);
+  } catch (err) {
+    recordHlsFail(feedId, err);
+    throw err;
+  }
   const window = segs.slice(-3);
   const last = window.at(-1);
   if (!last) return;
@@ -640,6 +686,14 @@ export function classifySttState(now = Date.now()): SttUiState {
   return "quiet";
 }
 
+export function classifyHlsState(now = Date.now()): ScannerHlsUiState {
+  if (state.hls.lastOkAt && now - state.hls.lastOkAt < 120_000) return "ok";
+  const errFresh = state.hls.lastError && now - (state.hls.lastErrorAt || 0) < 120_000;
+  const okStale = !state.hls.lastOkAt || now - state.hls.lastOkAt > 5 * 60_000;
+  if (errFresh && okStale) return "error";
+  return "quiet";
+}
+
 export function scannerHealth(): {
   ticks: number;
   kept: number;
@@ -652,6 +706,11 @@ export function scannerHealth(): {
   captions: number;
   sttState: SttUiState;
   sttBlockedSec: number;
+  hlsState: ScannerHlsUiState;
+  hlsAgeSec: number;
+  hlsLastError: string;
+  hlsLastErrorAt: number;
+  hlsLastFeed: string;
 } {
   const now = Date.now();
   return {
@@ -666,6 +725,11 @@ export function scannerHealth(): {
     captions: state.captions.filter((c) => !isSttJunk(c.text)).length,
     sttState: classifySttState(now),
     sttBlockedSec: Math.max(0, Math.ceil((state.sttBlockedUntil - now) / 1000)),
+    hlsState: classifyHlsState(now),
+    hlsAgeSec: state.hls.lastOkAt ? Math.round((now - state.hls.lastOkAt) / 1000) : -1,
+    hlsLastError: state.hls.lastError,
+    hlsLastErrorAt: state.hls.lastErrorAt,
+    hlsLastFeed: state.hls.lastFeed,
   };
 }
 

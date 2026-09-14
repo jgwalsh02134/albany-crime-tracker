@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { classifySttState } from "./scanner-poll.ts";
+import { classifyHlsState, classifySttState } from "./scanner-poll.ts";
 
 function stopScannerTimer() {
   const g = globalThis as unknown as {
@@ -57,6 +57,40 @@ describe("scanner STT UI state", () => {
     s.stats.lastSpokenAt = now - 10 * 60_000;
     s.sttBlockedUntil = 0;
     assert.equal(classifySttState(now), "busy");
+  });
+});
+
+describe("scanner HLS UI state", () => {
+  it("reports ok when a playlist was fetched recently", () => {
+    stopScannerTimer();
+    const g = globalThis as unknown as {
+      __actScan?: {
+        hls: { lastOkAt: number; lastError: string; lastErrorAt: number };
+      };
+    };
+    assert.ok(g.__actScan);
+    const s = g.__actScan!;
+    const now = Date.now();
+    s.hls.lastOkAt = now - 30_000;
+    s.hls.lastError = "hls-resolve-failed";
+    s.hls.lastErrorAt = now - 10_000;
+    assert.equal(classifyHlsState(now), "ok");
+  });
+
+  it("reports error when HLS is failing and no recent ok was recorded", () => {
+    stopScannerTimer();
+    const g = globalThis as unknown as {
+      __actScan?: {
+        hls: { lastOkAt: number; lastError: string; lastErrorAt: number };
+      };
+    };
+    assert.ok(g.__actScan);
+    const s = g.__actScan!;
+    const now = Date.now();
+    s.hls.lastOkAt = now - 20 * 60_000;
+    s.hls.lastError = "hls-resolve-failed";
+    s.hls.lastErrorAt = now - 15_000;
+    assert.equal(classifyHlsState(now), "error");
   });
 });
 

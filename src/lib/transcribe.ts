@@ -410,6 +410,19 @@ export function resetXaiSttBackoff(): void {
   groq429s = 0;
 }
 
+export function sttBackoffHealth(): {
+  xaiAclBlockedSec: number;
+  openaiWhisperBlockedSec: number;
+  groqWhisperBlockedSec: number;
+} {
+  const now = Date.now();
+  return {
+    xaiAclBlockedSec: Math.max(0, Math.ceil((xaiSttBlockedUntil - now) / 1000)),
+    openaiWhisperBlockedSec: Math.max(0, Math.ceil((openaiWhisperBlockedUntil - now) / 1000)),
+    groqWhisperBlockedSec: Math.max(0, Math.ceil((groqWhisperBlockedUntil - now) / 1000)),
+  };
+}
+
 export function sttProvidersConfigured(): boolean {
   return Boolean(process.env.XAI_API_KEY || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY);
 }

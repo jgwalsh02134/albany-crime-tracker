@@ -537,6 +537,35 @@ function SourcePipes({
     (health.reddit ?? 0) ? `${health.reddit} reddit` : "",
   ].filter(Boolean);
 
+  const otherPipesOk =
+    (health.news ?? 0) > 0 ||
+    (health.traffic ?? 0) > 0 ||
+    (health.civic ?? 0) > 0 ||
+    (health.nws ?? 0) > 0 ||
+    (health.facebook ?? 0) > 0 ||
+    (health.x ?? 0) > 0 ||
+    (health.reddit ?? 0) > 0 ||
+    (health.citizen ?? 0) > 0 ||
+    (health.blotter ?? 0) > 0;
+
+  const radioDown =
+    (health.scanner ?? 0) === 0 &&
+    otherPipesOk &&
+    ((health.scannerSttState && health.scannerSttState !== "quiet" && health.scannerSttState !== "ok") ||
+      (health.scannerHlsState && health.scannerHlsState === "error") ||
+      !health.captions);
+
+  const radioDownReason =
+    !health.captions || health.scannerSttState === "no-key"
+      ? "speech keys are not configured here"
+      : health.scannerHlsState === "error"
+        ? "the live radio stream looks unreachable"
+        : health.scannerSttState === "busy"
+          ? "speech transcription is rate-limited/backing off"
+          : health.scannerSttState === "error"
+            ? "speech transcription is erroring"
+            : "";
+
   return (
     <>
       <button
@@ -573,11 +602,22 @@ function SourcePipes({
                   511, civic, and NWS all returned 0 this refresh. That can be a quiet hour on those feeds — not a county-wide all-clear.
                 </p>
               ) : null}
+              {radioDown ? (
+                <p className="mt-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
+                  Radio captions are down right now ({radioDownReason || "no recent captions"}). Live will lean on news and official sources until they recover.
+                </p>
+              ) : null}
               <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Wired this refresh</h3>
               <ul className="mt-2 space-y-2">
                 {[
                   ["NYSP blotter", health.blotter, "Official 7 AM dump. Not a live dispatch board."],
-                  ["Radio captions", health.scanner, "Albany PD (Colonie PD encrypted), Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire (includes Colonie Fire/EMS), Thruway. Unconfirmed."],
+                  [
+                    "Radio captions",
+                    health.scanner,
+                    `Albany PD (Colonie PD encrypted), Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire (includes Colonie Fire/EMS), Thruway. Unconfirmed.${
+                      radioDownReason && (health.scanner ?? 0) === 0 ? ` (${radioDownReason})` : ""
+                    }`,
+                  ],
                   ["511NY crashes", health.traffic, "Capital District accidents only. Construction is ignored."],
                   ["Thruway TINC", health.pipes?.find((p) => p.id.startsWith("tinc:"))?.lastCount ?? 0, "NYSTA incident board for Albany area. Closures and major incidents."],
                   ["Nixle", health.pipes?.filter((p) => p.id.startsWith("nixle:")).reduce((a, p) => a + (p.lastCount || 0), 0) ?? 0, "Agency alert centers (public Nixle pages)."],
