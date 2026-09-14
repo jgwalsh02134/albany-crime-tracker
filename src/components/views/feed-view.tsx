@@ -72,8 +72,8 @@ export function FeedView({
 
       {homeMode === "live" ? (
         <>
-          <div className="min-h-0 flex-1 lg:flex">
-            <div className="min-h-0 flex-1 lg:max-w-lg xl:max-w-xl">
+          <div className="min-h-0 flex flex-1 flex-col lg:flex-row">
+            <div className="min-h-0 flex flex-1 flex-col lg:max-w-lg xl:max-w-xl">
               <LiveList
                 liveItems={liveItems}
                 liveKind={liveKind}
@@ -196,13 +196,13 @@ function LiveList({
   }
 
   return (
-    <div className="relative min-h-0 flex-1">
+    <div className="min-h-0 flex flex-1 flex-col">
       <div
         ref={scroller}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={() => void onTouchEnd()}
-        className="absolute inset-0 overflow-y-auto overscroll-y-contain px-3 pb-20 scrollbar-thin"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-20 scrollbar-thin"
       >
         <div
           className="overflow-hidden text-center text-xs text-subtle transition-[height] duration-150"
