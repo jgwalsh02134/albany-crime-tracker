@@ -144,7 +144,7 @@ export function DirectoryView() {
             autoCorrect="off"
           />
         </div>
-        <div className="mt-2 flex gap-2 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none snap-x">
+        <div className="mt-2 flex gap-2 overflow-x-auto overscroll-x-contain pb-2 pr-3 scrollbar-none snap-x">
           {TIERS.map((t) => (
             <button
               key={t.id}
