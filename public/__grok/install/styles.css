@@ -1,5 +1,5 @@
 :root {
-  --bg: #000000;
+  --bg: #0a1128;
   --title: #fcfcfc;
   --white: #ffffff;
   --text-footnote: 0.9375rem; /* 15 — iOS Subhead */
@@ -16,6 +16,8 @@
   --ease-smooth: cubic-bezier(0.19, 1, 0.22, 1);
   --duration-swift: 800ms;
   --ease-swift: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --card: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.12);
 }
 
 *,
@@ -83,6 +85,36 @@ img {
   flex: 0 0 auto;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 0 auto;
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+}
+
+.brand-logo {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 8px;
+}
+
+.brand-name {
+  font-size: var(--text-footnote);
+  font-weight: var(--weight-semibold);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.85);
+}
+
 .powered-by,
 .powered-grok {
   font-size: var(--text-footnote);
@@ -138,6 +170,24 @@ img {
   height: 294px;
   overflow: hidden;
   flex: 0 0 auto;
+}
+
+.app-badge {
+  width: 100%;
+  max-width: 338px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 24px 0 4px;
+}
+
+.app-icon {
+  width: 92px;
+  height: 92px;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
 }
 
 .ob-img {
