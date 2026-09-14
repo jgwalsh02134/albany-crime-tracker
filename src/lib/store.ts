@@ -6,6 +6,7 @@ import {
   type Category,
   type HomeMode,
   type Incident,
+  type LiveKind,
   type Severity,
   type SourceLens,
   type ViewId,
@@ -26,6 +27,7 @@ type AppState = {
   municipalities: string[];
   areaFilter: string | "all";
   sourceLens: SourceLens;
+  liveKind: LiveKind;
   mapCategory: Category | "all";
   mapHours: number;
   mapWindowHours: MapTimeWindowHours;
@@ -45,6 +47,7 @@ type AppState = {
   setMunicipalities: (m: string[]) => void;
   setAreaFilter: (a: string | "all") => void;
   setSourceLens: (s: SourceLens) => void;
+  setLiveKind: (k: LiveKind) => void;
   setMapCategory: (c: Category | "all") => void;
   setMapHours: (h: number) => void;
   setMapWindowHours: (h: MapTimeWindowHours) => void;
@@ -78,6 +81,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   municipalities: [...MUNICIPALITIES],
   areaFilter: "all",
   sourceLens: "all",
+  liveKind: "all",
   mapCategory: "all",
   mapHours: 3,
   mapWindowHours: 6,
@@ -104,6 +108,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
   setMunicipalities: (municipalities) => set({ municipalities }),
   setAreaFilter: (areaFilter) => set({ areaFilter }),
   setSourceLens: (sourceLens) => set({ sourceLens }),
+  setLiveKind: (liveKind) => set({ liveKind }),
   setMapCategory: (mapCategory) => set({ mapCategory }),
   setMapHours: (mapHours) => set({ mapHours }),
   setMapWindowHours: (mapWindowHours) => set({ mapWindowHours }),
@@ -129,6 +134,7 @@ export const useAppStore = create<AppState>()((set, get) => ({
       municipalities: [...MUNICIPALITIES],
       areaFilter: "all",
       sourceLens: "all",
+      liveKind: "all",
     }),
 }));
 

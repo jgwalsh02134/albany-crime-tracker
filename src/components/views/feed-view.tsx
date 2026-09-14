@@ -2,13 +2,13 @@ import { useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { ChevronRight } from "lucide-react";
 import { IncidentCard } from "@/components/incident-card";
+import { IncidentDetail } from "@/components/incident-detail";
 import { NewsView } from "@/components/views/news-view";
-import { areaCounts } from "@/lib/data";
 import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
 import { type WireHealth, sourceMix } from "@/lib/sources";
 import { liveWindowHonesty } from "@/lib/live-honesty";
 import { incidentVisible, useAppStore } from "@/lib/store";
-import type { Incident, NewsStory, SourceLens } from "@/lib/types";
+import type { Incident, NewsStory, SourceLens, LiveKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function FeedView({
@@ -29,30 +29,29 @@ export function FeedView({
   const homeMode = useAppStore((s) => s.homeMode);
   const setHomeMode = useAppStore((s) => s.setHomeMode);
   const select = useAppStore((s) => s.selectIncident);
+  const selectedId = useAppStore((s) => s.selectedId);
   const severities = useAppStore((s) => s.severities);
   const municipalities = useAppStore((s) => s.municipalities);
   const areaFilter = useAppStore((s) => s.areaFilter);
-  const setAreaFilter = useAppStore((s) => s.setAreaFilter);
   const sourceLens = useAppStore((s) => s.sourceLens);
   const setSourceLens = useAppStore((s) => s.setSourceLens);
+  const liveKind = useAppStore((s) => s.liveKind);
+  const setLiveKind = useAppStore((s) => s.setLiveKind);
 
-  const visible = incidents.filter((i) =>
-    incidentVisible(i, { severities, municipalities, areaFilter, sourceLens }),
+  const visible = incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens }));
+  const liveAll = incidents.filter(
+    (i) => i.origin === "live" && incidentVisible(i, { severities, municipalities, areaFilter, sourceLens: "all" }),
   );
-  const areaVisible = incidents.filter((i) =>
-    incidentVisible(i, { severities, municipalities, areaFilter, sourceLens: "all" }),
-  );
-  const liveAll = areaVisible.filter((i) => i.origin === "live");
-  const areas = areaCounts(liveAll);
-  const liveItems = visible.filter((i) => i.origin === "live");
+  const liveItems = visible.filter((i) => i.origin === "live" && matchesLiveKind(i, liveKind));
   const newest = liveItems.reduce<Incident | undefined>((best, row) => {
     if (!best || row.minutesAgo < best.minutesAgo) return row;
     return best;
   }, undefined);
   const mix = sourceMix(liveAll);
+  const selected = selectedId ? incidents.find((i) => i.id === selectedId) ?? null : null;
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-lg flex-col">
+    <div className="mx-auto flex h-full w-full max-w-6xl flex-col">
       <div className="shrink-0 px-3 pt-1.5">
         <div className="grid grid-cols-2 rounded-full bg-surface-2 p-0.5">
           {(["live", "news"] as const).map((mode) => (
@@ -72,22 +71,37 @@ export function FeedView({
       </div>
 
       {homeMode === "live" ? (
-        <LiveList
-          liveItems={liveItems}
-          dayCount={liveAll.length}
-          areas={areas}
-          areaFilter={areaFilter}
-          setAreaFilter={setAreaFilter}
-          sourceLens={sourceLens}
-          setSourceLens={setSourceLens}
-          mix={mix}
-          newest={newest}
-          wireLive={wireLive}
-          wireHealth={wireHealth}
-          onSelect={select}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-        />
+        <>
+          <div className="min-h-0 flex-1 lg:flex">
+            <div className="min-h-0 flex-1 lg:max-w-lg xl:max-w-xl">
+              <LiveList
+                liveItems={liveItems}
+                liveKind={liveKind}
+                setLiveKind={setLiveKind}
+                sourceLens={sourceLens}
+                setSourceLens={setSourceLens}
+                mix={mix}
+                newest={newest}
+                wireLive={wireLive}
+                wireHealth={wireHealth}
+                onSelect={select}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+              />
+            </div>
+            <aside className="hidden min-h-0 flex-1 border-l border-border bg-bg lg:block">
+              {selected ? (
+                <div className="h-full overflow-y-auto overscroll-y-contain scrollbar-thin">
+                  <IncidentDetail incident={selected} variant="panel" onClose={() => select(null)} />
+                </div>
+              ) : (
+                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted">
+                  Select an incident to see details.
+                </div>
+              )}
+            </aside>
+          </div>
+        </>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-6 pt-2 scrollbar-thin">
           <NewsView stories={news} />
@@ -97,12 +111,44 @@ export function FeedView({
   );
 }
 
+function matchesLiveKind(inc: Incident, kind: LiveKind): boolean {
+  if (kind === "all") return true;
+  const t = inc.type.toLowerCase();
+  const title = inc.title.toLowerCase();
+  const desc = (inc.description || "").toLowerCase();
+  const hay = `${title} ${desc} ${inc.address.toLowerCase()} ${inc.municipality.toLowerCase()}`;
+  const has = (re: RegExp) => re.test(hay);
+
+  if (kind === "fire") {
+    return t === "fire" || has(/\b(fire|blaze|smoke|alarm|structure fire|vehicle fire|brush fire|ems|ambulance)\b/i);
+  }
+  if (kind === "crash") {
+    return t === "crash" || t === "dwi" || t === "disabled-vehicle" || has(/\b(crash|collision|hit[- ]and[- ]run|rollover|vehicle.*into|pedestrian struck|fatal crash)\b/i);
+  }
+  if (kind === "traffic") {
+    const officialTraffic = inc.sources.some((s) => s.kind === "cfs") || has(/\b(road closed|lane closure|lanes blocked|traffic alert|disabled vehicle|thruway|northway|i-?87|i-?90|i-?787)\b/i);
+    return officialTraffic || t === "crash" || t === "disabled-vehicle";
+  }
+  // crime
+  if (inc.category === "violent" || inc.category === "property") return true;
+  return (
+    t === "shots-fired" ||
+    t === "assault" ||
+    t === "robbery" ||
+    t === "domestic" ||
+    t === "burglary" ||
+    t === "larceny" ||
+    t === "arrest" ||
+    t === "drugs" ||
+    t === "trespass" ||
+    has(/\b(shooting|shots fired|stab|stabbing|robbery|burglary|assault|arrest|charged|wanted|gun|weapon|homicide|larceny)\b/i)
+  );
+}
+
 function LiveList({
   liveItems,
-  dayCount,
-  areas,
-  areaFilter,
-  setAreaFilter,
+  liveKind,
+  setLiveKind,
   sourceLens,
   setSourceLens,
   mix,
@@ -114,10 +160,8 @@ function LiveList({
   onRefresh,
 }: {
   liveItems: Incident[];
-  dayCount: number;
-  areas: { name: string; count: number }[];
-  areaFilter: string;
-  setAreaFilter: (a: string | "all") => void;
+  liveKind: LiveKind;
+  setLiveKind: (k: LiveKind) => void;
   sourceLens: SourceLens;
   setSourceLens: (s: SourceLens) => void;
   mix: { official: number; scanner: number; news: number; social: number };
@@ -180,44 +224,36 @@ function LiveList({
           )}
           <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
             <Chip
-              active={sourceLens === "all"}
-              onClick={() => setSourceLens("all")}
-              label={`All ${mix.official + mix.scanner + mix.news + mix.social}`}
+              active={liveKind === "all" && sourceLens === "all"}
+              onClick={() => {
+                setLiveKind("all");
+                setSourceLens("all");
+              }}
+              label="All"
             />
             <Chip
-              active={sourceLens === "official"}
-              onClick={() => setSourceLens("official")}
-              label={`Official ${mix.official}`}
+              active={liveKind === "crime"}
+              onClick={() => setLiveKind("crime")}
+              label="Crime"
             />
             <Chip
-              active={sourceLens === "scanner"}
-              onClick={() => setSourceLens("scanner")}
-              label={`Radio ${mix.scanner}`}
+              active={liveKind === "crash"}
+              onClick={() => setLiveKind("crash")}
+              label="Crash"
             />
             <Chip
-              active={sourceLens === "news"}
-              onClick={() => setSourceLens("news")}
-              label={`News ${mix.news}`}
+              active={liveKind === "fire"}
+              onClick={() => setLiveKind("fire")}
+              label="Fire"
             />
             <Chip
-              active={sourceLens === "social"}
-              onClick={() => setSourceLens("social")}
-              label={`Social ${mix.social}`}
+              active={liveKind === "traffic"}
+              onClick={() => setLiveKind("traffic")}
+              label="Traffic"
             />
             <span className="mx-0.5 h-5 w-px shrink-0 self-center bg-border" />
-            <Chip
-              active={areaFilter === "all"}
-              onClick={() => setAreaFilter("all")}
-              label={`Towns ${dayCount}`}
-            />
-            {areas.map((a) => (
-              <Chip
-                key={a.name}
-                active={areaFilter === a.name}
-                onClick={() => setAreaFilter(a.name)}
-                label={`${a.name} ${a.count}`}
-              />
-            ))}
+            <Chip active={sourceLens === "official"} onClick={() => setSourceLens("official")} label={`Official ${mix.official}`} />
+            <Chip active={sourceLens === "scanner"} onClick={() => setSourceLens("scanner")} label={`Scanner ${mix.scanner}`} />
           </div>
         </div>
 
@@ -248,45 +284,73 @@ function GroupedList({
 }) {
   const since7 = minutesSinceNy7am();
   const nowItems = items.filter((i) => i.minutesAgo <= 180);
-  const today = items.filter((i) => i.minutesAgo > 180 && i.minutesAgo <= since7);
+  const earlierToday = items.filter((i) => i.minutesAgo > 180 && i.minutesAgo <= since7);
   const overnight = items.filter((i) => i.minutesAgo > since7);
   const honesty = liveWindowHonesty({ health: wireHealth, nowItems, liveItems: items, sourceLens });
+
+  const split = (rows: Incident[]) => ({
+    confirmed: rows.filter((r) => r.verification === "confirmed"),
+    developing: rows.filter((r) => r.verification === "developing"),
+    scanner: rows.filter((r) => r.verification === "scanner"),
+  });
+
+  const now = split(nowItems);
+  const today = split(earlierToday);
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <section>
-        <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">Last 3 hours</h2>
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Now</h2>
+          <p className="text-[11px] text-subtle">Last 3 hours</p>
+        </div>
+
         {nowItems.length ? (
-          <ul className="flex flex-col gap-1.5">
-            {nowItems.map((inc) => (
-              <li key={inc.id}>
-                <IncidentCard incident={inc} onSelect={onSelect} />
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-col gap-3">
+            {now.confirmed.length ? (
+              <Lane label="Confirmed" items={now.confirmed} onSelect={onSelect} />
+            ) : null}
+            {now.developing.length ? (
+              <Lane label="Developing" items={now.developing} onSelect={onSelect} />
+            ) : null}
+            {now.scanner.length ? (
+              <Lane label="Scanner" items={now.scanner} onSelect={onSelect} />
+            ) : null}
+          </div>
         ) : (
           <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
             {honesty.last3hCopy}
           </p>
         )}
       </section>
-      {today.length ? (
+
+      {earlierToday.length ? (
         <section>
-          <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">Since 7 AM</h2>
-          <ul className="flex flex-col gap-1.5">
-            {today.map((inc) => (
-              <li key={inc.id}>
-                <IncidentCard incident={inc} onSelect={onSelect} />
-              </li>
-            ))}
-          </ul>
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Developing</h2>
+            <p className="text-[11px] text-subtle">Since 7 AM</p>
+          </div>
+          <div className="flex flex-col gap-3">
+            {today.confirmed.length ? (
+              <Lane label="Confirmed" items={today.confirmed} onSelect={onSelect} />
+            ) : null}
+            {today.developing.length ? (
+              <Lane label="Developing" items={today.developing} onSelect={onSelect} />
+            ) : null}
+            {today.scanner.length ? (
+              <Lane label="Scanner" items={today.scanner} onSelect={onSelect} />
+            ) : null}
+          </div>
         </section>
       ) : null}
+
       {overnight.length ? (
         <section>
-          <h2 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-subtle">
-            NYSP overnight report
-          </h2>
-          <ul className="flex flex-col gap-1.5">
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Confirmed</h2>
+            <p className="text-[11px] text-subtle">Overnight (NYSP)</p>
+          </div>
+          <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-1">
             {overnight.map((inc) => (
               <li key={inc.id}>
                 <IncidentCard incident={inc} onSelect={onSelect} />
@@ -295,6 +359,31 @@ function GroupedList({
           </ul>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+function Lane({
+  label,
+  items,
+  onSelect,
+}: {
+  label: string;
+  items: Incident[];
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-subtle">
+        {label} · {items.length}
+      </p>
+      <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-1">
+        {items.map((inc) => (
+          <li key={inc.id}>
+            <IncidentCard incident={inc} onSelect={onSelect} />
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -384,9 +473,11 @@ function SourcePipes({
                   ["NYSP blotter", health.blotter, "Official 7 AM dump. Not a live dispatch board."],
                   ["Radio captions", health.scanner, "Albany/Colonie PD, Bethlehem PD/Fire/EMS, Albany Fire, volunteer fire. Unconfirmed."],
                   ["511NY crashes", health.traffic, "Capital District accidents only. Construction is ignored."],
+                  ["Thruway TINC", health.pipes?.find((p) => p.id.startsWith("tinc:"))?.lastCount ?? 0, "NYSTA incident board for Albany area. Closures and major incidents."],
+                  ["Nixle", health.pipes?.filter((p) => p.id.startsWith("nixle:")).reduce((a, p) => a + (p.lastCount || 0), 0) ?? 0, "Agency alert centers (public Nixle pages)."],
                   ["Department Facebook", health.facebook ?? 0, "APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland."],
                   ["X", health.x ?? 0, "NYSP, Albany Fire, CBS6, NEWS10, Times Union when they tweet crime."],
-                  ["Town civic", health.civic ?? 0, "Bethlehem, Guilderland, Albany, Cohoes, Menands, Voorheesville — crashes and arrests only. Empty civic RSS stays wired."],
+                  ["Town civic", health.civic ?? 0, "Bethlehem, Guilderland, Albany, Cohoes, Troy, Schenectady — incident-keyword filtered. Some sites may block or rate-limit RSS fetches."],
                   ["Live news lens", health.news, "Capital Region public-safety headlines in the last 24h on Live (out-of-area dropped)."],
                   ["News tab", health.stories ?? health.news, "Headlines on the News tab after local keep + fresher ranking. Blotter is capped so it does not drown newsrooms."],
                   ["Citizens", health.reddit ?? 0, "Reddit r/Albany, r/Troy, r/Schenectady. Not 911."],

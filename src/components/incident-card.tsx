@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { ShareButton } from "@/components/share-button";
-import { clockTime, typeLabel } from "@/lib/format";
+import { clockTime, relativeTime, typeLabel } from "@/lib/format";
 import { incidentSharePayload } from "@/lib/share";
 import type { Incident, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,12 @@ function blurb(incident: Incident): string | null {
   return raw;
 }
 
+function confidenceBadge(incident: Incident): { label: string; tone: "cyan" | "accent" | "medium" | "muted" } {
+  if (incident.verification === "confirmed") return { label: "Confirmed", tone: "cyan" };
+  if (incident.verification === "scanner") return { label: "Scanner", tone: "accent" };
+  return { label: "Developing", tone: "muted" };
+}
+
 export function IncidentCard({
   incident,
   onSelect,
@@ -42,6 +48,7 @@ export function IncidentCard({
   onSelect: (id: string) => void;
 }) {
   const badge = sourceBadge(incident);
+  const conf = confidenceBadge(incident);
   const loc = incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
     ? incident.address
     : `${incident.address} · ${incident.municipality}`;
@@ -52,39 +59,40 @@ export function IncidentCard({
       <button
         type="button"
         onClick={() => onSelect(incident.id)}
-        className="w-full py-2.5 pl-3.5 pr-12 text-left active:bg-surface-2"
+        className="w-full py-3 pl-3.5 pr-12 text-left active:bg-surface-2"
       >
         <span className={cn("absolute inset-y-2 left-0 w-1 rounded-full", rail[incident.severity])} />
         <div className="flex items-start justify-between gap-3">
           <h3 className="min-w-0 line-clamp-2 text-sm font-semibold leading-snug tracking-tight text-fg">
             {incident.title}
           </h3>
-          <time className="mt-0.5 shrink-0 font-mono text-xs font-semibold tabular-nums text-fg">
-            {clockTime(incident.occurredAt)}
-          </time>
+          <div className="mt-0.5 shrink-0 text-right">
+            <time className="block font-mono text-xs font-semibold tabular-nums text-fg">{relativeTime(incident.occurredAt)}</time>
+            <span className="block font-mono text-[11px] tabular-nums text-subtle">{clockTime(incident.occurredAt)}</span>
+          </div>
         </div>
-        {extra ? <p className="mt-0.5 line-clamp-1 text-sm text-muted">{extra}</p> : null}
+        {extra ? <p className="mt-1 line-clamp-1 text-sm text-muted">{extra}</p> : null}
         <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
           <span className="shrink-0 uppercase tracking-wide text-subtle">{typeLabel(incident.type)}</span>
           <span className="text-subtle">·</span>
           <span className="min-w-0 truncate">{loc}</span>
-          <Badge className="ml-auto shrink-0" tone={badge.tone}>
-            {badge.label}
-          </Badge>
         </p>
-        {incident.seenOn && incident.seenOn.length > 1 ? (
-          <p className="mt-1 flex min-w-0 flex-wrap items-center gap-1 text-[11px] text-subtle">
-            <span className="shrink-0">Seen on:</span>
-            {incident.seenOn.map((chip) => (
-              <span
-                key={chip.key}
-                className="rounded-full border border-border bg-surface-2 px-1.5 py-0.5 font-medium text-muted"
-              >
-                {chip.label}
-              </span>
-            ))}
-          </p>
-        ) : incident.verification === "scanner" ? (
+
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {(incident.seenOn?.length ? incident.seenOn : [{ key: badge.label.toLowerCase(), label: badge.label }]).slice(0, 6).map((chip) => (
+            <span
+              key={chip.key}
+              className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted"
+            >
+              {chip.label}
+            </span>
+          ))}
+          <Badge className="ml-auto shrink-0" tone={conf.tone}>
+            {conf.label}
+          </Badge>
+        </div>
+
+        {incident.verification === "scanner" ? (
           <p className="mt-1 text-[11px] text-subtle">Unconfirmed radio — not a CAD call.</p>
         ) : null}
       </button>

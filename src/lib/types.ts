@@ -8,6 +8,7 @@ export type Discipline = "police" | "fire" | "ems";
 export type SourceKind = "blotter" | "cfs" | "nixle" | "press" | "scanner" | "news" | "opendata" | "social";
 export type SourceTier = "official" | "context" | "unconfirmed";
 export type SourceLens = "all" | "official" | "scanner" | "news" | "social";
+export type LiveKind = "all" | "crime" | "crash" | "fire" | "traffic";
 
 export type IncidentSource = {
   kind: SourceKind;
