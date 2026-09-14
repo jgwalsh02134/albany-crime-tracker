@@ -227,6 +227,9 @@ function LiveList({
         : liveItems;
   const showing = withinNear;
   const nearActive = liveNearMe;
+  const nearLocating = nearActive && !pos && !locateErr;
+  const nearDenied = nearActive && !pos && /\bpermission denied\b/i.test(locateErr);
+  const nearUnavailable = nearActive && !pos && Boolean(locateErr) && !nearDenied;
 
   function onTouchStart(e: React.TouchEvent) {
     if (!scroller.current || scroller.current.scrollTop > 0) {
@@ -357,10 +360,33 @@ function LiveList({
             {wireLive ? (
               nearActive ? (
                 <>
-                  <span className="block font-medium text-fg">No calls within ~{liveNearMiles} mi right now.</span>
-                  <span className="mt-1 block">
-                    Could be a quiet moment — or a reporting gap (dark pipes, encrypted radio). Pull to refresh or switch to All sources to sanity-check coverage.
-                  </span>
+                  {nearDenied ? (
+                    <>
+                      <span className="block font-medium text-fg">Location permission denied.</span>
+                      <span className="mt-1 block">
+                        Near me needs location access. You can still view county-wide calls by switching to <span className="font-semibold">All area</span>.
+                      </span>
+                    </>
+                  ) : nearUnavailable ? (
+                    <>
+                      <span className="block font-medium text-fg">Location unavailable.</span>
+                      <span className="mt-1 block">
+                        Near me can’t run without a location fix. You can still view county-wide calls by switching to <span className="font-semibold">All area</span>.
+                      </span>
+                    </>
+                  ) : nearLocating ? (
+                    <>
+                      <span className="block font-medium text-fg">Waiting for location…</span>
+                      <span className="mt-1 block">Allow location to see calls near you, or switch to <span className="font-semibold">All area</span>.</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="block font-medium text-fg">No calls reported within ~{liveNearMiles} mi right now.</span>
+                      <span className="mt-1 block">
+                        Could be a quiet moment — or a reporting gap (dark pipes, encrypted radio). Pull to refresh or switch to All sources to sanity-check coverage.
+                      </span>
+                    </>
+                  )}
                 </>
               ) : (
                 <p>{liveWindowHonesty({ health: wireHealth, nowItems: [], liveItems: [], sourceLens }).emptyFilterCopy}</p>

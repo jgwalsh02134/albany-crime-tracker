@@ -29,7 +29,7 @@ export function Seal({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-2 p-0.5",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white p-0.5 ring-1 ring-border/60 shadow-sm",
         size,
       )}
     >
