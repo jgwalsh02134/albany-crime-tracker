@@ -19,6 +19,8 @@ const TITLE_CRIME =
 const LIVE_MIN = 24 * 60;
 const NEWS_MIN = 72 * 60;
 const OFFICIAL_NEWS_MIN = 7 * 24 * 60;
+const CACHE_MS = 2 * 60_000;
+const REDDIT_CACHE_MS = 10 * 60_000;
 
 let redditBlockedUntil = 0;
 const REDDIT_BACKOFF_MS = 10 * 60_000;
@@ -309,10 +311,22 @@ function tidySummary(title: string, summary: string): string {
   return s.slice(0, 360);
 }
 
+type CacheEntry = { at: number; items: LiveWireItem[] } | null;
+const g = globalThis as unknown as { __actSocialCache?: Map<string, CacheEntry> };
+function cacheMap(): Map<string, CacheEntry> {
+  if (!g.__actSocialCache) g.__actSocialCache = new Map();
+  return g.__actSocialCache;
+}
+
 async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]> {
   if (feed.outlet.startsWith("Reddit") && Date.now() < redditBlockedUntil) {
     return [];
   }
+  const cache = cacheMap();
+  const key = `${feed.pipe}:${feed.outlet}:${feed.url}`;
+  const hit = cache.get(key);
+  const ttl = feed.pipe === "reddit" ? REDDIT_CACHE_MS : CACHE_MS;
+  if (hit && now - hit.at < ttl) return hit.items;
   try {
     const res = await fetch(feed.url, {
       headers: {
@@ -330,19 +344,21 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
       if (res.status === 429 && feed.pipe === "reddit") {
         redditBlockedUntil = Date.now() + REDDIT_BACKOFF_MS;
       }
-      return [];
+      return hit?.items ?? [];
     }
     const xml = await res.text();
-    if (feed.format === "atom") return parseAtom(xml, feed, now);
-    if (!xml.includes("<item")) return [];
-    return parseRss(xml, feed, now);
+    let items: LiveWireItem[] = [];
+    if (feed.format === "atom") items = parseAtom(xml, feed, now);
+    else if (xml.includes("<item")) items = parseRss(xml, feed, now);
+    cache.set(key, { at: now, items });
+    return items;
   } catch (err) {
     recordPipeFail(
       `social:${feed.pipe}`,
       feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook",
       err instanceof Error ? err.message : "social-error",
     );
-    return [];
+    return hit?.items ?? [];
   }
 }
 

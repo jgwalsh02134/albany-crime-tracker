@@ -17,10 +17,11 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Patch Albany | Google News RSS + Superfeedr | Patch’s legacy `.../new-york/albany/rss` 404s; `albany-ny` coverage comes from `site:patch.com` Google News RSS. |
 | Times Union / Spotlight / Gazette / FOX23 | Google News RSS + Superfeedr | Native TU RSS 404s — we do not pretend they work. |
 | Spectrum, Troy Record, ACSO, north cities, Guilderland | Google News RSS + Superfeedr | Gap queries (Cohoes / Watervliet / Menands / Green Island; Guilderland / Altamont / Voorheesville). |
-| CivicPlus: Bethlehem, Guilderland PD, Guilderland town, Albany, Cohoes, Voorheesville | RSS + Superfeedr | Incident-keyword filter. Feeds may be empty and still count as wired. |
-| Menands village | `menandsny.gov/feed/` (WordPress) | Public civic RSS. Usually board/newsletter; crime items pass the filter if posted. |
+| CivicPlus: Bethlehem, Guilderland PD, Guilderland town, Albany, Cohoes, Voorheesville, Troy, Schenectady, Schenectady PD | RSS + Superfeedr | Incident-keyword filter. Feeds may be empty and still count as wired. |
+| Menands village | `menandsny.gov/feed/` (WordPress) | Sucuri 403 blocks server fetches. We keep the pipe listed and honest in health, but it may be unreachable until the site allows feed traffic. |
 | Department Facebook / X (via Google News) | RSS | APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland, NYSP, Albany Fire, newsroom X. |
 | Reddit r/Albany, r/Troy, r/Schenectady | Atom | Citizen, unconfirmed. |
+| Nixle: Colonie PD | HTML parse | Public agency page. Advisory / community alerts. |
 
 ## Tried and blocked (do not invent)
 
@@ -29,6 +30,7 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Live CAD / CFS (Albany, Colonie, Bethlehem) | No public board | City open-data host is dead. We never label 511 as CAD. |
 | PulsePoint | Albany NY not listed; API 401 | No public path. Later PR only if one appears. |
 | OpenMHz `albanycony` | Browser-live, server 403 (Cloudflare) | Not wired. |
+| SeeClickFix API v2 | 403 (Cloudflare) from server IP | Cannot rely on a pipe that blocks programmatic fetch. Only wire if a public, stable API path works without bypass. |
 | Nixle / NY-Alert | Login wall | APD Alert Center RSS empty until the city posts. |
 | SpotCrime / CrimeMapping / RAIDS | No public JSON; SpotCrime 403 | Not wired. |
 | Citizen App, Ring, Nextdoor, Waze | No public feed | Later PR only if a public path appears. |
@@ -45,6 +47,7 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Patch Albany `/rss` | 404 | Patch moved to `patch.com/new-york/albany-ny` with no public RSS; we use Google News RSS `site:patch.com/new-york/albany-ny` instead. |
 | NYSP `rss.xml` | 200 stub, 0 items | HTML newsroom scrape stays. |
 | Spectrum `/feed` | 404 | GNews site query instead. |
+| UAlbany UPD daily crime log | DevExpress callbacks / stateful export | No clean, stable unauthenticated CSV/RSS endpoint found; revisit if UPD publishes a direct daily-record file or API. |
 
 ## Fusion (this PR)
 

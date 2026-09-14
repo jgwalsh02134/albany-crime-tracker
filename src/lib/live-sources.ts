@@ -5,7 +5,13 @@ import { fetchNyspBlotter, parseNyWhen } from "./nysp-blotter";
 import { scannerHealth, scannerItems, startScannerPoll } from "./scanner-poll";
 import { collectSocial, socialLive, socialNews } from "./social-sources";
 import { civicLive, civicNews, fetchCivic, fetchNws } from "./civic-sources";
-import { fetchNixleAltamont, fetchNixleApd, fetchNixleGuilderlandPd, fetchNixleWatervliet } from "./nixle-sources";
+import {
+  fetchNixleAltamont,
+  fetchNixleApd,
+  fetchNixleColoniePd,
+  fetchNixleGuilderlandPd,
+  fetchNixleWatervliet,
+} from "./nixle-sources";
 import { fetchThruwayTincAlbany } from "./thruway-tinc";
 import { superfeedrItems } from "./superfeedr";
 import { enrichStoryImages, pickBestImage } from "./news-thumbs";
@@ -467,7 +473,7 @@ function notable(row: LiveWireItem): boolean {
 async function collectWire() {
   const now = Date.now();
   startScannerPoll();
-  const [news, blotterRes, traffic, press, social, civic, nws, nixleApd, nixleGpd, nixleWvl, nixleAlt, tinc] = await Promise.all([
+  const [news, blotterRes, traffic, press, social, civic, nws, nixleApd, nixleGpd, nixleWvl, nixleAlt, nixleColonie, tinc] = await Promise.all([
     collectNews(now),
     fetchNyspBlotter(now).catch((err) => {
       console.error("[nysp] blotter", err instanceof Error ? err.message : err);
@@ -488,9 +494,10 @@ async function collectWire() {
     fetchNixleGuilderlandPd(now).catch(() => [] as LiveWireItem[]),
     fetchNixleWatervliet(now).catch(() => [] as LiveWireItem[]),
     fetchNixleAltamont(now).catch(() => [] as LiveWireItem[]),
+    fetchNixleColoniePd(now).catch(() => [] as LiveWireItem[]),
     fetchThruwayTincAlbany(now).catch(() => [] as LiveWireItem[]),
   ]);
-  const nixle = [...nixleApd, ...nixleGpd, ...nixleWvl, ...nixleAlt].sort((a, b) => a.minutesAgo - b.minutesAgo);
+  const nixle = [...nixleApd, ...nixleGpd, ...nixleWvl, ...nixleAlt, ...nixleColonie].sort((a, b) => a.minutesAgo - b.minutesAgo);
   const blotter = blotterRes.items;
   if (blotterRes.failed && !blotter.length) {
     recordPipeFail("nysp-blotter", "NYSP blotter", `failed ${blotterRes.failed}/${blotterRes.tried}`);
