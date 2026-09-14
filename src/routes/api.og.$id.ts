@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { lookupIncidentCard } from "@/lib/incident-lookup";
 
 function escapeXml(value: string): string {
   return String(value)
@@ -66,6 +65,8 @@ export const Route = createFileRoute("/api/og/$id")({
   server: {
     handlers: {
       GET: async ({ params }) => {
+        // Keep server-only imports out of the client bundle: route modules are imported into the route tree.
+        const { lookupIncidentCard } = await import("../lib/incident-lookup");
         const meta = await lookupIncidentCard(params.id);
         const svg = renderCard({
           title: meta.title,

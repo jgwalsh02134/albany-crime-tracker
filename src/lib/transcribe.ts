@@ -2,10 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { extractAudioFromMpegTs } from "./scanner-hls";
 import { getScannerFeed, SCANNER_FEEDS } from "./scanner-feeds";
 import { isSttJunk } from "./stt-junk";
-import {
-  formatProviderErrorBody,
-  prepareAudioForWhisper,
-} from "./audio-for-whisper";
 
 const LISTEN_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
@@ -280,6 +276,9 @@ async function transcribeWithOpenAiWhisper(
   if (!apiKey) throw new Error("missing-openai-key");
   if (Date.now() < openaiWhisperBlockedUntil) throw new Error("openai-429");
 
+  // Server-only dependency (uses node:fs + ffmpeg). Keep it out of the client bundle.
+  const { prepareAudioForWhisper, formatProviderErrorBody } = await import("./audio-for-whisper");
+
   const prepared = await prepareAudioForWhisper(bytes, filename, mime);
   if (prepared.remuxed) {
     console.info("[stt] remuxed audio for whisper", filename, "->", prepared.filename);
@@ -328,6 +327,9 @@ async function transcribeWithGroqWhisper(
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) throw new Error("missing-groq-key");
   if (Date.now() < groqWhisperBlockedUntil) throw new Error("groq-429");
+
+  // Server-only dependency (uses node:fs + ffmpeg). Keep it out of the client bundle.
+  const { prepareAudioForWhisper, formatProviderErrorBody } = await import("./audio-for-whisper");
 
   const prepared = await prepareAudioForWhisper(bytes, filename, mime);
   const models = whisperModels(

@@ -1,13 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { scannerHealth } from "@/lib/scanner-poll";
-import {
-  superfeedrHealth,
-  superfeedrSubscribeHealth,
-  ensureSuperfeedrSubscriptions,
-} from "@/lib/superfeedr";
-import { isAdminAuthorized } from "@/lib/security/admin-token.server";
-import { rateLimitRequest, rateLimitResponse } from "@/lib/security/rate-limit.server";
-import { pipeHealth } from "@/lib/pipe-health";
 
 /**
  * Public health: minimal `{ ok: true }`.
@@ -18,6 +9,9 @@ export const Route = createFileRoute("/ready")({
   server: {
     handlers: {
       GET: async ({ request }) => {
+        // Keep server-only imports out of the client bundle: route modules are imported into the route tree.
+        const { rateLimitRequest, rateLimitResponse } = await import("../lib/security/rate-limit.server");
+
         const limited = await rateLimitRequest(request, {
           name: "ready",
           limit: 120,
@@ -25,9 +19,18 @@ export const Route = createFileRoute("/ready")({
         });
         if (!limited.ok) return rateLimitResponse(limited);
 
+        const { isAdminAuthorized } = await import("../lib/security/admin-token.server");
         if (!isAdminAuthorized(request, false)) {
           return Response.json({ ok: true });
         }
+
+        const { scannerHealth } = await import("../lib/scanner-poll");
+        const {
+          superfeedrHealth,
+          superfeedrSubscribeHealth,
+          ensureSuperfeedrSubscriptions,
+        } = await import("../lib/superfeedr");
+        const { pipeHealth } = await import("../lib/pipe-health");
 
         const scan = scannerHealth();
         const sf = superfeedrHealth();
