@@ -3,6 +3,7 @@ import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
 import { redditApiFetch, redditApiHealth, recordRedditOk } from "./reddit-api";
+import { isOfficialAgencySocial } from "./social-official";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const REDDIT_UA =
@@ -22,6 +23,21 @@ const NEWS_MIN = 72 * 60;
 const OFFICIAL_NEWS_MIN = 7 * 24 * 60;
 const CACHE_MS = 2 * 60_000;
 const REDDIT_CACHE_MS = 10 * 60_000;
+const OFFICIAL_DAY_TTL_MS = 45_000;
+const OFFICIAL_NIGHT_TTL_MS = 2 * 60_000;
+const NONOFFICIAL_DAY_TTL_MS = 2 * 60_000;
+const NONOFFICIAL_NIGHT_TTL_MS = 4 * 60_000;
+
+const ET_HOUR = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "numeric",
+  hour12: false,
+});
+
+function isDaytimeET(now: number): boolean {
+  const hour = Number(ET_HOUR.format(new Date(now)));
+  return Number.isFinite(hour) && hour >= 6 && hour < 22;
+}
 
 let redditBlockedUntil = 0;
 const REDDIT_BACKOFF_MS = 10 * 60_000;
@@ -635,7 +651,17 @@ function cacheMap(): Map<string, CacheEntry> {
   return g.__actSocialCache;
 }
 
-async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]> {
+type FeedFetchStatus = "ok" | "cache" | "fail" | "blocked";
+type FeedFetchResult = { items: LiveWireItem[]; status: FeedFetchStatus; error?: string };
+
+function ttlMs(feed: SocialFeed, now: number): number {
+  if (feed.pipe === "reddit") return REDDIT_CACHE_MS;
+  // Tighten daytime polls for official agency outlets (FB/X via GNews).
+  if (feed.official) return isDaytimeET(now) ? OFFICIAL_DAY_TTL_MS : OFFICIAL_NIGHT_TTL_MS;
+  return isDaytimeET(now) ? NONOFFICIAL_DAY_TTL_MS : NONOFFICIAL_NIGHT_TTL_MS;
+}
+
+async function fetchFeed(feed: SocialFeed, now: number): Promise<FeedFetchResult> {
   if (feed.outlet.startsWith("Reddit") && Date.now() < redditBlockedUntil) {
     const remainSec = Math.max(0, Math.round((redditBlockedUntil - Date.now()) / 1000));
     recordPipeFail("social:reddit", "Reddit", `rate-limited backoff ${remainSec}s`);
@@ -643,16 +669,13 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
     const cache = cacheMap();
     const key = `${feed.pipe}:${feed.outlet}:${feed.url}`;
     const hit = cache.get(key);
-    return hit?.items ?? [];
+    return { items: hit?.items ?? [], status: "blocked", error: `rate-limited backoff ${remainSec}s` };
   }
   const cache = cacheMap();
   const key = `${feed.pipe}:${feed.outlet}:${feed.url}`;
   const hit = cache.get(key);
-  const ttl = feed.pipe === "reddit" ? REDDIT_CACHE_MS : CACHE_MS;
-  if (hit && now - hit.at < ttl) {
-    recordPipeOk(feedPipeId(feed), feed.outlet, hit.items.length);
-    return hit.items;
-  }
+  const ttl = ttlMs(feed, now) || CACHE_MS;
+  if (hit && now - hit.at < ttl) return { items: hit.items, status: "cache" };
   try {
     const res = await fetch(feed.url, {
       headers: {
@@ -662,13 +685,12 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) {
-      recordPipeFail(`social:${feed.pipe}`, feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook", `HTTP ${res.status}`);
       recordPipeFail(feedPipeId(feed), feed.outlet, `HTTP ${res.status}`);
       if (res.status === 429 && feed.pipe === "reddit") {
         const hasAuth = redditApiHealth().authConfigured;
         redditBlockedUntil = Date.now() + (hasAuth ? REDDIT_BACKOFF_MS : REDDIT_NOAUTH_BACKOFF_MS);
       }
-      return hit?.items ?? [];
+      return { items: hit?.items ?? [], status: "fail", error: `HTTP ${res.status}` };
     }
     const xml = await res.text();
     let items: LiveWireItem[] = [];
@@ -676,12 +698,11 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
     else if (xml.includes("<item")) items = parseRss(xml, feed, now);
     recordPipeOk(feedPipeId(feed), feed.outlet, items.length);
     cache.set(key, { at: now, items });
-    return items;
+    return { items, status: "ok" };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "social-error";
-    recordPipeFail(`social:${feed.pipe}`, feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook", msg);
     recordPipeFail(feedPipeId(feed), feed.outlet, msg);
-    return hit?.items ?? [];
+    return { items: hit?.items ?? [], status: "fail", error: msg };
   }
 }
 
@@ -701,7 +722,7 @@ export async function collectSocial(now: number): Promise<SocialBundle> {
   ]);
   const seen = new Set<string>();
   const items: LiveWireItem[] = [];
-  for (const row of [...fb.flat(), ...x.flat(), ...reddit.flat()]) {
+  for (const row of [...fb.flatMap((r) => r.items), ...x.flatMap((r) => r.items), ...reddit.flat()]) {
     const key = `${row.outlet}|${row.title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}`;
     if (seen.has(row.id) || seen.has(key)) continue;
     seen.add(row.id);
@@ -712,22 +733,22 @@ export async function collectSocial(now: number): Promise<SocialBundle> {
   const facebook = items.filter((i) => i.outlet.startsWith("Facebook")).length;
   const xCount = items.filter((i) => i.outlet.startsWith("X ·")).length;
   const redditCount = items.filter((i) => i.outlet.startsWith("Reddit")).length;
-  recordPipeOk("social:facebook", "Facebook", facebook);
-  recordPipeOk("social:x", "X", xCount);
+  // Health honesty: only mark FB/X ok when we actually fetched successfully (not just served cache).
+  const fbOk = fb.some((r) => r.status === "ok");
+  const xOk = x.some((r) => r.status === "ok");
+  const fbFail = fb.some((r) => r.status === "fail");
+  const xFail = x.some((r) => r.status === "fail");
+  if (fbOk) recordPipeOk("social:facebook", "Facebook", facebook);
+  else if (fbFail) recordPipeFail("social:facebook", "Facebook", fb.find((r) => r.status === "fail")?.error || "fetch failed");
+  if (xOk) recordPipeOk("social:x", "X", xCount);
+  else if (xFail) recordPipeFail("social:x", "X", x.find((r) => r.status === "fail")?.error || "fetch failed");
   // Reddit ok/fail is recorded inside collectReddit via API/RSS path.
   return { items, facebook, x: xCount, reddit: redditCount, citizen: 0 };
 }
 
 export function isOfficialSocial(outlet: string): boolean {
   if (/^Civic ·/i.test(outlet)) return true;
-  return (
-    /^Facebook · (?:Albany PD|Albany Fire|Colonie PD|Colonie EMS|Bethlehem PD|Cohoes PD|Cohoes Fire|Watervliet PD|Guilderland PD|Schenectady PD|Schenectady Fire|Rensselaer County Sheriff|East Greenbush Police|Guilderland Fire|Westmere Fire|Latham Fire|NYSP|Fuller Road VFD|Midway Fire|Shaker Road–Loudonville FD|Green Island Police|Menands Police|Rensselaer City Police)$/i.test(
-      outlet,
-    ) ||
-    /^X · (?:NYSP|Troy PD|Schdy Police|Cohoes Fire|Guilderland PD|Bethlehem PD|Albany Fire|Albany County Sheriff|Albany Police|Colonie Police|Thruway TRANSalert)$/i.test(
-      outlet,
-    )
-  );
+  return isOfficialAgencySocial(outlet);
 }
 
 export function socialLive(items: LiveWireItem[]): LiveWireItem[] {
@@ -784,12 +805,13 @@ async function collectReddit(now: number): Promise<LiveWireItem[][]> {
   }
 
   const rss = await Promise.all(REDDIT_FEEDS.map((f) => fetchFeed(f, now)));
+  const rssItems = rss.flatMap((r) => r.items);
   // When unauthenticated, surface the limitation as “thin,” not quiet.
-  if (rss.flat().length === 0 && Date.now() < redditBlockedUntil) {
+  if (rssItems.length === 0 && Date.now() < redditBlockedUntil) {
     const remainSec = Math.max(0, Math.round((redditBlockedUntil - Date.now()) / 1000));
     recordPipeFail("social:reddit", "Reddit", `rate-limited backoff ${remainSec}s`);
   } else {
-    recordPipeOk("social:reddit", "Reddit", rss.flat().length);
+    recordPipeOk("social:reddit", "Reddit", rssItems.length);
   }
-  return rss;
+  return rss.map((r) => r.items);
 }

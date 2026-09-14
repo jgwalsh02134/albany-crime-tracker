@@ -12,6 +12,8 @@ import {
 } from "./fusion.ts";
 import type { LiveWireItem } from "./sources.ts";
 import { wireToIncidents } from "./sources.ts";
+import { compareNowLane } from "./live-rank.ts";
+import type { Incident } from "./types.ts";
 
 function item(partial: Partial<LiveWireItem> & Pick<LiveWireItem, "id" | "title">): LiveWireItem {
   return {
@@ -175,6 +177,13 @@ describe("corroboration", () => {
   it("treats 511 as official traffic, not CAD", () => {
     assert.equal(sourceFamily("traffic", "511NY"), "511");
   });
+
+  it("does not treat newsroom FB/X as official press", () => {
+    assert.equal(sourceFamily("social", "Facebook · CBS6"), "social");
+    assert.equal(sourceFamily("social", "X · Times Union"), "social");
+    assert.equal(sourceFamily("social", "Facebook · Albany PD"), "press");
+    assert.equal(sourceFamily("social", "X · Albany Police"), "press");
+  });
 });
 
 describe("scanner fusion honesty", () => {
@@ -295,5 +304,49 @@ describe("fusion upgrade QA", () => {
       geoPrecision: "street",
     });
     assert.equal(shouldFuse(scan, news), true);
+  });
+});
+
+function incident(partial: Partial<Incident> & Pick<Incident, "id" | "title">): Incident {
+  const { id, title, ...rest } = partial;
+  return {
+    id,
+    minutesAgo: 30,
+    occurredAt: new Date().toISOString(),
+    title,
+    type: "public-safety",
+    category: "other",
+    severity: "medium",
+    status: "active",
+    municipality: "Albany",
+    address: "Central Avenue",
+    lat: 42.65,
+    lng: -73.75,
+    agency: "Albany Police",
+    agencyAbbr: "APD",
+    description: partial.title,
+    sources: [],
+    verification: "developing",
+    origin: "live",
+    corroborationScore: 10,
+    ...rest,
+  };
+}
+
+describe("compareNowLane", () => {
+  it("prefers recent place-specific official agency social in Now lane", () => {
+    const generic = incident({
+      id: "generic",
+      title: "Traffic alert",
+      sources: [{ kind: "news", name: "News10", tier: "context", url: "https://example.test" }],
+    });
+    const official = incident({
+      id: "official",
+      title: "Traffic alert",
+      sources: [{ kind: "press", name: "Facebook · Albany PD", tier: "official", url: "https://example.test" }],
+      geoPrecision: "street",
+    });
+    const sorted = [generic, official].sort(compareNowLane);
+    assert.equal(sorted[0]!.id, "official");
   });
 });

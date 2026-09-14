@@ -7,8 +7,27 @@ const SEV_BOOST: Record<Severity, number> = {
   low: 0,
 };
 
+function isPlaceSpecific(inc: Incident): boolean {
+  const muni = (inc.municipality || "").toLowerCase().trim();
+  if (!muni || /^(albany county|capital district|countywide|unknown|area unknown)$/.test(muni)) return false;
+  const addr = (inc.address || "").toLowerCase().trim();
+  if (inc.geoPrecision && !["town", "county", "unknown"].includes(inc.geoPrecision)) return true;
+  return Boolean(addr && addr !== "area unknown" && addr !== muni);
+}
+
+function hasRecentOfficialAgencySocial(inc: Incident): boolean {
+  if (inc.minutesAgo > 120) return false;
+  return inc.sources.some(
+    (s) => s.tier === "official" && s.kind === "press" && /^(?:Facebook|X)\s+·\s+/i.test(s.name),
+  );
+}
+
 export function nowUrgencyScore(inc: Incident): number {
-  return Math.max(0, 180 - inc.minutesAgo) + (SEV_BOOST[inc.severity] ?? 0);
+  let s = Math.max(0, 180 - inc.minutesAgo) + (SEV_BOOST[inc.severity] ?? 0);
+  // Witness gap: when an official agency post is both recent and place-specific, prefer it slightly
+  // in the Now lane over generic/less-specific rows.
+  if (hasRecentOfficialAgencySocial(inc) && isPlaceSpecific(inc)) s += 12;
+  return s;
 }
 
 /**
