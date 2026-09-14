@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { decodeHtmlEntities } from "@/lib/html";
 
 function escapeXml(value: string): string {
   return String(value)
@@ -33,7 +34,7 @@ function renderCard(opts: {
   caveat: string;
   kind?: "incident" | "story";
 }): string {
-  const titleLines = wrap(opts.title, 36);
+  const titleLines = wrap(decodeHtmlEntities(opts.title), 36);
   const meta = [opts.place, opts.when].filter(Boolean).join(" · ");
   const caveat = opts.caveat || "Capital District public-safety feed";
   const titleTs = titleLines

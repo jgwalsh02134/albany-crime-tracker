@@ -2,12 +2,13 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ShareButton } from "@/components/share-button";
 import { relativeTime } from "@/lib/format";
+import { decodeHtmlEntities } from "@/lib/html";
 import { newsSharePayload } from "@/lib/share";
 import type { NewsStory } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function isBlotterStory(s: NewsStory): boolean {
-  return /\b(NYSP blotter|blotter)\b/i.test(s.outlet) || /\bnotable\s+dwi|week in review\b/i.test(s.title);
+  return /\b(NYSP blotter|blotter)\b/i.test(s.outlet) || /\bnotable\s+dwi|week in review\b/i.test(decodeHtmlEntities(s.title));
 }
 
 function timeLabel(minutesAgo: number, occurredAt: string): string {
@@ -93,7 +94,7 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
                   <Thumb src={s.image} label={s.outlet} className="aspect-video w-full" />
                   <div className="p-3 pr-12">
                     <p className="text-xs font-semibold uppercase tracking-wide text-cyan">{s.kicker}</p>
-                    <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-snug">{s.title}</h3>
+                    <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-snug">{decodeHtmlEntities(s.title)}</h3>
                     <p className="mt-1.5 text-xs text-subtle">
                       {s.outlet} · {timeLabel(s.minutesAgo, s.occurredAt)}
                       {s.municipality && s.municipality !== "Albany County" ? ` · ${s.municipality}` : ""}
@@ -157,7 +158,7 @@ function StoryList({
                     {timeLabel(s.minutesAgo, s.occurredAt)}
                   </span>
                 </div>
-                <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-snug">{s.title}</h3>
+                <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-snug">{decodeHtmlEntities(s.title)}</h3>
                 <p className="mt-1 truncate text-xs text-subtle">
                   {s.outlet}
                   {s.municipality && s.municipality !== "Albany County" ? ` · ${s.municipality}` : ""}
@@ -175,6 +176,8 @@ function StoryList({
 }
 
 function Hero({ story }: { story: NewsStory }) {
+  const title = decodeHtmlEntities(story.title);
+  const summary = story.summary ? decodeHtmlEntities(story.summary) : "";
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-surface">
       <a
@@ -190,9 +193,9 @@ function Hero({ story }: { story: NewsStory }) {
           </span>
         </div>
         <div className="p-3 pr-12">
-          <h2 className="text-lg font-semibold leading-snug tracking-tight">{story.title}</h2>
-          {story.summary ? (
-            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">{story.summary}</p>
+          <h2 className="text-lg font-semibold leading-snug tracking-tight">{title}</h2>
+          {summary ? (
+            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">{summary}</p>
           ) : null}
           <p className="mt-1.5 text-xs text-subtle">
             {story.outlet} · {timeLabel(story.minutesAgo, story.occurredAt)}

@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
 import { ogMetaTags } from "@/lib/og-meta";
 import { clockTime } from "@/lib/format";
+import { decodeHtmlEntities } from "@/lib/html";
 import { incidentDeepLink, sourceCaveat } from "@/lib/share";
 import { wireToIncidents, type LiveWireItem } from "@/lib/sources";
 import { useAppStore } from "@/lib/store";
@@ -58,7 +59,7 @@ function cardMetaFromIncident(incident: import("@/lib/types").Incident, id: stri
   const description = [place, when, caveat].filter(Boolean).join(" · ");
   return {
     id,
-    title: incident.title,
+    title: decodeHtmlEntities(incident.title),
     description,
     place,
     when,
@@ -82,11 +83,11 @@ function cardMetaFromStory(opts: {
   const when = opts.occurredAt ? clockTime(opts.occurredAt) : "";
   const place = [opts.municipality, opts.outlet].filter(Boolean).join(" · ") || opts.outlet || "News story";
   const description =
-    (opts.summary || "").trim().slice(0, 360) ||
+    decodeHtmlEntities((opts.summary || "").trim().slice(0, 360)) ||
     `Newsroom coverage from ${opts.outlet || "a local outlet"}. Open Albany Watch for context and the source for the full story.`;
   return {
     id: opts.id,
-    title: opts.title || "News story on Albany Watch",
+    title: decodeHtmlEntities(opts.title || "News story on Albany Watch"),
     description,
     place,
     when,
@@ -169,9 +170,14 @@ export const Route = createFileRoute("/i/$id")({
       found: false,
       incident: null,
     };
+    const clean = {
+      ...meta,
+      title: decodeHtmlEntities(meta.title),
+      description: decodeHtmlEntities(meta.description),
+    };
     const canonical = incidentDeepLink(meta.incident?.id ?? id, "https://app.albany.watch");
     return {
-      meta: ogMetaTags(meta, canonical),
+      meta: ogMetaTags(clean, canonical),
       links: [{ rel: "canonical", href: canonical }],
     };
   },
@@ -187,6 +193,8 @@ function DeepLinkPage() {
 
   const isStory = Boolean(meta.originalUrl) || meta.kind === "story" || /^https?:\/\//i.test(String(id ?? ""));
   const original = meta.originalUrl || (typeof id === "string" && /^https?:\/\//i.test(id) ? id : "");
+  const title = decodeHtmlEntities(meta.title);
+  const description = decodeHtmlEntities(meta.description);
 
   const openAppHref = useMemo(() => "/", []);
 
@@ -202,8 +210,8 @@ function DeepLinkPage() {
     return (
       <div className="mx-auto flex min-h-dvh w-full max-w-lg flex-col bg-bg px-4 pb-10 pt-8 text-fg">
         <p className="text-xs font-semibold uppercase tracking-wide text-subtle">Albany Watch</p>
-        <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-tight">{meta.title}</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted">{meta.description}</p>
+        <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-tight">{title}</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted">{description}</p>
         <div className="mt-4 rounded-xl border border-border bg-surface p-3">
           <p className="text-xs text-subtle">
             {[meta.place, meta.when].filter(Boolean).join(" · ")}

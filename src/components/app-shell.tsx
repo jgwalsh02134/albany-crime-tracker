@@ -19,6 +19,7 @@ import { MapView } from "@/components/views/map-view";
 import { MoreView } from "@/components/views/more-view";
 import { ScannerView } from "@/components/views/scanner-view";
 import { wireToIncidents, wireToScannerCalls, type LiveWireItem, type WireHealth } from "@/lib/sources";
+import { decodeHtmlEntities } from "@/lib/html";
 import { useAppStore } from "@/lib/store";
 import type { NewsStory, ViewId } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -277,9 +278,9 @@ function mergeWireNews(seed: NewsStory[], wire: LiveWireItem[]): NewsStory[] {
       id: w.id,
       minutesAgo: w.minutesAgo,
       occurredAt: w.publishedAt,
-      kicker: storyKicker(w.title),
-      title: w.title,
-      summary: w.summary || "Capital Region coverage.",
+      kicker: storyKicker(decodeHtmlEntities(w.title)),
+      title: decodeHtmlEntities(w.title),
+      summary: decodeHtmlEntities(w.summary || "Capital Region coverage."),
       outlet: w.outlet,
       municipality: w.municipality || w.address || "Capital Region",
       url: w.url,
