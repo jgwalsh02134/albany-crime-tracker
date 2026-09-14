@@ -101,8 +101,6 @@ const STATION: { re: RegExp; geo: Geo; road: string }[] = [
   { re: /capital|empire state/i, geo: { lat: 42.652, lng: -73.757 }, road: "Capitol" },
 ];
 
-type RoadRule = { re: RegExp; at: Record<string, Geo>; fallback: Geo };
-
 const I87: Record<string, Geo> = {
   Albany: { lat: 42.68, lng: -73.808 },
   Colonie: { lat: 42.748, lng: -73.785 },
@@ -130,9 +128,11 @@ const I90: Record<string, Geo> = {
   Schenectady: { lat: 42.8, lng: -73.96 },
 };
 
+type RoadRule = { re: RegExp; at: Record<string, Geo>; fallback: Geo; label: string };
+
 const ROADS: RoadRule[] = [
-  { re: /\bi-?87\b|\bnorthway\b|\binterstate 87\b/i, at: I87, fallback: I87.Colonie! },
-  { re: /\bi-?90\b|\binterstate 90\b|\bthruway\b/i, at: I90, fallback: I90.Albany! },
+  { re: /\bi-?87\b|\bnorthway\b|\binterstate 87\b/i, at: I87, fallback: I87.Colonie!, label: "I-87" },
+  { re: /\bi-?90\b|\binterstate 90\b|\bthruway\b/i, at: I90, fallback: I90.Albany!, label: "I-90 / Thruway" },
   {
     re: /\bi-?787\b|\binterstate 787\b/i,
     at: {
@@ -142,24 +142,25 @@ const ROADS: RoadRule[] = [
       Watervliet: { lat: 42.73, lng: -73.7 },
     },
     fallback: { lat: 42.68, lng: -73.735 },
+    label: "I-787",
   },
-  { re: /\bhoosick\b/i, at: { Troy: { lat: 42.732, lng: -73.673 }, Brunswick: { lat: 42.74, lng: -73.62 } }, fallback: { lat: 42.732, lng: -73.673 } },
-  { re: /\bny\s*7\b|\broute 7\b|\bstate route 7\b/i, at: { Colonie: { lat: 42.75, lng: -73.82 }, Niskayuna: { lat: 42.78, lng: -73.85 }, Troy: { lat: 42.73, lng: -73.68 } }, fallback: { lat: 42.75, lng: -73.82 } },
-  { re: /\bny\s*5\b|\broute 5\b|\bcentral (ave|avenue)\b/i, at: { Albany: { lat: 42.668, lng: -73.79 }, Colonie: { lat: 42.73, lng: -73.8 }, Schenectady: { lat: 42.81, lng: -73.94 } }, fallback: { lat: 42.7, lng: -73.8 } },
-  { re: /\bus\s*20\b|\bwestern (ave|avenue|tpk|turnpike)\b/i, at: { Albany: { lat: 42.66, lng: -73.78 }, Guilderland: { lat: 42.704, lng: -73.91 } }, fallback: { lat: 42.68, lng: -73.85 } },
-  { re: /\bny\s*32\b|\broute 32\b/i, at: { Albany: { lat: 42.64, lng: -73.76 }, "New Scotland": { lat: 42.62, lng: -73.9 }, Coeymans: { lat: 42.5, lng: -73.8 } }, fallback: { lat: 42.6, lng: -73.82 } },
-  { re: /\bny\s*43\b|\broute 43\b/i, at: { "Sand Lake": { lat: 42.63, lng: -73.6 }, Stephentown: { lat: 42.55, lng: -73.4 }, "East Greenbush": { lat: 42.59, lng: -73.68 } }, fallback: { lat: 42.61, lng: -73.64 } },
-  { re: /\bus\s*9\b|\broute 9\b/i, at: { Albany: { lat: 42.66, lng: -73.75 }, "Clifton Park": { lat: 42.86, lng: -73.78 }, Malta: { lat: 42.97, lng: -73.79 }, "Saratoga Springs": { lat: 43.08, lng: -73.78 }, Wilton: { lat: 43.15, lng: -73.74 } }, fallback: { lat: 42.86, lng: -73.78 } },
-  { re: /\bny\s*4\b|\broute 4\b|\brt\.?\s*4\b/i, at: { Colonie: { lat: 42.75, lng: -73.76 }, Latham: { lat: 42.75, lng: -73.76 }, Troy: { lat: 42.73, lng: -73.69 }, "North Greenbush": { lat: 42.74, lng: -73.68 } }, fallback: { lat: 42.75, lng: -73.76 } },
-  { re: /\bvischer ferry\b/i, at: { "Clifton Park": { lat: 42.86, lng: -73.82 } }, fallback: { lat: 42.86, lng: -73.82 } },
-  { re: /\bkinns\b/i, at: { "Clifton Park": { lat: 42.858, lng: -73.79 } }, fallback: { lat: 42.858, lng: -73.79 } },
-  { re: /\bwolf\b/i, at: { Colonie: { lat: 42.74, lng: -73.8 } }, fallback: { lat: 42.74, lng: -73.8 } },
-  { re: /\bwashington (ave|avenue)\b/i, at: { Albany: { lat: 42.66, lng: -73.77 } }, fallback: { lat: 42.66, lng: -73.77 } },
-  { re: /\bdelaware (ave|avenue)\b/i, at: { Albany: { lat: 42.64, lng: -73.77 }, Bethlehem: { lat: 42.6, lng: -73.82 } }, fallback: { lat: 42.62, lng: -73.79 } },
-  { re: /\bnew scotland\b/i, at: { Albany: { lat: 42.65, lng: -73.78 }, "New Scotland": { lat: 42.62, lng: -73.94 } }, fallback: { lat: 42.64, lng: -73.82 } },
-  { re: /\bbroadway\b/i, at: { Albany: { lat: 42.65, lng: -73.75 }, Menands: { lat: 42.69, lng: -73.72 }, Schenectady: { lat: 42.81, lng: -73.94 } }, fallback: { lat: 42.65, lng: -73.75 } },
-  { re: /\bpearl\b/i, at: { Albany: { lat: 42.65, lng: -73.75 } }, fallback: { lat: 42.65, lng: -73.75 } },
-  { re: /\blark\b/i, at: { Albany: { lat: 42.655, lng: -73.762 } }, fallback: { lat: 42.655, lng: -73.762 } },
+  { re: /\bhoosick\b/i, at: { Troy: { lat: 42.732, lng: -73.673 }, Brunswick: { lat: 42.74, lng: -73.62 } }, fallback: { lat: 42.732, lng: -73.673 }, label: "Hoosick St" },
+  { re: /\bny\s*7\b|\broute 7\b|\bstate route 7\b/i, at: { Colonie: { lat: 42.75, lng: -73.82 }, Niskayuna: { lat: 42.78, lng: -73.85 }, Troy: { lat: 42.73, lng: -73.68 } }, fallback: { lat: 42.75, lng: -73.82 }, label: "NY 7" },
+  { re: /\bny\s*5\b|\broute 5\b|\bcentral (ave|avenue)\b/i, at: { Albany: { lat: 42.668, lng: -73.79 }, Colonie: { lat: 42.73, lng: -73.8 }, Schenectady: { lat: 42.81, lng: -73.94 } }, fallback: { lat: 42.7, lng: -73.8 }, label: "Central Ave / NY 5" },
+  { re: /\bus\s*20\b|\broute\s*20\b|\brt\.?\s*20\b|\bwestern (ave|avenue|tpk|turnpike)\b/i, at: { Albany: { lat: 42.66, lng: -73.78 }, Guilderland: { lat: 42.704, lng: -73.91 } }, fallback: { lat: 42.68, lng: -73.85 }, label: "Western Ave / US 20" },
+  { re: /\bny\s*32\b|\broute 32\b/i, at: { Albany: { lat: 42.64, lng: -73.76 }, "New Scotland": { lat: 42.62, lng: -73.9 }, Coeymans: { lat: 42.5, lng: -73.8 } }, fallback: { lat: 42.6, lng: -73.82 }, label: "NY 32" },
+  { re: /\bny\s*43\b|\broute 43\b/i, at: { "Sand Lake": { lat: 42.63, lng: -73.6 }, Stephentown: { lat: 42.55, lng: -73.4 }, "East Greenbush": { lat: 42.59, lng: -73.68 } }, fallback: { lat: 42.61, lng: -73.64 }, label: "NY 43" },
+  { re: /\bus\s*9\b|\broute 9\b/i, at: { Albany: { lat: 42.66, lng: -73.75 }, "Clifton Park": { lat: 42.86, lng: -73.78 }, Malta: { lat: 42.97, lng: -73.79 }, "Saratoga Springs": { lat: 43.08, lng: -73.78 }, Wilton: { lat: 43.15, lng: -73.74 } }, fallback: { lat: 42.86, lng: -73.78 }, label: "US 9" },
+  { re: /\bny\s*4\b|\broute 4\b|\brt\.?\s*4\b/i, at: { Colonie: { lat: 42.75, lng: -73.76 }, Latham: { lat: 42.75, lng: -73.76 }, Troy: { lat: 42.73, lng: -73.69 }, "North Greenbush": { lat: 42.74, lng: -73.68 } }, fallback: { lat: 42.75, lng: -73.76 }, label: "NY 4" },
+  { re: /\bvischer ferry\b/i, at: { "Clifton Park": { lat: 42.86, lng: -73.82 } }, fallback: { lat: 42.86, lng: -73.82 }, label: "Vischer Ferry Rd" },
+  { re: /\bkinns\b/i, at: { "Clifton Park": { lat: 42.858, lng: -73.79 } }, fallback: { lat: 42.858, lng: -73.79 }, label: "Kinns Rd" },
+  { re: /\bwolf\b/i, at: { Colonie: { lat: 42.74, lng: -73.8 } }, fallback: { lat: 42.74, lng: -73.8 }, label: "Wolf Rd" },
+  { re: /\bwashington (ave|avenue)\b/i, at: { Albany: { lat: 42.66, lng: -73.77 } }, fallback: { lat: 42.66, lng: -73.77 }, label: "Washington Ave" },
+  { re: /\bdelaware (ave|avenue)\b/i, at: { Albany: { lat: 42.64, lng: -73.77 }, Bethlehem: { lat: 42.6, lng: -73.82 } }, fallback: { lat: 42.62, lng: -73.79 }, label: "Delaware Ave" },
+  { re: /\bnew scotland\b/i, at: { Albany: { lat: 42.65, lng: -73.78 }, "New Scotland": { lat: 42.62, lng: -73.94 } }, fallback: { lat: 42.64, lng: -73.82 }, label: "New Scotland Ave" },
+  { re: /\bbroadway\b/i, at: { Albany: { lat: 42.65, lng: -73.75 }, Menands: { lat: 42.69, lng: -73.72 }, Schenectady: { lat: 42.81, lng: -73.94 } }, fallback: { lat: 42.65, lng: -73.75 }, label: "Broadway" },
+  { re: /\bpearl\b/i, at: { Albany: { lat: 42.65, lng: -73.75 } }, fallback: { lat: 42.65, lng: -73.75 }, label: "Pearl St" },
+  { re: /\blark\b/i, at: { Albany: { lat: 42.655, lng: -73.762 } }, fallback: { lat: 42.655, lng: -73.762 }, label: "Lark St" },
 ];
 
 /** Known Capital District streets — midpoints only, never invented house pins. */
@@ -525,6 +526,13 @@ export function locateSpoken(text: string, municipality: string): LocatedPin {
   }
   for (const lm of LANDMARKS) {
     if (lm.re.test(text)) return { geo: lm.geo, road: lm.label, precision: "landmark" };
+  }
+  const roadRule = ROADS.find((r) => r.re.test(text));
+  if (roadRule) {
+    const place = placeFromText(text)?.name || canonicalTown(municipality);
+    const key = place ? canonicalTown(place) : "";
+    const geo = (place && (roadRule.at[key] || roadRule.at[place])) ? (roadRule.at[key] ?? roadRule.at[place]!) : roadRule.fallback;
+    return { geo, road: roadRule.label, precision: "road" };
   }
   const place = placeFromText(text);
   if (place) {

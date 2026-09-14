@@ -52,6 +52,18 @@ describe("street-level locateSpoken", () => {
     }
   });
 
+  it("pins route-number corridors (NY 7 / US 20) as road precision, not town centroids", () => {
+    const ny7 = locateSpoken("PI crash on NY 7 near the ramp", "Colonie");
+    assert.equal(ny7.precision, "road");
+    assert.match(ny7.road, /\bNY 7\b/i);
+    assert.ok(ny7.geo.lat > 42.65 && ny7.geo.lat < 42.9);
+
+    const us20 = locateSpoken("crash on Route 20 westbound", "Albany");
+    assert.equal(us20.precision, "road");
+    assert.match(us20.road, /\bUS 20\b|\bWestern\b/i);
+    assert.ok(Math.abs(us20.geo.lat - 42.6526) > 0.004 || Math.abs(us20.geo.lng - -73.7562) > 0.01);
+  });
+
   it("uses county centroid + unknown precision when no place cues", () => {
     const pin = locateSpoken("copy that 10-4", "");
     assert.equal(pin.precision, "county");

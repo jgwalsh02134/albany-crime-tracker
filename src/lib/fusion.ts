@@ -188,6 +188,52 @@ function hasPin(item: FuseItem): boolean {
   return typeof item.lat === "number" && typeof item.lng === "number" && Number.isFinite(item.lat) && Number.isFinite(item.lng);
 }
 
+function isApproxGeoPrecision(p: FuseItem["geoPrecision"] | undefined): boolean {
+  return !p || p === "town" || p === "county" || p === "unknown";
+}
+
+function streetKeys(item: FuseItem): Set<string> {
+  const s = `${item.title} ${item.address ?? ""} ${item.summary ?? ""}`.toLowerCase();
+  const keys = new Set<string>();
+
+  // Corridor streets (very common in early reporting)
+  if (/\bwolf\b/.test(s)) keys.add("wolf");
+  if (/\bpearl\b/.test(s)) keys.add("pearl");
+  if (/\bdelaware\b/.test(s)) keys.add("delaware");
+  if (/\bwashington\b/.test(s)) keys.add("washington");
+  if (/\bmadison\b/.test(s)) keys.add("madison");
+  if (/\bbroadway\b/.test(s)) keys.add("broadway");
+  if (/\blark\b/.test(s)) keys.add("lark");
+  if (/\bhoosick\b/.test(s)) keys.add("hoosick");
+  if (/\bcentral\b/.test(s) && !/\bcentral\s+(park|district|region)\b/.test(s)) keys.add("central");
+  if (/\bwestern\b/.test(s) && !/\bwestern\s+(district|region)\b/.test(s)) keys.add("western");
+
+  // Route numbers / highway labels
+  if (/\bi-?\s*87\b|\bnorthway\b/.test(s)) keys.add("i87");
+  if (/\bi-?\s*90\b|\bthruway\b/.test(s)) keys.add("i90");
+  if (/\bi-?\s*787\b/.test(s)) keys.add("i787");
+  if (/\bny\s*5\b|\broute\s*5\b/.test(s)) keys.add("ny5");
+  if (/\bny\s*7\b|\broute\s*7\b/.test(s)) keys.add("ny7");
+  if (/\bny\s*4\b|\broute\s*4\b|\brt\.?\s*4\b/.test(s)) keys.add("ny4");
+  if (/\bny\s*32\b|\broute\s*32\b/.test(s)) keys.add("ny32");
+  if (/\bny\s*43\b|\broute\s*43\b/.test(s)) keys.add("ny43");
+  if (/\bus\s*20\b|\broute\s*20\b/.test(s)) keys.add("us20");
+
+  return keys;
+}
+
+function sharesStreetKey(a: FuseItem, b: FuseItem): { shared: boolean; common: boolean } {
+  const ka = streetKeys(a);
+  const kb = streetKeys(b);
+  for (const k of ka) {
+    if (!kb.has(k)) continue;
+    // Central/Western are extremely common; require stronger corroboration.
+    const common = k === "central" || k === "western";
+    return { shared: true, common };
+  }
+  return { shared: false, common: false };
+}
+
 function geoClose(a: FuseItem, b: FuseItem): boolean {
   const ma = normMuni(a.municipality);
   const mb = normMuni(b.municipality);
@@ -197,6 +243,10 @@ function geoClose(a: FuseItem, b: FuseItem): boolean {
     const km = haversineKm({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! });
     if (km <= 1.6) return true;
     if (km <= 4 && ma && mb && ma === mb && !genericA) return true;
+    // When one pin is explicitly approximate (town centroid / unknown), allow a wider in-town radius.
+    if (km <= 12 && ma && mb && ma === mb && !genericA && (isApproxGeoPrecision(a.geoPrecision) || isApproxGeoPrecision(b.geoPrecision))) {
+      return true;
+    }
     return false;
   }
   if (ma && mb && ma === mb && !genericA && !genericB) return true;
@@ -242,6 +292,8 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
     // address/muni strings are weak. This prevents "scanner then newsroom" upgrades from
     // showing as duplicates while still blocking muni-only dissolves.
     if (place && hit >= 2) return true;
+    const street = sharesStreetKey(a, b);
+    if (street.shared) return hit >= (street.common ? 2 : 1);
     return hit >= 3 && Boolean(extractStreetHint(a) && extractStreetHint(b));
   }
   if (place) return hit >= 1 || ca.type === cb.type;

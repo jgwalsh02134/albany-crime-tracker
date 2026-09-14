@@ -266,4 +266,34 @@ describe("fusion upgrade QA", () => {
     assert.ok(incidents[0]!.memberIds?.includes("scan-early"));
     assert.ok(incidents[0]!.memberIds?.includes("news-later"));
   });
+
+  it("fuses weak-place scanner + later news when a corridor street is shared (even if muni is unknown)", () => {
+    const scan = item({
+      id: "scan-weak",
+      title: "Crash on Wolf Road with injuries",
+      summary: "Early report — location unclear",
+      kind: "scanner",
+      outlet: "Scanner",
+      municipality: "Unknown",
+      address: "area unknown",
+      minutesAgo: 18,
+      lat: 42.7179, // town-ish centroid (approx)
+      lng: -73.8373,
+      geoPrecision: "town",
+    });
+    const news = item({
+      id: "news-wolf",
+      title: "Wolf Road crash backs up traffic in Latham",
+      summary: "Police say a crash happened on Wolf Road in Latham.",
+      kind: "news",
+      outlet: "CBS6",
+      municipality: "Colonie",
+      address: "Wolf Road",
+      minutesAgo: 75,
+      lat: 42.747,
+      lng: -73.759,
+      geoPrecision: "street",
+    });
+    assert.equal(shouldFuse(scan, news), true);
+  });
 });
