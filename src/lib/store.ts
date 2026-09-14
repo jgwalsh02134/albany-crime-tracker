@@ -13,6 +13,11 @@ import {
 
 type Theme = "dark" | "light";
 
+export type MapTimeWindowHours = 1 | 6 | 24 | 48;
+export type MapKind = "crime" | "crash" | "fire" | "traffic";
+export type MapSourceGroup = "official" | "news" | "scanner" | "social";
+export type MapVerification = "confirmed" | "developing" | "scanner";
+
 type AppState = {
   view: ViewId;
   homeMode: HomeMode;
@@ -23,6 +28,11 @@ type AppState = {
   sourceLens: SourceLens;
   mapCategory: Category | "all";
   mapHours: number;
+  mapWindowHours: MapTimeWindowHours;
+  mapKinds: MapKind[];
+  mapSourceGroups: MapSourceGroup[];
+  mapVerifications: MapVerification[];
+  mapShowApprox: boolean;
   heatmap: boolean;
   selectedId: string | null;
   filterOpen: boolean;
@@ -37,6 +47,12 @@ type AppState = {
   setSourceLens: (s: SourceLens) => void;
   setMapCategory: (c: Category | "all") => void;
   setMapHours: (h: number) => void;
+  setMapWindowHours: (h: MapTimeWindowHours) => void;
+  setMapKinds: (k: MapKind[]) => void;
+  setMapSourceGroups: (g: MapSourceGroup[]) => void;
+  setMapVerifications: (v: MapVerification[]) => void;
+  setMapShowApprox: (o: boolean) => void;
+  resetMapFilters: () => void;
   setHeatmap: (h: boolean) => void;
   selectIncident: (id: string | null) => void;
   setFilterOpen: (o: boolean) => void;
@@ -64,6 +80,11 @@ export const useAppStore = create<AppState>()((set, get) => ({
   sourceLens: "all",
   mapCategory: "all",
   mapHours: 3,
+  mapWindowHours: 6,
+  mapKinds: ["crime", "crash", "fire", "traffic"],
+  mapSourceGroups: ["official", "news", "scanner", "social"],
+  mapVerifications: ["confirmed", "developing", "scanner"],
+  mapShowApprox: true,
   heatmap: false,
   selectedId: null,
   filterOpen: false,
@@ -85,6 +106,19 @@ export const useAppStore = create<AppState>()((set, get) => ({
   setSourceLens: (sourceLens) => set({ sourceLens }),
   setMapCategory: (mapCategory) => set({ mapCategory }),
   setMapHours: (mapHours) => set({ mapHours }),
+  setMapWindowHours: (mapWindowHours) => set({ mapWindowHours }),
+  setMapKinds: (mapKinds) => set({ mapKinds }),
+  setMapSourceGroups: (mapSourceGroups) => set({ mapSourceGroups }),
+  setMapVerifications: (mapVerifications) => set({ mapVerifications }),
+  setMapShowApprox: (mapShowApprox) => set({ mapShowApprox }),
+  resetMapFilters: () =>
+    set({
+      mapWindowHours: 6,
+      mapKinds: ["crime", "crash", "fire", "traffic"],
+      mapSourceGroups: ["official", "news", "scanner", "social"],
+      mapVerifications: ["confirmed", "developing", "scanner"],
+      mapShowApprox: true,
+    }),
   setHeatmap: (heatmap) => set({ heatmap }),
   selectIncident: (selectedId) => set({ selectedId }),
   setFilterOpen: (filterOpen) => set({ filterOpen }),

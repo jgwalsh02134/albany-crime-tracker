@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { List, LocateFixed, Radio } from "lucide-react";
+import Supercluster from "supercluster";
+import { Drawer } from "vaul";
+import { Filter, Home, List, LocateFixed, Maximize2, Radio } from "lucide-react";
 import { ShareButton } from "@/components/share-button";
 import { Button } from "@/components/ui/button";
 import { lastHours } from "@/lib/data";
 import { isApproxPrecision } from "@/lib/geo";
+import { incidentMatchesSourceGroup, incidentVerification, isOfficialIncident, mapKindOf } from "@/lib/map";
 import { mapSharePayload } from "@/lib/share";
 import { clockTime, severityLabel, typeLabel } from "@/lib/format";
 import { incidentVisible, useAppStore } from "@/lib/store";
-import { type Category, type Incident, type Severity } from "@/lib/types";
+import type { MapKind, MapSourceGroup, MapTimeWindowHours, MapVerification } from "@/lib/store";
+import { type Incident, type Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
 
@@ -24,13 +28,6 @@ const DOT: Record<Severity, string> = {
   medium: "bg-sev-medium",
   low: "bg-sev-low",
 };
-
-const FILTERS: { id: Category | "all"; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "violent", label: "Violent" },
-  { id: "property", label: "Property" },
-  { id: "other", label: "Other" },
-];
 
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
 
@@ -88,82 +85,123 @@ function typeGlyph(type: string): string {
 
 const SEV_RANK: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
-type PinCluster = { lat: number; lng: number; items: Incident[] };
-
-/** Grid-cluster overlapping pins by rounding lat/lng to ~4 decimals (~11 m). */
-function clusterPins(incs: Incident[]): PinCluster[] {
-  const buckets = new Map<string, PinCluster>();
-  for (const inc of incs) {
-    const key = `${inc.lat.toFixed(4)},${inc.lng.toFixed(4)}`;
-    let bucket = buckets.get(key);
-    if (!bucket) {
-      bucket = { lat: Number(inc.lat.toFixed(4)), lng: Number(inc.lng.toFixed(4)), items: [] };
-      buckets.set(key, bucket);
-    }
-    bucket.items.push(inc);
-  }
-  return [...buckets.values()];
-}
-
-function pickPrimary(items: Incident[]): Incident {
-  return [...items].sort((a, b) => {
-    const sev = SEV_RANK[a.severity] - SEV_RANK[b.severity];
-    if (sev !== 0) return sev;
-    return b.occurredAt.localeCompare(a.occurredAt);
-  })[0]!;
-}
-
 const chip =
   "h-11 shrink-0 snap-start rounded-full px-3.5 text-sm font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent";
 
-export function MapView({ incidents, active }: { incidents: Incident[]; active: boolean }) {
+type ClusterProps = {
+  kind: "incident" | "cluster";
+  incidentId?: string;
+  sevRank: number;
+  official: 0 | 1;
+  scanner: 0 | 1;
+  approx: 0 | 1;
+  count: number;
+};
+
+function windowLabel(hours: MapTimeWindowHours): string {
+  return hours === 1 ? "1h" : hours === 6 ? "6h" : hours === 24 ? "24h" : "48h";
+}
+
+function kindLabel(kind: MapKind): string {
+  switch (kind) {
+    case "crime":
+      return "Crime";
+    case "crash":
+      return "Crash";
+    case "fire":
+      return "Fire";
+    case "traffic":
+      return "Traffic";
+  }
+}
+
+function sourceLabel(group: MapSourceGroup): string {
+  switch (group) {
+    case "official":
+      return "Official";
+    case "news":
+      return "News";
+    case "scanner":
+      return "Scanner";
+    case "social":
+      return "Social";
+  }
+}
+
+function verificationLabel(v: MapVerification): string {
+  return v === "confirmed" ? "Confirmed" : v === "developing" ? "Developing" : "Scanner unconfirmed";
+}
+
+function clusterBadgeHtml(n: number, color: string, tone: "official" | "scanner" | "mixed") {
+  const tag =
+    tone === "official" ? "✓" : tone === "scanner" ? "…" : "";
+  const label = n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
+  return `<span class="act-pin-badge-inner" style="--m:${color}">${label}${tag ? `<span style="margin-left:2px;opacity:.9">${tag}</span>` : ""}</span>`;
+}
+
+export function MapView({
+  incidents,
+  active,
+  wireLive,
+  wireHealth,
+}: {
+  incidents: Incident[];
+  active: boolean;
+  wireLive: boolean;
+  wireHealth: { daytimePipesFailing?: boolean; daytimePipesDry?: boolean } | null;
+}) {
   const el = useRef<HTMLDivElement>(null);
   const listToggle = useRef<HTMLButtonElement>(null);
   const mapRef = useRef<{
     map: import("leaflet").Map;
     layer: import("leaflet").LayerGroup;
     L: typeof import("leaflet");
+    renderer: import("leaflet").Renderer;
   } | null>(null);
+  const indexRef = useRef<Supercluster<ClusterProps> | null>(null);
+  const byIdRef = useRef<Map<string, Incident>>(new Map());
+  const rafRef = useRef<number | null>(null);
+  const [mapFilterOpen, setMapFilterOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [showApprox, setShowApprox] = useState(false);
+  const [locateErr, setLocateErr] = useState<string>("");
 
   const severities = useAppStore((s) => s.severities);
   const municipalities = useAppStore((s) => s.municipalities);
   const areaFilter = useAppStore((s) => s.areaFilter);
   const sourceLens = useAppStore((s) => s.sourceLens);
-  const mapCategory = useAppStore((s) => s.mapCategory);
-  const setMapCategory = useAppStore((s) => s.setMapCategory);
-  const mapHours = useAppStore((s) => s.mapHours);
-  const setMapHours = useAppStore((s) => s.setMapHours);
+  const mapWindowHours = useAppStore((s) => s.mapWindowHours);
+  const setMapWindowHours = useAppStore((s) => s.setMapWindowHours);
+  const mapKinds = useAppStore((s) => s.mapKinds);
+  const setMapKinds = useAppStore((s) => s.setMapKinds);
+  const mapSourceGroups = useAppStore((s) => s.mapSourceGroups);
+  const setMapSourceGroups = useAppStore((s) => s.setMapSourceGroups);
+  const mapVerifications = useAppStore((s) => s.mapVerifications);
+  const setMapVerifications = useAppStore((s) => s.setMapVerifications);
+  const mapShowApprox = useAppStore((s) => s.mapShowApprox);
+  const setMapShowApprox = useAppStore((s) => s.setMapShowApprox);
+  const resetMapFilters = useAppStore((s) => s.resetMapFilters);
   const select = useAppStore((s) => s.selectIncident);
   const selectedId = useAppStore((s) => s.selectedId);
   const setView = useAppStore((s) => s.setView);
 
-  const visible = useMemo(
-    () =>
-      lastHours(
-        incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens })),
-        mapHours,
-      )
-        .filter((i) => mapCategory === "all" || i.category === mapCategory)
-        .filter((i) => showApprox || !isApproxPrecision(i.geoPrecision)),
-    [incidents, severities, municipalities, areaFilter, sourceLens, mapHours, mapCategory, showApprox],
+  const base = useMemo(
+    () => incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens })),
+    [incidents, severities, municipalities, areaFilter, sourceLens],
   );
 
-  const recent = useMemo(() => lastHours(visible, Math.min(mapHours, 3)), [visible, mapHours]);
+  const inWindow = useMemo(() => lastHours(base, mapWindowHours), [base, mapWindowHours]);
 
-  const approxHidden = useMemo(
-    () =>
-      lastHours(
-        incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens })),
-        mapHours,
-      ).filter(
-        (i) =>
-          (mapCategory === "all" || i.category === mapCategory) && isApproxPrecision(i.geoPrecision),
-      ).length,
-    [incidents, severities, municipalities, areaFilter, sourceLens, mapHours, mapCategory],
-  );
+  const filtered = useMemo(() => {
+    return inWindow
+      .filter((i) => mapKinds.includes(mapKindOf(i)))
+      .filter((i) => mapVerifications.includes(incidentVerification(i)))
+      .filter((i) => mapSourceGroups.some((g) => incidentMatchesSourceGroup(i, g)))
+      .filter((i) => mapShowApprox || !isApproxPrecision(i.geoPrecision));
+  }, [inWindow, mapKinds, mapVerifications, mapSourceGroups, mapShowApprox]);
+
+  const approxHidden = useMemo(() => inWindow.filter((i) => isApproxPrecision(i.geoPrecision)).length, [inWindow]);
+  const approxShown = useMemo(() => filtered.filter((i) => isApproxPrecision(i.geoPrecision)).length, [filtered]);
 
   // Light basemap only — never recreate on theme change.
   useEffect(() => {
@@ -182,13 +220,15 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         maxZoom: 19,
         maxNativeZoom: 16,
       };
-      L.tileLayer(esriUrl("Canvas/World_Light_Gray_Base"), {
+      // Dark basemap to match app chrome; no keys.
+      L.tileLayer(esriUrl("Canvas/World_Dark_Gray_Base"), {
         ...tiles,
         attribution: "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, FAO, NOAA, USGS",
       }).addTo(map);
-      L.tileLayer(esriUrl("Canvas/World_Light_Gray_Reference"), tiles).addTo(map);
+      L.tileLayer(esriUrl("Canvas/World_Dark_Gray_Reference"), tiles).addTo(map);
+      const renderer = L.canvas({ padding: 0.3 });
       const layer = L.layerGroup().addTo(map);
-      mapRef.current = { map, layer, L };
+      mapRef.current = { map, layer, L, renderer };
       setReady(true);
     })();
     return () => {
@@ -203,138 +243,202 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
     if (!active || !ready) return;
     const ctx = mapRef.current;
     const map = ctx?.map;
-    const L = ctx?.L;
     const id = window.setTimeout(() => {
       map?.invalidateSize();
-      if (!selectedId && L && recent.length) {
-        const bounds = L.latLngBounds(recent.map((i) => [i.lat, i.lng] as [number, number]));
-        if (bounds.isValid()) map?.fitBounds(bounds.pad(0.22), { maxZoom: 14, animate: false });
-      } else if (!selectedId && L && visible.length) {
-        const bounds = L.latLngBounds(visible.map((i) => [i.lat, i.lng] as [number, number]));
-        if (bounds.isValid()) map?.fitBounds(bounds.pad(0.18), { maxZoom: 13, animate: false });
-      }
+      if (!selectedId) fitCounty();
     }, 80);
     const id2 = window.setTimeout(() => map?.invalidateSize(), 300);
     return () => {
       window.clearTimeout(id);
       window.clearTimeout(id2);
     };
-  }, [active, ready, selectedId, visible, recent, mapHours]);
+  }, [active, ready, selectedId]);
+
+  function fitCounty() {
+    const ctx = mapRef.current;
+    if (!ctx) return;
+    const { map, L } = ctx;
+    // Albany County-ish bbox (plus near neighbors for a better first impression).
+    const bounds = L.latLngBounds(
+      [42.35, -74.35],
+      [43.05, -73.45],
+    );
+    map.fitBounds(bounds.pad(0.04), { maxZoom: 11, animate: false });
+  }
+
+  function fitResults() {
+    const ctx = mapRef.current;
+    if (!ctx) return;
+    const { map, L } = ctx;
+    if (!filtered.length) return fitCounty();
+    const bounds = L.latLngBounds(filtered.map((i) => [i.lat, i.lng] as [number, number]));
+    if (bounds.isValid()) map.fitBounds(bounds.pad(0.16), { maxZoom: 14, animate: true });
+  }
+
+  function buildIndex(list: Incident[]) {
+    const index = new Supercluster<ClusterProps>({
+      radius: 62,
+      maxZoom: 18,
+      minZoom: 0,
+      map: (p) => ({
+        kind: "incident",
+        sevRank: p.sevRank,
+        official: p.official,
+        scanner: p.scanner,
+        approx: p.approx,
+        count: 1,
+      }),
+      reduce: (acc, p) => {
+        acc.kind = "cluster";
+        acc.sevRank = Math.min(acc.sevRank, p.sevRank);
+        acc.official = acc.official || p.official ? 1 : 0;
+        acc.scanner = acc.scanner || p.scanner ? 1 : 0;
+        acc.approx = acc.approx || p.approx ? 1 : 0;
+        acc.count += p.count;
+      },
+    });
+
+    const byId = new Map<string, Incident>();
+    const points = list.map((inc) => {
+      byId.set(inc.id, inc);
+      const official = isOfficialIncident(inc) ? 1 : 0;
+      const scanner = incidentVerification(inc) === "scanner" ? 1 : 0;
+      const approx = isApproxPrecision(inc.geoPrecision) ? 1 : 0;
+      return {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [inc.lng, inc.lat] },
+        properties: {
+          kind: "incident",
+          incidentId: inc.id,
+          sevRank: SEV_RANK[inc.severity] ?? 3,
+          official,
+          scanner,
+          approx,
+          count: 1,
+        },
+      };
+    });
+    index.load(points);
+    indexRef.current = index;
+    byIdRef.current = byId;
+  }
+
+  function scheduleRender() {
+    if (!ready || !active) return;
+    if (rafRef.current != null) return;
+    rafRef.current = window.requestAnimationFrame(() => {
+      rafRef.current = null;
+      renderClusters();
+    });
+  }
+
+  function renderClusters() {
+    const ctx = mapRef.current;
+    const index = indexRef.current;
+    if (!ctx || !index) return;
+    const { map, layer, L, renderer } = ctx;
+    layer.clearLayers();
+    const b = map.getBounds();
+    const bbox: [number, number, number, number] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+    const z = Math.round(map.getZoom());
+    const clusters = index.getClusters(bbox, z) as any[];
+    const stroke = cssVar("--fg", "#0a1128");
+
+    for (const f of clusters) {
+      const [lng, lat] = f.geometry.coordinates;
+      const p = f.properties as any;
+      const isCluster = Boolean(p.cluster);
+      if (isCluster) {
+        const count = Number(p.point_count) || 0;
+        const sevRank = Number(p.sevRank) || 3;
+        const sev = (Object.keys(SEV_RANK).find((k) => SEV_RANK[k as Severity] === sevRank) as Severity) || "low";
+        const color = pinColor(sev);
+        const tone: "official" | "scanner" | "mixed" =
+          p.official ? (p.scanner ? "mixed" : "official") : p.scanner ? "scanner" : "mixed";
+        const icon = L.divIcon({
+          className: "act-pin-badge",
+          html: clusterBadgeHtml(count, color, tone),
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+        const m = L.marker([lat, lng], { icon, interactive: true, keyboard: true });
+        m.on("click", () => {
+          const nextZ = Math.min(18, index.getClusterExpansionZoom(p.cluster_id));
+          map.flyTo([lat, lng], nextZ, { animate: true, duration: 0.6 });
+        });
+        m.addTo(layer);
+        const node = m.getElement();
+        if (node) {
+          node.setAttribute("role", "img");
+          node.setAttribute("aria-label", `${count} incidents in this area. Activate to zoom in.`);
+        }
+        continue;
+      }
+
+      const id = String(p.incidentId || "");
+      const inc = byIdRef.current.get(id);
+      if (!inc) continue;
+      const selected = inc.id === selectedId;
+      const approx = isApproxPrecision(inc.geoPrecision);
+      const color = pinColor(inc.severity);
+      const weight = selected ? 3 : approx ? 1.5 : inc.severity === "critical" || inc.severity === "high" ? 3 : 2;
+      const marker = L.circleMarker([lat, lng], {
+        radius: selected ? 12 : approx ? 9.5 : 9,
+        color: selected ? stroke : color,
+        weight,
+        fillColor: color,
+        fillOpacity: approx ? 0.32 : 0.92,
+        dashArray: approx ? "4 3" : undefined,
+        className: approx
+          ? `act-incident-pin act-pin-approx act-pin-${inc.severity}`
+          : `act-incident-pin act-pin-precise act-pin-${inc.severity}`,
+        renderer,
+        interactive: true,
+        keyboard: true,
+      });
+      marker.bindTooltip(tipNode(inc), { direction: "top", opacity: 1, className: "act-tip", sticky: true });
+      marker.on("click", () => select(inc.id));
+      marker.addTo(layer);
+      const node = marker.getElement();
+      if (node) {
+        node.setAttribute("role", "img");
+        node.setAttribute("aria-label", pinLabel(inc));
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!ready) return;
+    buildIndex(filtered);
+    scheduleRender();
+  }, [ready, filtered]);
+
+  useEffect(() => {
+    if (!ready || !active) return;
+    scheduleRender();
+  }, [ready, active, selectedId]);
 
   useEffect(() => {
     const ctx = mapRef.current;
     if (!ctx || !ready) return;
-    const { L, layer, map } = ctx;
-    layer.clearLayers();
-    const pts: [number, number][] = [];
-    const stroke = cssVar("--fg", "#1a1f2e");
-    const clusters = clusterPins(visible);
+    const onMove = () => scheduleRender();
+    ctx.map.on("moveend zoomend", onMove);
+    return () => {
+      ctx.map.off("moveend zoomend", onMove);
+    };
+  }, [ready, active]);
 
-    for (const cluster of clusters) {
-      const primary = pickPrimary(cluster.items);
-      const selected = cluster.items.some((i) => i.id === selectedId);
-      const approx = isApproxPrecision(primary.geoPrecision);
-      const multi = cluster.items.length > 1;
-      const color = pinColor(primary.severity);
-      const r = selected ? 13 : multi ? 12 : approx ? 10 : 9;
-
-      if (multi) {
-        const icon = L.divIcon({
-          className: "act-pin-badge",
-          html: `<span class="act-pin-badge-inner" style="--m:${color}">${cluster.items.length}</span>`,
-          iconSize: [26, 26],
-          iconAnchor: [13, 13],
-        });
-        const badge = L.marker([cluster.lat, cluster.lng], { icon, interactive: true, keyboard: true });
-        const tip = document.createElement("div");
-        tip.innerHTML = "";
-        const head = document.createElement("p");
-        head.className = "act-tip-title";
-        head.textContent = `${cluster.items.length} calls here`;
-        tip.append(head);
-        for (const inc of cluster.items.slice(0, 4)) {
-          const row = document.createElement("p");
-          row.className = "act-tip-meta";
-          row.textContent = `${inc.title} · ${clockTime(inc.occurredAt)}`;
-          tip.append(row);
-        }
-        badge.bindTooltip(tip, {
-          direction: "top",
-          opacity: 1,
-          className: "act-tip",
-          sticky: true,
-        });
-        badge.on("click", () => select(primary.id));
-        badge.addTo(layer);
-        const node = badge.getElement();
-        if (node) {
-          node.setAttribute("role", "img");
-          node.setAttribute(
-            "aria-label",
-            `${cluster.items.length} overlapping calls, including ${pinLabel(primary)}`,
-          );
-        }
-      } else {
-        const inc = primary;
-        const marker = L.circleMarker([cluster.lat, cluster.lng], {
-          radius: r,
-          color: selected ? stroke : color,
-          weight: selected ? 3 : approx ? 1.5 : inc.severity === "critical" || inc.severity === "high" ? 3 : 2,
-          fillColor: color,
-          fillOpacity: approx ? 0.35 : 0.92,
-          dashArray: approx ? "4 3" : undefined,
-          className: approx
-            ? `act-incident-pin act-pin-approx act-pin-${inc.severity}`
-            : `act-incident-pin act-pin-precise act-pin-${inc.severity}`,
-        });
-        const glyph = typeGlyph(inc.type);
-        if (inc.severity === "critical" || inc.severity === "high" || selected) {
-          const icon = L.divIcon({
-            className: "act-pin-badge",
-            html: `<span class="act-pin-badge-inner" style="--m:${color}">${glyph}</span>`,
-            iconSize: [22, 22],
-            iconAnchor: [11, 11],
-          });
-          const badge = L.marker([cluster.lat, cluster.lng], { icon, interactive: true, keyboard: true });
-          badge.bindTooltip(tipNode(inc), {
-            direction: "top",
-            opacity: 1,
-            className: "act-tip",
-            sticky: true,
-          });
-          badge.on("click", () => select(inc.id));
-          badge.addTo(layer);
-        }
-        marker.bindTooltip(tipNode(inc), {
-          direction: "top",
-          opacity: 1,
-          className: "act-tip",
-          sticky: true,
-        });
-        marker.on("click", () => select(inc.id));
-        marker.addTo(layer);
-        const node = marker.getElement();
-        if (node) {
-          node.setAttribute("role", "img");
-          node.setAttribute("aria-label", pinLabel(inc));
-        }
-      }
-      pts.push([cluster.lat, cluster.lng]);
-    }
-
-    if (!active) return;
-    if (selectedId) {
-      const hit = visible.find((i) => i.id === selectedId) || incidents.find((i) => i.id === selectedId);
-      if (hit && (showApprox || !isApproxPrecision(hit.geoPrecision))) {
-        const z = Math.max(map.getZoom(), isApproxPrecision(hit.geoPrecision) ? 13 : 16);
-        map.setView([hit.lat, hit.lng], z, { animate: true });
-      }
-    } else if (pts.length > 0) {
-      const focus = recent.length ? recent : visible;
-      const bounds = L.latLngBounds(focus.map((i) => [i.lat, i.lng] as [number, number]));
-      if (bounds.isValid()) map.fitBounds(bounds.pad(0.2), { maxZoom: recent.length ? 14 : 12, animate: false });
-    }
-  }, [visible, recent, selectedId, select, ready, active, incidents, showApprox]);
+  useEffect(() => {
+    if (!active || !ready || !selectedId) return;
+    const ctx = mapRef.current;
+    const map = ctx?.map;
+    if (!map) return;
+    const hit = filtered.find((i) => i.id === selectedId) || incidents.find((i) => i.id === selectedId);
+    if (!hit) return;
+    if (!mapShowApprox && isApproxPrecision(hit.geoPrecision)) return;
+    const z = Math.max(map.getZoom(), isApproxPrecision(hit.geoPrecision) ? 13 : 16);
+    map.flyTo([hit.lat, hit.lng], z, { animate: true, duration: 0.6 });
+  }, [active, ready, selectedId, filtered, incidents, mapShowApprox]);
 
   useEffect(() => {
     if (!listOpen) return;
@@ -349,13 +453,16 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
 
   function locate() {
     if (!navigator.geolocation || !mapRef.current) return;
+    setLocateErr("");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        mapRef.current?.map.setView([pos.coords.latitude, pos.coords.longitude], 16);
+        mapRef.current?.map.flyTo([pos.coords.latitude, pos.coords.longitude], 15, { animate: true, duration: 0.7 });
       },
-      () => {
-        /* permission denied */
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) setLocateErr("Location permission denied.");
+        else setLocateErr("Couldn’t fetch your location.");
       },
+      { enableHighAccuracy: false, timeout: 9000, maximumAge: 60_000 },
     );
   }
 
@@ -365,45 +472,31 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         ref={el}
         className="absolute inset-0"
         role="region"
-        aria-label="Incident map. Use plus and minus to zoom. Open List for a text version of the pins."
+        aria-label="Public-safety incident map. Use plus and minus to zoom. Open List for a text version of the pins."
       />
       <p className="sr-only">
-        Live is the home view. Map shows street-level pins when available. Approximate town or county
-        pins stay hidden unless Approx is turned on. Overlapping pins are clustered.
+        Map shows street-level pins when available. Town or county pins are always styled as approximate. Dense areas cluster and expand as you zoom.
       </p>
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        {visible.length} incidents on the map for the last {mapHours} hours.
-        {!showApprox && approxHidden > 0 ? ` ${approxHidden} approximate pins hidden.` : ""}
+        {filtered.length} incidents on the map for the last {mapWindowHours} hours.
+        {!mapShowApprox && approxHidden > 0 ? ` ${approxHidden} approximate pins hidden.` : ""}
       </p>
 
       <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
-        <div
-          className="pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-full border border-border bg-surface/95 p-1 shadow-md scrollbar-none snap-x"
-          role="toolbar"
-          aria-label="Map filters"
-        >
-          <div className="flex gap-1" role="group" aria-label="Incident category">
-            {FILTERS.map((f) => (
+        <div className="pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-full border border-border bg-surface/95 p-1 shadow-md scrollbar-none snap-x">
+          <div className="flex gap-1" role="group" aria-label="Time window">
+            {([1, 6, 24, 48] as const).map((h) => (
               <button
-                key={f.id}
+                key={h}
                 type="button"
-                onClick={() => setMapCategory(f.id)}
-                aria-pressed={mapCategory === f.id}
-                className={cn(chip, mapCategory === f.id ? "bg-accent text-accent-fg" : "text-fg")}
+                onClick={() => setMapWindowHours(h)}
+                aria-pressed={mapWindowHours === h}
+                className={cn(chip, mapWindowHours === h ? "bg-accent text-accent-fg" : "text-fg")}
               >
-                {f.label}
+                {windowLabel(h)}
               </button>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => setShowApprox((v) => !v)}
-            aria-pressed={showApprox}
-            className={cn(chip, showApprox ? "bg-accent text-accent-fg" : "text-fg")}
-            title="Show town/county approximate pins"
-          >
-            Approx{!showApprox && approxHidden > 0 ? ` (${approxHidden})` : ""}
-          </button>
           <button
             ref={listToggle}
             type="button"
@@ -414,6 +507,15 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
           >
             <List className="mr-1 inline size-4" aria-hidden />
             List
+          </button>
+          <button
+            type="button"
+            onClick={() => setMapFilterOpen(true)}
+            className={cn(chip, "text-fg")}
+            aria-label="Open map filters"
+          >
+            <Filter className="mr-1 inline size-4" aria-hidden />
+            Filters
           </button>
           <button
             type="button"
@@ -437,6 +539,24 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         >
           <LocateFixed className="size-5" />
         </Button>
+        <Button
+          size="icon"
+          variant="secondary"
+          className="pointer-events-auto size-12 rounded-full shadow-md"
+          onClick={fitResults}
+          aria-label="Fit map to results"
+        >
+          <Maximize2 className="size-5" />
+        </Button>
+        <Button
+          size="icon"
+          variant="secondary"
+          className="pointer-events-auto size-12 rounded-full shadow-md"
+          onClick={fitCounty}
+          aria-label="Recenter to Capital Region"
+        >
+          <Home className="size-5" />
+        </Button>
       </div>
 
       {listOpen ? (
@@ -448,17 +568,17 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
             tabIndex={-1}
             className="sticky top-0 z-10 border-b border-border bg-surface/95 px-4 py-3 text-sm font-semibold tracking-tight"
           >
-            {visible.length} mapped calls
+            {filtered.length} mapped calls
           </h2>
-          {visible.length === 0 ? (
+          {filtered.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm leading-relaxed text-muted">
-              {approxHidden > 0 && !showApprox
-                ? `No street-level pins in this window. ${approxHidden} approximate town/county pins are hidden — turn on Approx to see them.`
-                : "No mapped calls in this window. NYSP blotter pins appear after the 7 AM report. Jump to Live for scanner activity."}
+              {wireLive
+                ? "No mapped incidents match your filters in this window."
+                : "Loading live map data…"}
             </p>
           ) : (
             <ul>
-              {visible.map((inc) => (
+              {filtered.map((inc) => (
                 <li key={inc.id} className="border-b border-border last:border-b-0">
                   <button
                     type="button"
@@ -481,6 +601,7 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
                       <span className="block text-xs font-semibold uppercase tracking-wide text-subtle">
                         {inc.agency} · {typeLabel(inc.type)} · {severityLabel(inc.severity)}
                         {isApproxPrecision(inc.geoPrecision) ? " · approx" : ""}
+                        {incidentVerification(inc) === "scanner" ? " · scanner" : isOfficialIncident(inc) ? " · official" : ""}
                       </span>
                       <span className="mt-0.5 block text-sm font-semibold leading-snug tracking-tight text-fg">
                         {inc.title}
@@ -502,42 +623,171 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         <div className="pointer-events-auto flex min-h-12 items-center gap-3 rounded-full border border-border bg-surface/95 px-4 py-2 shadow-md">
           <p className="shrink-0 leading-tight">
             <span className="block font-mono text-base font-semibold tabular-nums tracking-tight text-fg">
-              {visible.length}
+              {filtered.length}
             </span>
             <span className="block text-xs font-semibold uppercase tracking-wide text-subtle">shown</span>
           </p>
-          <label className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="shrink-0 font-mono text-sm font-semibold tabular-nums text-fg">{mapHours}h</span>
-            <input
-              type="range"
-              min={1}
-              max={72}
-              value={mapHours}
-              onChange={(e) => setMapHours(Number(e.target.value))}
-              className="w-full accent-accent"
-              aria-valuemin={1}
-              aria-valuemax={72}
-              aria-valuenow={mapHours}
-              aria-label={`Hours on the map, ${mapHours} hours`}
-            />
-            <span className="shrink-0 text-sm font-semibold text-fg">Now</span>
-          </label>
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-fg">
+            {wireHealth?.daytimePipesFailing ? "Some sources failing — map may be incomplete." : wireHealth?.daytimePipesDry ? "Quiet window — sources returned 0." : approxShown ? `${approxShown} approx pin${approxShown === 1 ? "" : "s"} shown` : "Street-level pins where available"}
+          </p>
           <ShareButton
-            payload={mapSharePayload(visible.length, mapHours)}
+            payload={mapSharePayload(filtered.length, mapWindowHours)}
             size="icon"
             variant="ghost"
             className="size-11"
             label="Share map"
           />
         </div>
-        {!listOpen && visible.length === 0 ? (
+        {!listOpen && !wireLive ? (
           <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
-            {approxHidden > 0 && !showApprox
-              ? `No street pins here. ${approxHidden} approx pins hidden — toggle Approx, or open Live.`
-              : "No mapped calls in this window. NYSP blotter pins appear after the 7 AM report. Open Live for scanner activity."}
+            Loading live map data…
+          </p>
+        ) : !listOpen && filtered.length === 0 ? (
+          <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
+            No incidents match your filters in this window.
+          </p>
+        ) : null}
+        {locateErr ? (
+          <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
+            {locateErr}
           </p>
         ) : null}
       </div>
+
+      <Drawer.Root open={mapFilterOpen} onOpenChange={setMapFilterOpen}>
+        <Drawer.Portal>
+          <Drawer.Overlay className="fixed inset-0 z-40 bg-bg/70" />
+          <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-xl border border-border bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none">
+            <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-border" />
+            <div className="overflow-y-auto px-4 pb-8 pt-3 scrollbar-thin">
+              <Drawer.Title className="text-base font-semibold">Map filters</Drawer.Title>
+              <p className="mt-1 text-xs text-subtle">Time window, kind, sources, verification, and precision honesty.</p>
+
+              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Time window</h3>
+              <div className="mt-2 grid grid-cols-4 gap-2">
+                {([1, 6, 24, 48] as const).map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setMapWindowHours(h)}
+                    className={cn(
+                      "flex min-h-11 items-center justify-center rounded-md border px-3 text-sm font-semibold",
+                      mapWindowHours === h ? "border-accent/50 bg-surface-2" : "border-border",
+                    )}
+                  >
+                    {windowLabel(h)}
+                  </button>
+                ))}
+              </div>
+
+              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Incident kind</h3>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {(["crime", "crash", "fire", "traffic"] as const).map((k) => (
+                  <label
+                    key={k}
+                    className={cn(
+                      "flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm",
+                      mapKinds.includes(k) ? "border-accent/50 bg-surface-2" : "border-border",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-accent"
+                      checked={mapKinds.includes(k)}
+                      onChange={() =>
+                        setMapKinds(mapKinds.includes(k) ? mapKinds.filter((x) => x !== k) : [...mapKinds, k])
+                      }
+                    />
+                    {kindLabel(k)}
+                  </label>
+                ))}
+              </div>
+
+              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Sources</h3>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {(["official", "news", "scanner", "social"] as const).map((g) => (
+                  <label
+                    key={g}
+                    className={cn(
+                      "flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm",
+                      mapSourceGroups.includes(g) ? "border-accent/50 bg-surface-2" : "border-border",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-accent"
+                      checked={mapSourceGroups.includes(g)}
+                      onChange={() =>
+                        setMapSourceGroups(
+                          mapSourceGroups.includes(g) ? mapSourceGroups.filter((x) => x !== g) : [...mapSourceGroups, g],
+                        )
+                      }
+                    />
+                    {sourceLabel(g)}
+                  </label>
+                ))}
+              </div>
+
+              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Verification</h3>
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                {(["confirmed", "developing", "scanner"] as const).map((v) => (
+                  <label
+                    key={v}
+                    className={cn(
+                      "flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm",
+                      mapVerifications.includes(v) ? "border-accent/50 bg-surface-2" : "border-border",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-accent"
+                      checked={mapVerifications.includes(v)}
+                      onChange={() =>
+                        setMapVerifications(
+                          mapVerifications.includes(v) ? mapVerifications.filter((x) => x !== v) : [...mapVerifications, v],
+                        )
+                      }
+                    />
+                    {verificationLabel(v)}
+                  </label>
+                ))}
+              </div>
+
+              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Precision honesty</h3>
+              <label
+                className={cn(
+                  "mt-2 flex min-h-11 items-center gap-2 rounded-md border px-3 text-sm",
+                  mapShowApprox ? "border-accent/50 bg-surface-2" : "border-border",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="accent-accent"
+                  checked={mapShowApprox}
+                  onChange={() => setMapShowApprox(!mapShowApprox)}
+                />
+                Show approximate town/county pins
+                <span className="ml-auto font-mono text-xs tabular-nums text-subtle">{approxHidden}</span>
+              </label>
+
+              <div className="mt-6 flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => {
+                    resetMapFilters();
+                  }}
+                >
+                  Reset
+                </Button>
+                <Button className="flex-1" onClick={() => setMapFilterOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </Drawer.Content>
+        </Drawer.Portal>
+      </Drawer.Root>
     </div>
   );
 }
