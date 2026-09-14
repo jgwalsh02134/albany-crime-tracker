@@ -64,7 +64,7 @@ export function FeedView({
               type="button"
               onClick={() => setHomeMode(mode)}
               className={cn(
-                "h-10 rounded-full text-sm font-semibold capitalize",
+                "h-10 rounded-full text-sm font-semibold capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                 homeMode === mode ? "bg-surface text-fg shadow-sm" : "text-subtle",
               )}
             >
@@ -257,7 +257,7 @@ function LiveList({
         className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-20 scrollbar-thin"
       >
         <div
-          className="overflow-hidden text-center text-xs text-subtle transition-[height] duration-150"
+          className="overflow-hidden text-center text-xs text-subtle motion-safe:transition-[height] motion-safe:duration-150 motion-reduce:transition-none"
           style={{ height: refreshing || pull > 8 ? 28 : 0 }}
         >
           <p className="pt-1.5">{refreshing ? "Updating…" : pull > 52 ? "Release to refresh" : "Pull to refresh"}</p>
@@ -315,7 +315,7 @@ function LiveList({
                   }
                 }}
                 className={cn(
-                  "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium active:opacity-80 inline-flex items-center gap-1.5",
+                  "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium active:opacity-80 inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                   nearActive ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
                 )}
               >
@@ -519,7 +519,7 @@ function Chip({
       type="button"
       onClick={onClick}
       className={cn(
-        "h-10 shrink-0 rounded-full border px-3 text-xs font-medium active:opacity-80",
+        "h-10 shrink-0 rounded-full border px-3 text-xs font-medium active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
         active ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
       )}
     >
@@ -630,7 +630,7 @@ function SourcePipes({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex min-h-9 w-full items-center justify-between gap-2 text-left"
+        className="flex min-h-9 w-full items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 rounded-md"
       >
         <p className="min-w-0 truncate text-xs text-subtle">
           <span className="font-semibold text-fg">{count}</span>
