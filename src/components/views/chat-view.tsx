@@ -6,6 +6,7 @@ import { askCrimeAi } from "@/lib/chat";
 import { cn } from "@/lib/utils";
 
 type Msg = { id: string; role: "user" | "assistant"; content: string };
+type AiUnavailableKind = "missing_key" | "unauthorized" | "forbidden";
 
 const STARTERS = [
   { label: "Last 48 hours", prompt: "What happened in Albany County in the last 48 hours?" },
@@ -25,10 +26,11 @@ export function ChatView() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiUnavailable, setAiUnavailable] = useState<AiUnavailableKind | null>(null);
 
   async function send(prompt: string) {
     const text = prompt.trim();
-    if (!text || busy) return;
+    if (!text || busy || aiUnavailable) return;
     setError(null);
     const user: Msg = { id: `u-${Date.now()}`, role: "user", content: text };
     setMessages((m) => [...m, user]);
@@ -41,8 +43,15 @@ export function ChatView() {
       const res = await askCrimeAi({ data: { prompt: text, history } });
       if (!res.ok) {
         setError(res.error);
+        const kind = (res as unknown as { kind?: AiUnavailableKind }).kind;
+        if (kind === "missing_key" || kind === "unauthorized" || kind === "forbidden") {
+          setAiUnavailable(kind);
+        } else {
+          setAiUnavailable(null);
+        }
         return;
       }
+      setAiUnavailable(null);
       setMessages((m) => [...m, { id: `a-${Date.now()}`, role: "assistant", content: res.text }]);
     } catch {
       setError("Could not reach the assistant. Try again.");
@@ -88,24 +97,41 @@ export function ChatView() {
         ) : null}
         {error ? <p className="mt-3 text-sm text-sev-high">{error}</p> : null}
       </div>
-      <form
-        className="flex gap-2 border-t border-border bg-bg px-3 py-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void send(input);
-        }}
-      >
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask about Albany County…"
-          aria-label="Ask the AI assistant"
-          disabled={busy}
-        />
-        <Button type="submit" size="icon" disabled={busy || !input.trim()} aria-label="Send">
-          <Send className="size-4" />
-        </Button>
-      </form>
+      <div className="border-t border-border bg-bg">
+        {aiUnavailable ? (
+          <div className="px-3 py-2 text-xs text-subtle">
+            AI is currently unavailable
+            {aiUnavailable === "forbidden"
+              ? " (access denied by xAI)."
+              : aiUnavailable === "unauthorized"
+                ? " (bad/expired server key)."
+                : "."}
+          </div>
+        ) : null}
+        <form
+          className="flex gap-2 px-3 py-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send(input);
+          }}
+        >
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={aiUnavailable ? "AI is unavailable" : "Ask about Albany County…"}
+            aria-label="Ask the AI assistant"
+            disabled={busy || !!aiUnavailable}
+          />
+          <Button
+            type="submit"
+            size="icon"
+            disabled={busy || !!aiUnavailable || !input.trim()}
+            aria-label="Send"
+          >
+            <Send className="size-4" />
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }
