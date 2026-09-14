@@ -8,7 +8,7 @@ import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
 import { type WireHealth, sourceMix } from "@/lib/sources";
 import { liveWindowHonesty } from "@/lib/live-honesty";
 import { incidentVisible, useAppStore } from "@/lib/store";
-import { compareNowLane } from "@/lib/live-rank";
+import { compareNowLane, nowUrgencyScore } from "@/lib/live-rank";
 import { haversineKm } from "@/lib/geo";
 import type { Incident, NewsStory, SourceLens, LiveKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -403,6 +403,29 @@ function GroupedList({
   const now = split(nowItems);
   const today = split(earlierToday);
 
+  type LaneId = "confirmed" | "developing" | "scanner";
+  type LaneDef = { id: LaneId; label: string; items: Incident[]; priority: number; order: number };
+  function lanePriority(id: LaneId, laneItems: Incident[], order: number): number {
+    if (!laneItems.length) return -1;
+    const top = laneItems[0]!;
+    let score = nowUrgencyScore(top);
+    // Keep the UI honest: only let scanner-only lanes jump the stack when the activity is serious.
+    if (id === "scanner") {
+      score -= top.severity === "critical" ? 0 : top.severity === "high" ? 10 : top.severity === "medium" ? 25 : 45;
+    }
+    if (id === "developing") score -= 5;
+    return score * 1000 - order;
+  }
+  const mkLanes = (bucket: typeof now, baseOrder = 0): LaneDef[] =>
+    ([
+      { id: "confirmed" as const, label: "Official", items: bucket.confirmed, order: baseOrder + 0 },
+      { id: "developing" as const, label: "Developing", items: bucket.developing, order: baseOrder + 1 },
+      { id: "scanner" as const, label: "Scanner (early)", items: bucket.scanner, order: baseOrder + 2 },
+    ] as const)
+      .filter((l) => l.items.length)
+      .map((l) => ({ ...l, priority: lanePriority(l.id, l.items, l.order) }))
+      .sort((a, b) => b.priority - a.priority);
+
   return (
     <div className="flex flex-col gap-4">
       <section>
@@ -413,15 +436,9 @@ function GroupedList({
 
         {nowItems.length ? (
           <div className="flex flex-col gap-3">
-            {now.confirmed.length ? (
-              <Lane label="Official" items={now.confirmed} onSelect={onSelect} />
-            ) : null}
-            {now.developing.length ? (
-              <Lane label="Developing" items={now.developing} onSelect={onSelect} />
-            ) : null}
-            {now.scanner.length ? (
-              <Lane label="Scanner (early)" items={now.scanner} onSelect={onSelect} />
-            ) : null}
+            {mkLanes(now).map((lane) => (
+              <Lane key={lane.id} label={lane.label} items={lane.items} onSelect={onSelect} />
+            ))}
           </div>
         ) : (
           <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
@@ -437,15 +454,9 @@ function GroupedList({
             <p className="text-[11px] text-subtle">Since 7 AM</p>
           </div>
           <div className="flex flex-col gap-3">
-            {today.confirmed.length ? (
-              <Lane label="Official" items={today.confirmed} onSelect={onSelect} />
-            ) : null}
-            {today.developing.length ? (
-              <Lane label="Developing" items={today.developing} onSelect={onSelect} />
-            ) : null}
-            {today.scanner.length ? (
-              <Lane label="Scanner (early)" items={today.scanner} onSelect={onSelect} />
-            ) : null}
+            {mkLanes(today, 10).map((lane) => (
+              <Lane key={lane.id} label={lane.label} items={lane.items} onSelect={onSelect} />
+            ))}
           </div>
         </section>
       ) : null}
@@ -566,6 +577,54 @@ function SourcePipes({
             ? "speech transcription is erroring"
             : "";
 
+  type Tone = "ok" | "warn" | "down" | "unknown";
+  const toneClasses: Record<Tone, string> = {
+    ok: "border-emerald-500/30 bg-emerald-500/10 text-fg",
+    warn: "border-amber-500/30 bg-amber-500/10 text-fg",
+    down: "border-rose-500/30 bg-rose-500/10 text-fg",
+    unknown: "border-border bg-surface-2 text-muted",
+  };
+  const dotClasses: Record<Tone, string> = {
+    ok: "bg-emerald-500",
+    warn: "bg-amber-500",
+    down: "bg-rose-500",
+    unknown: "bg-border",
+  };
+  function ageLabel(ageSec: number): string {
+    if (ageSec < 0) return "—";
+    return compactFromMinutes(ageSec / 60);
+  }
+  function toneFor(ageSec: number, lastError?: string): Tone {
+    if (lastError) return "down";
+    if (ageSec < 0) return "unknown";
+    if (ageSec <= 150) return "ok";
+    if (ageSec <= 12 * 60) return "warn";
+    return "down";
+  }
+  function groupTone(pipes: NonNullable<WireHealth["pipes"]>): { tone: Tone; ageSec: number } {
+    if (!pipes.length) return { tone: "unknown", ageSec: -1 };
+    const okish = pipes.filter((p) => !p.lastError && p.ageSec >= 0 && p.ageSec <= 30 * 60);
+    const failing = pipes.filter((p) => Boolean(p.lastError) || p.ageSec < 0);
+    if (!okish.length) {
+      const newest = pipes.map((p) => p.ageSec).filter((n) => n >= 0).sort((a, b) => a - b)[0] ?? -1;
+      return { tone: failing.length ? "down" : "unknown", ageSec: newest };
+    }
+    const newestOk = okish.map((p) => p.ageSec).sort((a, b) => a - b)[0] ?? -1;
+    const fracFail = failing.length / pipes.length;
+    if (fracFail >= 0.5) return { tone: "down", ageSec: newestOk };
+    if (failing.length) return { tone: "warn", ageSec: newestOk };
+    return { tone: toneFor(newestOk, undefined), ageSec: newestOk };
+  }
+  const pipes = health.pipes ?? [];
+  const scannerPipe = pipes.find((p) => p.id === "scanner");
+  const nixleAgg = groupTone(pipes.filter((p) => p.id.startsWith("nixle:")));
+  const newsAgg = groupTone(pipes.filter((p) => p.id.startsWith("news:")));
+  const dot511 = pipes.find((p) => p.id === "511ny");
+  const scannerTone = scannerPipe ? toneFor(scannerPipe.ageSec, scannerPipe.lastError) : "unknown";
+  const nixleTone = nixleAgg.tone;
+  const newsTone = newsAgg.tone;
+  const tone511 = dot511 ? toneFor(dot511.ageSec, dot511.lastError) : "unknown";
+
   return (
     <>
       <button
@@ -583,6 +642,26 @@ function SourcePipes({
           <ChevronRight className="size-3.5" />
         </span>
       </button>
+      <div className="-mt-0.5 mb-0.5 flex items-center gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none">
+        {[
+          { key: "scanner", label: "Scanner", tone: scannerTone, age: ageLabel(scannerPipe?.ageSec ?? -1) },
+          { key: "nixle", label: "Nixle", tone: nixleTone, age: ageLabel(nixleAgg.ageSec) },
+          { key: "news", label: "News", tone: newsTone, age: ageLabel(newsAgg.ageSec) },
+          { key: "511", label: "511", tone: tone511, age: ageLabel(dot511?.ageSec ?? -1) },
+        ].map((p) => (
+          <span
+            key={p.key}
+            className={cn(
+              "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium inline-flex items-center gap-1.5",
+              toneClasses[p.tone],
+            )}
+          >
+            <span className={cn("size-1.5 rounded-full", dotClasses[p.tone])} aria-hidden />
+            <span>{p.label}</span>
+            <span className="font-mono tabular-nums text-subtle">{p.age}</span>
+          </span>
+        ))}
+      </div>
       <Drawer.Root open={open} onOpenChange={setOpen}>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-bg/70" />
