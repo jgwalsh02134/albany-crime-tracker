@@ -6,9 +6,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export const DEFAULT_APP_NAME = "Grok App";
+export const DEFAULT_APP_NAME = "Albany County Crime Tracker";
 export const OG_SERVICE_URL_DEFAULT = "https://og.grok.me";
 export const OG_SITE_REL_PATH = "src/lib/og/site.json";
+export const DEFAULT_APP_SHORT_NAME = "Albany Pulse";
+export const DEFAULT_THEME_COLOR = "#0A1128";
 
 const SHARE_META_KEYS = new Set([
   "og:title",
@@ -162,13 +164,15 @@ export function renderWebManifest(hostHeader) {
   return JSON.stringify(
     {
       name,
-      short_name: name,
+      short_name: DEFAULT_APP_SHORT_NAME,
+      description:
+        "Live crime intelligence for Albany County, NY — incident feed, map, scanner, and AI summaries.",
       id: "/",
-      start_url: "/",
+      start_url: "/?source=pwa",
       scope: "/",
       display: "standalone",
-      background_color: "#000000",
-      theme_color: "#000000",
+      background_color: DEFAULT_THEME_COLOR,
+      theme_color: DEFAULT_THEME_COLOR,
       icons: [
         {
           src: "/__grok/icon-180.png",
@@ -179,11 +183,25 @@ export function renderWebManifest(hostHeader) {
           src: "/icon-192.png",
           sizes: "192x192",
           type: "image/png",
+          purpose: "any",
         },
         {
           src: "/icon-512.png",
           sizes: "512x512",
           type: "image/png",
+          purpose: "any",
+        },
+        {
+          src: "/maskable-192.png",
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "maskable",
+        },
+        {
+          src: "/maskable-512.png",
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "maskable",
         },
       ],
     },
@@ -206,7 +224,7 @@ export function grokPwaHeadTags(appName = DEFAULT_APP_NAME) {
       "apple-mobile-web-app-status-bar-style",
       '<meta name="apple-mobile-web-app-status-bar-style" content="black">',
     ],
-    ["theme-color", '<meta name="theme-color" content="#000000">'],
+    ["theme-color", `<meta name="theme-color" content="${DEFAULT_THEME_COLOR}">`],
   ];
 }
 
