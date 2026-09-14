@@ -191,6 +191,25 @@
   color: var(--fg);
 }
 
+.act-map .leaflet-tile {
+  outline: 1px solid transparent;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
+}
+
+.act-map .leaflet-pane,
+.act-map .leaflet-tile-container {
+  transform: translateZ(0);
+}
+
+.act-map .act-incident-pin {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.35));
+}
+
 .leaflet-container img,
 .leaflet-pane img,
 .leaflet-tile {
@@ -256,17 +275,49 @@
   font-size: 0.75rem;
   line-height: 1.35;
   color: var(--muted);
+  background: rgba(20, 30, 58, 0.92);
   background: color-mix(in oklab, var(--surface) 92%, transparent);
-  padding: 0.25rem 0.5rem;
-  max-width: calc(100vw - 5.5rem);
+  border: 1px solid rgba(240, 244, 248, 0.12);
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px);
+  max-width: min(22rem, calc(100vw - 5.5rem));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .leaflet-container .leaflet-control-attribution a {
   color: var(--fg);
+  text-decoration: none;
 }
 
-.leaflet-bottom.leaflet-right {
-  bottom: 5.25rem;
+.leaflet-container .leaflet-control-attribution a:hover,
+.leaflet-container .leaflet-control-attribution a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.act-map .leaflet-bottom.leaflet-right,
+.act-map .leaflet-bottom.leaflet-left {
+  bottom: calc(env(safe-area-inset-bottom) + 5.75rem);
+}
+
+.act-map .leaflet-left {
+  left: 0.75rem;
+}
+
+.act-map .leaflet-right {
+  right: 0.75rem;
+}
+
+.act-map .leaflet-control-zoom {
+  border: 1px solid rgba(240, 244, 248, 0.14) !important;
+  border-radius: 14px !important;
+  overflow: hidden;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(10px);
 }
 
 .leaflet-control-zoom a {
@@ -328,10 +379,12 @@
   width: 22px;
   height: 22px;
   border-radius: 999px;
+  background: var(--m);
   background: color-mix(in oklab, var(--m) 92%, black);
   color: white;
   font-size: 0.7rem;
   font-weight: 800;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
   box-shadow: 0 0 0 2px color-mix(in oklab, white 70%, transparent);
 }
 

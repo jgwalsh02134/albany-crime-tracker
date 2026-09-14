@@ -44,6 +44,18 @@ function cssVar(name: string, fallback: string): string {
   return v || fallback;
 }
 
+function withAlpha(hex: string, alpha: number): string {
+  const h = hex.trim();
+  if (!h.startsWith("#") || (h.length !== 7 && h.length !== 4)) return hex;
+  const full =
+    h.length === 4 ? `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}` : h;
+  const r = Number.parseInt(full.slice(1, 3), 16);
+  const g = Number.parseInt(full.slice(3, 5), 16);
+  const b = Number.parseInt(full.slice(5, 7), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function pinColor(sev: Severity): string {
   return cssVar(`--sev-${sev}`, FALLBACK[sev]);
 }
@@ -174,19 +186,20 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
       if (cancelled || !el.current) return;
       map = L.map(el.current, {
         zoomControl: false,
-        attributionControl: true,
+        attributionControl: false,
         keyboard: true,
       }).setView([42.68, -73.8], 11);
       L.control.zoom({ position: "bottomright" }).addTo(map);
+      L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
       const tiles = {
         maxZoom: 19,
         maxNativeZoom: 16,
       };
-      L.tileLayer(esriUrl("Canvas/World_Light_Gray_Base"), {
+      L.tileLayer(esriUrl("Canvas/World_Dark_Gray_Base"), {
         ...tiles,
         attribution: "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, FAO, NOAA, USGS",
       }).addTo(map);
-      L.tileLayer(esriUrl("Canvas/World_Light_Gray_Reference"), tiles).addTo(map);
+      L.tileLayer(esriUrl("Canvas/World_Dark_Gray_Reference"), tiles).addTo(map);
       const layer = L.layerGroup().addTo(map);
       mapRef.current = { map, layer, L };
       setReady(true);
@@ -227,7 +240,7 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
     const { L, layer, map } = ctx;
     layer.clearLayers();
     const pts: [number, number][] = [];
-    const stroke = cssVar("--fg", "#1a1f2e");
+    const fg = cssVar("--fg", "#f0f4f8");
     const clusters = clusterPins(visible);
 
     for (const cluster of clusters) {
@@ -276,13 +289,14 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         }
       } else {
         const inc = primary;
+        const ring = selected ? fg : approx ? withAlpha(color, 0.85) : withAlpha(fg, 0.55);
         const marker = L.circleMarker([cluster.lat, cluster.lng], {
           radius: r,
-          color: selected ? stroke : color,
-          weight: selected ? 3 : approx ? 1.5 : inc.severity === "critical" || inc.severity === "high" ? 3 : 2,
+          color: ring,
+          weight: selected ? 3 : approx ? 2.25 : inc.severity === "critical" || inc.severity === "high" ? 3 : 2.5,
           fillColor: color,
-          fillOpacity: approx ? 0.35 : 0.92,
-          dashArray: approx ? "4 3" : undefined,
+          fillOpacity: approx ? 0.14 : 0.92,
+          dashArray: approx ? "2 6" : undefined,
           className: approx
             ? `act-incident-pin act-pin-approx act-pin-${inc.severity}`
             : `act-incident-pin act-pin-precise act-pin-${inc.severity}`,
@@ -360,7 +374,7 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
   }
 
   return (
-    <div className="relative h-full min-h-0">
+    <div className="act-map relative h-full min-h-0">
       <div
         ref={el}
         className="absolute inset-0"
