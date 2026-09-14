@@ -589,6 +589,11 @@ async function collectWire() {
     scannerCaptioned: scanStats.captions,
     scannerSttState: scanStats.sttState,
     scannerSttBlockedSec: scanStats.sttBlockedSec,
+    scannerHlsState: scanStats.hlsState,
+    scannerHlsAgeSec: scanStats.hlsAgeSec,
+    scannerHlsError: scanStats.hlsLastError || undefined,
+    scannerHlsErrorAt: scanStats.hlsLastErrorAt || undefined,
+    scannerHlsFeed: scanStats.hlsLastFeed || undefined,
     // Counts that match Live lens (≤24h), not full pipe harvest.
     facebook: socialNow.filter((i) => i.outlet.startsWith("Facebook")).length,
     x: socialNow.filter((i) => i.outlet.startsWith("X ·")).length,

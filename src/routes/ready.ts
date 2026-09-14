@@ -25,6 +25,7 @@ export const Route = createFileRoute("/ready")({
         }
 
         const { scannerHealth } = await import("../lib/scanner-poll");
+        const { sttBackoffHealth } = await import("../lib/transcribe");
         const {
           superfeedrHealth,
           superfeedrSubscribeHealth,
@@ -37,6 +38,7 @@ export const Route = createFileRoute("/ready")({
         // Privileged ops only — never on anonymous probes.
         void ensureSuperfeedrSubscriptions({ requestUrl: request.url }).catch(() => undefined);
         const subs = superfeedrSubscribeHealth();
+        const sttBackoff = sttBackoffHealth();
         return Response.json({
           ok: true,
           service: "albany-crime-tracker",
@@ -45,6 +47,7 @@ export const Route = createFileRoute("/ready")({
             xai: Boolean(process.env.XAI_API_KEY),
             openai: Boolean(process.env.OPENAI_API_KEY),
             groq: Boolean(process.env.GROQ_API_KEY),
+            backoff: sttBackoff,
           },
           superfeedr: {
             secretConfigured: Boolean((process.env.SUPERFEEDR_SECRET || "").trim()),
@@ -70,6 +73,11 @@ export const Route = createFileRoute("/ready")({
             lastSpoken: scan.lastSpoken || undefined,
             lastSpokenAt: scan.lastSpokenAt || undefined,
             lastFeed: scan.lastFeed || undefined,
+            hlsState: scan.hlsState,
+            hlsAgeSec: scan.hlsAgeSec,
+            hlsLastError: scan.hlsLastError || undefined,
+            hlsLastErrorAt: scan.hlsLastErrorAt || undefined,
+            hlsLastFeed: scan.hlsLastFeed || undefined,
           },
           pipes: pipeHealth(),
         });

@@ -2,7 +2,7 @@
 
 Honest inventory of pipes we poll, subscribe, or have tried. **There is no public CAD / CFS board** for Albany, Colonie, or Bethlehem. Live cards are fused from independent open sources (blotter, scanner, 511, news, civic, social). A lone scanner caption is unconfirmed and cannot outrank a multi-source cluster.
 
-Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `lastCount`, ok/fail.
+Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `lastCount`, ok/fail. Live “source map” also shows when radio captions are down (no STT key, rate-limit/backoff, or stream unreachable) so news-only windows aren’t silently treated as “quiet” — radio captions are an early reporting signal, and downtime is a real reporting gap.
 
 ## Wired (open)
 
