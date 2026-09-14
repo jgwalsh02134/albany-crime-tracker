@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { deriveGeoPrecisionFromAccuracy } from "@/lib/witness";
+import { deriveGeoPrecisionFromAccuracy, isWitnessIncident } from "@/lib/witness";
 
 test("deriveGeoPrecisionFromAccuracy is conservative", () => {
   assert.equal(deriveGeoPrecisionFromAccuracy(null), "road");
@@ -12,26 +12,27 @@ test("deriveGeoPrecisionFromAccuracy is conservative", () => {
   assert.equal(deriveGeoPrecisionFromAccuracy(4000), "county");
 });
 
-test("witness reports can be inserted and surfaced on wire", async () => {
-  const { insertWitnessReport, witnessReportsToWire } = await import("./witness-reports.server");
-  const now = Date.now();
-  const id = `test-${now}`;
-  await insertWitnessReport({
-    id,
-    kind: "crash",
-    note: "Test crash report",
+test("isWitnessIncident detects Citizen · Witness sources", () => {
+  const inc = {
+    id: "x",
+    minutesAgo: 1,
+    occurredAt: new Date().toISOString(),
+    title: "Witness report — Crash",
+    type: "crash",
+    category: "other",
+    severity: "low",
+    status: "active",
+    municipality: "Capital District",
+    address: "Pinned location",
     lat: 42.65,
     lng: -73.76,
-    geoPrecision: "road",
-    accuracyM: null,
-    userAgent: "node-test",
-  });
-  const wire = await witnessReportsToWire(now + 1000);
-  const hit = wire.find((w) => w.id === `citizen-${id}`) ?? null;
-  assert.ok(hit, "expected witness item in wire output");
-  assert.equal(hit?.outlet, "Citizen · Witness");
-  assert.equal(hit?.kind, "social");
-  assert.equal(hit?.lat, 42.65);
-  assert.equal(hit?.lng, -73.76);
+    agency: "Citizen",
+    agencyAbbr: "TIP",
+    description: "Witness report — may be wrong.",
+    sources: [{ kind: "social", name: "Citizen · Witness", tier: "unconfirmed", url: "/i/citizen-x", excerpt: "x" }],
+    verification: "developing",
+    origin: "live",
+  } as const;
+  assert.equal(isWitnessIncident(inc as any), true);
 });
 

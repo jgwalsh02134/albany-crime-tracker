@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as ApiWireRouteImport } from './routes/api.wire'
+import { Route as ApiWitnessRouteImport } from './routes/api.witness'
 import { Route as IIdRouteImport } from './routes/i.$id'
 import { Route as ApiOgIdRouteImport } from './routes/api.og.$id'
 import { Route as ApiSuperfeedrSubscribeRouteImport } from './routes/api.superfeedr.subscribe'
@@ -30,6 +31,11 @@ const ReadyRoute = ReadyRouteImport.update({
 const ApiWireRoute = ApiWireRouteImport.update({
   id: '/api/wire',
   path: '/api/wire',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWitnessRoute = ApiWitnessRouteImport.update({
+  id: '/api/witness',
+  path: '/api/witness',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IIdRoute = IIdRouteImport.update({
@@ -57,6 +63,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/ready': typeof ReadyRoute
   '/api/wire': typeof ApiWireRoute
+  '/api/witness': typeof ApiWitnessRoute
   '/i/$id': typeof IIdRoute
   '/api/og/$id': typeof ApiOgIdRoute
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/ready': typeof ReadyRoute
   '/api/wire': typeof ApiWireRoute
+  '/api/witness': typeof ApiWitnessRoute
   '/i/$id': typeof IIdRoute
   '/api/og/$id': typeof ApiOgIdRoute
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/ready': typeof ReadyRoute
   '/api/wire': typeof ApiWireRoute
+  '/api/witness': typeof ApiWitnessRoute
   '/i/$id': typeof IIdRoute
   '/api/og/$id': typeof ApiOgIdRoute
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
@@ -87,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ready'
     | '/api/wire'
+    | '/api/witness'
     | '/i/$id'
     | '/api/og/$id'
     | '/api/superfeedr/subscribe'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ready'
     | '/api/wire'
+    | '/api/witness'
     | '/i/$id'
     | '/api/og/$id'
     | '/api/superfeedr/subscribe'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/'
     | '/ready'
     | '/api/wire'
+    | '/api/witness'
     | '/i/$id'
     | '/api/og/$id'
     | '/api/superfeedr/subscribe'
@@ -115,6 +127,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ReadyRoute: typeof ReadyRoute
   ApiWireRoute: typeof ApiWireRoute
+  ApiWitnessRoute: typeof ApiWitnessRoute
   IIdRoute: typeof IIdRoute
   ApiOgIdRoute: typeof ApiOgIdRoute
   ApiSuperfeedrSubscribeRoute: typeof ApiSuperfeedrSubscribeRoute
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/api/wire'
       fullPath: '/api/wire'
       preLoaderRoute: typeof ApiWireRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/witness': {
+      id: '/api/witness'
+      path: '/api/witness'
+      fullPath: '/api/witness'
+      preLoaderRoute: typeof ApiWitnessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/i/$id': {
@@ -179,6 +199,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ReadyRoute: ReadyRoute,
   ApiWireRoute: ApiWireRoute,
+  ApiWitnessRoute: ApiWitnessRoute,
   IIdRoute: IIdRoute,
   ApiOgIdRoute: ApiOgIdRoute,
   ApiSuperfeedrSubscribeRoute: ApiSuperfeedrSubscribeRoute,
