@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   Bolt,
   Map as MapIcon,
@@ -37,12 +37,15 @@ export function AppShell() {
   const [wireHealth, setWireHealth] = useState<WireHealth | null>(null);
   const [stories, setStories] = useState<LiveWireItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const pullInFlight = useRef(false);
   const incidents = useMemo(() => wireToIncidents(wire), [wire]);
   const scannerCalls = useMemo(() => wireToScannerCalls(wire), [wire]);
   const news = useMemo(() => mergeWireNews([], stories.length ? stories : wire), [stories, wire]);
 
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
+  const homeMode = useAppStore((s) => s.homeMode);
   const theme = useAppStore((s) => s.theme);
   const toggleTheme = useAppStore((s) => s.toggleTheme);
   const setFilterOpen = useAppStore((s) => s.setFilterOpen);
@@ -64,9 +67,17 @@ export function AppShell() {
     document.documentElement.dataset.theme = useAppStore.getState().theme;
   }, []);
 
-  const pullWire = useCallback(async () => {
+  const pullWire = useCallback(async (opts?: { full?: boolean }) => {
+    if (pullInFlight.current) return;
+    pullInFlight.current = true;
+    const wantFull = Boolean(opts?.full) || homeMode === "news";
+    const controller = new AbortController();
+    const t = window.setTimeout(() => controller.abort(), wantFull ? 12_000 : 8_500);
     try {
-      const r = await fetch("/api/wire", { headers: { Accept: "application/json" } });
+      const r = await fetch(`/api/wire?mode=${wantFull ? "full" : "live"}`, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
       if (!r.ok) return;
       const res = (await r.json()) as {
         ok: boolean;
@@ -76,17 +87,22 @@ export function AppShell() {
         health?: WireHealth;
       };
       if (!res?.ok) return;
-      setWire(res.items);
-      setStories(res.stories?.length ? res.stories : res.items);
-      setWireLive(true);
-      setWireHealth(res.health ?? null);
+      startTransition(() => {
+        setWire(res.items);
+        setStories(res.stories?.length ? res.stories : res.items);
+        setWireLive(true);
+        setWireHealth(res.health ?? null);
+      });
     } catch {
       /* keep last good wire */
+    } finally {
+      window.clearTimeout(t);
+      pullInFlight.current = false;
     }
-  }, []);
+  }, [homeMode, startTransition]);
 
   useEffect(() => {
-    void pullWire();
+    void pullWire({ full: homeMode === "news" });
     // Daytime honesty: poll open pipes faster so 511 / news / Superfeedr land on Live.
     const daytime = (() => {
       try {
@@ -100,14 +116,14 @@ export function AppShell() {
         return true;
       }
     })();
-    const id = window.setInterval(() => void pullWire(), daytime ? 25_000 : 45_000);
+    const id = window.setInterval(() => void pullWire({ full: homeMode === "news" }), daytime ? 25_000 : 45_000);
     return () => window.clearInterval(id);
-  }, [pullWire]);
+  }, [pullWire, homeMode]);
 
   async function refresh() {
     setRefreshing(true);
     try {
-      await pullWire();
+      await pullWire({ full: true });
     } finally {
       setRefreshing(false);
     }
@@ -188,7 +204,7 @@ export function AppShell() {
             news={news}
             wireLive={wireLive}
             wireHealth={wireHealth}
-            refreshing={refreshing}
+            refreshing={refreshing || pending}
             onRefresh={refresh}
           />
         </div>
