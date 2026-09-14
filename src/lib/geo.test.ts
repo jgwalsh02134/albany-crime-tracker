@@ -11,7 +11,6 @@ import {
 } from "./geo.ts";
 import { resolveScannerAgency, resolveScannerPlace } from "./scanner-labels.ts";
 import { getScannerFeed } from "./scanner-feeds.ts";
-import { summarizeParcel } from "./parcels.ts";
 
 describe("street-level locateSpoken", () => {
   it("pins Central Ave to a street midpoint, not downtown City Hall", () => {
@@ -82,6 +81,13 @@ describe("street-level locateSpoken", () => {
 });
 
 describe("geocode fallbacks stay honest", () => {
+  it("treats somewhere/take/area as low-confidence place stems", () => {
+    assert.equal(isLowConfidencePlace("Somewhere"), true);
+    assert.equal(isLowConfidencePlace("Take"), true);
+    assert.equal(isLowConfidencePlace("area unknown"), true);
+    assert.equal(isLowConfidencePlace("please"), true);
+  });
+
   it("rejects Triumph Street garbage", () => {
     assert.equal(extractSpokenAddress("Across This Triumph Street"), null);
     assert.equal(isLowConfidencePlace("Across This Triumph Street"), true);
@@ -106,34 +112,6 @@ describe("geocode fallbacks stay honest", () => {
   });
 });
 
-describe("parcel public fields", () => {
-  it("summarizes PRINT_KEY + owner + address without inventing", () => {
-    const s = summarizeParcel({
-      PRINT_KEY: "65.61-2-83",
-      PRIMARY_OWNER: "487 Hudson Ave, LLC",
-      PARCEL_ADDR: "487 Hudson Ave",
-      MUNI_NAME: "Albany",
-      COUNTY_NAME: "Albany",
-      LOC_ZIP: "12203",
-    });
-    assert.ok(s);
-    assert.equal(s!.parcelId, "65.61-2-83");
-    assert.match(s!.owner, /Hudson/i);
-    assert.match(s!.address, /487/);
-  });
-
-  it("omits owner when public layer has none", () => {
-    const s = summarizeParcel({
-      PRINT_KEY: "1.1-1-1",
-      PRIMARY_OWNER: null,
-      PARCEL_ADDR: "1 Test St",
-      MUNI_NAME: "Albany",
-    });
-    assert.ok(s);
-    assert.equal(s!.owner, "");
-    assert.match(s!.address, /Test/);
-  });
-});
 
 describe("Central Ave STT normalize", () => {
   it("maps sentral / on the central to Central Avenue", () => {

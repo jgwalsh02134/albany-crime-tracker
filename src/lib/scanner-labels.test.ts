@@ -113,6 +113,15 @@ describe("resolveScannerPlace", () => {
     assert.match(addr!.label, /Matilda/i);
   });
 
+  it("rejects Somewhere and Take junk intersection", () => {
+    assert.equal(extractIntersection("Somewhere and Take"), null);
+    assert.equal(extractIntersection("please copy Somewhere & Take for a unit"), null);
+  });
+
+  it("still accepts Kyler and Matilda after gazetteer gate", () => {
+    assert.equal(extractIntersection("Kyler and Matilda"), "Kyler & Matilda");
+  });
+
   it("extracts route 4", () => {
     assert.equal(extractRoute("disabled vehicle route 4"), "Route 4");
   });

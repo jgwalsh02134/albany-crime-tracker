@@ -4,13 +4,6 @@ import { ShareButton } from "@/components/share-button";
 import { Button } from "@/components/ui/button";
 import { lastHours } from "@/lib/data";
 import { isApproxPrecision } from "@/lib/geo";
-import {
-  fetchParcelsGeoJson,
-  PARCEL_CREDIT,
-  PARCEL_MIN_ZOOM,
-  parcelPopupHtml,
-  type ParcelAttrs,
-} from "@/lib/parcels";
 import { mapSharePayload } from "@/lib/share";
 import { clockTime, severityLabel, typeLabel } from "@/lib/format";
 import { incidentVisible, useAppStore } from "@/lib/store";
@@ -93,6 +86,33 @@ function typeGlyph(type: string): string {
   return "·";
 }
 
+const SEV_RANK: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
+type PinCluster = { lat: number; lng: number; items: Incident[] };
+
+/** Grid-cluster overlapping pins by rounding lat/lng to ~4 decimals (~11 m). */
+function clusterPins(incs: Incident[]): PinCluster[] {
+  const buckets = new Map<string, PinCluster>();
+  for (const inc of incs) {
+    const key = `${inc.lat.toFixed(4)},${inc.lng.toFixed(4)}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { lat: Number(inc.lat.toFixed(4)), lng: Number(inc.lng.toFixed(4)), items: [] };
+      buckets.set(key, bucket);
+    }
+    bucket.items.push(inc);
+  }
+  return [...buckets.values()];
+}
+
+function pickPrimary(items: Incident[]): Incident {
+  return [...items].sort((a, b) => {
+    const sev = SEV_RANK[a.severity] - SEV_RANK[b.severity];
+    if (sev !== 0) return sev;
+    return b.occurredAt.localeCompare(a.occurredAt);
+  })[0]!;
+}
+
 const chip =
   "h-11 shrink-0 snap-start rounded-full px-3.5 text-sm font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent";
 
@@ -102,15 +122,11 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
   const mapRef = useRef<{
     map: import("leaflet").Map;
     layer: import("leaflet").LayerGroup;
-    parcels: import("leaflet").GeoJSON;
     L: typeof import("leaflet");
   } | null>(null);
-  const parcelAbort = useRef<AbortController | null>(null);
   const [ready, setReady] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [parcelsOn, setParcelsOn] = useState(true);
-  const [parcelCount, setParcelCount] = useState(0);
-  const [parcelNote, setParcelNote] = useState("");
+  const [showApprox, setShowApprox] = useState(false);
 
   const severities = useAppStore((s) => s.severities);
   const municipalities = useAppStore((s) => s.municipalities);
@@ -120,9 +136,6 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
   const setMapCategory = useAppStore((s) => s.setMapCategory);
   const mapHours = useAppStore((s) => s.mapHours);
   const setMapHours = useAppStore((s) => s.setMapHours);
-  const heatmap = useAppStore((s) => s.heatmap);
-  const setHeatmap = useAppStore((s) => s.setHeatmap);
-  const theme = useAppStore((s) => s.theme);
   const select = useAppStore((s) => s.selectIncident);
   const selectedId = useAppStore((s) => s.selectedId);
   const setView = useAppStore((s) => s.setView);
@@ -132,12 +145,27 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
       lastHours(
         incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens })),
         mapHours,
-      ).filter((i) => mapCategory === "all" || i.category === mapCategory),
-    [incidents, severities, municipalities, areaFilter, sourceLens, mapHours, mapCategory],
+      )
+        .filter((i) => mapCategory === "all" || i.category === mapCategory)
+        .filter((i) => showApprox || !isApproxPrecision(i.geoPrecision)),
+    [incidents, severities, municipalities, areaFilter, sourceLens, mapHours, mapCategory, showApprox],
   );
 
   const recent = useMemo(() => lastHours(visible, Math.min(mapHours, 3)), [visible, mapHours]);
 
+  const approxHidden = useMemo(
+    () =>
+      lastHours(
+        incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens })),
+        mapHours,
+      ).filter(
+        (i) =>
+          (mapCategory === "all" || i.category === mapCategory) && isApproxPrecision(i.geoPrecision),
+      ).length,
+    [incidents, severities, municipalities, areaFilter, sourceLens, mapHours, mapCategory],
+  );
+
+  // Light basemap only — never recreate on theme change.
   useEffect(() => {
     let cancelled = false;
     let map: import("leaflet").Map | undefined;
@@ -150,93 +178,26 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         keyboard: true,
       }).setView([42.68, -73.8], 11);
       L.control.zoom({ position: "bottomright" }).addTo(map);
-      const tone = theme === "light" ? "Light" : "Dark";
       const tiles = {
         maxZoom: 19,
         maxNativeZoom: 16,
       };
-      L.tileLayer(esriUrl(`Canvas/World_${tone}_Gray_Base`), {
+      L.tileLayer(esriUrl("Canvas/World_Light_Gray_Base"), {
         ...tiles,
         attribution: "Tiles &copy; Esri &mdash; Esri, HERE, Garmin, FAO, NOAA, USGS",
       }).addTo(map);
-      L.tileLayer(esriUrl(`Canvas/World_${tone}_Gray_Reference`), tiles).addTo(map);
+      L.tileLayer(esriUrl("Canvas/World_Light_Gray_Reference"), tiles).addTo(map);
       const layer = L.layerGroup().addTo(map);
-      const parcels = L.geoJSON(undefined, {
-        style: {
-          color: cssVar("--accent", "#3d8bfd"),
-          weight: 1.25,
-          fillColor: cssVar("--accent", "#3d8bfd"),
-          fillOpacity: 0.06,
-        },
-        onEachFeature: (feature, lyr) => {
-          const attrs = (feature.properties || {}) as ParcelAttrs;
-          lyr.bindPopup(parcelPopupHtml(attrs), {
-            className: "act-parcel-popup",
-            maxWidth: 280,
-          });
-        },
-      }).addTo(map);
-      map.attributionControl?.addAttribution(`Parcels &copy; ${PARCEL_CREDIT}`);
-      mapRef.current = { map, layer, parcels, L };
+      mapRef.current = { map, layer, L };
       setReady(true);
     })();
     return () => {
       cancelled = true;
       setReady(false);
-      parcelAbort.current?.abort();
       map?.remove();
       mapRef.current = null;
     };
-  }, [theme]);
-
-  async function refreshParcels() {
-    const ctx = mapRef.current;
-    if (!ctx || !parcelsOn) {
-      ctx?.parcels.clearLayers();
-      setParcelCount(0);
-      return;
-    }
-    const z = ctx.map.getZoom();
-    if (z < PARCEL_MIN_ZOOM) {
-      ctx.parcels.clearLayers();
-      setParcelCount(0);
-      setParcelNote("Zoom in for tax parcels");
-      return;
-    }
-    setParcelNote("Loading parcels…");
-    const b = ctx.map.getBounds();
-    const bbox: [number, number, number, number] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
-    parcelAbort.current?.abort();
-    const ac = new AbortController();
-    parcelAbort.current = ac;
-    try {
-      const geojson = await fetchParcelsGeoJson(bbox, { viaProxy: true, signal: ac.signal });
-      if (ac.signal.aborted) return;
-      ctx.parcels.clearLayers();
-      ctx.parcels.addData(geojson as never);
-      setParcelCount(geojson.features?.length || 0);
-      setParcelNote(geojson.features?.length ? `${geojson.features.length} parcels · ${PARCEL_CREDIT}` : "No parcels in view");
-    } catch (err) {
-      if (ac.signal.aborted) return;
-      setParcelNote(err instanceof Error ? err.message : "Parcel layer unavailable");
-    }
-  }
-
-  useEffect(() => {
-    const ctx = mapRef.current;
-    if (!ctx || !ready) return;
-    const onMove = () => {
-      void refreshParcels();
-    };
-    ctx.map.on("moveend", onMove);
-    ctx.map.on("zoomend", onMove);
-    void refreshParcels();
-    return () => {
-      ctx.map.off("moveend", onMove);
-      ctx.map.off("zoomend", onMove);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, parcelsOn, theme]);
+  }, []);
 
   useEffect(() => {
     if (!active || !ready) return;
@@ -266,60 +227,105 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
     const { L, layer, map } = ctx;
     layer.clearLayers();
     const pts: [number, number][] = [];
-    const fill = (sev: Severity) => pinColor(sev);
-    const stroke = cssVar("--fg", "#f0f4f8");
-    for (const inc of visible) {
-      const selected = inc.id === selectedId;
-      const approx = isApproxPrecision(inc.geoPrecision);
-      const r = heatmap ? 16 : selected ? 13 : approx ? 10 : 9;
-      const color = fill(inc.severity);
-      const marker = L.circleMarker([inc.lat, inc.lng], {
-        radius: r,
-        color: selected ? stroke : approx ? color : color,
-        weight: selected ? 3 : approx ? 1.5 : inc.severity === "critical" || inc.severity === "high" ? 3 : 2,
-        fillColor: color,
-        fillOpacity: heatmap ? 0.22 : approx ? 0.35 : 0.92,
-        dashArray: approx ? "4 3" : undefined,
-        className: approx ? `act-incident-pin act-pin-approx act-pin-${inc.severity}` : `act-incident-pin act-pin-precise act-pin-${inc.severity}`,
-      });
-      // DivIcon badge for type/severity readability at street zoom
-      const glyph = typeGlyph(inc.type);
-      if (!heatmap && (inc.severity === "critical" || inc.severity === "high" || selected)) {
+    const stroke = cssVar("--fg", "#1a1f2e");
+    const clusters = clusterPins(visible);
+
+    for (const cluster of clusters) {
+      const primary = pickPrimary(cluster.items);
+      const selected = cluster.items.some((i) => i.id === selectedId);
+      const approx = isApproxPrecision(primary.geoPrecision);
+      const multi = cluster.items.length > 1;
+      const color = pinColor(primary.severity);
+      const r = selected ? 13 : multi ? 12 : approx ? 10 : 9;
+
+      if (multi) {
         const icon = L.divIcon({
           className: "act-pin-badge",
-          html: `<span class="act-pin-badge-inner" style="--m:${color}">${glyph}</span>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
+          html: `<span class="act-pin-badge-inner" style="--m:${color}">${cluster.items.length}</span>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
         });
-        const badge = L.marker([inc.lat, inc.lng], { icon, interactive: true, keyboard: true });
-        badge.bindTooltip(tipNode(inc), {
+        const badge = L.marker([cluster.lat, cluster.lng], { icon, interactive: true, keyboard: true });
+        const tip = document.createElement("div");
+        tip.innerHTML = "";
+        const head = document.createElement("p");
+        head.className = "act-tip-title";
+        head.textContent = `${cluster.items.length} calls here`;
+        tip.append(head);
+        for (const inc of cluster.items.slice(0, 4)) {
+          const row = document.createElement("p");
+          row.className = "act-tip-meta";
+          row.textContent = `${inc.title} · ${clockTime(inc.occurredAt)}`;
+          tip.append(row);
+        }
+        badge.bindTooltip(tip, {
           direction: "top",
           opacity: 1,
           className: "act-tip",
           sticky: true,
         });
-        badge.on("click", () => select(inc.id));
+        badge.on("click", () => select(primary.id));
         badge.addTo(layer);
+        const node = badge.getElement();
+        if (node) {
+          node.setAttribute("role", "img");
+          node.setAttribute(
+            "aria-label",
+            `${cluster.items.length} overlapping calls, including ${pinLabel(primary)}`,
+          );
+        }
+      } else {
+        const inc = primary;
+        const marker = L.circleMarker([cluster.lat, cluster.lng], {
+          radius: r,
+          color: selected ? stroke : color,
+          weight: selected ? 3 : approx ? 1.5 : inc.severity === "critical" || inc.severity === "high" ? 3 : 2,
+          fillColor: color,
+          fillOpacity: approx ? 0.35 : 0.92,
+          dashArray: approx ? "4 3" : undefined,
+          className: approx
+            ? `act-incident-pin act-pin-approx act-pin-${inc.severity}`
+            : `act-incident-pin act-pin-precise act-pin-${inc.severity}`,
+        });
+        const glyph = typeGlyph(inc.type);
+        if (inc.severity === "critical" || inc.severity === "high" || selected) {
+          const icon = L.divIcon({
+            className: "act-pin-badge",
+            html: `<span class="act-pin-badge-inner" style="--m:${color}">${glyph}</span>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+          });
+          const badge = L.marker([cluster.lat, cluster.lng], { icon, interactive: true, keyboard: true });
+          badge.bindTooltip(tipNode(inc), {
+            direction: "top",
+            opacity: 1,
+            className: "act-tip",
+            sticky: true,
+          });
+          badge.on("click", () => select(inc.id));
+          badge.addTo(layer);
+        }
+        marker.bindTooltip(tipNode(inc), {
+          direction: "top",
+          opacity: 1,
+          className: "act-tip",
+          sticky: true,
+        });
+        marker.on("click", () => select(inc.id));
+        marker.addTo(layer);
+        const node = marker.getElement();
+        if (node) {
+          node.setAttribute("role", "img");
+          node.setAttribute("aria-label", pinLabel(inc));
+        }
       }
-      marker.bindTooltip(tipNode(inc), {
-        direction: "top",
-        opacity: 1,
-        className: "act-tip",
-        sticky: true,
-      });
-      marker.on("click", () => select(inc.id));
-      marker.addTo(layer);
-      const node = marker.getElement();
-      if (node) {
-        node.setAttribute("role", "img");
-        node.setAttribute("aria-label", pinLabel(inc));
-      }
-      pts.push([inc.lat, inc.lng]);
+      pts.push([cluster.lat, cluster.lng]);
     }
+
     if (!active) return;
     if (selectedId) {
       const hit = visible.find((i) => i.id === selectedId) || incidents.find((i) => i.id === selectedId);
-      if (hit) {
+      if (hit && (showApprox || !isApproxPrecision(hit.geoPrecision))) {
         const z = Math.max(map.getZoom(), isApproxPrecision(hit.geoPrecision) ? 13 : 16);
         map.setView([hit.lat, hit.lng], z, { animate: true });
       }
@@ -328,7 +334,7 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
       const bounds = L.latLngBounds(focus.map((i) => [i.lat, i.lng] as [number, number]));
       if (bounds.isValid()) map.fitBounds(bounds.pad(0.2), { maxZoom: recent.length ? 14 : 12, animate: false });
     }
-  }, [visible, recent, heatmap, selectedId, select, ready, active, theme, incidents]);
+  }, [visible, recent, selectedId, select, ready, active, incidents, showApprox]);
 
   useEffect(() => {
     if (!listOpen) return;
@@ -359,14 +365,15 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
         ref={el}
         className="absolute inset-0"
         role="region"
-        aria-label="Incident map with tax parcels when zoomed in. Use plus and minus to zoom. Open List for a text version of the pins."
+        aria-label="Incident map. Use plus and minus to zoom. Open List for a text version of the pins."
       />
       <p className="sr-only">
-        Map is the primary view. Street pins prefer intersections and addresses; dashed pins are town or county
-        approximations. Tax parcels from {PARCEL_CREDIT} appear when zoomed in.
+        Live is the home view. Map shows street-level pins when available. Approximate town or county
+        pins stay hidden unless Approx is turned on. Overlapping pins are clustered.
       </p>
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-        {visible.length} incidents on the map for the last {mapHours} hours. {parcelNote}
+        {visible.length} incidents on the map for the last {mapHours} hours.
+        {!showApprox && approxHidden > 0 ? ` ${approxHidden} approximate pins hidden.` : ""}
       </p>
 
       <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
@@ -390,20 +397,12 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
           </div>
           <button
             type="button"
-            onClick={() => setHeatmap(!heatmap)}
-            aria-pressed={heatmap}
-            className={cn(chip, heatmap ? "bg-cyan text-accent-fg" : "text-fg")}
+            onClick={() => setShowApprox((v) => !v)}
+            aria-pressed={showApprox}
+            className={cn(chip, showApprox ? "bg-accent text-accent-fg" : "text-fg")}
+            title="Show town/county approximate pins"
           >
-            Heat
-          </button>
-          <button
-            type="button"
-            onClick={() => setParcelsOn((v) => !v)}
-            aria-pressed={parcelsOn}
-            className={cn(chip, parcelsOn ? "bg-accent text-accent-fg" : "text-fg")}
-            title={PARCEL_CREDIT}
-          >
-            Parcels
+            Approx{!showApprox && approxHidden > 0 ? ` (${approxHidden})` : ""}
           </button>
           <button
             ref={listToggle}
@@ -453,7 +452,9 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
           </h2>
           {visible.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm leading-relaxed text-muted">
-              No mapped calls in this window. NYSP blotter pins appear after the 7 AM report.
+              {approxHidden > 0 && !showApprox
+                ? `No street-level pins in this window. ${approxHidden} approximate town/county pins are hidden — turn on Approx to see them.`
+                : "No mapped calls in this window. NYSP blotter pins appear after the 7 AM report. Jump to Live for scanner activity."}
             </p>
           ) : (
             <ul>
@@ -529,14 +530,11 @@ export function MapView({ incidents, active }: { incidents: Incident[]; active: 
             label="Share map"
           />
         </div>
-        {parcelsOn ? (
-          <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-1.5 text-center text-xs leading-snug text-muted">
-            {parcelNote || (parcelCount ? `${parcelCount} parcels` : `Parcels · ${PARCEL_CREDIT}`)}
-          </p>
-        ) : null}
         {!listOpen && visible.length === 0 ? (
           <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
-            No mapped calls in this window. NYSP blotter pins appear after the 7 AM report.
+            {approxHidden > 0 && !showApprox
+              ? `No street pins here. ${approxHidden} approx pins hidden — toggle Approx, or open Live.`
+              : "No mapped calls in this window. NYSP blotter pins appear after the 7 AM report. Open Live for scanner activity."}
           </p>
         ) : null}
       </div>
