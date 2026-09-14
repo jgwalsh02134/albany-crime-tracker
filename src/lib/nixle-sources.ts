@@ -57,7 +57,7 @@ function stripHtml(raw: string): string {
 }
 
 function prop(obj: string, key: string): string {
-  const re = new RegExp(`\\b${key}\\b\\s*:\\s*(\"(?:\\\\.|[^\"])*\"|'(?:\\\\.|[^'])*'|\\d+|true|false|null)`, "i");
+  const re = new RegExp(`\\b${key}\\b\\s*:\\s*("(?:\\\\.|[^"])*"|'(?:\\\\.|[^'])*'|\\d+|true|false|null)`, "i");
   const m = obj.match(re);
   return m?.[1] ?? "";
 }
