@@ -284,6 +284,29 @@ function prettyRoad(raw: string): string {
   );
 }
 
+function isRedactedPersonName(raw: string): boolean {
+  const s = clean(raw);
+  if (!s) return true;
+  if (/^\[[^\]]+\]$/.test(s)) return true;
+  if (/\bjuvenile\b/i.test(s)) return true;
+  if (/\bunknown\b/i.test(s)) return true;
+  if (/\bwithheld\b/i.test(s)) return true;
+  return false;
+}
+
+function prettyPersonName(raw: string): string {
+  const s = clean(raw);
+  if (isRedactedPersonName(s)) return "";
+  const t = titleCase(s);
+  return t
+    .replace(/\bIi\b/g, "II")
+    .replace(/\bIii\b/g, "III")
+    .replace(/\bIv\b/g, "IV")
+    .replace(/\bVi\b/g, "VI")
+    .replace(/\bVii\b/g, "VII")
+    .replace(/\bViii\b/g, "VIII");
+}
+
 function extractRoad(chunk: string): { road: string; intersection: string } {
   const roadRaw =
     chunk.match(
@@ -346,6 +369,7 @@ function buildSummary(input: {
   charges: string[];
   status: string;
   arrestee: string;
+  personName?: string;
   road: string;
   intersection: string;
   injured?: string;
@@ -356,19 +380,27 @@ function buildSummary(input: {
   const parts: string[] = [];
   const place = [input.road, input.intersection ? `at ${input.intersection}` : ""].filter(Boolean).join(" ");
   if (input.charges.length) {
-    const who = input.age
-      ? `${input.age}-year-old arrested for `
-      : /arrest/i.test(input.status)
-        ? "Adult arrested for "
-        : "Charged with ";
-    parts.push(who + input.charges.join("; "));
+    const person = clean(input.personName ?? "");
+    const arrested = /arrest/i.test(input.status);
+    const head = person
+      ? input.age
+        ? `${person}, ${input.age}, ${arrested ? "arrested for " : "charged with "}`
+        : `${person} ${arrested ? "arrested for " : "charged with "}`
+      : input.age
+        ? `${input.age}-year-old arrested for `
+        : arrested
+          ? "Adult arrested for "
+          : "Charged with ";
+    parts.push(head + input.charges.join("; "));
     const hold = prettyArrest(input.arrestee);
     if (hold) parts.push(hold);
-    if (place) parts.push(place);
+    if (place) parts.push(`${place}${input.where ? ` · ${input.where}` : ""}`.trim());
+    else if (input.where) parts.push(`in ${input.where}`);
   } else {
     const st = prettyStatus(input.status);
     const whereBit = place ? `on ${place}` : input.where ? `in ${input.where}` : "";
-    parts.push(`${input.titleCat}${whereBit ? ` ${whereBit}` : ""}`);
+    const person = clean(input.personName ?? "");
+    parts.push(`${input.titleCat}${person ? ` — ${person}` : ""}${whereBit ? ` ${whereBit}` : ""}`);
     if (st) parts.push(st);
   }
   if (input.killed && input.killed !== "0") parts.push(`${input.killed} killed`);
@@ -399,6 +431,11 @@ export function extractNyspText(
     const station = field(chunk, "Station", "Location Code:|Incident Status:|Date\\/Time");
     const { road, intersection } = extractRoad(chunk);
     const charges = extractCharges(chunk);
+    const defendantNameRaw = clean(
+      chunk.match(/Defendant\s*\(1\)\s*Name:\s*([^:]{3,96}?)(?=\s+Age:|\s+Defendant Address:|\s+Date\/Time|$)/i)?.[1] ??
+        "",
+    );
+    const personName = prettyPersonName(defendantNameRaw);
     const arrestee = clean(
       chunk.match(
         /Arrestee Status:\s*([^:]{3,80}?)(?=\s+(?:Location of Arrest|Bail Amount|Arrest Information|Incident Number)|$)/i,
@@ -449,6 +486,7 @@ export function extractNyspText(
       charges,
       status,
       arrestee,
+      personName,
       road: roadPretty,
       intersection: interPretty,
       injured,
@@ -456,9 +494,14 @@ export function extractNyspText(
       age: ageYrs,
       where,
     });
-    const title = roadPretty
-      ? `${titleCat} on ${roadPretty}${interPretty ? ` at ${interPretty}` : ""} — ${where}`
-      : `${titleCat} — ${where}`;
+    const title =
+      personName && /arrest/i.test(status)
+        ? roadPretty
+          ? `${titleCat} on ${roadPretty}${interPretty ? ` at ${interPretty}` : ""} — ${personName} · ${where}`
+          : `${titleCat} — ${personName} · ${where}`
+        : roadPretty
+          ? `${titleCat} on ${roadPretty}${interPretty ? ` at ${interPretty}` : ""} — ${where}`
+          : `${titleCat} — ${where}`;
     out.push({
       id: `nysp-${id}`,
       title,
