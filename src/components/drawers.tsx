@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Drawer } from "vaul";
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -136,17 +136,18 @@ export function FilterDrawer() {
 export function IncidentDrawer({ incident }: { incident: Incident | null }) {
   const selectedId = useAppStore((s) => s.selectedId);
   const select = useAppStore((s) => s.selectIncident);
+  const isBelowLg = useMediaQuery("(max-width: 1023px)");
+
+  if (!isBelowLg) return null;
 
   return (
-    <div className="lg:hidden">
-      <SheetFrame open={!!selectedId} onOpenChange={(o) => !o && select(null)}>
-        {incident ? (
-          <div className="overflow-y-auto scrollbar-thin">
-            <IncidentDetail incident={incident} variant="drawer" />
-          </div>
-        ) : null}
-      </SheetFrame>
-    </div>
+    <SheetFrame open={!!selectedId} onOpenChange={(o) => !o && select(null)}>
+      {incident ? (
+        <div className="overflow-y-auto scrollbar-thin">
+          <IncidentDetail incident={incident} variant="drawer" />
+        </div>
+      ) : null}
+    </SheetFrame>
   );
 }
 
@@ -205,4 +206,24 @@ export function MoreDrawer() {
       </div>
     </SheetFrame>
   );
+}
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    }
+    // Safari < 14
+    mql.addListener(onChange);
+    return () => mql.removeListener(onChange);
+  }, [query]);
+
+  return matches;
 }
