@@ -16,7 +16,11 @@ const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
   { url: "https://cbs6albany.com/news/local.rss", outlet: "CBS6" },
   { url: "https://wnyt.com/feed/", outlet: "WNYT" },
   { url: "https://www.wamc.org/news.rss", outlet: "WAMC" },
-  { url: "https://patch.com/new-york/albany/rss", outlet: "Patch Albany" },
+  {
+    url: "https://news.google.com/rss/search?q=site:patch.com/new-york/albany-ny+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+dwi+OR+trooper+OR+sheriff)+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Patch Albany",
+    crimeOnly: true,
+  },
   {
     url: "https://news.google.com/rss/search?q=Albany+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI+OR+trooper+OR+stabbing+OR+homicide+OR+wanted)+when:1d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Google News",
@@ -561,6 +565,8 @@ async function collectWire() {
     scannerError: scanStats.lastError || undefined,
     scannerHeard: scanStats.lastSpoken || undefined,
     scannerCaptioned: scanStats.captions,
+    scannerSttState: scanStats.sttState,
+    scannerSttBlockedSec: scanStats.sttBlockedSec,
     // Counts that match Live lens (≤24h), not full pipe harvest.
     facebook: socialNow.filter((i) => i.outlet.startsWith("Facebook")).length,
     x: socialNow.filter((i) => i.outlet.startsWith("X ·")).length,

@@ -404,6 +404,9 @@ async function tickFeed(feedId: string) {
     state.stats.lastError = msg;
     state.stats.lastErrorAt = Date.now();
     console.error("[scanner] stt", feedId, msg);
+    // Mark the segment window as handled even on STT failure so we do not
+    // hammer providers by retrying the same audio every tick (common on 429s).
+    for (const seg of fresh) seen.add(seg.seq);
     // Hard backoff on rate-limit and xAI ACL (401/403) — stop hammering.
     // Whisper fallback inside transcribeAudioFile usually absorbs 401/403 when
     // OPENAI_API_KEY is set; this path runs when transcription still failed.
@@ -536,18 +539,16 @@ async function tick() {
     }
     if (Date.now() < state.sttBlockedUntil) return;
     // Albany/Colonie PD (3626) is the primary Live radio — always poll it.
-    const jobs = [tickFeed("3626")];
+    const feedIds: string[] = ["3626"];
     const listen = state.listenFeed && Date.now() < state.listenUntil ? state.listenFeed : null;
     if (listen && listen !== "3626") {
-      jobs.push(tickFeed(listen));
+      feedIds.push(listen);
     } else if (state.stats.ticks % 3 === 0) {
       // Rotate fire/Bethlehem keep-alive less often so PD gets more STT budget.
-      jobs.push(tickFeed(EXTRA_FEEDS[state.cursor % EXTRA_FEEDS.length]!));
+      feedIds.push(EXTRA_FEEDS[state.cursor % EXTRA_FEEDS.length]!);
       state.cursor += 1;
-    } else if (state.stats.ticks % 2 === 0) {
-      // Second PD pass on alternate ticks when extras are idle.
-      jobs.push(tickFeed("3626"));
     }
+    const jobs = [...new Set(feedIds)].map((id) => tickFeed(id));
     await Promise.race([
       Promise.all(jobs),
       new Promise((_, reject) => setTimeout(() => reject(new Error("tick-timeout")), 18000)),

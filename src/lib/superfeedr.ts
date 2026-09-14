@@ -269,7 +269,11 @@ export const SUPERFEEDR_TOPICS: { topic: string; outlet: string }[] = [
   { topic: "https://cbs6albany.com/news/local.rss", outlet: "CBS6" },
   { topic: "https://wnyt.com/feed/", outlet: "WNYT" },
   { topic: "https://www.wamc.org/news.rss", outlet: "WAMC" },
-  { topic: "https://patch.com/new-york/albany/rss", outlet: "Patch Albany" },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=site:patch.com/new-york/albany-ny+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+dwi+OR+trooper+OR+sheriff)+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Patch Albany",
+  },
   {
     topic:
       "https://news.google.com/rss/search?q=site:timesunion.com+(crash+OR+shooting+OR+arrest+OR+DWI+OR+homicide+OR+stabbing)+(albany+OR+colonie+OR+delmar+OR+latham+OR+bethlehem+OR+guilderland)+when:3d&hl=en-US&gl=US&ceid=US:en",

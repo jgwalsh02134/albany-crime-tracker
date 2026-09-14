@@ -215,6 +215,8 @@ export type WireHealth = {
   scannerError?: string;
   scannerHeard?: string;
   scannerCaptioned?: number;
+  scannerSttState?: string;
+  scannerSttBlockedSec?: number;
   facebook?: number;
   x?: number;
   reddit?: number;
