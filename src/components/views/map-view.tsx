@@ -770,6 +770,21 @@ export function MapView({
                 <span className="ml-auto font-mono text-xs tabular-nums text-subtle">{approxHidden}</span>
               </label>
 
+              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Legend</h3>
+              <div className="mt-2 space-y-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
+                <p>
+                  <span className="font-semibold text-fg">Solid pins</span> are street/intersection/landmark-level when available.{" "}
+                  <span className="font-semibold text-fg">Dashed, lighter pins</span> are approximate (town/county) — never a fake street address.
+                </p>
+                <p>
+                  <span className="font-semibold text-fg">Cluster badges</span> show the count. A <span className="font-semibold text-fg">✓</span> indicates the cluster includes official sources;{" "}
+                  <span className="font-semibold text-fg">…</span> indicates scanner-unconfirmed activity.
+                </p>
+                <p>
+                  <span className="font-semibold text-fg">Color</span> follows severity (critical/high/medium/low).
+                </p>
+              </div>
+
               <div className="mt-6 flex gap-2">
                 <Button
                   variant="secondary"
