@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Drawer } from "vaul";
-import { ExternalLink } from "lucide-react";
+import { ChevronRight, ExternalLink, Moon, Sparkles, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SOURCE_LENSES } from "@/lib/sources";
 import { MUNICIPALITIES, SEVERITIES, type Severity, type ViewId } from "@/lib/types";
@@ -187,35 +187,53 @@ export function MoreDrawer() {
             <button
               key={item.label}
               type="button"
-              className="flex min-h-12 items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-3 text-left"
+              className="group flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-3 text-left active:opacity-80"
               onClick={() => setView(item.view)}
             >
-              <span>
-                <span className="block text-sm font-medium">{item.label}</span>
-                <span className="block text-xs text-subtle">{item.hint}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+                  {item.view === "chat" ? <Sparkles className="size-4 text-subtle" /> : <ChevronRight className="size-4 text-subtle" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold">{item.label}</span>
+                  <span className="block truncate text-xs text-subtle">{item.hint}</span>
+                </span>
               </span>
+              <ChevronRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
             </button>
           ))}
           <button
             type="button"
-            className="flex min-h-12 items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-3 text-left"
+            className="group flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-3 text-left active:opacity-80"
             onClick={toggleTheme}
           >
-            <span>
-              <span className="block text-sm font-medium">Theme</span>
-              <span className="block text-xs text-subtle">
-                {theme === "dark" ? "Dark (navy)" : "Light"}
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+                {theme === "dark" ? <Sun className="size-4 text-subtle" /> : <Moon className="size-4 text-subtle" />}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">Theme</span>
+                <span className="block truncate text-xs text-subtle">{theme === "dark" ? "Dark (navy)" : "Light"}</span>
               </span>
             </span>
+            <ChevronRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
           </button>
           <a
             href="https://nibrs.fbi.gov/2025/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex min-h-12 items-center justify-between rounded-lg border border-border bg-surface-2 px-3 py-3 text-sm"
+            className="group flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-3 text-left active:opacity-80"
           >
-            FBI / NIBRS resources
-            <ExternalLink className="size-4 text-subtle" />
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+                <ExternalLink className="size-4 text-subtle" />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">FBI / NIBRS resources</span>
+                <span className="block truncate text-xs text-subtle">Crime Data Explorer · agency map</span>
+              </span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
           </a>
         </div>
       </div>

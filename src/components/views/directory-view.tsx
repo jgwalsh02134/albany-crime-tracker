@@ -34,7 +34,7 @@ function telHref(phone: string): string | null {
 }
 
 function mapsHref(address: string): string {
-  return `https://maps.apple.com/?q=${encodeURIComponent(address)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
 function loadFavs(): string[] {
@@ -115,7 +115,7 @@ export function DirectoryView() {
   const empty = agencies.length === 0 && media.length === 0 && community.length === 0 && (!searching || feeds.length === 0);
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="mx-auto flex h-full w-full max-w-6xl flex-col">
       <div className="shrink-0 px-3 pb-2 pt-3">
         <h1 className="text-base font-semibold">Directory</h1>
         <p className="mt-0.5 text-xs text-subtle">
@@ -239,9 +239,21 @@ export function DirectoryView() {
         ) : null}
 
         {empty ? (
-          <p className="rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
-            No contacts match that search.
-          </p>
+          <div className="rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
+            <p className="font-medium text-fg">No matches.</p>
+            <p className="mt-1">
+              Try a different search, or switch back to <span className="font-semibold">All</span>.
+            </p>
+            {q.trim() ? (
+              <button
+                type="button"
+                onClick={() => setQ("")}
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-border bg-surface-2 px-4 text-sm font-semibold text-fg active:opacity-80"
+              >
+                Clear search
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
