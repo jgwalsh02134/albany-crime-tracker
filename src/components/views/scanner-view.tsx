@@ -399,6 +399,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
         : "Speaker ready";
 
   let captionStatus = "Captions paused";
+  const captionsBooting = transcribing && ticks === 0 && transcript.length === 0 && !lastSpokenAt && !lastError;
   if (transcribing) {
     const from = SCANNER_FEEDS.find((f) => f.id === lastFeed)?.shortName;
     const lastBit = lastSpoken
@@ -406,11 +407,11 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
       : "";
     if (sttState === "no-key" || lastError === "no-key") {
       captionStatus = "Captions unavailable in this environment";
-    } else if (sttState === "busy" || lastError.includes("429")) {
+    } else if (sttState === "busy") {
       captionStatus = `Speech API busy — retrying${sttBlockedSec ? ` (~${sttBlockedSec}s)` : ""}${lastBit}`;
     } else if (sttState === "error" && lastError) {
       captionStatus = `Caption error — keeping last good local line${lastBit}`;
-    } else if (ticks === 0) {
+    } else if (captionsBooting) {
       captionStatus = "Connecting to Broadcastify…";
     } else if (heardAgo) {
       captionStatus = `Heard ${heardAgo}${from ? ` · ${from}` : ""}`;
@@ -594,7 +595,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
           {visible.length === 0 ? (
             <div className="px-2 py-8 text-center text-sm text-muted">
               {transcribing ? (
-                ticks === 0 ? (
+                captionsBooting ? (
                   <p>Connecting to Albany-area radio…</p>
                 ) : sttState === "busy" ? (
                   <p>
