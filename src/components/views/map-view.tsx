@@ -41,6 +41,18 @@ function cssVar(name: string, fallback: string): string {
   return v || fallback;
 }
 
+function withAlpha(hex: string, alpha: number): string {
+  const h = hex.trim();
+  if (!h.startsWith("#") || (h.length !== 7 && h.length !== 4)) return hex;
+  const full =
+    h.length === 4 ? `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}` : h;
+  const r = Number.parseInt(full.slice(1, 3), 16);
+  const g = Number.parseInt(full.slice(3, 5), 16);
+  const b = Number.parseInt(full.slice(5, 7), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function pinColor(sev: Severity): string {
   return cssVar(`--sev-${sev}`, FALLBACK[sev]);
 }
@@ -212,10 +224,11 @@ export function MapView({
       if (cancelled || !el.current) return;
       map = L.map(el.current, {
         zoomControl: false,
-        attributionControl: true,
+        attributionControl: false,
         keyboard: true,
       }).setView([42.68, -73.8], 11);
       L.control.zoom({ position: "bottomright" }).addTo(map);
+      L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
       const tiles = {
         maxZoom: 19,
         maxNativeZoom: 16,
@@ -343,7 +356,7 @@ export function MapView({
     const bbox: [number, number, number, number] = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     const z = Math.round(map.getZoom());
     const clusters = index.getClusters(bbox, z) as any[];
-    const stroke = cssVar("--fg", "#0a1128");
+    const fg = cssVar("--fg", "#f0f4f8");
 
     for (const f of clusters) {
       const [lng, lat] = f.geometry.coordinates;
@@ -382,14 +395,15 @@ export function MapView({
       const selected = inc.id === selectedId;
       const approx = isApproxPrecision(inc.geoPrecision);
       const color = pinColor(inc.severity);
-      const weight = selected ? 3 : approx ? 1.5 : inc.severity === "critical" || inc.severity === "high" ? 3 : 2;
+      const ring = selected ? fg : approx ? withAlpha(color, 0.85) : withAlpha(fg, 0.55);
+      const weight = selected ? 3 : approx ? 2.25 : inc.severity === "critical" || inc.severity === "high" ? 3 : 2.5;
       const marker = L.circleMarker([lat, lng], {
-        radius: selected ? 12 : approx ? 9.5 : 9,
-        color: selected ? stroke : color,
+        radius: selected ? 12 : approx ? 10 : 9,
+        color: ring,
         weight,
         fillColor: color,
-        fillOpacity: approx ? 0.32 : 0.92,
-        dashArray: approx ? "4 3" : undefined,
+        fillOpacity: approx ? 0.14 : 0.92,
+        dashArray: approx ? "2 6" : undefined,
         className: approx
           ? `act-incident-pin act-pin-approx act-pin-${inc.severity}`
           : `act-incident-pin act-pin-precise act-pin-${inc.severity}`,
@@ -467,7 +481,7 @@ export function MapView({
   }
 
   return (
-    <div className="relative h-full min-h-0">
+    <div className="act-map relative h-full min-h-0">
       <div
         ref={el}
         className="absolute inset-0"
