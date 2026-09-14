@@ -211,6 +211,7 @@ export function AppShell() {
           <FeedView
             incidents={incidents}
             news={news}
+            wireItems={wire}
             wireLive={wireLive}
             wireHealth={wireHealth}
             refreshing={refreshing || pending}
@@ -277,7 +278,7 @@ export function AppShell() {
       </nav>
 
       <FilterDrawer />
-      <IncidentDrawer incident={selected} />
+      <IncidentDrawer incident={selected} wireItems={wire} />
       <MoreDrawer />
       <WitnessReportDrawer />
     </div>

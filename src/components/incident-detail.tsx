@@ -11,6 +11,8 @@ import type { Incident } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { isApproxPrecision } from "@/lib/geo";
 import { isWitnessIncident } from "@/lib/witness";
+import type { LiveWireItem } from "@/lib/sources";
+import { buildIncidentThread } from "@/lib/incident-thread";
 
 function signalLabel(v: Incident["verification"]): string {
   if (v === "confirmed") return "Official";
@@ -20,10 +22,12 @@ function signalLabel(v: Incident["verification"]): string {
 
 export function IncidentDetail({
   incident,
+  wireItems,
   variant = "drawer",
   onClose,
 }: {
   incident: Incident;
+  wireItems?: LiveWireItem[];
   variant?: "drawer" | "panel";
   onClose?: () => void;
 }) {
@@ -33,6 +37,7 @@ export function IncidentDetail({
   const description = decodeHtmlEntities(incident.description || "");
   const witness = isWitnessIncident(incident);
   const approx = isApproxPrecision(incident.geoPrecision);
+  const updates = buildIncidentThread(incident, wireItems);
 
   return (
     <div className={cn(variant === "panel" ? "p-4" : "px-4 pb-8 pt-3")}>
@@ -126,6 +131,76 @@ export function IncidentDetail({
           <dd className="mt-0.5 font-medium capitalize">{incident.category}</dd>
         </div>
       </dl>
+
+      <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Updates</h3>
+      {updates.length ? (
+        <ol className="mt-2 space-y-2">
+          {updates.map((u, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === updates.length - 1;
+            const time = `${clockTime(u.publishedAt)} · ${relativeTime(u.publishedAt)}`;
+            const tierTone = u.tier === "official" ? "cyan" : u.tier === "unconfirmed" ? "accent" : "muted";
+            const title = decodeHtmlEntities(u.title);
+            const summary = decodeHtmlEntities(u.summary || "");
+            const excerpt = summary && summary !== title ? summary : "";
+            const row = (
+              <>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
+                      {u.chip.label}
+                    </span>
+                    <Badge tone={tierTone}>{u.tier}</Badge>
+                    <span className="ml-auto font-mono text-[11px] tabular-nums text-subtle">{time}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-fg">{title}</p>
+                  {excerpt ? <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted">{excerpt}</p> : null}
+                  <p className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-subtle">
+                    <span className="truncate">{u.outlet}</span>
+                    <span className="text-border">·</span>
+                    <span className="truncate">{u.memberId}</span>
+                    {isFirst ? (
+                      <>
+                        <span className="text-border">·</span>
+                        <span className="font-sans text-[11px] font-semibold text-subtle">first report</span>
+                      </>
+                    ) : null}
+                    {isLast ? (
+                      <>
+                        <span className="text-border">·</span>
+                        <span className="font-sans text-[11px] font-semibold text-subtle">latest</span>
+                      </>
+                    ) : null}
+                  </p>
+                </div>
+                {u.url ? <ExternalLink className="size-4 shrink-0 text-subtle" /> : null}
+              </>
+            );
+            return (
+              <li key={u.memberId}>
+                {u.url ? (
+                  <a
+                    href={u.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex min-h-11 items-start justify-between gap-3 rounded-md bg-surface-2 px-3 py-2 active:opacity-90"
+                  >
+                    {row}
+                  </a>
+                ) : (
+                  <div className="flex min-h-11 items-start justify-between gap-3 rounded-md bg-surface-2 px-3 py-2">
+                    {row}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
+          No fused updates are available for this incident in the current refresh.
+        </p>
+      )}
 
       <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Sources</h3>
       <ul className="mt-2 space-y-1.5">

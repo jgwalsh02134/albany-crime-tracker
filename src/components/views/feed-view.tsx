@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 export function FeedView({
   incidents,
   news,
+  wireItems,
   wireLive,
   wireHealth = null,
   refreshing = false,
@@ -24,6 +25,7 @@ export function FeedView({
 }: {
   incidents: Incident[];
   news: NewsStory[];
+  wireItems?: import("@/lib/sources").LiveWireItem[];
   wireLive: boolean;
   wireHealth?: WireHealth | null;
   refreshing?: boolean;
@@ -98,7 +100,7 @@ export function FeedView({
             <aside className="hidden min-h-0 flex-1 flex-col border-l border-border bg-bg lg:flex">
               {selected ? (
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scrollbar-thin">
-                  <IncidentDetail incident={selected} variant="panel" onClose={() => select(null)} />
+                  <IncidentDetail incident={selected} wireItems={wireItems} variant="panel" onClose={() => select(null)} />
                 </div>
               ) : (
                 <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm text-muted">
