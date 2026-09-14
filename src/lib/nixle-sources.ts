@@ -33,7 +33,7 @@ function prop(obj: string, key: string): string {
 }
 
 function extractAlertsArray(html: string): string {
-  const m = html.match(/var\\s+alerts\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*;/i);
+  const m = html.match(/var\s+alerts\s*=\s*\[([\s\S]*?)\]\s*;/i);
   return (m?.[1] ?? "").trim();
 }
 
@@ -41,7 +41,7 @@ function toAbsolute(link: string): string {
   if (!link) return "";
   if (link.startsWith("http://") || link.startsWith("https://")) return link;
   if (link.startsWith("/")) return `https://nixle.us${link}`;
-  return `https://nixle.us/${link.replace(/^\\/+/, "")}`;
+  return `https://nixle.us/${link.replace(/^\/+/, "")}`;
 }
 
 function hashId(s: string): string {

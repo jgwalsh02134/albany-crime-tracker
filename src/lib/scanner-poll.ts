@@ -482,7 +482,6 @@ async function tickFeed(feedId: string) {
   if (key === state.lastText.get(feedId)) return;
 
   // Near-duplicate Live items in a short window (same clip posted twice).
-  const now = Date.now();
   const dup = state.buffer.find(
     (row) =>
       row.kind === "scanner" &&

@@ -37,8 +37,9 @@ describe("resolveScannerAgency", () => {
       feedId: "3626",
       spoken: "Latham Command personal injury crash on Wolf Road",
     });
-    assert.equal(a.agency, "Colonie PD");
-    assert.equal(a.abbr, "CPD");
+    // Colonie PD is encrypted — do not imply scanner coverage.
+    assert.equal(a.agency, "Albany PD");
+    assert.equal(a.abbr, "APD");
   });
 
   it("maps Albany street cues on dual PD feed", () => {
@@ -71,7 +72,7 @@ describe("resolveScannerAgency", () => {
 
   it("resolves Colonie PD from talkgroup metadata", () => {
     const a = resolveScannerAgency({ feedId: "3626", talkgroupId: "10401", spoken: "" });
-    assert.equal(a.agency, "Colonie PD");
+    assert.equal(a.agency, "Colonie PD (encrypted)");
     const tg = talkgroupLabel("13102");
     assert.equal(tg?.agency, "Albany PD");
   });
@@ -85,7 +86,7 @@ describe("resolveScannerAgency", () => {
       feedId: "3626",
       spoken: "respond Sandwich for a welfare check",
     });
-    assert.equal(a.agency, "Colonie PD");
+    assert.equal(a.agency, "Albany PD");
   });
 });
 
@@ -231,14 +232,14 @@ describe("scannerTitle", () => {
       feed: getScannerFeed("3626"),
     });
     const title = scannerTitle(spoken, agency, place);
-    assert.match(title, /Colonie PD/);
+    assert.match(title, /Albany PD/);
     assert.match(title, /Wolf/i);
     assert.match(title, /crash|injury/i);
   });
 
   it("keeps unconfirmed radio caveat", () => {
-    const s = withDisclaimer("Crash on Wolf Road", "Colonie PD");
-    assert.match(s, /Unconfirmed Colonie PD radio/);
+    const s = withDisclaimer("Crash on Wolf Road", "Albany PD");
+    assert.match(s, /Unconfirmed Albany PD radio/);
     assert.match(s, /not a CAD call/);
   });
 });
