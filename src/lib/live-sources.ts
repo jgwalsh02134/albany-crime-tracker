@@ -205,7 +205,9 @@ function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean):
     const published = Date.parse(tag(block, "pubDate") || tag(block, "dc:date")) || now;
     const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
     if (minutesAgo > NEWS_MIN) continue;
-    const place = placeFromText(`${title} ${summary}`);
+    const hay = `${title} ${summary}`;
+    const place = placeFromText(hay);
+    const pin = locateSpoken(hay, place?.name || "");
     out.push({
       id: url,
       title,
@@ -217,9 +219,10 @@ function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean):
       image: parseImage(block),
       kind: "news",
       municipality: place?.name,
-      address: place?.name,
-      lat: place?.lat,
-      lng: place?.lng,
+      address: pin.road || place?.name,
+      lat: pin.geo.lat,
+      lng: pin.geo.lng,
+      geoPrecision: pin.precision,
     });
   }
   return out;
@@ -418,6 +421,7 @@ async function fetchNyspPress(now: number): Promise<LiveWireItem[]> {
       if (minutesAgo > NEWS_MIN) continue;
       const url = `https://troopers.ny.gov${path}`;
       const place = placeFromText(title);
+      const pin = locateSpoken(title, place?.name || "");
       out.push({
         id: url,
         title,
@@ -429,9 +433,10 @@ async function fetchNyspPress(now: number): Promise<LiveWireItem[]> {
         kind: "news",
         agency: "NYSP",
         municipality: place?.name,
-        address: place?.name,
-        lat: place?.lat,
-        lng: place?.lng,
+        address: pin.road || place?.name,
+        lat: pin.geo.lat,
+        lng: pin.geo.lng,
+        geoPrecision: pin.precision,
       });
     }
     recordPipeOk("nysp-press", "NYSP press", out.length);

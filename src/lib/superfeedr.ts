@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { placeFromText } from "./geo";
+import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 
 const LOCAL =
@@ -66,7 +66,9 @@ function toWireItem(input: {
   publishedAt: number;
 }): LiveWireItem | null {
   if (!keepItem(input.title, input.summary)) return null;
-  const place = placeFromText(`${input.title} ${input.summary}`);
+  const hay = `${input.title} ${input.summary}`;
+  const place = placeFromText(hay);
+  const pin = locateSpoken(hay, place?.name || "");
   const now = Date.now();
   const publishedAt = Number.isFinite(input.publishedAt) ? input.publishedAt : now;
   return {
@@ -79,9 +81,10 @@ function toWireItem(input: {
     minutesAgo: Math.max(0, Math.round((now - publishedAt) / 60_000)),
     kind: "news",
     municipality: place?.name,
-    address: place?.name,
-    lat: place?.lat,
-    lng: place?.lng,
+    address: pin.road || place?.name,
+    lat: pin.geo.lat,
+    lng: pin.geo.lng,
+    geoPrecision: pin.precision,
   };
 }
 
