@@ -238,6 +238,10 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
     kinds.includes("scanner") &&
     kinds.some((k) => k === "blotter" || k === "news" || k === "social");
   if (weakScan && crossOfficial) {
+    // If both sides have a real pin and it's close, allow the fuse even when the scanner row's
+    // address/muni strings are weak. This prevents "scanner then newsroom" upgrades from
+    // showing as duplicates while still blocking muni-only dissolves.
+    if (place && hit >= 2) return true;
     return hit >= 3 && Boolean(extractStreetHint(a) && extractStreetHint(b));
   }
   if (place) return hit >= 1 || ca.type === cb.type;

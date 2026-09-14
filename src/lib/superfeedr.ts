@@ -279,6 +279,16 @@ export const SUPERFEEDR_TOPICS: { topic: string; outlet: string }[] = [
   },
   {
     topic:
+      "https://news.google.com/rss/search?q=Albany+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI+OR+trooper+OR+stabbing+OR+homicide+OR+wanted)+when:1d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Google News",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=site:patch.com/new-york+(colonie+OR+bethlehem+OR+latham)+(police+OR+crash+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Patch",
+  },
+  {
+    topic:
       "https://news.google.com/rss/search?q=site:timesunion.com+(crash+OR+shooting+OR+arrest+OR+DWI+OR+homicide+OR+stabbing)+(albany+OR+colonie+OR+delmar+OR+latham+OR+bethlehem+OR+guilderland)+when:3d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Times Union",
   },
@@ -296,6 +306,16 @@ export const SUPERFEEDR_TOPICS: { topic: string; outlet: string }[] = [
     topic:
       "https://news.google.com/rss/search?q=site:fox23news.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
     outlet: "FOX23",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=(%22Central+Avenue%22+OR+%22Western+Avenue%22+OR+%22Wolf+Road%22)+(Albany+OR+Colonie)+(crash+OR+arrest+OR+fire+OR+shooting+OR+police)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Corridor news",
+  },
+  {
+    topic:
+      "https://news.google.com/rss/search?q=(Bethlehem+OR+Delmar+OR+Latham)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Town news",
   },
   // Social (Google News RSS) — only high-signal official accounts and curated newsroom queries.
   { topic: "https://news.google.com/rss/search?q=site:facebook.com/AlbanyNYPolice+when:7d&hl=en-US&gl=US&ceid=US:en", outlet: "Facebook · Albany PD" },
