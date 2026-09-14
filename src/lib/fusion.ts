@@ -4,6 +4,7 @@
  * outrank blotter + 511 + news. This is not CAD and does not invent a dispatch board.
  */
 import type { Incident, IncidentSource, SourceKind, SourceTier, Verification } from "./types";
+import { isOfficialAgencySocial } from "./social-official";
 
 export type FuseKind = "news" | "blotter" | "scanner" | "traffic" | "social";
 
@@ -319,9 +320,7 @@ export function clusterLiveItems(items: FuseItem[]): FuseItem[][] {
 }
 
 function officialSocial(outlet: string): boolean {
-  return /Facebook ·|Civic ·|X · NYSP|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
-    outlet,
-  );
+  return isOfficialAgencySocial(outlet);
 }
 
 export function sourceFamily(kind: FuseKind | undefined, outlet: string): string {
