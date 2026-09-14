@@ -148,7 +148,7 @@ export function FilterDrawer() {
   );
 }
 
-export function IncidentDrawer({ incident }: { incident: Incident | null }) {
+export function IncidentDrawer({ incident, wireItems }: { incident: Incident | null; wireItems?: import("@/lib/sources").LiveWireItem[] }) {
   const selectedId = useAppStore((s) => s.selectedId);
   const select = useAppStore((s) => s.selectIncident);
   const isBelowLg = useMediaQuery("(max-width: 1023px)");
@@ -159,7 +159,7 @@ export function IncidentDrawer({ incident }: { incident: Incident | null }) {
     <SheetFrame open={!!selectedId} onOpenChange={(o) => !o && select(null)}>
       {incident ? (
         <div className="overflow-y-auto scrollbar-thin">
-          <IncidentDetail incident={incident} variant="drawer" />
+          <IncidentDetail incident={incident} wireItems={wireItems} variant="drawer" />
         </div>
       ) : null}
     </SheetFrame>
