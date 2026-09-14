@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
+import { recordPipeFail, recordPipeOk } from "./pipe-health";
+import { NEWS_FEEDS } from "./news-feeds";
 
 const LOCAL =
   /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g|clifton park|troy|schenectady|rensselaer|sand lake|schodack|east greenbush)\b/i;
@@ -222,6 +224,7 @@ export function ingestSuperfeedrItems(items: LiveWireItem[]): number {
   s.notifications += 1;
   s.lastAt = Date.now();
   s.lastError = "";
+  recordPipeOk("superfeedr:webhook", "Superfeedr webhook", items.length);
   if (!items.length) return 0;
 
   const seen = new Set(s.items.map((i) => i.id));
@@ -243,6 +246,7 @@ export function recordSuperfeedrError(msg: string) {
   const s = state();
   s.lastError = msg.slice(0, 160);
   s.lastAt = Date.now();
+  recordPipeFail("superfeedr:webhook", "Superfeedr webhook", msg);
 }
 
 export function superfeedrItems(now = Date.now()): LiveWireItem[] {
@@ -267,56 +271,8 @@ export function superfeedrHealth() {
 
 /** Feeds the app already intends (newsroom + civic). Idempotent hub.subscribe. */
 export const SUPERFEEDR_TOPICS: { topic: string; outlet: string }[] = [
-  { topic: "https://www.news10.com/feed/", outlet: "News10" },
-  { topic: "https://www.news10.com/news/crime/feed/", outlet: "News10 Crime" },
-  { topic: "https://cbs6albany.com/news/local.rss", outlet: "CBS6" },
-  { topic: "https://wnyt.com/feed/", outlet: "WNYT" },
-  { topic: "https://www.wamc.org/news.rss", outlet: "WAMC" },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=site:patch.com/new-york/albany-ny+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+dwi+OR+trooper+OR+sheriff)+when:7d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Patch Albany",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=Albany+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI+OR+trooper+OR+stabbing+OR+homicide+OR+wanted)+when:1d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Google News",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=site:patch.com/new-york+(colonie+OR+bethlehem+OR+latham)+(police+OR+crash+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Patch",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=site:timesunion.com+(crash+OR+shooting+OR+arrest+OR+DWI+OR+homicide+OR+stabbing)+(albany+OR+colonie+OR+delmar+OR+latham+OR+bethlehem+OR+guilderland)+when:3d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Times Union",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=site:spotlightnews.com+(arrest+OR+crash+OR+blotter+OR+DWI+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Spotlight",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=site:dailygazette.com+(albany+OR+colonie+OR+schenectady)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Daily Gazette",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=site:fox23news.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "FOX23",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=(%22Central+Avenue%22+OR+%22Western+Avenue%22+OR+%22Wolf+Road%22)+(Albany+OR+Colonie)+(crash+OR+arrest+OR+fire+OR+shooting+OR+police)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Corridor news",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=(Bethlehem+OR+Delmar+OR+Latham)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Town news",
-  },
+  // Canonical news feeds/queries (mirrors `NEWS_FEEDS`).
+  ...NEWS_FEEDS.map((f) => ({ topic: f.url, outlet: f.outlet })),
   // Social (Google News RSS) — only high-signal official accounts and curated newsroom queries.
   { topic: "https://news.google.com/rss/search?q=site:facebook.com/AlbanyNYPolice+when:7d&hl=en-US&gl=US&ceid=US:en", outlet: "Facebook · Albany PD" },
   { topic: "https://news.google.com/rss/search?q=site:facebook.com/FDAlbanyny+when:7d&hl=en-US&gl=US&ceid=US:en", outlet: "Facebook · Albany Fire" },
@@ -335,6 +291,7 @@ export const SUPERFEEDR_TOPICS: { topic: string; outlet: string }[] = [
   { topic: "https://news.google.com/rss/search?q=site:x.com/wten+(crash+OR+shooting+OR+fire+OR+arrest)+when:2d&hl=en-US&gl=US&ceid=US:en", outlet: "X · NEWS10" },
   { topic: "https://news.google.com/rss/search?q=site:x.com/timesunion+(crash+OR+shooting+OR+arrest+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en", outlet: "X · Times Union" },
   { topic: "https://news.google.com/rss/search?q=site:x.com/wnyt+(police+OR+shooting+OR+fire+OR+crash+OR+arrest)+when:2d&hl=en-US&gl=US&ceid=US:en", outlet: "X · WNYT" },
+  // Civic RSS (CivicPlus / WordPress) — already local by outlet.
   {
     topic: "https://www.townofbethlehem.org/RSSFeed.aspx?ModID=1&CID=All-news",
     outlet: "Civic · Bethlehem",
@@ -362,31 +319,6 @@ export const SUPERFEEDR_TOPICS: { topic: string; outlet: string }[] = [
   {
     topic: "https://www.villageofvoorheesville.gov/RSSFeed.aspx?ModID=1&CID=All-news",
     outlet: "Civic · Voorheesville",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=(Cohoes+OR+Watervliet+OR+Menands+OR+%22Green+Island%22)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "North cities",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=(Guilderland+OR+Altamont+OR+Voorheesville)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI+OR+blotter)+when:3d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Guilderland news",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=site:spectrumlocalnews.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Spectrum",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=%22Albany+County+Sheriff%22+(arrest+OR+crash+OR+shooting+OR+DWI)+when:7d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "ACSO",
-  },
-  {
-    topic:
-      "https://news.google.com/rss/search?q=site:troyrecord.com+(albany+OR+troy+OR+rensselaer)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Troy Record",
   },
 ];
 
@@ -527,6 +459,8 @@ export async function ensureSuperfeedrSubscriptions(opts?: {
     }
     s.results = results;
     s.lastRunAt = Date.now();
+    recordPipeOk("superfeedr:subscribe", "Superfeedr subscribe", subscribed);
+    if (failed > 0) recordPipeFail("superfeedr:subscribe", "Superfeedr subscribe", `failed ${failed}/${SUPERFEEDR_TOPICS.length}`);
     console.info("[superfeedr] subscribe", { callback, subscribed, failed });
     return { ok: failed === 0, callback, subscribed, failed, results };
   } finally {

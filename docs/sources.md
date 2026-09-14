@@ -16,7 +16,8 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | News10 / CBS6 / WNYT / WAMC | RSS + Superfeedr | Native feeds. |
 | Patch Albany | Google News RSS + Superfeedr | Patch’s legacy `.../new-york/albany/rss` 404s; `albany-ny` coverage comes from `site:patch.com` Google News RSS. |
 | Times Union / Spotlight / Gazette / FOX23 | Google News RSS + Superfeedr | Native TU RSS 404s — we do not pretend they work. |
-| Spectrum, Troy Record, ACSO, north cities, Guilderland | Google News RSS + Superfeedr | Gap queries (Cohoes / Watervliet / Menands / Green Island; Guilderland / Altamont / Voorheesville). |
+| Troy Record | RSS + Superfeedr | Native WordPress RSS (`/feed/`) + local keep rules. |
+| Spectrum, ACSO, north cities, Guilderland | Google News RSS + Superfeedr | Gap queries (Cohoes / Watervliet / Menands / Green Island; Guilderland / Altamont / Voorheesville). |
 | Google News (county-wide) | Google News RSS + Superfeedr | High-signal public-safety query for the last 24h; out-of-area dropped. |
 | Corridor + town queries | Google News RSS + Superfeedr | “Central/Western/Wolf” corridor + “Bethlehem/Delmar/Latham” gap queries. |
 | CivicPlus: Bethlehem, Guilderland PD, Guilderland town, Albany, Cohoes, Voorheesville, Troy, Schenectady, Schenectady PD | RSS + Superfeedr | Incident-keyword filter. Feeds may be empty and still count as wired. |
