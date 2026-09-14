@@ -1,10 +1,10 @@
 export function ShieldLogo({ className }: { className?: string }) {
   return (
     <img
-      src="/logo.png"
+      src="/logo.svg"
       alt=""
-      width={180}
-      height={180}
+      width={32}
+      height={32}
       className={className}
       draggable={false}
     />

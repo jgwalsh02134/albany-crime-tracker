@@ -67,7 +67,7 @@ async function redisTxn(commands: string[][]): Promise<unknown[] | null> {
 
   return await new Promise((resolve) => {
     const socket = net.createConnection({ host: parsed.host, port: parsed.port });
-    let buf = Buffer.alloc(0);
+    let buf: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     const replies: unknown[] = [];
     let expected = 0;
     let settled = false;
