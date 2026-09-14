@@ -5,6 +5,7 @@ import { decodeHtmlEntities } from "@/lib/html";
 import { incidentSharePayload } from "@/lib/share";
 import type { Incident, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { isWitnessIncident } from "@/lib/witness";
 
 const rail: Record<Severity, string> = {
   critical: "bg-sev-critical",
@@ -52,6 +53,7 @@ export function IncidentCard({
   onSelect: (id: string) => void;
 }) {
   const title = decodeHtmlEntities(incident.title);
+  const witness = isWitnessIncident(incident);
   const badge = sourceBadge(incident);
   const conf = confidenceBadge(incident);
   const loc = incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
@@ -84,7 +86,12 @@ export function IncidentCard({
         </p>
 
         <div className="mt-2 flex flex-wrap items-center gap-1">
-          {(incident.seenOn?.length ? incident.seenOn : [{ key: badge.label.toLowerCase(), label: badge.label }]).slice(0, 6).map((chip) => (
+          {[
+            ...(witness ? [{ key: "witness", label: "Witness" }] : []),
+            ...(incident.seenOn?.length ? incident.seenOn : [{ key: badge.label.toLowerCase(), label: badge.label }]),
+          ]
+            .slice(0, 6)
+            .map((chip) => (
             <span
               key={chip.key}
               className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted"
@@ -99,6 +106,8 @@ export function IncidentCard({
 
         {incident.verification === "scanner" ? (
           <p className="mt-1 text-[11px] text-subtle">Early radio report — not a CAD log. May be wrong.</p>
+        ) : witness ? (
+          <p className="mt-1 text-[11px] text-subtle">Witness report — may be wrong.</p>
         ) : null}
       </button>
       <div className="absolute right-1.5 top-1.5">

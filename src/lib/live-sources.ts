@@ -468,6 +468,7 @@ async function collectWire(opts?: { mode?: WireMode }) {
 
   const [
     newsRes,
+    witnessRes,
     blotterResRes,
     trafficRes,
     pressRes,
@@ -482,6 +483,16 @@ async function collectWire(opts?: { mode?: WireMode }) {
     tincRes,
   ] = await Promise.all([
     newsJob,
+    softPipe({
+      id: "wire:witness",
+      label: "Witness reports",
+      ms: 450,
+      run: async () => {
+        const { witnessReportsToWire } = await import("./witness-reports.server");
+        return await witnessReportsToWire(now);
+      },
+      fallback: [] as LiveWireItem[],
+    }),
     softPipe({
       id: "nysp-blotter",
       label: "NYSP blotter",
@@ -556,6 +567,7 @@ async function collectWire(opts?: { mode?: WireMode }) {
   };
 
   const news = record("wire:news", newsRes);
+  const witness = record("wire:witness", witnessRes);
   const blotterRes = record("nysp-blotter", blotterResRes);
   const traffic = record("511ny", trafficRes);
   const press = record("nysp-press", pressRes);
@@ -598,7 +610,7 @@ async function collectWire(opts?: { mode?: WireMode }) {
     }),
   );
   // Prefer radio / 511 / civic / fresh newsrooms ahead of overnight blotter.
-  const items = mergeActivity([scan, traffic, tinc, nws, nixle, liveNews, socialNow, civicNow, blotterLive]);
+  const items = mergeActivity([witness, scan, traffic, tinc, nws, nixle, liveNews, socialNow, civicNow, blotterLive]);
   // News tab: newsrooms first; cap blotter so overnight dumps do not drown headlines.
   const blotterAsNews = blotterNews.map((r) => ({ ...r, kind: "news" as const })).slice(0, 6);
   const storiesRaw = mergeActivity([
@@ -627,6 +639,7 @@ async function collectWire(opts?: { mode?: WireMode }) {
     tinc.length ? "NYSTA TINC" : "",
     nws.length ? "NWS" : "",
     nixle.length ? "Nixle" : "",
+    witness.length ? "Witness" : "",
     press.length ? "NYSP press" : "",
     pushed.length ? "Superfeedr" : "",
     civic.length ? "Civic" : "",
@@ -673,7 +686,7 @@ async function collectWire(opts?: { mode?: WireMode }) {
     facebook: socialNow.filter((i) => i.outlet.startsWith("Facebook")).length,
     x: socialNow.filter((i) => i.outlet.startsWith("X ·")).length,
     reddit: socialNow.filter((i) => i.outlet.startsWith("Reddit")).length,
-    citizen: social.citizen,
+    citizen: (social.citizen ?? 0) + witness.length,
     civic: civic.length,
     nws: nws.length,
     daytimePipesDry,

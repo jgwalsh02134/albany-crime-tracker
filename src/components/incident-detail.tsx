@@ -9,6 +9,8 @@ import { incidentSharePayload } from "@/lib/share";
 import { useAppStore } from "@/lib/store";
 import type { Incident } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { isApproxPrecision } from "@/lib/geo";
+import { isWitnessIncident } from "@/lib/witness";
 
 function signalLabel(v: Incident["verification"]): string {
   if (v === "confirmed") return "Official";
@@ -29,6 +31,8 @@ export function IncidentDetail({
   const setView = useAppStore((s) => s.setView);
   const title = decodeHtmlEntities(incident.title);
   const description = decodeHtmlEntities(incident.description || "");
+  const witness = isWitnessIncident(incident);
+  const approx = isApproxPrecision(incident.geoPrecision);
 
   return (
     <div className={cn(variant === "panel" ? "p-4" : "px-4 pb-8 pt-3")}>
@@ -63,7 +67,13 @@ export function IncidentDetail({
 
       {incident.origin === "live" &&
       incident.verification === "developing" &&
-      incident.sources.some((s) => s.kind === "social") ? (
+      witness ? (
+        <p className="mt-3 rounded-lg border border-sev-medium/30 bg-sev-medium/10 px-3 py-2 text-xs leading-relaxed text-muted">
+          Witness report — an early signal, not a 911/CAD log. May be wrong.
+          {" "}
+          {approx ? "Location is approximate." : "Pinned location is user-provided."}
+        </p>
+      ) : incident.sources.some((s) => s.kind === "social") ? (
         <p className="mt-3 rounded-lg border border-sev-medium/30 bg-sev-medium/10 px-3 py-2 text-xs leading-relaxed text-muted">
           Citizen or social post — an early report, not a 911/CAD log. May be wrong.
         </p>

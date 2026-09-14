@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Supercluster from "supercluster";
 import { Drawer } from "vaul";
-import { Filter, Home, List, LocateFixed, Maximize2, Radio } from "lucide-react";
+import { Filter, Home, List, LocateFixed, Maximize2, Megaphone, Radio, X } from "lucide-react";
 import { ShareButton } from "@/components/share-button";
 import { Button } from "@/components/ui/button";
 import { lastHours } from "@/lib/data";
@@ -202,6 +202,10 @@ export function MapView({
   const select = useAppStore((s) => s.selectIncident);
   const selectedId = useAppStore((s) => s.selectedId);
   const setView = useAppStore((s) => s.setView);
+  const setWitnessOpen = useAppStore((s) => s.setWitnessOpen);
+  const witnessPickingOnMap = useAppStore((s) => s.witnessPickingOnMap);
+  const setWitnessPickingOnMap = useAppStore((s) => s.setWitnessPickingOnMap);
+  const setWitnessDraft = useAppStore((s) => s.setWitnessDraft);
 
   const base = useMemo(
     () => incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens })),
@@ -272,6 +276,35 @@ export function MapView({
       window.clearTimeout(id2);
     };
   }, [active, ready, selectedId]);
+
+  useEffect(() => {
+    if (!ready || !active || !witnessPickingOnMap) return;
+    const ctx = mapRef.current;
+    if (!ctx) return;
+    const map = ctx.map;
+    const container = map.getContainer();
+    const prevCursor = container.style.cursor;
+    container.style.cursor = "crosshair";
+    const onClick = (e: any) => {
+      const lat = e?.latlng?.lat;
+      const lng = e?.latlng?.lng;
+      if (typeof lat !== "number" || typeof lng !== "number") return;
+      setWitnessDraft({
+        lat,
+        lng,
+        accuracyM: null,
+        geoPrecision: "road",
+        locationSource: "map",
+      });
+      setWitnessPickingOnMap(false);
+      setWitnessOpen(true);
+    };
+    map.on("click", onClick);
+    return () => {
+      map.off("click", onClick);
+      container.style.cursor = prevCursor;
+    };
+  }, [ready, active, witnessPickingOnMap, setWitnessDraft, setWitnessPickingOnMap, setWitnessOpen]);
 
   function fitCounty() {
     const ctx = mapRef.current;
@@ -549,8 +582,41 @@ export function MapView({
             <Radio className="mr-1 inline size-4" aria-hidden />
             Live
           </button>
+          <button
+            type="button"
+            onClick={() => setWitnessOpen(true)}
+            className={cn(chip, "text-fg")}
+            aria-label="Report activity"
+          >
+            <Megaphone className="mr-1 inline size-4" aria-hidden />
+            Report
+          </button>
         </div>
       </div>
+
+      {witnessPickingOnMap ? (
+        <div className="pointer-events-none absolute inset-x-3 top-20 z-20">
+          <div className="pointer-events-auto rounded-xl border border-accent/35 bg-surface/95 px-3 py-3 shadow-md backdrop-blur">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-fg">Tap the map to drop a pin</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-subtle">
+                  This sets the witness location. Don’t fake street precision — use “Other” if you’re unsure.
+                </p>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="shrink-0"
+                aria-label="Cancel pin drop"
+                onClick={() => setWitnessPickingOnMap(false)}
+              >
+                <X className="size-5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="pointer-events-none absolute right-3 top-20 z-10 flex flex-col gap-2">
         <Button

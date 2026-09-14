@@ -10,7 +10,9 @@ import {
   type Severity,
   type SourceLens,
   type ViewId,
+  type WitnessKind,
 } from "./types";
+import type { GeoPrecision } from "./geo";
 
 type Theme = "dark" | "light";
 
@@ -65,6 +67,22 @@ type AppState = {
   setFilterOpen: (o: boolean) => void;
   setMoreOpen: (o: boolean) => void;
   resetFilters: () => void;
+
+  witnessOpen: boolean;
+  witnessPickingOnMap: boolean;
+  witnessDraft: {
+    kind: WitnessKind;
+    note: string;
+    lat: number | null;
+    lng: number | null;
+    accuracyM: number | null;
+    geoPrecision: GeoPrecision | null;
+    locationSource: "device" | "map" | null;
+  };
+  setWitnessOpen: (o: boolean) => void;
+  setWitnessPickingOnMap: (o: boolean) => void;
+  setWitnessDraft: (patch: Partial<AppState["witnessDraft"]>) => void;
+  resetWitnessDraft: () => void;
 };
 
 export function applyTheme(theme: Theme) {
@@ -145,6 +163,33 @@ export const useAppStore = create<AppState>()((set, get) => ({
       liveKind: "all",
       liveNearMe: false,
       liveNearMiles: 2,
+    }),
+
+  witnessOpen: false,
+  witnessPickingOnMap: false,
+  witnessDraft: {
+    kind: "police",
+    note: "",
+    lat: null,
+    lng: null,
+    accuracyM: null,
+    geoPrecision: null,
+    locationSource: null,
+  },
+  setWitnessOpen: (witnessOpen) => set({ witnessOpen }),
+  setWitnessPickingOnMap: (witnessPickingOnMap) => set({ witnessPickingOnMap }),
+  setWitnessDraft: (patch) => set({ witnessDraft: { ...get().witnessDraft, ...patch } }),
+  resetWitnessDraft: () =>
+    set({
+      witnessDraft: {
+        kind: "police",
+        note: "",
+        lat: null,
+        lng: null,
+        accuracyM: null,
+        geoPrecision: null,
+        locationSource: null,
+      },
     }),
 }));
 
