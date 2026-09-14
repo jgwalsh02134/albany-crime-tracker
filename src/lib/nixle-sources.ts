@@ -4,7 +4,29 @@ import { recordPipeFail, recordPipeOk } from "./pipe-health";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const MAX_MIN = 7 * 24 * 60;
-const CACHE_MS = 2 * 60_000;
+
+const NY_PARTS = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function nyHour(now: number): number {
+  const parts = Object.fromEntries(NY_PARTS.formatToParts(new Date(now)).map((p) => [p.type, p.value]));
+  return Number(parts.hour) || 0;
+}
+
+function nixleCacheMs(now: number, agencyId: string): number {
+  const h = nyHour(now);
+  // Daytime cadence: quicker refresh so advisories surface faster.
+  const base = h >= 6 && h < 22 ? 60_000 : 4 * 60_000;
+  // Stable jitter to avoid stampedes when many clients refresh simultaneously.
+  let j = 0;
+  for (let i = 0; i < agencyId.length; i++) j = (j * 31 + agencyId.charCodeAt(i)) | 0;
+  const spread = Math.round(base * 0.1);
+  return base + ((Math.abs(j) % (spread * 2 + 1)) - spread);
+}
 
 type NixleAgency = {
   id: string;
@@ -35,7 +57,7 @@ function stripHtml(raw: string): string {
 }
 
 function prop(obj: string, key: string): string {
-  const re = new RegExp(`\\b${key}\\b\\s*:\\s*(\"(?:\\\\.|[^\"])*\"|'(?:\\\\.|[^'])*'|\\d+|true|false|null)`, "i");
+  const re = new RegExp(`\\b${key}\\b\\s*:\\s*("(?:\\\\.|[^"])*"|'(?:\\\\.|[^'])*'|\\d+|true|false|null)`, "i");
   const m = obj.match(re);
   return m?.[1] ?? "";
 }
@@ -68,7 +90,8 @@ function cacheMap(): Map<string, CacheEntry> {
 async function fetchNixleAgency(agency: NixleAgency, now = Date.now()): Promise<LiveWireItem[]> {
   const cache = cacheMap();
   const hit = cache.get(agency.id);
-  if (hit && now - hit.at < CACHE_MS) return hit.items;
+  const ttl = nixleCacheMs(now, agency.id);
+  if (hit && now - hit.at < ttl) return hit.items;
   try {
     const res = await fetch(agency.url, {
       headers: { "User-Agent": UA, Accept: "text/html,*/*" },
@@ -76,6 +99,9 @@ async function fetchNixleAgency(agency: NixleAgency, now = Date.now()): Promise<
     });
     if (!res.ok) {
       recordPipeFail(agency.id, agency.label, `HTTP ${res.status}`);
+      // Keep last known items on transient errors so alerts don't "blink" out of the UI.
+      if (hit && hit.items.length && now - hit.at < 30 * 60_000) return hit.items;
+      cache.set(agency.id, { at: now, items: [] });
       return [];
     }
     const html = await res.text();
@@ -138,6 +164,8 @@ async function fetchNixleAgency(agency: NixleAgency, now = Date.now()): Promise<
     return out;
   } catch (err) {
     recordPipeFail(agency.id, agency.label, err instanceof Error ? err.message : "nixle-error");
+    if (hit && hit.items.length && now - hit.at < 30 * 60_000) return hit.items;
+    cache.set(agency.id, { at: now, items: [] });
     return [];
   }
 }

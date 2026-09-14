@@ -7,14 +7,18 @@ const SEV_BOOST: Record<Severity, number> = {
   low: 0,
 };
 
+export function nowUrgencyScore(inc: Incident): number {
+  return Math.max(0, 180 - inc.minutesAgo) + (SEV_BOOST[inc.severity] ?? 0);
+}
+
 /**
  * Now-lane ranking: prioritize witness relevance (recency + severity) while staying honest about
  * verification. Corroboration still matters as a tie-breaker, but it should not bury fresh,
  * serious unconfirmed activity under hours-old multi-source news.
  */
 export function compareNowLane(a: Incident, b: Incident): number {
-  const aUrgency = Math.max(0, 180 - a.minutesAgo) + (SEV_BOOST[a.severity] ?? 0);
-  const bUrgency = Math.max(0, 180 - b.minutesAgo) + (SEV_BOOST[b.severity] ?? 0);
+  const aUrgency = nowUrgencyScore(a);
+  const bUrgency = nowUrgencyScore(b);
   if (bUrgency !== aUrgency) return bUrgency - aUrgency;
 
   const aCorr = a.corroborationScore ?? 0;
