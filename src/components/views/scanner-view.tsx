@@ -483,7 +483,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
                 type="button"
                 onClick={() => selectFeed(f.id)}
                 className={cn(
-                  "flex h-10 shrink-0 snap-start items-center gap-1.5 rounded-full border px-3 text-sm font-semibold",
+                  "flex h-10 shrink-0 snap-start items-center gap-1.5 rounded-full border px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                   on ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
                 )}
               >
@@ -501,11 +501,11 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
           <button
             type="button"
             onClick={togglePlay}
-            className="flex size-12 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg"
+            className="flex size-12 shrink-0 items-center justify-center rounded-full bg-accent text-accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
             aria-label={playing || connecting ? "Stop live feed" : "Play live feed"}
           >
             {connecting ? (
-              <Loader2 className="size-5 animate-spin" />
+              <Loader2 className="size-5 animate-spin motion-reduce:animate-none" />
             ) : playing ? (
               <Pause className="size-5" />
             ) : (
@@ -536,7 +536,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               aria-label={transcribing ? "Pause captions" : "Resume captions"}
               aria-pressed={transcribing}
               className={cn(
-                "flex size-11 shrink-0 items-center justify-center rounded-full",
+                "flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                 transcribing ? "bg-cyan text-accent-fg" : "text-muted",
               )}
             >
@@ -546,7 +546,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               type="button"
               onClick={() => setMuted((m) => !m)}
               aria-label={muted ? "Unmute" : "Mute"}
-              className="flex size-11 shrink-0 items-center justify-center rounded-full"
+              className="flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
             >
               {muted ? <VolumeX className="size-5 text-muted" /> : <Volume2 className="size-5 text-muted" />}
             </button>
@@ -584,7 +584,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               <button
                 type="button"
                 onClick={restartCaptions}
-                className="mt-1 text-xs font-semibold text-subtle underline decoration-border underline-offset-2 hover:text-fg"
+                className="mt-1 rounded-sm text-xs font-semibold text-subtle underline decoration-border underline-offset-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
               >
                 Retry now
               </button>
@@ -595,7 +595,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               type="button"
               onClick={() => setThisFeedOnly(false)}
               className={cn(
-                "h-9 rounded-full px-3 text-xs font-semibold",
+                "h-9 rounded-full px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                 !thisFeedOnly ? "bg-accent text-accent-fg" : "text-muted",
               )}
             >
@@ -605,7 +605,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               type="button"
               onClick={() => setThisFeedOnly(true)}
               className={cn(
-                "h-9 rounded-full px-3 text-xs font-semibold",
+                "h-9 rounded-full px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                 thisFeedOnly ? "bg-accent text-accent-fg" : "text-muted",
               )}
             >
@@ -615,7 +615,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               type="button"
               onClick={() => setHideUnitSpam((v) => !v)}
               className={cn(
-                "h-9 rounded-full px-3 text-xs font-semibold",
+                "h-9 rounded-full px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                 hideUnitSpam ? "bg-surface-2 text-fg border border-border" : "text-muted",
               )}
               title="Hide short unit-status lines"
@@ -626,7 +626,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               href={feed.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex size-9 items-center justify-center text-subtle"
+              className="inline-flex size-9 items-center justify-center rounded-full text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
               aria-label="Open on Broadcastify"
             >
               <ExternalLink className="size-4" />

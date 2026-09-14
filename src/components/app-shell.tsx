@@ -130,7 +130,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex h-screen h-dvh flex-col overflow-hidden bg-bg text-fg">
+    <div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg">
       <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3 pt-[max(0.35rem,env(safe-area-inset-top))]">
         <div className="flex min-w-0 items-center gap-2">
           <ShieldLogo className="size-10 shrink-0 sm:size-11 lg:size-12" />
@@ -185,7 +185,7 @@ export function AppShell() {
             aria-selected={view === tab.id}
             onClick={() => setView(tab.id)}
             className={cn(
-              "relative h-12 flex-1 text-sm font-semibold",
+              "relative h-12 flex-1 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
               view === tab.id ? "text-fg" : "text-subtle",
             )}
           >
@@ -241,7 +241,7 @@ export function AppShell() {
               aria-selected={on}
               onClick={() => setView(tab.id)}
               className={cn(
-                "relative flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-semibold active:opacity-70",
+                "relative flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-semibold active:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                 on ? "text-accent" : "text-subtle",
               )}
             >
@@ -257,7 +257,7 @@ export function AppShell() {
           aria-selected={moreOpen}
           onClick={() => setMoreOpen(true)}
           className={cn(
-            "relative flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-semibold active:opacity-70",
+            "relative flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-semibold active:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
             moreOpen ? "text-accent" : "text-subtle",
           )}
         >

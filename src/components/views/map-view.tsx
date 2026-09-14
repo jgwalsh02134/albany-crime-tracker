@@ -164,6 +164,10 @@ export function MapView({
   wireLive: boolean;
   wireHealth: { daytimePipesFailing?: boolean; daytimePipesDry?: boolean } | null;
 }) {
+  const reduceMotion = useMemo(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }, []);
   const el = useRef<HTMLDivElement>(null);
   const listToggle = useRef<HTMLButtonElement>(null);
   const mapRef = useRef<{
@@ -287,7 +291,7 @@ export function MapView({
     const { map, L } = ctx;
     if (!filtered.length) return fitCounty();
     const bounds = L.latLngBounds(filtered.map((i) => [i.lat, i.lng] as [number, number]));
-    if (bounds.isValid()) map.fitBounds(bounds.pad(0.16), { maxZoom: 14, animate: true });
+    if (bounds.isValid()) map.fitBounds(bounds.pad(0.16), { maxZoom: 14, animate: !reduceMotion });
   }
 
   function buildIndex(list: Incident[]) {
@@ -380,7 +384,7 @@ export function MapView({
         const m = L.marker([lat, lng], { icon, interactive: true, keyboard: true });
         m.on("click", () => {
           const nextZ = Math.min(18, index.getClusterExpansionZoom(p.cluster_id));
-          map.flyTo([lat, lng], nextZ, { animate: true, duration: 0.6 });
+          map.flyTo([lat, lng], nextZ, { animate: !reduceMotion, duration: reduceMotion ? 0 : 0.6 });
         });
         m.addTo(layer);
         const node = m.getElement();
@@ -453,7 +457,7 @@ export function MapView({
     if (!hit) return;
     if (!mapShowApprox && isApproxPrecision(hit.geoPrecision)) return;
     const z = Math.max(map.getZoom(), isApproxPrecision(hit.geoPrecision) ? 13 : 16);
-    map.flyTo([hit.lat, hit.lng], z, { animate: true, duration: 0.6 });
+    map.flyTo([hit.lat, hit.lng], z, { animate: !reduceMotion, duration: reduceMotion ? 0 : 0.6 });
   }, [active, ready, selectedId, filtered, incidents, mapShowApprox]);
 
   useEffect(() => {
@@ -472,7 +476,10 @@ export function MapView({
     setLocateErr("");
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        mapRef.current?.map.flyTo([pos.coords.latitude, pos.coords.longitude], 15, { animate: true, duration: 0.7 });
+        mapRef.current?.map.flyTo([pos.coords.latitude, pos.coords.longitude], 15, {
+          animate: !reduceMotion,
+          duration: reduceMotion ? 0 : 0.7,
+        });
       },
       (err) => {
         if (err.code === err.PERMISSION_DENIED) setLocateErr("Location permission denied.");
@@ -687,7 +694,7 @@ export function MapView({
                     type="button"
                     onClick={() => setMapWindowHours(h)}
                     className={cn(
-                      "flex min-h-11 items-center justify-center rounded-md border px-3 text-sm font-semibold",
+                      "flex min-h-11 items-center justify-center rounded-md border px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                       mapWindowHours === h ? "border-accent/50 bg-surface-2" : "border-border",
                     )}
                   >

@@ -123,7 +123,8 @@ export function DirectoryView() {
         </p>
         <a
           href="tel:911"
-          className="mt-3 flex min-h-12 items-center justify-between rounded-xl border border-sev-high/40 bg-sev-high/10 px-3"
+          aria-label="Call 911"
+          className="mt-3 flex min-h-12 items-center justify-between rounded-xl border border-sev-high/40 bg-sev-high/10 px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
         >
           <span>
             <span className="block text-sm font-semibold text-sev-high">Emergency</span>
@@ -150,7 +151,7 @@ export function DirectoryView() {
               type="button"
               onClick={() => setTier(t.id)}
               className={cn(
-                "h-10 shrink-0 snap-start rounded-full border px-4 text-sm font-semibold",
+                "h-10 shrink-0 snap-start rounded-full border px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
                 tier === t.id ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
               )}
             >
@@ -248,7 +249,7 @@ export function DirectoryView() {
               <button
                 type="button"
                 onClick={() => setQ("")}
-                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-border bg-surface-2 px-4 text-sm font-semibold text-fg active:opacity-80"
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-full border border-border bg-surface-2 px-4 text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
               >
                 Clear search
               </button>
@@ -301,7 +302,7 @@ function ContactRow({
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-h-14 min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left active:bg-surface-2"
+        className="flex min-h-14 min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left active:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
       >
         <Seal id={agency.id} label={title} />
         <div className="min-w-0 flex-1">
@@ -315,7 +316,7 @@ function ContactRow({
         type="button"
         onClick={onStar}
         aria-label={starred ? `Unpin ${agency.name}` : `Pin ${agency.name}`}
-        className="flex w-11 shrink-0 items-center justify-center text-subtle active:bg-surface-2"
+        className="flex w-11 shrink-0 items-center justify-center text-subtle active:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
       >
         <Star className={cn("size-4", starred && "fill-gold text-gold")} />
       </button>
@@ -323,7 +324,7 @@ function ContactRow({
         <a
           href={telHref(agency.phone)!}
           aria-label={`Call ${agency.name}`}
-          className="flex w-12 shrink-0 items-center justify-center border-l border-border text-accent active:bg-surface-2"
+          className="flex w-12 shrink-0 items-center justify-center border-l border-border text-accent active:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
         >
           <Phone className="size-5" />
         </a>
@@ -351,7 +352,7 @@ function LinkRow({
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        "flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2 active:bg-surface-2",
+        "flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2 active:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
         compact ? "min-h-12" : "min-h-14",
       )}
     >
@@ -372,7 +373,7 @@ function MuniRow({ muni, onOpenAgency }: { muni: Muni; onOpenAgency: (id: string
     <button
       type="button"
       onClick={() => coverId && onOpenAgency(coverId)}
-      className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2 text-left active:bg-surface-2"
+      className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2 text-left active:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
     >
       <Seal id={coverId ?? muni.id} label={muni.name} />
       <div className="min-w-0 flex-1">
@@ -417,8 +418,8 @@ function AgencySheet({
                 <button
                   type="button"
                   onClick={onStar}
-                  aria-label={starred ? "Unpin" : "Pin"}
-                  className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border"
+                  aria-label={starred ? `Unpin ${agency.name}` : `Pin ${agency.name}`}
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
                 >
                   <Star className={cn("size-4", starred && "fill-gold text-gold")} />
                 </button>
@@ -433,7 +434,7 @@ function AgencySheet({
                   href={maps ?? mapsHref(agency.address)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 flex items-start gap-2 text-sm text-muted"
+                  className="mt-2 flex items-start gap-2 rounded-md text-sm text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
                 >
                   <MapPin className="mt-0.5 size-4 shrink-0" />
                   <span>{agency.address}</span>
@@ -466,7 +467,7 @@ function AgencySheet({
                 href={NIBRS_MAP}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-3 flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3"
+                className="mt-3 flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
               >
                 <span>
                   <span className="block text-sm font-medium">FBI NIBRS 2025 map</span>
@@ -479,7 +480,7 @@ function AgencySheet({
                 {tel ? (
                   <a
                     href={tel}
-                    className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-accent-fg"
+                    className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-accent-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
                   >
                     <Phone className="size-4" />
                     Call
@@ -490,7 +491,7 @@ function AgencySheet({
                     href={agency.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-surface-2 text-sm font-semibold"
+                    className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-surface-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
                   >
                     Website
                     <ExternalLink className="size-4" />
@@ -501,7 +502,7 @@ function AgencySheet({
                     href={maps}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-2"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
                     aria-label="Open in Maps"
                   >
                     <MapPin className="size-4" />

@@ -64,7 +64,7 @@ export function IncidentCard({
       <button
         type="button"
         onClick={() => onSelect(incident.id)}
-        className="w-full py-3 pl-3.5 pr-12 text-left active:bg-surface-2"
+        className="w-full py-3 pl-3.5 pr-12 text-left active:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
       >
         <span className={cn("absolute inset-y-2 left-0 w-1 rounded-full", rail[incident.severity])} />
         <div className="flex items-start justify-between gap-3">

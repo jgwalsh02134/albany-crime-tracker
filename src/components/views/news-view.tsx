@@ -260,7 +260,7 @@ function Chip({ active, onClick, label }: { active: boolean; onClick: () => void
       type="button"
       onClick={onClick}
       className={cn(
-        "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium",
+        "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
         active ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
       )}
     >
