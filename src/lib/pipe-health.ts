@@ -47,6 +47,8 @@ export function recordPipeOk(id: string, label: string, count: number) {
   const p = row(id, label);
   p.lastOkAt = Date.now();
   p.lastCount = count;
+  // Clear stale errors so health reflects current state, not a past transient.
+  p.lastError = "";
   p.ok += 1;
 }
 

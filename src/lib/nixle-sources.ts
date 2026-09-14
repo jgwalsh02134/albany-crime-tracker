@@ -187,3 +187,15 @@ export async function fetchNixleAltamont(now = Date.now()): Promise<LiveWireItem
   );
 }
 
+export async function fetchNixleColoniePd(now = Date.now()): Promise<LiveWireItem[]> {
+  return fetchNixleAgency(
+    {
+      id: "nixle:colonie-pd",
+      label: "Nixle · Colonie PD",
+      url: "https://nixle.us/town-of-colonie-police-ny",
+      agency: "Town of Colonie Police Department",
+    },
+    now,
+  );
+}
+
