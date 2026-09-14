@@ -98,12 +98,15 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
   const [lastSpokenAt, setLastSpokenAt] = useState<number | null>(null);
   const [lastFeed, setLastFeed] = useState("");
   const [lastError, setLastError] = useState("");
+  const [_lastErrorAt, setLastErrorAt] = useState<number | null>(null);
   const [lastSpoken, setLastSpoken] = useState("");
   const [sttState, setSttState] = useState<"ok" | "busy" | "error" | "quiet" | "no-key">("quiet");
   const [sttBlockedSec, setSttBlockedSec] = useState(0);
   const [ticks, setTicks] = useState(0);
+  const [ageSec, setAgeSec] = useState<number | null>(null);
   const [nowTick, setNowTick] = useState(Date.now());
   const [hideUnitSpam, setHideUnitSpam] = useState(true);
+  const [captionsEpoch, setCaptionsEpoch] = useState(0);
 
   const feed = SCANNER_FEEDS.find((f) => f.id === feedId) ?? SCANNER_FEEDS[0]!;
   const feedFiltered = thisFeedOnly
@@ -303,6 +306,20 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
     setTranscribing((on) => !on);
   }
 
+  function restartCaptions() {
+    setCaptionsEpoch((x) => x + 1);
+    setTranscript([]);
+    setLastSpokenAt(null);
+    setLastSpoken("");
+    setLastFeed("");
+    setLastError("");
+    setLastErrorAt(null);
+    setTicks(0);
+    setAgeSec(null);
+    setSttState("quiet");
+    setSttBlockedSec(0);
+  }
+
   useEffect(() => {
     if (!resumePlay.current) return;
     resumePlay.current = false;
@@ -359,6 +376,9 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
       try {
         const res = await getScannerCaptions({ data: { feedId, listen: true } });
         if (cancelled || !res.ok) return;
+        const nextSttState = (res as { sttState?: typeof sttState }).sttState || "quiet";
+        const nextSttBlockedSec = (res as { sttBlockedSec?: number }).sttBlockedSec || 0;
+        const nextAgeSec = (res as { ageSec?: number }).ageSec ?? null;
         setTranscript(
           res.lines.map((line) => ({
             id: line.id,
@@ -372,13 +392,28 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
         setLastSpoken(res.lastSpoken || "");
         setLastFeed(res.lastFeed || "");
         setLastError(res.lastError || "");
-        setSttState((res as { sttState?: typeof sttState }).sttState || "quiet");
-        setSttBlockedSec((res as { sttBlockedSec?: number }).sttBlockedSec || 0);
+        setLastErrorAt((res as { lastErrorAt?: number }).lastErrorAt || null);
+        setSttState(nextSttState);
+        setSttBlockedSec(nextSttBlockedSec);
         setTicks(res.ticks || 0);
+        setAgeSec(nextAgeSec);
+
+        if (cancelled) return;
+        const stale = typeof nextAgeSec === "number" && nextAgeSec >= 40;
+        const backoff =
+          nextSttState === "busy"
+            ? Math.min(15000, Math.max(6000, nextSttBlockedSec ? nextSttBlockedSec * 1000 : 12000))
+            : nextSttState === "no-key"
+              ? 45000
+              : stale
+                ? 12000
+                : 3000;
+        timer = setTimeout(poll, backoff);
+        return;
       } catch {
         /* next poll */
       }
-      if (!cancelled) timer = setTimeout(poll, 3000);
+      if (!cancelled) timer = setTimeout(poll, 5000);
     }
 
     void poll();
@@ -386,7 +421,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [transcribing, feedId, active]);
+  }, [transcribing, feedId, active, captionsEpoch]);
 
   const live = playing && !connecting;
   const heardAgo = agoLabel(lastSpokenAt, nowTick);
@@ -400,6 +435,8 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
 
   let captionStatus = "Captions paused";
   const captionsBooting = transcribing && ticks === 0 && transcript.length === 0 && !lastSpokenAt && !lastError;
+  const captionsStale = transcribing && typeof ageSec === "number" && ageSec >= 40;
+  const showRetry = transcribing && (captionsStale || sttState === "busy" || sttState === "error");
   if (transcribing) {
     const from = SCANNER_FEEDS.find((f) => f.id === lastFeed)?.shortName;
     const lastBit = lastSpoken
@@ -407,10 +444,12 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
       : "";
     if (sttState === "no-key" || lastError === "no-key") {
       captionStatus = "Captions unavailable in this environment";
+    } else if (captionsStale) {
+      captionStatus = "Captions stalled — reconnecting";
     } else if (sttState === "busy") {
-      captionStatus = `Speech API busy — retrying${sttBlockedSec ? ` (~${sttBlockedSec}s)` : ""}${lastBit}`;
+      captionStatus = `Captions delayed — Speech API rate-limited${sttBlockedSec ? ` (~${sttBlockedSec}s)` : ""}${lastBit}`;
     } else if (sttState === "error" && lastError) {
-      captionStatus = `Caption error — keeping last good local line${lastBit}`;
+      captionStatus = `Captions degraded — keeping last good local line${lastBit}`;
     } else if (captionsBooting) {
       captionStatus = "Connecting to Broadcastify…";
     } else if (heardAgo) {
@@ -419,6 +458,15 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
       captionStatus = "Listening — quiet between calls (not an error)";
     }
   }
+
+  const captionsPill = (() => {
+    if (!transcribing) return null;
+    if (sttState === "no-key" || lastError === "no-key") return { label: "Unavailable", tone: "text-muted" };
+    if (captionsStale) return { label: "Stalled", tone: "text-amber-300" };
+    if (sttState === "busy") return { label: "Delayed", tone: "text-amber-300" };
+    if (sttState === "error" && lastError) return { label: "Degraded", tone: "text-amber-300" };
+    return { label: "On", tone: "text-cyan" };
+  })();
 
   return (
     <div className="flex h-full flex-col">
@@ -447,7 +495,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
           })}
         </div>
 
-        <div className="mt-2 flex items-center gap-2 rounded-xl border border-border bg-surface p-2.5">
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2.5">
           <button
             type="button"
             onClick={togglePlay}
@@ -470,64 +518,77 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               {feed.coverage}
             </p>
           </div>
-          {live ? (
-            <span className="hidden items-end gap-px sm:flex" aria-hidden>
-              <span className="viz-bar" />
-              <span className="viz-bar" />
-              <span className="viz-bar" />
-              <span className="viz-bar" />
-              <span className="viz-bar" />
-            </span>
-          ) : null}
-          <button
-            type="button"
-            onClick={toggleTranscribe}
-            aria-label={transcribing ? "Pause captions" : "Resume captions"}
-            aria-pressed={transcribing}
-            className={cn(
-              "flex size-11 shrink-0 items-center justify-center rounded-full",
-              transcribing ? "bg-cyan text-accent-fg" : "text-muted",
-            )}
-          >
-            {transcribing ? <Captions className="size-5" /> : <CaptionsOff className="size-5" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => setMuted((m) => !m)}
-            aria-label={muted ? "Unmute" : "Mute"}
-            className="flex size-11 shrink-0 items-center justify-center rounded-full"
-          >
-            {muted ? <VolumeX className="size-5 text-muted" /> : <Volume2 className="size-5 text-muted" />}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-            className="hidden w-24 accent-accent sm:block"
-            aria-label="Volume"
-          />
+          <div className="ml-auto flex items-center gap-2">
+            {live ? (
+              <span className="hidden items-end gap-px sm:flex" aria-hidden>
+                <span className="viz-bar" />
+                <span className="viz-bar" />
+                <span className="viz-bar" />
+                <span className="viz-bar" />
+                <span className="viz-bar" />
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={toggleTranscribe}
+              aria-label={transcribing ? "Pause captions" : "Resume captions"}
+              aria-pressed={transcribing}
+              className={cn(
+                "flex size-11 shrink-0 items-center justify-center rounded-full",
+                transcribing ? "bg-cyan text-accent-fg" : "text-muted",
+              )}
+            >
+              {transcribing ? <Captions className="size-5" /> : <CaptionsOff className="size-5" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMuted((m) => !m)}
+              aria-label={muted ? "Unmute" : "Mute"}
+              className="flex size-11 shrink-0 items-center justify-center rounded-full"
+            >
+              {muted ? <VolumeX className="size-5 text-muted" /> : <Volume2 className="size-5 text-muted" />}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={volume}
+              onChange={(e) => setVolume(Number(e.target.value))}
+              className="hidden w-24 accent-accent sm:block"
+              aria-label="Volume"
+            />
+          </div>
         </div>
         {playerError ? <p className="mt-1.5 text-xs text-muted">{playerError}</p> : null}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-3 pb-6 pt-2">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold">Live captions</h2>
-              {transcribing ? (
-                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-cyan">
-                  <span className="live-dot" />
-                  On
+              {captionsPill ? (
+                <span className={cn("flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide", captionsPill.tone)}>
+                  <span className={cn("size-2 rounded-full", captionsPill.label === "On" ? "live-dot" : "bg-subtle")} />
+                  {captionsPill.label}
                 </span>
-              ) : null}
+              ) : (
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted">Off</span>
+              )}
             </div>
             <p className="mt-0.5 line-clamp-2 text-xs text-subtle">{captionStatus}</p>
+            {showRetry ? (
+              <button
+                type="button"
+                onClick={restartCaptions}
+                className="mt-1 text-xs font-semibold text-subtle underline decoration-border underline-offset-2 hover:text-fg"
+              >
+                Retry now
+              </button>
+            ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex w-full items-center gap-1 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none sm:w-auto sm:overflow-visible sm:pb-0">
             <button
               type="button"
               onClick={() => setThisFeedOnly(false)}
@@ -597,13 +658,23 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               {transcribing ? (
                 captionsBooting ? (
                   <p>Connecting to Albany-area radio…</p>
-                ) : sttState === "busy" ? (
+                ) : captionsStale ? (
                   <p>
-                    Speech API busy — retrying.
+                    Captions stalled — reconnecting.
                     {lastSpoken ? (
                       <span className="mt-2 block text-xs text-subtle">Last good: {lastSpoken}</span>
                     ) : null}
                   </p>
+                ) : sttState === "busy" ? (
+                  <p>
+                    Captions delayed — Speech API rate-limited.
+                    {sttBlockedSec ? <span className="ml-1">Retrying in ~{sttBlockedSec}s.</span> : null}
+                    {lastSpoken ? (
+                      <span className="mt-2 block text-xs text-subtle">Last good: {lastSpoken}</span>
+                    ) : null}
+                  </p>
+                ) : sttState === "no-key" || lastError === "no-key" ? (
+                  <p>Captions unavailable in this environment.</p>
                 ) : (
                   <p>
                     Quiet right now — not an error. Dispatch captions appear when units talk.
