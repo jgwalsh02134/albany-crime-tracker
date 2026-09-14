@@ -51,7 +51,7 @@ export function FeedView({
   const selected = selectedId ? incidents.find((i) => i.id === selectedId) ?? null : null;
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col">
+    <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col">
       <div className="shrink-0 px-3 pt-1.5">
         <div className="grid grid-cols-2 rounded-full bg-surface-2 p-0.5">
           {(["live", "news"] as const).map((mode) => (
@@ -89,13 +89,13 @@ export function FeedView({
                 onRefresh={onRefresh}
               />
             </div>
-            <aside className="hidden min-h-0 flex-1 border-l border-border bg-bg lg:block">
+            <aside className="hidden min-h-0 flex-1 flex-col border-l border-border bg-bg lg:flex">
               {selected ? (
-                <div className="h-full overflow-y-auto overscroll-y-contain scrollbar-thin">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain scrollbar-thin">
                   <IncidentDetail incident={selected} variant="panel" onClose={() => select(null)} />
                 </div>
               ) : (
-                <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted">
+                <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm text-muted">
                   Select an incident to see details.
                 </div>
               )}

@@ -113,7 +113,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg">
+    <div className="flex h-screen h-dvh flex-col overflow-hidden bg-bg text-fg">
       <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3 pt-[max(0.35rem,env(safe-area-inset-top))]">
         <div className="flex min-w-0 items-center gap-2">
           <ShieldLogo className="size-10 shrink-0 sm:size-11 lg:size-12" />
@@ -180,8 +180,8 @@ export function AppShell() {
         ))}
       </nav>
 
-      <main className="relative min-h-0 flex-1">
-        <div className={cn("absolute inset-0", view === "feed" ? "block" : "hidden")}>
+      <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className={cn("absolute inset-0 flex min-h-0", view === "feed" ? "flex" : "hidden")}>
           <FeedView
             incidents={incidents}
             news={news}
@@ -191,19 +191,19 @@ export function AppShell() {
             onRefresh={refresh}
           />
         </div>
-        <div className={cn("absolute inset-0", view === "map" ? "z-[1]" : "invisible pointer-events-none")}>
+        <div className={cn("absolute inset-0 flex min-h-0", view === "map" ? "z-[1]" : "invisible pointer-events-none")}>
           <MapView incidents={incidents} active={view === "map"} wireLive={wireLive} wireHealth={wireHealth} />
         </div>
-        <div className={cn("absolute inset-0", view === "scanner" ? "block" : "hidden")}>
+        <div className={cn("absolute inset-0 flex min-h-0", view === "scanner" ? "flex" : "hidden")}>
           <ScannerView calls={scannerCalls} active={view === "scanner"} />
         </div>
-        <div className={cn("absolute inset-0", view === "chat" ? "block" : "hidden")}>
+        <div className={cn("absolute inset-0 flex min-h-0", view === "chat" ? "flex" : "hidden")}>
           <ChatView />
         </div>
-        <div className={cn("absolute inset-0", view === "directory" ? "block" : "hidden")}>
+        <div className={cn("absolute inset-0 flex min-h-0", view === "directory" ? "flex" : "hidden")}>
           <DirectoryView />
         </div>
-        <div className={cn("absolute inset-0", view === "more" ? "block" : "hidden")}>
+        <div className={cn("absolute inset-0 flex min-h-0", view === "more" ? "flex" : "hidden")}>
           <MoreView incidents={incidents} />
         </div>
       </main>
