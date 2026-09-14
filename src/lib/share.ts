@@ -55,7 +55,7 @@ export function incidentSharePayload(incident: Incident, origin = APP_ORIGIN): S
 }
 
 export function newsSharePayload(story: NewsStory, origin = APP_ORIGIN): SharePayload {
-  const url = story.url?.startsWith("http") ? story.url : incidentDeepLink(story.id, origin);
+  const url = incidentDeepLink(story.id, origin);
   const text = [
     story.title,
     [story.municipality, story.outlet].filter(Boolean).join(" · "),
