@@ -13,87 +13,11 @@ import {
   fetchNixleWatervliet,
 } from "./nixle-sources";
 import { fetchThruwayTincAlbany } from "./thruway-tinc";
+import { NEWS_FEEDS } from "./news-feeds";
 import { superfeedrItems } from "./superfeedr";
 import { enrichStoryImages, pickBestImage } from "./news-thumbs";
 import { pipeHealth, recordPipeFail, recordPipeOk } from "./pipe-health";
 import { keepLiveNewsItem, keepNewsTabItem, rankNewsItems, OUT_OF_AREA } from "./live-keep";
-
-const FEEDS: { url: string; outlet: string; crimeOnly?: boolean }[] = [
-  { url: "https://www.news10.com/feed/", outlet: "News10" },
-  { url: "https://www.news10.com/news/crime/feed/", outlet: "News10" },
-  { url: "https://cbs6albany.com/news/local.rss", outlet: "CBS6" },
-  { url: "https://wnyt.com/feed/", outlet: "WNYT" },
-  { url: "https://www.wamc.org/news.rss", outlet: "WAMC" },
-  {
-    url: "https://news.google.com/rss/search?q=site:patch.com/new-york/albany-ny+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+dwi+OR+trooper+OR+sheriff)+when:7d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Patch Albany",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=Albany+NY+(police+OR+crash+OR+shooting+OR+fire+OR+arrest+OR+sheriff+OR+DWI+OR+trooper+OR+stabbing+OR+homicide+OR+wanted)+when:1d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Google News",
-  },
-  {
-    url: "https://news.google.com/rss/search?q=(Cohoes+OR+Watervliet+OR+Menands+OR+%22Green+Island%22)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "North cities",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=(Guilderland+OR+Altamont+OR+Voorheesville)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI+OR+blotter)+when:3d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Guilderland news",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=site:spectrumlocalnews.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Spectrum",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=%22Albany+County+Sheriff%22+(arrest+OR+crash+OR+shooting+OR+DWI)+when:7d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "ACSO",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=site:troyrecord.com+(albany+OR+troy+OR+rensselaer)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Troy Record",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=site:timesunion.com+(crash+OR+shooting+OR+arrest+OR+DWI+OR+homicide+OR+stabbing)+(albany+OR+colonie+OR+delmar+OR+latham+OR+bethlehem+OR+guilderland)+when:3d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Times Union",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=site:spotlightnews.com+(arrest+OR+crash+OR+blotter+OR+DWI+OR+shooting)+when:7d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Spotlight",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=site:patch.com/new-york+(colonie+OR+bethlehem+OR+latham)+(police+OR+crash+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Patch",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=site:dailygazette.com+(albany+OR+colonie+OR+schenectady)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Daily Gazette",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=site:fox23news.com+(albany+OR+colonie+OR+troy)+(crash+OR+shooting+OR+arrest+OR+fire)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "FOX23",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=(%22Central+Avenue%22+OR+%22Western+Avenue%22+OR+%22Wolf+Road%22)+(Albany+OR+Colonie)+(crash+OR+arrest+OR+fire+OR+shooting+OR+police)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Corridor news",
-    crimeOnly: true,
-  },
-  {
-    url: "https://news.google.com/rss/search?q=(Bethlehem+OR+Delmar+OR+Latham)+(police+OR+crash+OR+arrest+OR+fire+OR+DWI)+when:2d&hl=en-US&gl=US&ceid=US:en",
-    outlet: "Town news",
-    crimeOnly: true,
-  },
-];
 
 const LOCAL =
   /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g|clifton park|troy|schenectady|rensselaer|sand lake|schodack|east greenbush)\b/i;
@@ -235,7 +159,7 @@ function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean):
 
 async function collectNews(now: number) {
   const batches = await Promise.all(
-    FEEDS.map(async (feed) => {
+    NEWS_FEEDS.map(async (feed) => {
       try {
         const res = await fetch(feed.url, {
           headers: {
