@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ExternalLink } from "lucide-react";
+import { ChevronRight, ExternalLink } from "lucide-react";
 import { Seal } from "@/components/seal";
 import { Badge } from "@/components/ui/badge";
 import { SOURCES, lastHours } from "@/lib/data";
@@ -20,7 +20,7 @@ import type { Incident } from "@/lib/types";
 const ID_BY_DCJS = Object.fromEntries(Object.entries(DCJS_NAME_BY_ID).map(([id, name]) => [name, id]));
 
 export function MoreView({ incidents }: { incidents: Incident[] }) {
-  const day = lastHours(incidents, 36);
+  const day = lastHours(incidents, 24);
   const violent = day.filter((i) => i.category === "violent").length;
   const property = day.filter((i) => i.category === "property").length;
   const n = fbi.national;
@@ -28,7 +28,7 @@ export function MoreView({ incidents }: { incidents: Incident[] }) {
   const h = fbi.hateCrime;
 
   return (
-    <div className="h-full overflow-y-auto overscroll-y-contain px-3 pb-8 pt-3 scrollbar-thin">
+    <div className="mx-auto h-full w-full max-w-6xl overflow-y-auto overscroll-y-contain px-3 pb-8 pt-3 scrollbar-thin">
       <section>
         <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Last 24 hours</h2>
         <p className="mt-1 text-sm text-muted">
@@ -145,36 +145,58 @@ export function MoreView({ incidents }: { incidents: Incident[] }) {
           Albany County · DCJS {dcjs.year}
         </h2>
         <p className="mt-1 text-sm text-muted">Official NYS index crimes by agency. Not a live CAD dump.</p>
-        <div className="mt-3 overflow-hidden rounded-xl border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-surface-2 text-xs uppercase tracking-wide text-subtle">
-              <tr>
-                <th className="px-3 py-2 font-medium">Agency</th>
-                <th className="px-2 py-2 font-medium">Violent</th>
-                <th className="px-2 py-2 font-medium">Property</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dcjs.agencies.map((a) => {
-                const id = ID_BY_DCJS[a.agency];
-                return (
-                  <tr key={a.agency} className="border-t border-border">
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2">
-                        {id ? <Seal id={id} label={a.agency} className="size-8" /> : null}
-                        <div className="min-w-0">
-                          <p className="font-medium leading-snug">{a.agency}</p>
-                          <p className="font-mono text-xs text-subtle">{a.total.toLocaleString()} index</p>
+        <div className="mt-3 rounded-xl border border-border bg-surface">
+          <div className="hidden overflow-hidden rounded-xl md:block">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-surface-2 text-xs uppercase tracking-wide text-subtle">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Agency</th>
+                  <th className="px-2 py-2 font-medium">Violent</th>
+                  <th className="px-2 py-2 font-medium">Property</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dcjs.agencies.map((a) => {
+                  const id = ID_BY_DCJS[a.agency];
+                  return (
+                    <tr key={a.agency} className="border-t border-border">
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          {id ? <Seal id={id} label={a.agency} className="size-8" /> : null}
+                          <div className="min-w-0">
+                            <p className="font-medium leading-snug">{a.agency}</p>
+                            <p className="font-mono text-xs text-subtle">{a.total.toLocaleString()} index</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-2 py-2.5 font-mono tabular-nums">{a.violent.toLocaleString()}</td>
-                    <td className="px-2 py-2.5 font-mono tabular-nums">{a.property.toLocaleString()}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="px-2 py-2.5 font-mono tabular-nums">{a.violent.toLocaleString()}</td>
+                      <td className="px-2 py-2.5 font-mono tabular-nums">{a.property.toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <ul className="flex flex-col gap-2 p-3 md:hidden">
+            {dcjs.agencies.map((a) => {
+              const id = ID_BY_DCJS[a.agency];
+              return (
+                <li key={a.agency} className="rounded-xl border border-border bg-surface-2 p-3">
+                  <div className="flex items-center gap-2">
+                    {id ? <Seal id={id} label={a.agency} className="size-9" /> : null}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold leading-snug">{a.agency}</p>
+                      <p className="font-mono text-xs text-subtle">{a.total.toLocaleString()} index</p>
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <MiniPill label="Violent" value={a.violent} />
+                    <MiniPill label="Property" value={a.property} />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
         <div className="mt-4 rounded-xl border border-border bg-surface p-3">
           <h3 className="text-sm font-semibold">County index crime</h3>
@@ -204,9 +226,10 @@ export function MoreView({ incidents }: { incidents: Incident[] }) {
           href={dcjs.sourceUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-2 block text-xs text-accent"
+          className="mt-2 flex min-h-11 items-center justify-between rounded-xl border border-border bg-surface px-3 text-sm"
         >
-          {dcjs.source}
+          <span className="min-w-0 truncate">{dcjs.source}</span>
+          <ChevronRight className="size-4 shrink-0 text-subtle" aria-hidden />
         </a>
       </section>
 
@@ -235,6 +258,15 @@ function Pattern({ n, l }: { n: number; l: string }) {
     <div className="rounded-lg border border-border bg-surface px-3 py-2 text-center">
       <div className="font-mono text-lg font-semibold tabular-nums">{n}</div>
       <div className="text-xs text-subtle">{l}</div>
+    </div>
+  );
+}
+
+function MiniPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-border bg-surface px-3 py-2 text-center">
+      <p className="text-xs text-subtle">{label}</p>
+      <p className="mt-0.5 font-mono text-base font-semibold tabular-nums">{value.toLocaleString()}</p>
     </div>
   );
 }
