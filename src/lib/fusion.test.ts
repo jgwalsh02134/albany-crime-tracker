@@ -11,6 +11,7 @@ import {
   sourceFamily,
 } from "./fusion.ts";
 import type { LiveWireItem } from "./sources.ts";
+import { wireToIncidents } from "./sources.ts";
 
 function item(partial: Partial<LiveWireItem> & Pick<LiveWireItem, "id" | "title">): LiveWireItem {
   return {
@@ -227,5 +228,42 @@ describe("scanner fusion honesty", () => {
       minutesAgo: 20,
     });
     assert.equal(shouldFuse(blotter, scan), true);
+  });
+});
+
+describe("fusion upgrade QA", () => {
+  it("upgrades scanner-first into newsroom coverage (shared memberIds, one incident)", () => {
+    const scan = item({
+      id: "scan-early",
+      title: "Wolf Road crash with injuries",
+      summary: "Unconfirmed radio: Wolf Road crash with injuries",
+      kind: "scanner",
+      outlet: "Scanner",
+      agency: "Colonie PD",
+      municipality: "Unknown",
+      address: "area unknown",
+      minutesAgo: 12,
+      lat: 42.747,
+      lng: -73.759,
+      geoPrecision: "town",
+    });
+    const news = item({
+      id: "news-later",
+      title: "Two hurt in Wolf Road crash in Latham",
+      summary: "Police investigating a crash on Wolf Road in Latham.",
+      kind: "news",
+      outlet: "CBS6",
+      municipality: "Colonie",
+      address: "Wolf Road",
+      minutesAgo: 75,
+      lat: 42.748,
+      lng: -73.758,
+      geoPrecision: "street",
+    });
+
+    const incidents = wireToIncidents([scan, news]);
+    assert.equal(incidents.length, 1);
+    assert.ok(incidents[0]!.memberIds?.includes("scan-early"));
+    assert.ok(incidents[0]!.memberIds?.includes("news-later"));
   });
 });

@@ -17,6 +17,8 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Patch Albany | Google News RSS + Superfeedr | Patch’s legacy `.../new-york/albany/rss` 404s; `albany-ny` coverage comes from `site:patch.com` Google News RSS. |
 | Times Union / Spotlight / Gazette / FOX23 | Google News RSS + Superfeedr | Native TU RSS 404s — we do not pretend they work. |
 | Spectrum, Troy Record, ACSO, north cities, Guilderland | Google News RSS + Superfeedr | Gap queries (Cohoes / Watervliet / Menands / Green Island; Guilderland / Altamont / Voorheesville). |
+| Google News (county-wide) | Google News RSS + Superfeedr | High-signal public-safety query for the last 24h; out-of-area dropped. |
+| Corridor + town queries | Google News RSS + Superfeedr | “Central/Western/Wolf” corridor + “Bethlehem/Delmar/Latham” gap queries. |
 | CivicPlus: Bethlehem, Guilderland PD, Guilderland town, Albany, Cohoes, Voorheesville, Troy, Schenectady, Schenectady PD | RSS + Superfeedr | Incident-keyword filter. Feeds may be empty and still count as wired. |
 | Menands village | `menandsny.gov/feed/` (WordPress) | Sucuri 403 blocks server fetches. We keep the pipe listed and honest in health, but it may be unreachable until the site allows feed traffic. |
 | Department Facebook / X (via Google News) | RSS | APD/AFD/NYSP + local PD/FD/EMS pages (Colonie, Colonie EMS, Bethlehem, Cohoes PD/Fire, Watervliet, Guilderland PD, Schenectady PD/Fire, Rensselaer County Sheriff, East Greenbush / Green Island / Menands / Rensselaer City police, volunteer fire) plus X for Troy PD / Schdy Police / Albany+Colonie Police / Thruway TRANSalert / Guilderland+Bethlehem PD. Newsroom social includes CBS6/NEWS10/WNYT/Spectrum/Gazette/WAMC/Times Union/Troy Record. |
@@ -67,6 +69,10 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 ## Fusion (this PR)
 
 LiveWire items cluster when **call-type family**, **time window**, and **geo** agree (≈1.6 km or same town). One card lists provenance chips (`Seen on: Blotter · Scanner · 511 · News`). Corroboration scores independent families: official (blotter / 511 / civic / NWS) > context (news) > unconfirmed (scanner / citizen). Lone scanner is capped at 22/100 so it cannot outrank a multi-source card.
+
+## Superfeedr parity (this PR)
+
+All high-value newsroom / Google News RSS queries under `FEEDS` are also included in `SUPERFEEDR_TOPICS` so breaking news can arrive via push when credentials are configured. Anything that must stay poll-only is documented explicitly above (e.g. NYSP newsroom has no working public RSS).
 
 ## Later PRs (not this one)
 

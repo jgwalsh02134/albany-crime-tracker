@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Drawer } from "vaul";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, LocateFixed } from "lucide-react";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentDetail } from "@/components/incident-detail";
 import { NewsView } from "@/components/views/news-view";
@@ -8,6 +8,8 @@ import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
 import { type WireHealth, sourceMix } from "@/lib/sources";
 import { liveWindowHonesty } from "@/lib/live-honesty";
 import { incidentVisible, useAppStore } from "@/lib/store";
+import { compareNowLane } from "@/lib/live-rank";
+import { haversineKm } from "@/lib/geo";
 import type { Incident, NewsStory, SourceLens, LiveKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -175,6 +177,46 @@ function LiveList({
   const scroller = useRef<HTMLDivElement>(null);
   const startY = useRef<number | null>(null);
   const [pull, setPull] = useState(0);
+  const liveNearMe = useAppStore((s) => s.liveNearMe);
+  const setLiveNearMe = useAppStore((s) => s.setLiveNearMe);
+  const liveNearMiles = useAppStore((s) => s.liveNearMiles);
+  const setLiveNearMiles = useAppStore((s) => s.setLiveNearMiles);
+  const [pos, setPos] = useState<{ lat: number; lng: number; accM: number; at: number } | null>(null);
+  const [locateErr, setLocateErr] = useState<string>("");
+
+  function requestLocation() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocateErr("Location isn’t available in this browser.");
+      return;
+    }
+    setLocateErr("");
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        setPos({ lat: p.coords.latitude, lng: p.coords.longitude, accM: p.coords.accuracy || 0, at: Date.now() });
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) setLocateErr("Location permission denied.");
+        else setLocateErr("Couldn’t fetch your location.");
+      },
+      { enableHighAccuracy: false, timeout: 9000, maximumAge: 60_000 },
+    );
+  }
+
+  useEffect(() => {
+    if (!liveNearMe) return;
+    if (!pos || Date.now() - pos.at > 5 * 60_000) requestLocation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveNearMe]);
+
+  const nearKm = liveNearMiles * 1.60934;
+  const withinNear =
+    liveNearMe && pos
+      ? liveItems.filter((i) => haversineKm({ lat: pos.lat, lng: pos.lng }, { lat: i.lat, lng: i.lng }) <= nearKm)
+      : liveNearMe
+        ? []
+        : liveItems;
+  const showing = withinNear;
+  const nearActive = liveNearMe;
 
   function onTouchStart(e: React.TouchEvent) {
     if (!scroller.current || scroller.current.scrollTop > 0) {
@@ -215,12 +257,12 @@ function LiveList({
           {wireHealth ? (
             <SourcePipes
               health={wireHealth}
-              count={liveItems.length}
+              count={showing.length}
               newest={newest}
               wireLive={wireLive}
             />
           ) : (
-            <p className="py-1.5 text-xs text-subtle">{wireLive ? `${liveItems.length} calls` : "Connecting…"}</p>
+            <p className="py-1.5 text-xs text-subtle">{wireLive ? `${showing.length} calls` : "Connecting…"}</p>
           )}
           <div className="flex flex-col gap-1.5">
             <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
@@ -245,17 +287,75 @@ function LiveList({
               <Chip active={sourceLens === "news"} onClick={() => setSourceLens("news")} label={`News ${mix.news}`} />
               <Chip active={sourceLens === "social"} onClick={() => setSourceLens("social")} label={`Social ${mix.social}`} />
             </div>
+            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+              <Chip
+                active={!nearActive}
+                onClick={() => setLiveNearMe(false)}
+                label="All area"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (nearActive) {
+                    setLiveNearMe(false);
+                    setLocateErr("");
+                  } else {
+                    setLiveNearMe(true);
+                    requestLocation();
+                  }
+                }}
+                className={cn(
+                  "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium active:opacity-80 inline-flex items-center gap-1.5",
+                  nearActive ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
+                )}
+              >
+                <LocateFixed className="size-3.5" aria-hidden />
+                Near me
+              </button>
+              {nearActive ? (
+                <>
+                  {([1, 2, 3] as const).map((m) => (
+                    <Chip
+                      key={m}
+                      active={liveNearMiles === m}
+                      onClick={() => setLiveNearMiles(m)}
+                      label={`${m} mi`}
+                    />
+                  ))}
+                </>
+              ) : null}
+            </div>
+            {nearActive ? (
+              <p className="pt-0.5 text-[11px] leading-snug text-subtle">
+                {pos
+                  ? `${showing.length} within ~${liveNearMiles} mi (±${pos.accM ? Math.round(pos.accM) : "?"}m) · pins can be approximate`
+                  : locateErr
+                    ? locateErr
+                    : "Allow location to see calls near you."}
+              </p>
+            ) : null}
           </div>
         </div>
 
-        {liveItems.length === 0 ? (
+        {showing.length === 0 ? (
           <p className="rounded-lg border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
-            {wireLive
-              ? liveWindowHonesty({ health: wireHealth, nowItems: [], liveItems: [], sourceLens }).emptyFilterCopy
-              : "Pulling blotter, radio, and newsrooms…"}
+            {wireLive ? (
+              nearActive ? (
+                <>
+                  <span className="block font-medium text-fg">No calls within ~{liveNearMiles} mi right now.</span>
+                  <span className="mt-1 block">
+                    That can mean it’s quiet on your block — or that open pipes are dark/empty. Scanner gaps are normal in places like Colonie where police radio is often encrypted.
+                  </span>
+                </>
+              ) : (
+                liveWindowHonesty({ health: wireHealth, nowItems: [], liveItems: [], sourceLens }).emptyFilterCopy
+              )
+            ) : (
+              "Pulling blotter, radio, and newsrooms…"
+            )}
           </p>
         ) : (
-          <GroupedList items={liveItems} onSelect={onSelect} wireHealth={wireHealth} sourceLens={sourceLens} />
+          <GroupedList items={showing} onSelect={onSelect} wireHealth={wireHealth} sourceLens={sourceLens} />
         )}
       </div>
     </div>
@@ -274,7 +374,7 @@ function GroupedList({
   sourceLens: SourceLens;
 }) {
   const since7 = minutesSinceNy7am();
-  const nowItems = items.filter((i) => i.minutesAgo <= 180);
+  const nowItems = [...items.filter((i) => i.minutesAgo <= 180)].sort(compareNowLane);
   const earlierToday = items.filter((i) => i.minutesAgo > 180 && i.minutesAgo <= since7);
   const overnight = items.filter((i) => i.minutesAgo > since7);
   const honesty = liveWindowHonesty({ health: wireHealth, nowItems, liveItems: items, sourceLens });
