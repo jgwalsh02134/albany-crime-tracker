@@ -3,9 +3,15 @@ import { locateSpoken, placeFromText } from "./geo";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
-const PIPE_ID = "nixle:apd";
-const PIPE_LABEL = "Nixle · Albany PD";
 const MAX_MIN = 7 * 24 * 60;
+const CACHE_MS = 2 * 60_000;
+
+type NixleAgency = {
+  id: string;
+  label: string;
+  url: string;
+  agency: string;
+};
 
 function decodeJsString(raw: string): string {
   const s = raw.trim();
@@ -50,20 +56,31 @@ function hashId(s: string): string {
   return `nixle-${Math.abs(h).toString(36)}`;
 }
 
-export async function fetchNixleApd(now = Date.now()): Promise<LiveWireItem[]> {
+type CacheEntry = { at: number; items: LiveWireItem[] } | null;
+const g = globalThis as unknown as { __actNixleCache?: Map<string, CacheEntry> };
+function cacheMap(): Map<string, CacheEntry> {
+  if (!g.__actNixleCache) g.__actNixleCache = new Map();
+  return g.__actNixleCache;
+}
+
+async function fetchNixleAgency(agency: NixleAgency, now = Date.now()): Promise<LiveWireItem[]> {
+  const cache = cacheMap();
+  const hit = cache.get(agency.id);
+  if (hit && now - hit.at < CACHE_MS) return hit.items;
   try {
-    const res = await fetch("https://nixle.us/albany-police-department", {
+    const res = await fetch(agency.url, {
       headers: { "User-Agent": UA, Accept: "text/html,*/*" },
       signal: AbortSignal.timeout(9000),
     });
     if (!res.ok) {
-      recordPipeFail(PIPE_ID, PIPE_LABEL, `HTTP ${res.status}`);
+      recordPipeFail(agency.id, agency.label, `HTTP ${res.status}`);
       return [];
     }
     const html = await res.text();
     const inner = extractAlertsArray(html);
     if (!inner) {
-      recordPipeOk(PIPE_ID, PIPE_LABEL, 0);
+      recordPipeOk(agency.id, agency.label, 0);
+      cache.set(agency.id, { at: now, items: [] });
       return [];
     }
 
@@ -98,12 +115,12 @@ export async function fetchNixleApd(now = Date.now()): Promise<LiveWireItem[]> {
         id: stableId,
         title: headline.slice(0, 180),
         url,
-        outlet: PIPE_LABEL,
+        outlet: agency.label,
         summary,
         publishedAt: new Date(at).toISOString(),
         minutesAgo,
         kind: "news",
-        agency: "Albany Police Department",
+        agency: agency.agency,
         municipality: place?.name,
         address: pin.road || place?.name,
         lat: pin.geo.lat,
@@ -113,11 +130,60 @@ export async function fetchNixleApd(now = Date.now()): Promise<LiveWireItem[]> {
     }
 
     out.sort((a, b) => a.minutesAgo - b.minutesAgo);
-    recordPipeOk(PIPE_ID, PIPE_LABEL, out.length);
+    recordPipeOk(agency.id, agency.label, out.length);
+    cache.set(agency.id, { at: now, items: out });
     return out;
   } catch (err) {
-    recordPipeFail(PIPE_ID, PIPE_LABEL, err instanceof Error ? err.message : "nixle-error");
+    recordPipeFail(agency.id, agency.label, err instanceof Error ? err.message : "nixle-error");
     return [];
   }
+}
+
+export async function fetchNixleApd(now = Date.now()): Promise<LiveWireItem[]> {
+  return fetchNixleAgency(
+    {
+      id: "nixle:apd",
+      label: "Nixle · Albany PD",
+      url: "https://nixle.us/albany-police-department",
+      agency: "Albany Police Department",
+    },
+    now,
+  );
+}
+
+export async function fetchNixleGuilderlandPd(now = Date.now()): Promise<LiveWireItem[]> {
+  return fetchNixleAgency(
+    {
+      id: "nixle:guilderland-pd",
+      label: "Nixle · Guilderland PD",
+      url: "https://nixle.us/guilderland-police-department",
+      agency: "Guilderland Police Department",
+    },
+    now,
+  );
+}
+
+export async function fetchNixleWatervliet(now = Date.now()): Promise<LiveWireItem[]> {
+  return fetchNixleAgency(
+    {
+      id: "nixle:watervliet",
+      label: "Nixle · Watervliet",
+      url: "https://nixle.us/city-of-watervliet",
+      agency: "City of Watervliet",
+    },
+    now,
+  );
+}
+
+export async function fetchNixleAltamont(now = Date.now()): Promise<LiveWireItem[]> {
+  return fetchNixleAgency(
+    {
+      id: "nixle:altamont",
+      label: "Nixle · Altamont",
+      url: "https://nixle.us/village-of-altamont-ny",
+      agency: "Village of Altamont",
+    },
+    now,
+  );
 }
 

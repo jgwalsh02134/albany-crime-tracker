@@ -273,6 +273,7 @@ export function sourceFamily(kind: FuseKind | undefined, outlet: string): string
   if (activity === "blotter") return "blotter";
   if (activity === "scanner") return "scanner";
   if (/^Nixle\b/i.test(outlet)) return "nixle";
+  if (/\bTINC\b/i.test(outlet) || /\bNYSTA\b/i.test(outlet)) return "tinc";
   if (outlet === "511NY" || (activity === "traffic" && /511/i.test(outlet))) return "511";
   if (outlet === "NWS" || /National Weather/i.test(outlet)) return "nws";
   if (/^Civic ·/i.test(outlet)) return "civic";
@@ -287,6 +288,8 @@ export function familyChip(family: string): SeenOnChip {
       return { key: "blotter", label: "Blotter" };
     case "nixle":
       return { key: "nixle", label: "Nixle" };
+    case "tinc":
+      return { key: "tinc", label: "Thruway" };
     case "scanner":
       return { key: "scanner", label: "Scanner" };
     case "511":
@@ -347,6 +350,7 @@ function familyTier(family: string): SourceTier {
   if (
     family === "blotter" ||
     family === "nixle" ||
+    family === "tinc" ||
     family === "511" ||
     family === "nws" ||
     family === "civic" ||
@@ -361,7 +365,7 @@ function familyTier(family: string): SourceTier {
 function confidenceRank(family: string): number {
   // Higher = more trustworthy / authoritative in Live.
   // official > blotter > nixle > news > scanner_stt > social
-  if (family === "511" || family === "nws" || family === "civic" || family === "press") return 6;
+  if (family === "tinc" || family === "511" || family === "nws" || family === "civic" || family === "press") return 6;
   if (family === "blotter") return 5;
   if (family === "nixle") return 4;
   if (family === "news") return 3;
@@ -435,6 +439,8 @@ export function itemToSource(item: FuseItem): IncidentSource {
       ? "blotter"
       : family === "nixle"
         ? "nixle"
+        : family === "tinc"
+          ? "cfs"
       : family === "scanner"
         ? "scanner"
         : family === "511"
@@ -470,13 +476,19 @@ export function fuseId(group: FuseItem[], primary: FuseItem): string {
       item.id.startsWith("citizen-") ||
       item.id.startsWith("511-") ||
       item.id.startsWith("nws-") ||
-      item.id.startsWith("nixle-")
+      item.id.startsWith("nixle-") ||
+      item.id.startsWith("tinc-")
     ) {
       return item.id;
     }
   }
   const official = group.find(
-    (g) => g.id.startsWith("nysp-") || g.id.startsWith("511-") || g.id.startsWith("nws-") || g.id.startsWith("nixle-"),
+    (g) =>
+      g.id.startsWith("nysp-") ||
+      g.id.startsWith("511-") ||
+      g.id.startsWith("nws-") ||
+      g.id.startsWith("nixle-") ||
+      g.id.startsWith("tinc-"),
   );
   if (official) return official.id;
 
