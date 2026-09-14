@@ -48,7 +48,7 @@ function pad(n: number): string {
 
 function clean(s: string): string {
   return s
-    .replace(/\u0000/g, "")
+    .replaceAll("\u0000", "")
     .replace(/file:\/\/\/\S+/g, " ")
     .replace(/--\s*\d+\s+of\s+\d+\s+--/g, " ")
     .replace(/Page\s+\d+\s+of\s+\d+/gi, " ")
@@ -61,7 +61,7 @@ function clean(s: string): string {
     .replace(/Domesc/g, "Domestic")
     .replace(/oﬀense|offense/gi, "offense")
     .replace(/Traﬃc/g, "Traffic")
-    .replace(/ac\u0000vity|acvity/g, "activity")
+    .replace(/acvity/g, "activity")
     .replace(/ciizen|\bcizen\b/g, "citizen")
     .replace(/revoca\s*on/gi, "revocation")
     .replace(/identy the\b/gi, "identity theft")
@@ -393,7 +393,7 @@ export function extractNyspText(
     const cat = field(chunk, "Incident Category", "Date\\/Time Reported:|Station:|Location Code:");
     if (!cat || SKIP_CAT.test(cat) || (/Incident Status/i.test(cat) && cat.length < 24)) continue;
     const reportedRaw = field(chunk, "Date\\/Time Reported", "Station:|Location Code:|Incident Status:");
-    const arrestRaw = chunk.match(/Date\/Time of Arrest:\s*([0-9\/, APapM:]+)/i)?.[1] ?? "";
+    const arrestRaw = chunk.match(/Date\/Time of Arrest:\s*([0-9/, APapM:]+)/i)?.[1] ?? "";
     const loc = field(chunk, "Location Code", "Incident Status:|Defendant|Driver|Road\\/Highway:");
     const status = field(chunk, "Incident Status", "Defendant|Driver|Incident Number:|Road\\/Highway:|Incident Information");
     const station = field(chunk, "Station", "Location Code:|Incident Status:|Date\\/Time");
