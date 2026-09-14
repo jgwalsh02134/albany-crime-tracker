@@ -471,9 +471,9 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
   })();
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
       <div className="shrink-0 border-b border-border px-3 pb-2.5 pt-2">
-        <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+        <div className="flex w-full min-w-0 max-w-full gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
           {SCANNER_FEEDS.map((f) => {
             const on = feedId === f.id;
             const isLive = online[f.id];
@@ -520,7 +520,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               {feed.coverage}
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:ml-auto sm:w-auto sm:flex-nowrap">
             {live ? (
               <span className="hidden items-end gap-px sm:flex" aria-hidden>
                 <span className="viz-bar" />
@@ -565,7 +565,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
         {playerError ? <p className="mt-1.5 text-xs text-muted">{playerError}</p> : null}
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col px-3 pb-6 pt-2">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col px-3 pb-6 pt-2">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -579,7 +579,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted">Off</span>
               )}
             </div>
-            <p className="mt-0.5 line-clamp-2 text-xs text-subtle">{captionStatus}</p>
+            <p className="mt-0.5 break-words text-xs text-subtle sm:line-clamp-2">{captionStatus}</p>
             {showRetry ? (
               <button
                 type="button"
@@ -590,7 +590,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               </button>
             ) : null}
           </div>
-          <div className="flex w-full items-center gap-1 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none sm:w-auto sm:overflow-visible sm:pb-0">
+          <div className="flex w-full min-w-0 max-w-full items-center gap-1 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none sm:w-auto sm:overflow-visible sm:pb-0">
             <button
               type="button"
               onClick={() => setThisFeedOnly(false)}
@@ -635,7 +635,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
         </div>
 
         {decodedLiveCalls.length ? (
-          <div className="mt-2 flex gap-2 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none snap-x">
+          <div className="mt-2 flex w-full min-w-0 max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none snap-x">
             {decodedLiveCalls.map((c) => (
               <article
                 key={c.id}
@@ -705,8 +705,8 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
                         <Badge tone={/shots|panic|pursuit|robbery/i.test(nature) ? "high" : "cyan"}>{nature}</Badge>
                       ) : null}
                     </p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-fg">{text}</p>
-                    {hint ? <p className="mt-0.5 text-xs text-muted">{hint}</p> : null}
+                    <p className="mt-0.5 break-words text-sm leading-relaxed text-fg">{text}</p>
+                    {hint ? <p className="mt-0.5 break-words text-xs text-muted">{hint}</p> : null}
                   </li>
                 );
               })}
