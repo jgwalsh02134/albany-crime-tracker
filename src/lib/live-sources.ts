@@ -38,6 +38,55 @@ const CAP_COUNTIES = new Set(["albany", "rensselaer", "schenectady", "saratoga"]
 const LIVE_MIN = 24 * 60;
 const BLOTTER_LIVE_MIN = 36 * 60;
 const NEWS_MIN = 72 * 60;
+const WIRE_SOFT_DEADLINE_MS = 4500;
+
+type WireMode = "live" | "full";
+
+type SoftResult<T> = {
+  value: T;
+  ms: number;
+  timedOut: boolean;
+};
+
+function nowMs(): number {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+}
+
+async function softPipe<T>(opts: {
+  id: string;
+  label: string;
+  ms: number;
+  run: () => Promise<T>;
+  fallback: T;
+}): Promise<SoftResult<T>> {
+  const started = nowMs();
+  let timedOut = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      timedOut = true;
+      recordPipeFail(opts.id, opts.label, `timeout ${opts.ms}ms`);
+      resolve(opts.fallback);
+    }, Math.max(1, opts.ms));
+  });
+  try {
+    const value = await Promise.race([
+      (async () => {
+        try {
+          return await opts.run();
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "pipe-error";
+          recordPipeFail(opts.id, opts.label, msg);
+          return opts.fallback;
+        }
+      })(),
+      timeout,
+    ]);
+    return { value, ms: Math.round(nowMs() - started), timedOut };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function decode(raw: string): string {
   const named: Record<string, string> = {
@@ -166,7 +215,7 @@ async function collectNews(now: number) {
             "User-Agent": UA,
             Accept: "application/rss+xml, application/xml, text/xml, */*",
           },
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(3500),
         });
         if (!res.ok) {
           recordPipeFail(`news:${feed.outlet}`, feed.outlet, `HTTP ${res.status}`);
@@ -394,33 +443,132 @@ function notable(row: LiveWireItem): boolean {
   return NOTABLE_BLOTTER.test(`${row.title} ${row.category ?? ""} ${row.summary}`);
 }
 
-async function collectWire() {
+async function collectWire(opts?: { mode?: WireMode }) {
   const now = Date.now();
   startScannerPoll();
-  const [news, blotterRes, traffic, press, social, civic, nws, nixleApd, nixleGpd, nixleWvl, nixleAlt, nixleColonie, tinc] = await Promise.all([
-    collectNews(now),
-    fetchNyspBlotter(now).catch((err) => {
-      console.error("[nysp] blotter", err instanceof Error ? err.message : err);
-      return { items: [] as LiveWireItem[], tried: 0, failed: 1, extractor: "none" as const };
+  const pullMs: Record<string, number> = {};
+  const timedOutPipes: string[] = [];
+
+  const mode: WireMode = opts?.mode || "full";
+
+  const newsJob =
+    mode === "full"
+      ? softPipe({
+          id: "wire:news",
+          label: "Wire · News feeds",
+          ms: 2600,
+          run: async () => collectNews(now),
+          fallback: { crime: [] as LiveWireItem[], stories: [] as LiveWireItem[], liveOutlets: [] as string[] },
+        })
+      : Promise.resolve({
+          value: { crime: [] as LiveWireItem[], stories: [] as LiveWireItem[], liveOutlets: [] as string[] },
+          ms: 0,
+          timedOut: false,
+        });
+
+  const [
+    newsRes,
+    blotterResRes,
+    trafficRes,
+    pressRes,
+    socialRes,
+    civicRes,
+    nwsRes,
+    nixleApdRes,
+    nixleGpdRes,
+    nixleWvlRes,
+    nixleAltRes,
+    nixleColonieRes,
+    tincRes,
+  ] = await Promise.all([
+    newsJob,
+    softPipe({
+      id: "nysp-blotter",
+      label: "NYSP blotter",
+      ms: WIRE_SOFT_DEADLINE_MS,
+      run: async () =>
+        fetchNyspBlotter(now).catch((err) => {
+          console.error("[nysp] blotter", err instanceof Error ? err.message : err);
+          return { items: [] as LiveWireItem[], tried: 0, failed: 1, extractor: "none" as const };
+        }),
+      fallback: { items: [] as LiveWireItem[], tried: 0, failed: 1, extractor: "none" as const },
     }),
-    fetch511(now),
-    fetchNyspPress(now).catch(() => [] as LiveWireItem[]),
-    collectSocial(now).catch(() => ({
-      items: [] as LiveWireItem[],
-      facebook: 0,
-      x: 0,
-      reddit: 0,
-      citizen: 0,
-    })),
-    fetchCivic(now).catch(() => [] as LiveWireItem[]),
-    fetchNws(now).catch(() => [] as LiveWireItem[]),
-    fetchNixleApd(now).catch(() => [] as LiveWireItem[]),
-    fetchNixleGuilderlandPd(now).catch(() => [] as LiveWireItem[]),
-    fetchNixleWatervliet(now).catch(() => [] as LiveWireItem[]),
-    fetchNixleAltamont(now).catch(() => [] as LiveWireItem[]),
-    fetchNixleColoniePd(now).catch(() => [] as LiveWireItem[]),
-    fetchThruwayTincAlbany(now).catch(() => [] as LiveWireItem[]),
+    softPipe({ id: "511ny", label: "511NY", ms: 3200, run: async () => fetch511(now), fallback: [] as LiveWireItem[] }),
+    softPipe({
+      id: "nysp-press",
+      label: "NYSP press",
+      ms: 3200,
+      run: async () => fetchNyspPress(now).catch(() => [] as LiveWireItem[]),
+      fallback: [] as LiveWireItem[],
+    }),
+    softPipe({
+      id: "wire:social",
+      label: "Wire · Social",
+      ms: 3400,
+      run: async () =>
+        collectSocial(now).catch(() => ({
+          items: [] as LiveWireItem[],
+          facebook: 0,
+          x: 0,
+          reddit: 0,
+          citizen: 0,
+        })),
+      fallback: { items: [] as LiveWireItem[], facebook: 0, x: 0, reddit: 0, citizen: 0 },
+    }),
+    softPipe({
+      id: "wire:civic",
+      label: "Wire · Civic",
+      ms: 3800,
+      run: async () => fetchCivic(now).catch(() => [] as LiveWireItem[]),
+      fallback: [] as LiveWireItem[],
+    }),
+    softPipe({ id: "nws", label: "NWS", ms: 3200, run: async () => fetchNws(now).catch(() => [] as LiveWireItem[]), fallback: [] as LiveWireItem[] }),
+    softPipe({ id: "nixle:apd", label: "Nixle · Albany PD", ms: 2800, run: async () => fetchNixleApd(now).catch(() => [] as LiveWireItem[]), fallback: [] as LiveWireItem[] }),
+    softPipe({
+      id: "nixle:guilderland-pd",
+      label: "Nixle · Guilderland PD",
+      ms: 2800,
+      run: async () => fetchNixleGuilderlandPd(now).catch(() => [] as LiveWireItem[]),
+      fallback: [] as LiveWireItem[],
+    }),
+    softPipe({ id: "nixle:watervliet", label: "Nixle · Watervliet", ms: 2800, run: async () => fetchNixleWatervliet(now).catch(() => [] as LiveWireItem[]), fallback: [] as LiveWireItem[] }),
+    softPipe({ id: "nixle:altamont", label: "Nixle · Altamont", ms: 2800, run: async () => fetchNixleAltamont(now).catch(() => [] as LiveWireItem[]), fallback: [] as LiveWireItem[] }),
+    softPipe({
+      id: "nixle:colonie-pd",
+      label: "Nixle · Colonie PD",
+      ms: 2800,
+      run: async () => fetchNixleColoniePd(now).catch(() => [] as LiveWireItem[]),
+      fallback: [] as LiveWireItem[],
+    }),
+    softPipe({
+      id: "tinc:albany",
+      label: "NYSTA TINC · Albany",
+      ms: 2800,
+      run: async () => fetchThruwayTincAlbany(now).catch(() => [] as LiveWireItem[]),
+      fallback: [] as LiveWireItem[],
+    }),
   ]);
+
+  const record = <T>(k: string, r: SoftResult<T>) => {
+    pullMs[k] = r.ms;
+    if (r.timedOut) timedOutPipes.push(k);
+    return r.value;
+  };
+
+  const news = record("wire:news", newsRes);
+  const blotterRes = record("nysp-blotter", blotterResRes);
+  const traffic = record("511ny", trafficRes);
+  const press = record("nysp-press", pressRes);
+  const social = record("wire:social", socialRes);
+  const civic = record("wire:civic", civicRes);
+  const nws = record("nws", nwsRes);
+  const nixleApd = record("nixle:apd", nixleApdRes);
+  const nixleGpd = record("nixle:guilderland-pd", nixleGpdRes);
+  const nixleWvl = record("nixle:watervliet", nixleWvlRes);
+  const nixleAlt = record("nixle:altamont", nixleAltRes);
+  const nixleColonie = record("nixle:colonie-pd", nixleColonieRes);
+  const tinc = record("tinc:albany", tincRes);
+
   const nixle = [...nixleApd, ...nixleGpd, ...nixleWvl, ...nixleAlt, ...nixleColonie].sort((a, b) => a.minutesAgo - b.minutesAgo);
   const blotter = blotterRes.items;
   if (blotterRes.failed && !blotter.length) {
@@ -505,6 +653,9 @@ async function collectWire() {
     traffic: traffic.length,
     news: liveNews.length,
     stories: stories.length,
+    wireMode: mode,
+    pullMs,
+    timedOutPipes: timedOutPipes.length ? timedOutPipes : undefined,
     captions: Boolean(process.env.XAI_API_KEY || process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY),
     extractor: blotterRes.extractor,
     scannerTicks: scanStats.ticks,
@@ -537,7 +688,18 @@ async function collectWire() {
       fail: p.fail,
     })),
   };
-  const enrichedStories = await enrichStoryImages(stories, { max: 12 });
+  const enrichedStories =
+    mode === "full"
+      ? (
+          await softPipe({
+            id: "news:thumbs",
+            label: "News thumbs",
+            ms: 2400,
+            run: async () => enrichStoryImages(stories, { max: 12 }),
+            fallback: stories,
+          })
+        ).value
+      : stories;
   // Propagate enriched thumbs onto matching live wire items (same id/url) for consistency.
   const thumbById = new Map(
     enrichedStories.filter((s) => s.image).map((s) => [s.id, s.image!] as const),
@@ -550,14 +712,14 @@ async function collectWire() {
     ok: true as const,
     at: now,
     items: itemsOut,
-    stories: enrichedStories,
+    stories: mode === "full" ? enrichedStories : undefined,
     outlets,
     health,
   };
 }
 
-export async function fetchLiveWire() {
-  return collectWire();
+export async function fetchLiveWire(opts?: { mode?: WireMode }) {
+  return collectWire(opts);
 }
 
-export const getLiveWire = createServerFn({ method: "POST" }).handler(async () => collectWire());
+export const getLiveWire = createServerFn({ method: "POST" }).handler(async () => collectWire({ mode: "full" }));

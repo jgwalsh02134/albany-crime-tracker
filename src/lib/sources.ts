@@ -209,6 +209,12 @@ export type WireHealth = {
   news: number;
   /** News tab rows after local/out-of-area filter (what users see on News). */
   stories?: number;
+  /** Server pull mode for this response (fast live vs fuller fetch). */
+  wireMode?: "live" | "full";
+  /** Per-pipe pull durations for this response (best-effort). */
+  pullMs?: Record<string, number>;
+  /** Pipes that hit the soft deadline for this response (best-effort). */
+  timedOutPipes?: string[];
   captions: boolean;
   extractor?: string;
   scannerTicks?: number;
