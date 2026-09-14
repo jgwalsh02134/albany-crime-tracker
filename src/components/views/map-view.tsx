@@ -158,7 +158,7 @@ export function MapView({
     L: typeof import("leaflet");
     renderer: import("leaflet").Renderer;
   } | null>(null);
-  const indexRef = useRef<Supercluster<ClusterProps> | null>(null);
+  const indexRef = useRef<Supercluster<ClusterProps, ClusterProps> | null>(null);
   const byIdRef = useRef<Map<string, Incident>>(new Map());
   const rafRef = useRef<number | null>(null);
   const [mapFilterOpen, setMapFilterOpen] = useState(false);
@@ -276,11 +276,11 @@ export function MapView({
   }
 
   function buildIndex(list: Incident[]) {
-    const index = new Supercluster<ClusterProps>({
+    const index = new Supercluster<ClusterProps, ClusterProps>({
       radius: 62,
       maxZoom: 18,
       minZoom: 0,
-      map: (p) => ({
+      map: (p: ClusterProps): ClusterProps => ({
         kind: "incident",
         sevRank: p.sevRank,
         official: p.official,
@@ -288,7 +288,7 @@ export function MapView({
         approx: p.approx,
         count: 1,
       }),
-      reduce: (acc, p) => {
+      reduce: (acc: ClusterProps, p: ClusterProps) => {
         acc.kind = "cluster";
         acc.sevRank = Math.min(acc.sevRank, p.sevRank);
         acc.official = acc.official || p.official ? 1 : 0;
@@ -304,18 +304,19 @@ export function MapView({
       const official = isOfficialIncident(inc) ? 1 : 0;
       const scanner = incidentVerification(inc) === "scanner" ? 1 : 0;
       const approx = isApproxPrecision(inc.geoPrecision) ? 1 : 0;
+      const props: ClusterProps = {
+        kind: "incident",
+        incidentId: inc.id,
+        sevRank: SEV_RANK[inc.severity] ?? 3,
+        official,
+        scanner,
+        approx,
+        count: 1,
+      };
       return {
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [inc.lng, inc.lat] },
-        properties: {
-          kind: "incident",
-          incidentId: inc.id,
-          sevRank: SEV_RANK[inc.severity] ?? 3,
-          official,
-          scanner,
-          approx,
-          count: 1,
-        },
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [inc.lng, inc.lat] as [number, number] },
+        properties: props,
       };
     });
     index.load(points);
@@ -394,7 +395,6 @@ export function MapView({
           : `act-incident-pin act-pin-precise act-pin-${inc.severity}`,
         renderer,
         interactive: true,
-        keyboard: true,
       });
       marker.bindTooltip(tipNode(inc), { direction: "top", opacity: 1, className: "act-tip", sticky: true });
       marker.on("click", () => select(inc.id));

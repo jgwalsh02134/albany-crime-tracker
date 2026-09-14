@@ -205,7 +205,6 @@ function parseRss(xml: string, outlet: string, now: number, crimeOnly: boolean):
     const published = Date.parse(tag(block, "pubDate") || tag(block, "dc:date")) || now;
     const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
     if (minutesAgo > NEWS_MIN) continue;
-    const hay = `${title} ${summary}`;
     const place = placeFromText(hay);
     const pin = locateSpoken(hay, place?.name || "");
     out.push({
