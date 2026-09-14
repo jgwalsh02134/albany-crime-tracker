@@ -466,8 +466,16 @@ function SourcePipes({
                   ["511NY crashes", health.traffic, "Capital District accidents only. Construction is ignored."],
                   ["Thruway TINC", health.pipes?.find((p) => p.id.startsWith("tinc:"))?.lastCount ?? 0, "NYSTA incident board for Albany area. Closures and major incidents."],
                   ["Nixle", health.pipes?.filter((p) => p.id.startsWith("nixle:")).reduce((a, p) => a + (p.lastCount || 0), 0) ?? 0, "Agency alert centers (public Nixle pages)."],
-                  ["Department Facebook", health.facebook ?? 0, "APD, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland."],
-                  ["X", health.x ?? 0, "NYSP, Albany Fire, CBS6, NEWS10, Times Union when they tweet crime."],
+                  [
+                    "Department Facebook",
+                    health.facebook ?? 0,
+                    "APD/AFD/NYSP + local PD/FD/EMS pages (Colonie, Colonie EMS, Bethlehem, Cohoes PD/Fire, Watervliet, Guilderland PD, Schenectady PD/Fire, Rensselaer County Sheriff, East Greenbush / Green Island / Menands / Rensselaer City police, volunteer fire).",
+                  ],
+                  [
+                    "X",
+                    health.x ?? 0,
+                    "NYSP, Albany Fire, Troy PD, Schdy Police, Cohoes Fire, ACSO, Albany+Colonie Police, Thruway TRANSalert, Guilderland+Bethlehem PD mirrors, plus Spectrum/Gazette/WAMC and CBS6/NEWS10/Times Union when they tweet crime.",
+                  ],
                   ["Town civic", health.civic ?? 0, "Bethlehem, Guilderland, Albany, Cohoes, Troy, Schenectady — incident-keyword filtered. Some sites may block or rate-limit RSS fetches."],
                   ["Live news lens", health.news, "Capital Region public-safety headlines in the last 24h on Live (out-of-area dropped)."],
                   ["News tab", health.stories ?? health.news, "Headlines on the News tab after local keep + fresher ranking. Blotter is capped so it does not drown newsrooms."],

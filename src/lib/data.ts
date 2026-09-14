@@ -55,7 +55,8 @@ export const SOURCES = [
   {
     name: "Department Facebook / X",
     tier: "Official",
-    detail: "Albany, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland PD pages plus NYSP and Albany Fire on X. APD posts on Facebook, not X.",
+    detail:
+      "Albany, Colonie, Bethlehem, Cohoes, Watervliet, Guilderland PD pages; Colonie EMS; Schenectady Fire; Rensselaer County Sheriff; East Greenbush / Green Island / Menands / Rensselaer City police; volunteer fire (Guilderland / Westmere / Latham / Fuller Road / Midway / Shaker Road–Loudonville); NYSP on X + Facebook; Albany Fire / ACSO / Albany Police / Colonie Police on X.",
   },
   {
     name: "Town civic alerts",
