@@ -222,38 +222,29 @@ function LiveList({
           ) : (
             <p className="py-1.5 text-xs text-subtle">{wireLive ? `${liveItems.length} calls` : "Connecting…"}</p>
           )}
-          <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
-            <Chip
-              active={liveKind === "all" && sourceLens === "all"}
-              onClick={() => {
-                setLiveKind("all");
-                setSourceLens("all");
-              }}
-              label="All"
-            />
-            <Chip
-              active={liveKind === "crime"}
-              onClick={() => setLiveKind("crime")}
-              label="Crime"
-            />
-            <Chip
-              active={liveKind === "crash"}
-              onClick={() => setLiveKind("crash")}
-              label="Crash"
-            />
-            <Chip
-              active={liveKind === "fire"}
-              onClick={() => setLiveKind("fire")}
-              label="Fire"
-            />
-            <Chip
-              active={liveKind === "traffic"}
-              onClick={() => setLiveKind("traffic")}
-              label="Traffic"
-            />
-            <span className="mx-0.5 h-5 w-px shrink-0 self-center bg-border" />
-            <Chip active={sourceLens === "official"} onClick={() => setSourceLens("official")} label={`Official ${mix.official}`} />
-            <Chip active={sourceLens === "scanner"} onClick={() => setSourceLens("scanner")} label={`Scanner ${mix.scanner}`} />
+          <div className="flex flex-col gap-1.5">
+            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+              <Chip
+                active={liveKind === "all"}
+                onClick={() => setLiveKind("all")}
+                label="All"
+              />
+              <Chip active={liveKind === "crime"} onClick={() => setLiveKind("crime")} label="Crime" />
+              <Chip active={liveKind === "crash"} onClick={() => setLiveKind("crash")} label="Crash" />
+              <Chip active={liveKind === "fire"} onClick={() => setLiveKind("fire")} label="Fire" />
+              <Chip active={liveKind === "traffic"} onClick={() => setLiveKind("traffic")} label="Traffic" />
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+              <Chip
+                active={sourceLens === "all"}
+                onClick={() => setSourceLens("all")}
+                label={`All sources ${mix.official + mix.scanner + mix.news + mix.social}`}
+              />
+              <Chip active={sourceLens === "official"} onClick={() => setSourceLens("official")} label={`Official ${mix.official}`} />
+              <Chip active={sourceLens === "scanner"} onClick={() => setSourceLens("scanner")} label={`Scanner ${mix.scanner}`} />
+              <Chip active={sourceLens === "news"} onClick={() => setSourceLens("news")} label={`News ${mix.news}`} />
+              <Chip active={sourceLens === "social"} onClick={() => setSourceLens("social")} label={`Social ${mix.social}`} />
+            </div>
           </div>
         </div>
 

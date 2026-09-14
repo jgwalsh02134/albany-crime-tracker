@@ -2,6 +2,7 @@ import { keepSocialItem } from "./live-keep";
 import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
+import { redditApiFetch, redditApiHealth, recordRedditOk } from "./reddit-api";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const REDDIT_UA =
@@ -10,7 +11,7 @@ const REDDIT_UA =
 const LOCAL =
   /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g|clifton park|troy|schenectady|rensselaer|sand lake|schodack|east greenbush|wolf road|western ave|central ave|new scotland|delaware ave|madison ave)\b/i;
 const DROP =
-  /\b(hiring|join our team|join the|found pet|found rabbit|lost pet|back-to-school|supply drive|dog days|pup was having|sworn in|lateral transfer|exam|academy|christmas|holiday travel|mlk|martin luther|ice cream|sprinkles|adopt|palmer is a|birthday|girlboss|vendor spots|flipped off|jokes write themselves|celebrate 50|co-op|full moon|well groomed cat|season preview|recipe|install news app|trusted by millions|police reform|nibrs|lanternfl|patroons|nightlife|travers)\b/i;
+  /\b(hiring|join our team|join the|apply now|now hiring|open house|recruit|recruitment|lateral transfer|civil service exam|exam|academy|graduation|promotion|retirement|sworn in|award|community event|festival|parade|concert|fundraiser|benefit|raffle|giveaway|supply drive|back-to-school|holiday travel|christmas|mlk|martin luther|birthday|recipe|sports|season preview|game day|weather|trusted by millions|install news app|police reform|nibrs|lanternfl|patroons|nightlife|travers|found pet|lost pet|adopt)\b/i;
 const NOT_OURS =
   /\b(brooklyn|queens|bronx|manhattan|nycha|albany houses|albany,? ga\b|albany,? georgia|albany,? oregon|new albany|albany park|long island|gloversville|jackson man|milo yiannopoulos)\b/i;
 const TITLE_CRIME =
@@ -24,6 +25,7 @@ const REDDIT_CACHE_MS = 10 * 60_000;
 
 let redditBlockedUntil = 0;
 const REDDIT_BACKOFF_MS = 10 * 60_000;
+const REDDIT_NOAUTH_BACKOFF_MS = 25 * 60_000;
 
 type SocialFeed = {
   url: string;
@@ -35,10 +37,28 @@ type SocialFeed = {
   titleMust?: RegExp;
 };
 
+function feedPipeId(feed: SocialFeed): string {
+  const key = feed.outlet
+    .toLowerCase()
+    .replace(/^facebook\s+·\s+|^x\s+·\s+|^reddit\s+·\s+/i, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return `social:${feed.pipe}:${key || "feed"}`;
+}
+
 const FACEBOOK_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:facebook.com/AlbanyNYPolice+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Facebook · Albany PD",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/FDAlbanyny+when:7d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Albany Fire",
     pipe: "facebook",
     official: true,
     needsLocal: false,
@@ -70,6 +90,14 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
     format: "rss",
   },
   {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/cohoesfire+when:14d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Cohoes Fire",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  {
     url: "https://news.google.com/rss/search?q=site:facebook.com/WatervlietPolice+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Facebook · Watervliet PD",
     pipe: "facebook",
@@ -85,12 +113,69 @@ const FACEBOOK_FEEDS: SocialFeed[] = [
     needsLocal: false,
     format: "rss",
   },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/SchenectadyPD+when:14d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · Schenectady PD",
+    pipe: "facebook",
+    official: true,
+    needsLocal: false,
+    format: "rss",
+  },
+  // Newsroom pages are noisy; keep() enforces crime/public-safety keywords.
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/CBS6Albany+(crime+OR+police+OR+shooting+OR+fire+OR+crash+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · CBS6",
+    pipe: "facebook",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/wten.albany+(crime+OR+police+OR+shooting+OR+fire+OR+crash+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · NEWS10",
+    pipe: "facebook",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:facebook.com/NewsChannel13+(crime+OR+police+OR+shooting+OR+fire+OR+crash+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "Facebook · WNYT",
+    pipe: "facebook",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
 ];
 
 const X_FEEDS: SocialFeed[] = [
   {
     url: "https://news.google.com/rss/search?q=site:x.com/nyspolice+(albany+OR+colonie+OR+latham+OR+guilderland+OR+bethlehem+OR+delmar+OR+cohoes)+when:7d&hl=en-US&gl=US&ceid=US:en",
     outlet: "X · NYSP",
+    pipe: "x",
+    official: true,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/troynypolice+(arrest+OR+shooting+OR+fire+OR+crash+OR+road+closed)+when:14d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Troy PD",
+    pipe: "x",
+    official: true,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/schdypolice+(arrest+OR+shooting+OR+fire+OR+crash+OR+road+closed)+when:14d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Schdy Police",
+    pipe: "x",
+    official: true,
+    needsLocal: true,
+    format: "rss",
+  },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/cohoesfire+(fire+OR+ems+OR+crash+OR+road+closed)+when:14d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · Cohoes Fire",
     pipe: "x",
     official: true,
     needsLocal: true,
@@ -128,19 +213,19 @@ const X_FEEDS: SocialFeed[] = [
     needsLocal: true,
     format: "rss",
   },
+  {
+    url: "https://news.google.com/rss/search?q=site:x.com/wnyt+(police+OR+shooting+OR+fire+OR+crash+OR+arrest)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    outlet: "X · WNYT",
+    pipe: "x",
+    official: false,
+    needsLocal: true,
+    format: "rss",
+  },
 ];
 
 const REDDIT_FEEDS: SocialFeed[] = [
   {
     url: "https://www.reddit.com/r/Albany/search.rss?q=police+OR+crash+OR+fire+OR+shooting+OR+arrest+OR+accident&sort=new&restrict_sr=on",
-    outlet: "Reddit · r/Albany",
-    pipe: "reddit",
-    official: false,
-    needsLocal: false,
-    format: "atom",
-  },
-  {
-    url: "https://www.reddit.com/r/Albany/.rss",
     outlet: "Reddit · r/Albany",
     pipe: "reddit",
     official: false,
@@ -320,13 +405,22 @@ function cacheMap(): Map<string, CacheEntry> {
 
 async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]> {
   if (feed.outlet.startsWith("Reddit") && Date.now() < redditBlockedUntil) {
-    return [];
+    const remainSec = Math.max(0, Math.round((redditBlockedUntil - Date.now()) / 1000));
+    recordPipeFail("social:reddit", "Reddit", `rate-limited backoff ${remainSec}s`);
+    recordPipeFail(feedPipeId(feed), feed.outlet, `rate-limited backoff ${remainSec}s`);
+    const cache = cacheMap();
+    const key = `${feed.pipe}:${feed.outlet}:${feed.url}`;
+    const hit = cache.get(key);
+    return hit?.items ?? [];
   }
   const cache = cacheMap();
   const key = `${feed.pipe}:${feed.outlet}:${feed.url}`;
   const hit = cache.get(key);
   const ttl = feed.pipe === "reddit" ? REDDIT_CACHE_MS : CACHE_MS;
-  if (hit && now - hit.at < ttl) return hit.items;
+  if (hit && now - hit.at < ttl) {
+    recordPipeOk(feedPipeId(feed), feed.outlet, hit.items.length);
+    return hit.items;
+  }
   try {
     const res = await fetch(feed.url, {
       headers: {
@@ -336,13 +430,11 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) {
-      recordPipeFail(
-        `social:${feed.pipe}`,
-        feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook",
-        `HTTP ${res.status}`,
-      );
+      recordPipeFail(`social:${feed.pipe}`, feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook", `HTTP ${res.status}`);
+      recordPipeFail(feedPipeId(feed), feed.outlet, `HTTP ${res.status}`);
       if (res.status === 429 && feed.pipe === "reddit") {
-        redditBlockedUntil = Date.now() + REDDIT_BACKOFF_MS;
+        const hasAuth = redditApiHealth().authConfigured;
+        redditBlockedUntil = Date.now() + (hasAuth ? REDDIT_BACKOFF_MS : REDDIT_NOAUTH_BACKOFF_MS);
       }
       return hit?.items ?? [];
     }
@@ -350,14 +442,13 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<LiveWireItem[]>
     let items: LiveWireItem[] = [];
     if (feed.format === "atom") items = parseAtom(xml, feed, now);
     else if (xml.includes("<item")) items = parseRss(xml, feed, now);
+    recordPipeOk(feedPipeId(feed), feed.outlet, items.length);
     cache.set(key, { at: now, items });
     return items;
   } catch (err) {
-    recordPipeFail(
-      `social:${feed.pipe}`,
-      feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook",
-      err instanceof Error ? err.message : "social-error",
-    );
+    const msg = err instanceof Error ? err.message : "social-error";
+    recordPipeFail(`social:${feed.pipe}`, feed.pipe === "x" ? "X" : feed.pipe === "reddit" ? "Reddit" : "Facebook", msg);
+    recordPipeFail(feedPipeId(feed), feed.outlet, msg);
     return hit?.items ?? [];
   }
 }
@@ -374,7 +465,7 @@ export async function collectSocial(now: number): Promise<SocialBundle> {
   const [fb, x, reddit] = await Promise.all([
     Promise.all(FACEBOOK_FEEDS.map((f) => fetchFeed(f, now))),
     Promise.all(X_FEEDS.map((f) => fetchFeed(f, now))),
-    Promise.all(REDDIT_FEEDS.map((f) => fetchFeed(f, now))),
+    collectReddit(now),
   ]);
   const seen = new Set<string>();
   const items: LiveWireItem[] = [];
@@ -391,12 +482,12 @@ export async function collectSocial(now: number): Promise<SocialBundle> {
   const redditCount = items.filter((i) => i.outlet.startsWith("Reddit")).length;
   recordPipeOk("social:facebook", "Facebook", facebook);
   recordPipeOk("social:x", "X", xCount);
-  recordPipeOk("social:reddit", "Reddit", redditCount);
+  // Reddit ok/fail is recorded inside collectReddit via API/RSS path.
   return { items, facebook, x: xCount, reddit: redditCount, citizen: 0 };
 }
 
 export function isOfficialSocial(outlet: string): boolean {
-  return /Facebook ·|Civic ·|X · NYSP|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
+  return /Facebook ·|Civic ·|X · NYSP|X · Troy|X · Schdy|X · Cohoes Fire|X · Albany|X · Colonie|X · Bethlehem|X · Guilderland|X · Cohoes|X · Watervliet/i.test(
     outlet,
   );
 }
@@ -411,4 +502,56 @@ export function socialNews(items: LiveWireItem[]): LiveWireItem[] {
     const cap = isOfficialSocial(i.outlet) ? OFFICIAL_NEWS_MIN : NEWS_MIN;
     return i.minutesAgo <= cap;
   });
+}
+
+async function collectReddit(now: number): Promise<LiveWireItem[][]> {
+  const api = redditApiHealth();
+  if (api.authConfigured) {
+    const q =
+      "police OR crash OR collision OR fire OR shooting OR shots OR arrest OR accident OR ambulance OR trooper OR sheriff";
+    const subs = ["Albany", "Troy", "Schenectady"] as const;
+    const posts = (
+      await Promise.all(
+        subs.map(async (sub) => {
+          const [newest, search] = await Promise.all([
+            redditApiFetch({ now, subreddit: sub, limit: 20 }),
+            redditApiFetch({ now, subreddit: sub, q, limit: 20 }),
+          ]);
+          return [...newest, ...search];
+        }),
+      )
+    ).flat();
+
+    const seen = new Set<string>();
+    const out: LiveWireItem[] = [];
+    for (const p of posts) {
+      const id = `reddit-${p.id}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const url = p.permalink.startsWith("http") ? p.permalink : `https://www.reddit.com${p.permalink}`;
+      const title = p.title.slice(0, 180);
+      const summary = (p.selftext || "").replace(/\s+/g, " ").trim().slice(0, 360) || title;
+      const published = Math.round(p.created_utc * 1000);
+      const minutesAgo = Math.max(0, Math.round((now - published) / 60_000));
+      if (minutesAgo > NEWS_MIN) continue;
+      if (!keep(title, summary, { url: "", outlet: "Reddit", pipe: "reddit", official: false, needsLocal: false, format: "atom" }, now, published)) {
+        continue;
+      }
+      const item = toItem(title, url, summary, published, now, `Reddit · r/${p.subreddit}`, false);
+      out.push(item);
+    }
+    out.sort((a, b) => a.minutesAgo - b.minutesAgo);
+    recordRedditOk(out.length);
+    return [out];
+  }
+
+  const rss = await Promise.all(REDDIT_FEEDS.map((f) => fetchFeed(f, now)));
+  // When unauthenticated, surface the limitation as “thin,” not quiet.
+  if (rss.flat().length === 0 && Date.now() < redditBlockedUntil) {
+    const remainSec = Math.max(0, Math.round((redditBlockedUntil - Date.now()) / 1000));
+    recordPipeFail("social:reddit", "Reddit", `rate-limited backoff ${remainSec}s`);
+  } else {
+    recordPipeOk("social:reddit", "Reddit", rss.flat().length);
+  }
+  return rss;
 }

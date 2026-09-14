@@ -23,6 +23,21 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Reddit r/Albany, r/Troy, r/Schenectady | Atom | Citizen, unconfirmed. |
 | Nixle: Colonie PD | HTML parse | Public agency page. Advisory / community alerts. |
 
+## Social upgrades (this PR)
+
+- **Facebook/X**: expanded the set of **official agency** pages/handles and added curated newsroom queries; all are still filtered through the public-safety keep rules (fluff dropped).
+- **Reddit**:
+  - **Preferred**: official Reddit API when credentials exist (stops anonymous 429 thrash, provides cleaner health/backoff).
+  - **Fallback**: RSS search feeds with longer cache + backoff; health reports rate-limit backoff honestly.
+
+### Optional env vars (unlock better Reddit ingest)
+- `REDDIT_CLIENT_ID`
+- `REDDIT_CLIENT_SECRET`
+- `REDDIT_REFRESH_TOKEN`
+
+### Optional env vars (future enhancement)
+- `X_BEARER_TOKEN` (or equivalent): would allow direct X API ingest. Not required for this PR; current path uses public Google News RSS queries + Superfeedr push.
+
 ## Tried and blocked (do not invent)
 
 | Probe | Result | Why we stay honest |
