@@ -419,36 +419,6 @@ function SourcePipes({
                   </ul>
                 </>
               ) : null}
-              <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-subtle">Tried and blocked</h3>
-              <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-muted">
-                <li>
-                  <span className="font-medium text-fg">Live CAD / CFS</span> — Albany, Colonie, and Bethlehem do not publish a dispatch board. City open-data host is dead.
-                </li>
-                <li>
-                  <span className="font-medium text-fg">PulsePoint</span> — Albany NY is not on PulsePoint. API returns 401.
-                </li>
-                <li>
-                  <span className="font-medium text-fg">OpenMHz</span> — albanycony is live in a browser, Cloudflare 403 to servers.
-                </li>
-                <li>
-                  <span className="font-medium text-fg">Nixle / NY-Alert</span> — login wall. APD Alert Center RSS is empty until the city posts.
-                </li>
-                <li>
-                  <span className="font-medium text-fg">SpotCrime / CrimeMapping / RAIDS</span> — no public JSON. SpotCrime API 403.
-                </li>
-                <li>
-                  <span className="font-medium text-fg">Citizen App, Ring, Nextdoor, Waze</span> — no public feed.
-                </li>
-                <li>
-                  <span className="font-medium text-fg">Meta Graph / Instagram</span> — needs an app review token. We index public Facebook posts via Google instead.
-                </li>
-                <li>
-                  <span className="font-medium text-fg">X PD accounts</span> — APD last posted Jan 2025. Colonie tells people to use Facebook.
-                </li>
-                <li>
-                  <span className="font-medium text-fg">Jail bookings / FOIL CAD</span> — not a live stream. DCJS and FBI NIBRS are annual, on Trends.
-                </li>
-              </ul>
               <p className="mt-3 text-xs leading-relaxed text-subtle">
                 511 construction, CDTA notices, and hiring posts are fetched then dropped so Live stays public-safety.
               </p>
