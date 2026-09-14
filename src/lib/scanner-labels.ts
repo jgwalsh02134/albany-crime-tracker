@@ -9,6 +9,7 @@ import {
   isLowConfidencePlace,
   normalizeScannerSpeech,
   placeFromText,
+  streetByStem,
   type Geo,
 } from "./geo";
 import { getScannerFeed, type ScannerFeed } from "./scanner-feeds";
@@ -277,14 +278,18 @@ const LANDMARKS: { re: RegExp; place: string; muni: string }[] = [
 ];
 
 const INTER_STOP = new Set(
-  "respond copy unit car engine truck medic ambulance officer dispatch command en route for a the an to on in at of with from please check check welfare domestic crash collision accident".split(
+  "respond copy unit car engine truck medic ambulance officer dispatch command en route for a the an to on in at of with from please check check welfare domestic crash collision accident somewhere take area unknown something somehow anywhere nowhere".split(
     " ",
   ),
 );
 
-/** Spoken "X and Y" / "X & Y" intersections (street stems). */
+function stripStreetSuffix(label: string): string {
+  return label.replace(/\s+(St|Ave|Rd|Blvd|Pl)$/, "");
+}
+
+/** Spoken "X and Y" / "X & Y" intersections — both sides must be known gazetteer streets. */
 export function extractIntersection(text: string): string | null {
-  const t = text.replace(/\s+/g, " ").trim();
+  const t = normalizeScannerSpeech(text.replace(/\s+/g, " ").trim());
   // Prefer single-token stems: "Kyler and Matilda", "Wolf and Central".
   const re =
     /\b([A-Za-z][A-Za-z']+)(?:\s+(street|st|avenue|ave|road|rd|boulevard|blvd))?\s+(?:and|&)\s+([A-Za-z][A-Za-z']+)(?:\s+(street|st|avenue|ave|road|rd|boulevard|blvd))?\b/gi;
@@ -293,10 +298,14 @@ export function extractIntersection(text: string): string | null {
     const a = m[1]!.trim();
     const b = m[3]!.trim();
     if (INTER_STOP.has(a.toLowerCase()) || INTER_STOP.has(b.toLowerCase())) continue;
+    if (isLowConfidencePlace(a) || isLowConfidencePlace(b)) continue;
     if (a.length < 3 || b.length < 3) continue;
     // Skip number chatter like "car 12 and car 14".
     if (/^\d/.test(a) || /^\d/.test(b)) continue;
-    best = `${titleCase(a)} & ${titleCase(b)}`;
+    const sa = streetByStem(a);
+    const sb = streetByStem(b);
+    if (!sa || !sb) continue;
+    best = `${stripStreetSuffix(sa.label)} & ${stripStreetSuffix(sb.label)}`;
   }
   return best;
 }

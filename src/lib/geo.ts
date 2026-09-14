@@ -308,7 +308,7 @@ const STT_STREET_FIXES: [RegExp, string][] = [
 
 /** Function words / STT nonsense that must never become a street title. */
 const PLACE_STOP_STEMS = new Set(
-  "this is that the a an across for to on in at of with from unit car copy respond please check triumph trion en route quarters service".split(
+  "this is that the a an across for to on in at of with from unit car copy respond please check triumph trion en route quarters service somewhere take area unknown something somehow anywhere nowhere whoever whatever".split(
     " ",
   ),
 );
@@ -343,7 +343,8 @@ export function isLowConfidencePlace(label: string): boolean {
   return false;
 }
 
-function streetByStem(name: string) {
+/** Match a spoken stem against the Capital Region street gazetteer. */
+export function streetByStem(name: string) {
   return STREETS.find(
     (s) =>
       s.re.test(name) ||
