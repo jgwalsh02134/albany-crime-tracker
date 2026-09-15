@@ -23,6 +23,17 @@ function signalLabel(incident: Incident): string {
   return "Developing";
 }
 
+function updateProvenance(u: ReturnType<typeof buildIncidentThread>[number]): {
+  label: "Official" | "Scanner" | "Witness" | "Unconfirmed" | "Report";
+  tone: "cyan" | "accent" | "medium" | "muted";
+} {
+  if (u.chip.key === "witness") return { label: "Witness", tone: "medium" };
+  if (u.source.kind === "scanner" || u.chip.key === "scanner") return { label: "Scanner", tone: "accent" };
+  if (u.tier === "official") return { label: "Official", tone: "cyan" };
+  if (u.tier === "unconfirmed") return { label: "Unconfirmed", tone: "medium" };
+  return { label: "Report", tone: "muted" };
+}
+
 export function IncidentDetail({
   incident,
   wireItems,
@@ -41,6 +52,8 @@ export function IncidentDetail({
   const witness = isWitnessIncident(incident);
   const approx = isApproxPrecision(incident.geoPrecision);
   const updates = buildIncidentThread(incident, wireItems);
+  const latestUpdate = updates[0];
+  const latestProv = latestUpdate ? updateProvenance(latestUpdate) : null;
 
   return (
     <div className={cn(variant === "panel" ? "p-4" : "px-4 pb-8 pt-3")}>
@@ -135,74 +148,104 @@ export function IncidentDetail({
         </div>
       </dl>
 
-      <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Updates</h3>
       {updates.length ? (
-        <ol className="mt-2 space-y-2">
+        <div className="mt-5">
+          <div className="sticky top-0 z-10 -mx-4 border-y border-border bg-surface/90 px-4 py-2 backdrop-blur">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-subtle">Updates</h3>
+              <span className="font-mono text-[11px] tabular-nums text-subtle">{updates.length} item{updates.length === 1 ? "" : "s"}</span>
+            </div>
+            {latestUpdate ? (
+              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] leading-snug text-muted">
+                {latestProv ? <Badge tone={latestProv.tone}>{latestProv.label}</Badge> : null}
+                <span className="rounded-full border border-border bg-surface px-2 py-0.5 font-medium text-muted">
+                  {latestUpdate.chip.label}
+                </span>
+                <span className="text-subtle">·</span>
+                <span className="truncate">{latestUpdate.outlet}</span>
+                <span className="text-subtle">·</span>
+                <span className="font-mono tabular-nums text-subtle">
+                  {clockTime(latestUpdate.publishedAt)} · {relativeTime(latestUpdate.publishedAt)}
+                </span>
+              </p>
+            ) : null}
+          </div>
+
+          <ol className="mt-2 space-y-1.5">
           {updates.map((u, idx) => {
-            const isFirst = idx === 0;
-            const isLast = idx === updates.length - 1;
+            const isLatest = idx === 0;
+            const isFirstReport = idx === updates.length - 1;
             const time = `${clockTime(u.publishedAt)} · ${relativeTime(u.publishedAt)}`;
-            const tierTone = u.tier === "official" ? "cyan" : u.tier === "unconfirmed" ? "accent" : "muted";
+            const prov = updateProvenance(u);
             const title = decodeHtmlEntities(u.title);
             const summary = decodeHtmlEntities(u.summary || "");
             const excerpt = summary && summary !== title ? summary : "";
-            const row = (
-              <>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted">
-                      {u.chip.label}
-                    </span>
-                    <Badge tone={tierTone}>{u.tier}</Badge>
-                    <span className="ml-auto font-mono text-[11px] tabular-nums text-subtle">{time}</span>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-fg">{title}</p>
-                  {excerpt ? <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted">{excerpt}</p> : null}
-                  <p className="mt-1 flex flex-wrap items-center gap-2 font-mono text-[11px] text-subtle">
-                    <span className="truncate">{u.outlet}</span>
-                    <span className="text-border">·</span>
-                    <span className="truncate">{u.memberId}</span>
-                    {isFirst ? (
-                      <>
-                        <span className="text-border">·</span>
-                        <span className="font-sans text-[11px] font-semibold text-subtle">first report</span>
-                      </>
-                    ) : null}
-                    {isLast ? (
-                      <>
-                        <span className="text-border">·</span>
-                        <span className="font-sans text-[11px] font-semibold text-subtle">latest</span>
-                      </>
-                    ) : null}
-                  </p>
+            const dot =
+              prov.label === "Official"
+                ? "bg-cyan"
+                : prov.label === "Scanner"
+                  ? "bg-accent"
+                  : prov.label === "Witness" || prov.label === "Unconfirmed"
+                    ? "bg-sev-medium"
+                    : "bg-border";
+            const body = (
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge tone={prov.tone}>{prov.label}</Badge>
+                  <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] font-medium text-muted">
+                    {u.chip.label}
+                  </span>
+                  <span className="text-subtle">·</span>
+                  <span className="truncate text-[11px] font-medium text-muted">{u.outlet}</span>
+                  <span className="ml-auto font-mono text-[11px] tabular-nums text-subtle">{time}</span>
                 </div>
-                {u.url ? <ExternalLink className="size-4 shrink-0 text-subtle" /> : null}
-              </>
+                <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-fg">{title}</p>
+                {excerpt ? <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-muted">{excerpt}</p> : null}
+                {isLatest || isFirstReport ? (
+                  <p className="mt-1 text-[11px] font-semibold text-subtle">
+                    {isLatest ? "latest" : "first report"}
+                  </p>
+                ) : null}
+              </div>
             );
             return (
               <li key={u.memberId}>
-                {u.url ? (
-                  <a
-                    href={u.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex min-h-11 items-start justify-between gap-3 rounded-md bg-surface-2 px-3 py-2 active:opacity-90"
-                  >
-                    {row}
-                  </a>
-                ) : (
-                  <div className="flex min-h-11 items-start justify-between gap-3 rounded-md bg-surface-2 px-3 py-2">
-                    {row}
-                  </div>
-                )}
+                <div className="relative">
+                  {idx !== updates.length - 1 ? (
+                    <span
+                      className="absolute left-[7px] top-4 h-[calc(100%-0.75rem)] w-px bg-border"
+                      aria-hidden
+                    />
+                  ) : null}
+                  <span className={cn("absolute left-[4px] top-3.5 size-2 rounded-full", dot)} aria-hidden />
+                  {u.url ? (
+                    <a
+                      href={u.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-5 flex items-start justify-between gap-3 rounded-md bg-surface-2 px-3 py-2 active:opacity-90"
+                    >
+                      {body}
+                      <ExternalLink className="mt-1 size-4 shrink-0 text-subtle" />
+                    </a>
+                  ) : (
+                    <div className="ml-5 flex items-start justify-between gap-3 rounded-md bg-surface-2 px-3 py-2">
+                      {body}
+                    </div>
+                  )}
+                </div>
               </li>
             );
           })}
-        </ol>
+          </ol>
+        </div>
       ) : (
-        <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
-          No fused updates are available for this incident in the current refresh.
-        </p>
+        <div className="mt-5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-subtle">Updates</h3>
+          <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-xs leading-relaxed text-muted">
+            No fused updates are available for this incident in the current refresh.
+          </p>
+        </div>
       )}
 
       <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Sources</h3>
