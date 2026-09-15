@@ -628,10 +628,10 @@ export function MapView({
   }
 
   return (
-    <div className="act-map relative flex-1 min-h-0 w-full">
+    <div className="act-map relative isolate flex-1 min-h-0 w-full">
       <div
         ref={el}
-        className="absolute inset-0"
+        className="absolute inset-0 z-0"
         role="region"
         aria-label="Public-safety incident map. Use plus and minus to zoom. Open List for a text version of the pins."
       />
