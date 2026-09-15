@@ -42,6 +42,8 @@ function blurb(incident: Incident): string | null {
 function confidenceBadge(incident: Incident): { label: string; tone: "cyan" | "accent" | "medium" | "muted" } {
   if (incident.verification === "confirmed") return { label: "Official", tone: "cyan" };
   if (incident.verification === "scanner") return { label: "Scanner", tone: "accent" };
+  if (isWitnessIncident(incident)) return { label: "Unconfirmed", tone: "medium" };
+  if (incident.sources.some((s) => s.kind === "social")) return { label: "Unconfirmed", tone: "medium" };
   return { label: "Developing", tone: "muted" };
 }
 

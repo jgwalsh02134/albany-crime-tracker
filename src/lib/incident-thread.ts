@@ -36,8 +36,7 @@ function toTier(family: string): SourceTier {
     family === "tinc" ||
     family === "511" ||
     family === "nws" ||
-    family === "civic" ||
-    family === "press"
+    family === "civic"
   ) {
     return "official";
   }
@@ -52,7 +51,7 @@ function kindFromFamily(family: string): IncidentSource["kind"] {
   if (family === "scanner") return "scanner";
   if (family === "511") return "cfs";
   if (family === "social") return "social";
-  if (family === "civic" || family === "press" || family === "nws") return "press";
+  if (family === "civic" || family === "nws") return "press";
   return "news";
 }
 

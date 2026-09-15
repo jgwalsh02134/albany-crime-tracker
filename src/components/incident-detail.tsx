@@ -14,9 +14,12 @@ import { isWitnessIncident } from "@/lib/witness";
 import type { LiveWireItem } from "@/lib/sources";
 import { buildIncidentThread } from "@/lib/incident-thread";
 
-function signalLabel(v: Incident["verification"]): string {
+function signalLabel(incident: Incident): string {
+  const v = incident.verification;
   if (v === "confirmed") return "Official";
   if (v === "scanner") return "Scanner (early)";
+  if (isWitnessIncident(incident)) return "Unconfirmed";
+  if (incident.sources.some((s) => s.kind === "social")) return "Unconfirmed";
   return "Developing";
 }
 
@@ -124,7 +127,7 @@ export function IncidentDetail({
         </div>
         <div>
           <dt className="text-xs uppercase tracking-wide text-subtle">Verification</dt>
-          <dd className="mt-0.5 font-medium">{signalLabel(incident.verification)}</dd>
+          <dd className="mt-0.5 font-medium">{signalLabel(incident)}</dd>
         </div>
         <div>
           <dt className="text-xs uppercase tracking-wide text-subtle">Category</dt>
