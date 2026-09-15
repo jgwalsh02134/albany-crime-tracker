@@ -154,6 +154,40 @@ describe("shouldFuse", () => {
     });
     assert.equal(shouldFuse(civicEvent, watervlietFire), false);
   });
+
+  it("fuses near-duplicate newsroom social posts across Facebook + X (same outlet, same story)", () => {
+    // Regression: newsroom posts commonly cross-post the same story across platforms.
+    // These should not show as separate Live incidents even if the muni hint differs.
+    const fb = item({
+      id: "fb-news10-1",
+      title: "Troy Police Department made an arrest last Monday after a reported disturbance",
+      summary: "Troy Police Department made an arrest last Monday after a reported disturbance. Developing.",
+      kind: "social",
+      outlet: "Facebook · NEWS10",
+      municipality: "Troy",
+      address: "Troy",
+      lat: undefined,
+      lng: undefined,
+      minutesAgo: 95,
+    });
+    const x = item({
+      id: "x-news10-1",
+      title: "Troy Police Department made an arrest last Monday after a reported disturbance",
+      summary: "Troy Police Department made an arrest last Monday after a reported disturbance. Developing.",
+      kind: "social",
+      outlet: "X · NEWS10",
+      // Real-world: place extraction can drift (county/town hints differ) even for the same post.
+      municipality: "Brunswick",
+      address: "Brunswick",
+      lat: undefined,
+      lng: undefined,
+      minutesAgo: 100,
+    });
+    assert.equal(shouldFuse(fb, x), true);
+    const groups = clusterLiveItems([fb, x]);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0]!.length, 2);
+  });
 });
 
 describe("corroboration", () => {
