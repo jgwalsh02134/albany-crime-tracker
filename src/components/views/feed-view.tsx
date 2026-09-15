@@ -11,7 +11,7 @@ import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
 import { type WireHealth, sourceMix } from "@/lib/sources";
 import { liveWindowHonesty } from "@/lib/live-honesty";
 import { incidentVisible, useAppStore } from "@/lib/store";
-import { compareNowLane, nowUrgencyScore } from "@/lib/live-rank";
+import { compareNowLaneWithContext, nowUrgencyScore } from "@/lib/live-rank";
 import { haversineKm } from "@/lib/geo";
 import { selectNearMeEmptyState, type LocateErrorKind, type NearMePos } from "@/lib/near-me-empty-state";
 import type { Incident, NewsStory, SourceLens, LiveKind } from "@/lib/types";
@@ -790,10 +790,15 @@ function GroupedList({
   pos: NearMePos | null;
 }) {
   const since7 = minutesSinceNy7am();
-  const nowItems = [...items.filter((i) => i.minutesAgo <= 180)].sort(compareNowLane);
+  const areaFilter = useAppStore((s) => s.areaFilter);
+  const municipalities = useAppStore((s) => s.municipalities);
+  const colonieFocused = areaFilter === "Colonie" || (municipalities.length === 1 && municipalities[0] === "Colonie");
+  const nowItems = [...items.filter((i) => i.minutesAgo <= 180)].sort(
+    compareNowLaneWithContext({ colonieFocused }),
+  );
   const earlierToday = items.filter((i) => i.minutesAgo > 180 && i.minutesAgo <= since7);
   const overnight = items.filter((i) => i.minutesAgo > since7);
-  const honesty = liveWindowHonesty({ health: wireHealth, nowItems, liveItems: items, sourceLens });
+  const honesty = liveWindowHonesty({ health: wireHealth, nowItems, liveItems: items, sourceLens, colonieFocused });
 
   const split = (rows: Incident[]) => ({
     confirmed: rows.filter((r) => r.verification === "confirmed"),
@@ -809,7 +814,7 @@ function GroupedList({
   function lanePriority(id: LaneId, laneItems: Incident[], order: number): number {
     if (!laneItems.length) return -1;
     const top = laneItems[0]!;
-    let score = nowUrgencyScore(top);
+    let score = nowUrgencyScore(top, { colonieFocused });
     // Keep the UI honest: only let scanner-only lanes jump the stack when the activity is serious.
     if (id === "scanner") {
       score -= top.severity === "critical" ? 0 : top.severity === "high" ? 10 : top.severity === "medium" ? 25 : 45;

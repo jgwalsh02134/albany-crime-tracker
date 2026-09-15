@@ -4,6 +4,12 @@ Honest inventory of pipes we poll, subscribe, or have tried. **There is no publi
 
 Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `lastCount`, ok/fail. Live “source map” also shows when radio captions are down (no STT key, rate-limit/backoff, or stream unreachable) so news-only windows aren’t silently treated as “quiet” — radio captions are an early reporting signal, and downtime is a real reporting gap.
 
+## Recent changes (honesty + Colonie pack)
+
+- Newsroom Facebook/X posts are now gated by **clear incident language** so policy/politics/features don’t become Live incidents.
+- Colonie/Latham gap queries were tightened (Patch + corridor keywords) to better catch early fire/EMS/crash coverage without paid APIs.
+- Colonie-focused views surface the **encrypted Colonie PD radio gap** as a coverage limitation (not “all quiet”).
+
 ## Wired (open)
 
 | Pipe | How | Notes |
@@ -22,7 +28,7 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 | Corridor + town queries | Google News RSS + Superfeedr | “Central/Western/Wolf” corridor + “Bethlehem/Delmar/Latham” gap queries. |
 | CivicPlus: Bethlehem, Guilderland PD, Guilderland town, Albany, Cohoes, Voorheesville, Troy, Schenectady, Schenectady PD | RSS + Superfeedr | Incident-keyword filter. Feeds may be empty and still count as wired. |
 | Menands village | `menandsny.gov/feed/` (WordPress) | Sucuri 403 blocks server fetches. We keep the pipe listed and honest in health, but it may be unreachable until the site allows feed traffic. |
-| Department Facebook / X (via Google News) | RSS | APD/AFD/NYSP + local PD/FD/EMS pages (Colonie, Colonie EMS, Bethlehem, Cohoes PD/Fire, Watervliet, Guilderland PD, Schenectady PD/Fire, Rensselaer County Sheriff, East Greenbush / Green Island / Menands / Rensselaer City police, volunteer fire) plus X for Troy PD / Schdy Police / Albany+Colonie Police / Thruway TRANSalert / Guilderland+Bethlehem PD. Newsroom social includes CBS6/NEWS10/WNYT/Spectrum/Gazette/WAMC/Times Union/Troy Record. |
+| Department Facebook / X (via Google News) | RSS | APD/AFD/NYSP + local PD/FD/EMS pages (Colonie PD, Colonie EMS, Bethlehem, Cohoes PD/Fire, Watervliet, Guilderland PD, Schenectady PD/Fire, Rensselaer County Sheriff, East Greenbush / Green Island / Menands / Rensselaer City police, volunteer fire) plus X for Troy PD / Schdy Police / Albany+Colonie Police / Thruway TRANSalert / Guilderland+Bethlehem PD. **Newsroom social** includes CBS6/NEWS10/WNYT/Spectrum/Gazette/WAMC/Times Union/Troy Record, but is kept only when the post has clear incident language (policy/features are dropped so they don’t steal Live ranking). |
 | Reddit r/Albany, r/Troy, r/Schenectady | Atom | Citizen, unconfirmed. |
 | Nixle (APD, Colonie, Guilderland, Watervliet, Altamont) | HTML parse | Public agency pages. Cached ~1 min daytime (ET), ~4 min overnight; transient errors keep the last-known alert set so advisories don’t “blink” out. |
 
