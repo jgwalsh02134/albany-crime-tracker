@@ -522,7 +522,13 @@ function LiveList({
             )}
           </div>
         ) : (
-          <GroupedList items={showing} onSelect={onSelect} wireHealth={wireHealth} sourceLens={sourceLens} />
+          <GroupedList
+            items={showing}
+            onSelect={onSelect}
+            wireHealth={wireHealth}
+            sourceLens={sourceLens}
+            pos={pos}
+          />
         )}
       </div>
 
@@ -775,11 +781,13 @@ function GroupedList({
   onSelect,
   wireHealth,
   sourceLens,
+  pos,
 }: {
   items: Incident[];
   onSelect: (id: string) => void;
   wireHealth: WireHealth | null;
   sourceLens: SourceLens;
+  pos: NearMePos | null;
 }) {
   const since7 = minutesSinceNy7am();
   const nowItems = [...items.filter((i) => i.minutesAgo <= 180)].sort(compareNowLane);
@@ -830,7 +838,7 @@ function GroupedList({
         {nowItems.length ? (
           <div className="flex flex-col gap-3">
             {mkLanes(now).map((lane) => (
-              <Lane key={lane.id} label={lane.label} items={lane.items} onSelect={onSelect} />
+              <Lane key={lane.id} label={lane.label} items={lane.items} onSelect={onSelect} pos={pos} />
             ))}
           </div>
         ) : (
@@ -848,7 +856,7 @@ function GroupedList({
           </div>
           <div className="flex flex-col gap-3">
             {mkLanes(today, 10).map((lane) => (
-              <Lane key={lane.id} label={lane.label} items={lane.items} onSelect={onSelect} />
+              <Lane key={lane.id} label={lane.label} items={lane.items} onSelect={onSelect} pos={pos} />
             ))}
           </div>
         </section>
@@ -877,10 +885,12 @@ function Lane({
   label,
   items,
   onSelect,
+  pos,
 }: {
   label: string;
   items: Incident[];
   onSelect: (id: string) => void;
+  pos: NearMePos | null;
 }) {
   return (
     <div>
@@ -890,7 +900,13 @@ function Lane({
       <ul className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-1">
         {items.map((inc) => (
           <li key={inc.id}>
-            <IncidentCard incident={inc} onSelect={onSelect} />
+            <IncidentCard
+              incident={inc}
+              onSelect={onSelect}
+              distanceMi={
+                pos ? haversineKm({ lat: pos.lat, lng: pos.lng }, { lat: inc.lat, lng: inc.lng }) / 1.60934 : null
+              }
+            />
           </li>
         ))}
       </ul>

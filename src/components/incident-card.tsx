@@ -1,8 +1,9 @@
+import { Badge } from "@/components/ui/badge";
 import { ShareButton } from "@/components/share-button";
 import { clockTime, relativeTime, typeLabel } from "@/lib/format";
 import { decodeHtmlEntities } from "@/lib/html";
+import { incidentProvenancePill, incidentSourcePill } from "@/lib/incident-pills";
 import { incidentSharePayload } from "@/lib/share";
-import { IncidentPills } from "@/components/incident-pills";
 import type { Incident, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { isWitnessIncident } from "@/lib/witness";
@@ -23,46 +24,83 @@ function blurb(incident: Incident): string | null {
   return raw;
 }
 
+function formatDistanceMi(mi: number): string {
+  if (!Number.isFinite(mi) || mi < 0) return "";
+  if (mi < 0.2) return "<0.2 mi";
+  if (mi < 10) return `${Math.round(mi * 10) / 10} mi`;
+  return `${Math.round(mi)} mi`;
+}
+
 export function IncidentCard({
   incident,
   onSelect,
+  distanceMi = null,
 }: {
   incident: Incident;
   onSelect: (id: string) => void;
+  distanceMi?: number | null;
 }) {
   const title = decodeHtmlEntities(incident.title);
   const witness = isWitnessIncident(incident);
+  const badge = incidentSourcePill(incident);
+  const conf = incidentProvenancePill(incident);
   const loc = incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
     ? incident.address
     : `${incident.address} · ${incident.municipality}`;
   const extra = blurb(incident);
+  const distance = distanceMi != null ? formatDistanceMi(distanceMi) : "";
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border border-border bg-surface">
+    <div className="relative w-full overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
       <button
         type="button"
         onClick={() => onSelect(incident.id)}
-        className="w-full py-3 pl-3.5 pr-12 text-left active:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+        className="w-full px-3.5 py-3.5 pr-12 text-left active:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
       >
-        <span className={cn("absolute inset-y-2 left-0 w-1 rounded-full", rail[incident.severity])} />
+        <span className={cn("absolute inset-y-3 left-0 w-1 rounded-full", rail[incident.severity])} />
+
         <div className="flex items-start justify-between gap-3">
-          <h3 className="min-w-0 line-clamp-2 text-sm font-semibold leading-snug tracking-tight text-fg">
-            {title}
-          </h3>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge tone={conf.tone}>{conf.label}</Badge>
+              <Badge tone={badge.tone} className="normal-case tracking-normal">
+                {badge.label}
+              </Badge>
+              {incident.seenOn?.length ? (
+                <span className="ml-auto inline-flex items-center rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-muted">
+                  {incident.seenOn.length} sources
+                </span>
+              ) : null}
+            </div>
+
+            <h3 className="mt-1 min-w-0 line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight text-fg">
+              {title}
+            </h3>
+            <p className="mt-0.5 min-w-0 truncate text-sm text-muted">{loc}</p>
+          </div>
+
           <div className="mt-0.5 shrink-0 text-right">
-            <time className="block font-mono text-xs font-semibold tabular-nums text-fg">{relativeTime(incident.occurredAt)}</time>
-            <span className="block font-mono text-[11px] tabular-nums text-subtle">{clockTime(incident.occurredAt)}</span>
+            <time className="block font-mono text-xs font-semibold tabular-nums text-fg">
+              {relativeTime(incident.occurredAt)}
+            </time>
+            <span className="mt-0.5 block font-mono text-[11px] tabular-nums text-subtle">
+              {distance || clockTime(incident.occurredAt)}
+            </span>
           </div>
         </div>
-        {extra ? <p className="mt-1 line-clamp-1 text-sm text-muted">{extra}</p> : null}
-        <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted">
-          <span className="shrink-0 uppercase tracking-wide text-subtle">{typeLabel(incident.type)}</span>
-          <span className="text-subtle">·</span>
-          <span className="min-w-0 truncate">{loc}</span>
-        </p>
 
-        <div className="mt-2">
-          <IncidentPills incident={incident} />
+        {extra ? <p className="mt-1.5 line-clamp-1 text-sm text-muted">{extra}</p> : null}
+
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-subtle">
+          <span className="shrink-0 uppercase tracking-wide">{typeLabel(incident.type)}</span>
+          <span aria-hidden>·</span>
+          <span className="font-mono tabular-nums">{clockTime(incident.occurredAt)}</span>
+          {distance ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="font-mono tabular-nums">{distance}</span>
+            </>
+          ) : null}
         </div>
 
         {incident.verification === "scanner" ? (
