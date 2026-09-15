@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export function Seal({
@@ -11,43 +11,50 @@ export function Seal({
   className?: string;
 }) {
   const [ok, setOk] = useState(true);
-  const initials = initialsOf(label);
   const size = className ?? "size-11";
-  if (!ok) {
-    return (
-      <span
-        className={cn(
-          "inline-flex shrink-0 items-center justify-center rounded-full bg-surface-2 text-xs font-bold tracking-wide text-muted",
-          size,
-        )}
-        aria-hidden
-      >
-        {initials}
-      </span>
-    );
-  }
+
+  useEffect(() => {
+    setOk(true);
+  }, [id]);
+
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white p-0.5 ring-1 ring-border/60 shadow-sm",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white p-1 ring-1 ring-black/10 shadow-sm dark:ring-white/10",
         size,
       )}
+      title={label}
     >
-      <img
-        src={`/seals/${id}.png`}
-        alt=""
-        className="size-full object-contain"
-        onError={() => setOk(false)}
-      />
+      {ok ? (
+        <img
+          src={`/seals/${id}.png`}
+          alt=""
+          className="size-full object-contain p-0.5"
+          decoding="async"
+          loading="lazy"
+          onError={() => setOk(false)}
+        />
+      ) : (
+        <span
+          className="flex size-full items-center justify-center rounded-full bg-surface-2 text-muted"
+          aria-hidden
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="size-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+            <path d="M10.3 3.6 2.9 18.4A2 2 0 0 0 4.7 21h14.6a2 2 0 0 0 1.8-2.6L13.7 3.6a2 2 0 0 0-3.4 0Z" />
+          </svg>
+        </span>
+      )}
     </span>
   );
-}
-
-function initialsOf(label: string): string {
-  const parts = label
-    .replace(/[^A-Za-z0-9 ]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length >= 2) return (parts[0]![0] + parts[1]![0]).toUpperCase();
-  return label.slice(0, 2).toUpperCase();
 }
