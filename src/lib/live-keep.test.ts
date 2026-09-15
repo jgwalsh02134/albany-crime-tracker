@@ -5,6 +5,7 @@ import {
   keepLiveNewsItem,
   keepNewsTabItem,
   keepSocialItem,
+  isCitizenNonIncidentChatter,
   newsFreshnessScore,
   rankNewsItems,
   OUT_OF_AREA,
@@ -268,6 +269,50 @@ describe("hasClearIncidentLanguageForNewsroomSocial", () => {
         summary: "Candidates spar over healthcare spending.",
       }),
       false,
+    );
+  });
+});
+
+describe("keepSocialItem Reddit/citizen chatter gate", () => {
+  it("drops camera/footage requests (Erie Blvd regression)", () => {
+    const title = "URGENT HELP NEEDED! Cameras facing Erie Blvd and Liberty St intersection?";
+    const summary = "Looking for camera footage/video from last night's crash — please DM.";
+    assert.equal(isCitizenNonIncidentChatter({ title, summary }), true);
+    assert.equal(
+      keepSocialItem(
+        {
+          title,
+          summary,
+          official: false,
+          needsLocal: false,
+          localMatch: true,
+        },
+        DROP,
+        NOT_OURS,
+        TITLE_CRIME,
+      ),
+      false,
+    );
+  });
+
+  it("keeps real early Reddit crash reports (must stay)", () => {
+    const title = "Crash on I-90 near Everett Rd — traffic backed up";
+    const summary = "Unconfirmed but multiple cars involved. Police and EMS on scene.";
+    assert.equal(isCitizenNonIncidentChatter({ title, summary }), false);
+    assert.equal(
+      keepSocialItem(
+        {
+          title,
+          summary,
+          official: false,
+          needsLocal: false,
+          localMatch: true,
+        },
+        DROP,
+        NOT_OURS,
+        TITLE_CRIME,
+      ),
+      true,
     );
   });
 });

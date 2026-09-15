@@ -128,6 +128,22 @@ export type SocialKeepInput = {
   localMatch: boolean;
 };
 
+export function isCitizenNonIncidentChatter(input: { title: string; summary?: string }): boolean {
+  const t = `${input.title} ${input.summary ?? ""}`.replace(/\s+/g, " ").trim();
+  if (!t) return false;
+  // Reddit/citizen posts can be "incident-adjacent" but not an early report (e.g. asking for camera footage).
+  // Keep real early reports; drop camera/footage requests that tend to steal Now ranking without adding witness value.
+  const CAMERA =
+    /\b(?:cameras?|camera\s+footage|ring\b|doorbell\s+cam(?:era)?|dash\s*cam|surveillance|cctv|security\s+cam(?:era)?|traffic\s+cam(?:era)?|footage|video)\b/i;
+  if (!CAMERA.test(t)) return false;
+  const REQUEST =
+    /\b(?:anyone|does\s+anyone|somebody|someone)\b[\s\S]{0,40}\b(?:have|got|save|share|send|provide)\b/i;
+  const SEEK = /\b(?:looking\s+for|in\s+search\s+of|seeking|trying\s+to\s+find|request(?:ing)?|iso\b)\b/i;
+  const FACING = /\bcameras?\s+facing\b/i;
+  const HELP = /\burgent\s+help\s+needed\b|\bhelp\s+needed\b/i;
+  return REQUEST.test(t) || SEEK.test(t) || FACING.test(t) || HELP.test(t);
+}
+
 /**
  * Newsroom social can contain policy/features that mention "crime" or "police" without
  * describing a discrete public-safety incident. This gate is intentionally stricter than
@@ -161,5 +177,6 @@ export function keepSocialItem(
   if (drop.test(hay) || notOurs.test(hay) || OUT_OF_AREA.test(hay)) return false;
   if (row.needsLocal && !row.localMatch) return false;
   if (row.official) return true;
+  if (isCitizenNonIncidentChatter({ title: row.title, summary: row.summary })) return false;
   return titleCrime.test(row.title) || LIVE_PUBLIC_SAFETY.test(hay);
 }
