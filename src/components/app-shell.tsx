@@ -155,11 +155,21 @@ export function AppShell() {
           </div>
         </div>
         <div className="flex items-center">
-          {view === "feed" || view === "map" ? (
+          {view === "map" ? (
             <Button
               variant="ghost"
               size="icon"
               aria-label="Filter"
+              onClick={() => setFilterOpen(true)}
+            >
+              <SlidersHorizontal className="size-5" />
+            </Button>
+          ) : view === "feed" ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Filter"
+              className="hidden lg:inline-flex"
               onClick={() => setFilterOpen(true)}
             >
               <SlidersHorizontal className="size-5" />
@@ -277,7 +287,7 @@ export function AppShell() {
         </button>
       </nav>
 
-      <FilterDrawer />
+      <FilterDrawer incidents={incidents} />
       <IncidentDrawer incident={selected} wireItems={wire} />
       <MoreDrawer />
       <WitnessReportDrawer />

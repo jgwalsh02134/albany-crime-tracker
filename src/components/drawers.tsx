@@ -1,10 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Drawer } from "vaul";
-import { ChevronRight, ExternalLink, Moon, Sparkles, Sun } from "lucide-react";
+import { ChevronRight, ExternalLink, LocateFixed, Moon, Sparkles, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { haversineKm } from "@/lib/geo";
+import { selectNearMeEmptyState, type LocateErrorKind, type NearMePos } from "@/lib/near-me-empty-state";
 import { SOURCE_LENSES } from "@/lib/sources";
 import { MUNICIPALITIES, SEVERITIES, type Severity, type ViewId } from "@/lib/types";
-import { useAppStore } from "@/lib/store";
+import { incidentVisible, useAppStore } from "@/lib/store";
 import type { Incident } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { IncidentDetail } from "@/components/incident-detail";
@@ -31,16 +33,25 @@ function SheetFrame({
   );
 }
 
-export function FilterDrawer() {
+export function FilterDrawer({ incidents }: { incidents: Incident[] }) {
   const open = useAppStore((s) => s.filterOpen);
   const setOpen = useAppStore((s) => s.setFilterOpen);
   const severities = useAppStore((s) => s.severities);
   const municipalities = useAppStore((s) => s.municipalities);
+  const areaFilter = useAppStore((s) => s.areaFilter);
   const setSeverities = useAppStore((s) => s.setSeverities);
   const setMunicipalities = useAppStore((s) => s.setMunicipalities);
   const sourceLens = useAppStore((s) => s.sourceLens);
   const setSourceLens = useAppStore((s) => s.setSourceLens);
+  const liveNearMe = useAppStore((s) => s.liveNearMe);
+  const setLiveNearMe = useAppStore((s) => s.setLiveNearMe);
+  const liveNearMiles = useAppStore((s) => s.liveNearMiles);
+  const setLiveNearMiles = useAppStore((s) => s.setLiveNearMiles);
   const reset = useAppStore((s) => s.resetFilters);
+
+  const [pos, setPos] = useState<NearMePos | null>(null);
+  const [locateErr, setLocateErr] = useState<string>("");
+  const [locateErrorKind, setLocateErrorKind] = useState<LocateErrorKind | null>(null);
 
   function toggleSev(s: Severity) {
     setSeverities(
@@ -52,6 +63,55 @@ export function FilterDrawer() {
       municipalities.includes(m) ? municipalities.filter((x) => x !== m) : [...municipalities, m],
     );
   }
+
+  const requestLocation = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocateErr("Location isn’t available in this browser.");
+      setLocateErrorKind("unavailable");
+      return;
+    }
+    setLocateErr("");
+    setLocateErrorKind(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        setPos({ lat: p.coords.latitude, lng: p.coords.longitude, accM: p.coords.accuracy || 0, at: Date.now() });
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocateErr("Location permission denied.");
+          setLocateErrorKind("denied");
+        } else {
+          setLocateErr("Couldn’t fetch your location.");
+          setLocateErrorKind("unavailable");
+        }
+      },
+      { enableHighAccuracy: false, timeout: 9000, maximumAge: 60_000 },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!liveNearMe) {
+      setPos(null);
+      setLocateErr("");
+      setLocateErrorKind(null);
+      return;
+    }
+    if (!pos || Date.now() - pos.at > 5 * 60_000) requestLocation();
+  }, [liveNearMe, pos, requestLocation]);
+
+  const visible = useMemo(
+    () => incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens })),
+    [incidents, severities, municipalities, areaFilter, sourceLens],
+  );
+
+  const nearKm = liveNearMiles * 1.60934;
+  const withinNearCount = useMemo(() => {
+    if (!liveNearMe) return visible.length;
+    if (!pos) return 0;
+    return visible.filter((i) => haversineKm({ lat: pos.lat, lng: pos.lng }, { lat: i.lat, lng: i.lng }) <= nearKm).length;
+  }, [liveNearMe, pos, visible, nearKm]);
+
+  const nearEmptyState = selectNearMeEmptyState({ nearActive: liveNearMe, pos, locateErrorKind });
 
   return (
     <SheetFrame open={open} onOpenChange={setOpen}>
@@ -98,6 +158,87 @@ export function FilterDrawer() {
             ))}
           </div>
 
+          <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Area</h3>
+          <div className="mt-2 flex flex-wrap gap-2" data-vaul-no-drag>
+            <button
+              type="button"
+              onClick={() => {
+                setLiveNearMe(false);
+                setPos(null);
+                setLocateErr("");
+                setLocateErrorKind(null);
+              }}
+              className={cn(
+                "h-10 shrink-0 rounded-full border px-3 text-xs font-medium active:opacity-80 inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                !liveNearMe ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
+              )}
+            >
+              All area
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (liveNearMe) {
+                  setLiveNearMe(false);
+                  setPos(null);
+                  setLocateErr("");
+                  setLocateErrorKind(null);
+                } else {
+                  setLiveNearMe(true);
+                  requestLocation();
+                }
+              }}
+              className={cn(
+                "h-10 shrink-0 rounded-full border px-3 text-xs font-medium active:opacity-80 inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                liveNearMe ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
+              )}
+            >
+              <LocateFixed className="size-3.5" aria-hidden />
+              Near me
+            </button>
+            {liveNearMe ? (
+              <>
+                {([1, 2, 3] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setLiveNearMiles(m)}
+                    className={cn(
+                      "h-10 shrink-0 rounded-full border px-3 text-xs font-medium active:opacity-80 inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                      liveNearMiles === m ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
+                    )}
+                  >
+                    {m} mi
+                  </button>
+                ))}
+              </>
+            ) : null}
+          </div>
+
+          {liveNearMe ? (
+            <div className="mt-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
+              {pos ? (
+                <p>
+                  <span className="font-semibold text-fg">{withinNearCount}</span> within ~{liveNearMiles} mi{" · "}
+                  ±{pos.accM ? Math.round(pos.accM) : "?"}m
+                </p>
+              ) : locateErr ? (
+                <p className="text-fg">{locateErr}</p>
+              ) : nearEmptyState === "locating" ? (
+                <p className="text-fg">Waiting for location…</p>
+              ) : nearEmptyState === "denied" ? (
+                <p className="text-fg">Location permission denied.</p>
+              ) : nearEmptyState === "unavailable" ? (
+                <p className="text-fg">Location unavailable.</p>
+              ) : (
+                <p className="text-fg">Allow location to see incidents near you.</p>
+              )}
+              <p className="mt-1 leading-relaxed">
+                Pins can be approximate. Near me is a convenience lens — when in doubt, switch back to All area to sanity-check coverage.
+              </p>
+            </div>
+          ) : null}
+
           <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">
             Municipality
           </h3>
@@ -129,7 +270,12 @@ export function FilterDrawer() {
               variant="secondary"
               className="flex-1"
               onPointerDownCapture={(e) => e.stopPropagation()}
-              onClick={reset}
+              onClick={() => {
+                reset();
+                setPos(null);
+                setLocateErr("");
+                setLocateErrorKind(null);
+              }}
             >
               Reset
             </Button>

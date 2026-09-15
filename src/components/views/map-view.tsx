@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Supercluster from "supercluster";
 import { Drawer } from "vaul";
 import { Filter, Home, List, LocateFixed, Maximize2, Megaphone, Radio, ShieldAlert, X } from "lucide-react";
@@ -7,9 +7,10 @@ import { CoverageDrawer } from "@/components/coverage-drawer";
 import { Button } from "@/components/ui/button";
 import { coverageSummary } from "@/lib/coverage";
 import { lastHours } from "@/lib/data";
-import { isApproxPrecision } from "@/lib/geo";
+import { haversineKm, isApproxPrecision } from "@/lib/geo";
 import { decodeHtmlEntities } from "@/lib/html";
 import { incidentMatchesSourceGroup, incidentVerification, isOfficialIncident, mapKindOf } from "@/lib/map";
+import { type NearMePos } from "@/lib/near-me-empty-state";
 import { mapSharePayload } from "@/lib/share";
 import { clockTime, severityLabel, typeLabel } from "@/lib/format";
 import { incidentVisible, useAppStore } from "@/lib/store";
@@ -188,11 +189,15 @@ export function MapView({
   const [ready, setReady] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [locateErr, setLocateErr] = useState<string>("");
+  const [nearPos, setNearPos] = useState<NearMePos | null>(null);
+  const [nearLocateErr, setNearLocateErr] = useState<string>("");
 
   const severities = useAppStore((s) => s.severities);
   const municipalities = useAppStore((s) => s.municipalities);
   const areaFilter = useAppStore((s) => s.areaFilter);
   const sourceLens = useAppStore((s) => s.sourceLens);
+  const liveNearMe = useAppStore((s) => s.liveNearMe);
+  const liveNearMiles = useAppStore((s) => s.liveNearMiles);
   const mapWindowHours = useAppStore((s) => s.mapWindowHours);
   const setMapWindowHours = useAppStore((s) => s.setMapWindowHours);
   const mapKinds = useAppStore((s) => s.mapKinds);
@@ -218,9 +223,45 @@ export function MapView({
   const colonieFocused = areaFilter === "Colonie" || (municipalities.length === 1 && municipalities[0] === "Colonie");
   const coverage = useMemo(() => coverageSummary({ health: wireHealth, colonieFocused }), [wireHealth, colonieFocused]);
 
+  const requestNearLocation = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setNearLocateErr("Location isn’t available in this browser.");
+      return;
+    }
+    setNearLocateErr("");
+    navigator.geolocation.getCurrentPosition(
+      (p) => {
+        setNearPos({ lat: p.coords.latitude, lng: p.coords.longitude, accM: p.coords.accuracy || 0, at: Date.now() });
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setNearLocateErr("Location permission denied.");
+        } else {
+          setNearLocateErr("Couldn’t fetch your location.");
+        }
+      },
+      { enableHighAccuracy: false, timeout: 9000, maximumAge: 60_000 },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!liveNearMe) {
+      setNearPos(null);
+      setNearLocateErr("");
+      return;
+    }
+    if (!nearPos || Date.now() - nearPos.at > 5 * 60_000) requestNearLocation();
+  }, [liveNearMe, nearPos, requestNearLocation]);
+
   const base = useMemo(
-    () => incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens })),
-    [incidents, severities, municipalities, areaFilter, sourceLens],
+    () => {
+      const visible = incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens }));
+      if (!liveNearMe) return visible;
+      if (!nearPos) return [];
+      const nearKm = liveNearMiles * 1.60934;
+      return visible.filter((i) => haversineKm({ lat: nearPos.lat, lng: nearPos.lng }, { lat: i.lat, lng: i.lng }) <= nearKm);
+    },
+    [incidents, severities, municipalities, areaFilter, sourceLens, liveNearMe, liveNearMiles, nearPos],
   );
 
   const inWindow = useMemo(() => lastHours(base, mapWindowHours), [base, mapWindowHours]);
@@ -806,6 +847,16 @@ export function MapView({
         {locateErr ? (
           <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
             {locateErr}
+          </p>
+        ) : null}
+        {!listOpen && liveNearMe && !nearPos ? (
+          <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
+            {nearLocateErr || "Waiting for location…"}
+          </p>
+        ) : null}
+        {!listOpen && liveNearMe && nearPos && filtered.length === 0 ? (
+          <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
+            No incidents within ~{liveNearMiles} mi in this window.
           </p>
         ) : null}
       </div>
