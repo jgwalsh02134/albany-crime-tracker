@@ -101,6 +101,10 @@ export function FeedView({
                 mix={mix}
                 newest={newest}
                 wireLive={wireLive}
+                wireReady={wireReady}
+                wireInitError={wireInitError}
+                wireInitNextRetryAt={wireInitNextRetryAt}
+                onRetryWire={onRetryWire}
                 wireHealth={wireHealth}
                 onSelect={select}
                 refreshing={refreshing}
@@ -173,6 +177,10 @@ function LiveList({
   mix,
   newest,
   wireLive,
+  wireReady,
+  wireInitError,
+  wireInitNextRetryAt,
+  onRetryWire,
   wireHealth,
   onSelect,
   refreshing,
@@ -187,6 +195,10 @@ function LiveList({
   mix: { official: number; scanner: number; news: number; social: number };
   newest?: Incident;
   wireLive: boolean;
+  wireReady: boolean;
+  wireInitError: string | null;
+  wireInitNextRetryAt: number | null;
+  onRetryWire?: () => void;
   wireHealth: WireHealth | null;
   onSelect: (id: string) => void;
   refreshing: boolean;
