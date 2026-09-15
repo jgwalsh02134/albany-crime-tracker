@@ -1,5 +1,6 @@
 import type { Incident, IncidentSource } from "./types";
 import { verificationWhy } from "./sources";
+import { decodeHtmlEntities } from "./html";
 
 export type PublicLiveSchemaId = "albany.watch/public-live/v1";
 
@@ -48,7 +49,7 @@ export function incidentToPublicV1(inc: Incident): PublicLiveIncidentV1 {
     id: inc.id,
     occurredAt: inc.occurredAt,
     minutesAgo: inc.minutesAgo,
-    title: inc.title,
+    title: decodeHtmlEntities(inc.title),
     type: inc.type,
     category: inc.category,
     severity: inc.severity,
@@ -63,9 +64,9 @@ export function incidentToPublicV1(inc: Incident): PublicLiveIncidentV1 {
     sources: inc.sources.map((s) => ({
       kind: s.kind,
       tier: s.tier,
-      name: s.name,
+      name: decodeHtmlEntities(s.name),
       url: s.url,
-      excerpt: s.excerpt,
+      excerpt: s.excerpt ? decodeHtmlEntities(s.excerpt) : s.excerpt,
     })),
     witness,
   };
