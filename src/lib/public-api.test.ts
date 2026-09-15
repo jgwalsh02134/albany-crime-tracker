@@ -53,3 +53,23 @@ test("buildPublicLiveResponseV1 emits stable schema id", () => {
   assert.equal(res.incidents.length, 1);
 });
 
+test("incidentToPublicV1 decodes HTML entities in title and source excerpts", () => {
+  const pub = incidentToPublicV1(
+    baseIncident({
+      title: "A&nbsp;&nbsp;B &#32; C",
+      sources: [
+        {
+          kind: "news",
+          name: "News&nbsp;10",
+          tier: "context",
+          url: "https://example.com/story",
+          excerpt: "Line&nbsp;&nbsp;1 &#32; Line&#32;2",
+        },
+      ],
+    }),
+  );
+  assert.equal(pub.title, "A B C");
+  assert.equal(pub.sources[0]!.name, "News 10");
+  assert.equal(pub.sources[0]!.excerpt, "Line 1 Line 2");
+});
+
