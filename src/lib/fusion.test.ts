@@ -188,6 +188,39 @@ describe("shouldFuse", () => {
     assert.equal(groups.length, 1);
     assert.equal(groups[0]!.length, 2);
   });
+
+  it("fuses identical-newsroom titles even when trailing MORE links differ (live regression)", () => {
+    const fbTitle = "…Troy man. MORE: https://www.news10.com/news/rensse";
+    const xTitle = "…Troy man. MORE: https://t.co/HYykoWll6r";
+    const fb = item({
+      id: "evt-ope0zr",
+      title: fbTitle,
+      summary: fbTitle,
+      kind: "social",
+      outlet: "Facebook · NEWS10",
+      municipality: "Rensselaer",
+      address: "Rensselaer",
+      lat: undefined,
+      lng: undefined,
+      minutesAgo: 449,
+    });
+    const x = item({
+      id: "evt-qsc0ed",
+      title: xTitle,
+      summary: xTitle,
+      kind: "social",
+      outlet: "X · NEWS10",
+      municipality: "Troy",
+      address: "Troy",
+      lat: undefined,
+      lng: undefined,
+      minutesAgo: 449,
+    });
+    assert.equal(shouldFuse(fb, x), true);
+    const groups = clusterLiveItems([fb, x]);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0]!.length, 2);
+  });
 });
 
 describe("corroboration", () => {
