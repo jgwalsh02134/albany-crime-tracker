@@ -15,7 +15,7 @@
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
     "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --import tsx --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/scanner-labels.test.ts src/lib/fusion.test.ts src/lib/stt-junk.test.ts src/lib/live-honesty.test.ts src/lib/live-keep.test.ts src/lib/geo.test.ts src/lib/near-me-empty-state.test.ts src/lib/scanner-feeds.test.ts src/lib/scanner-poll.test.ts src/lib/audio-for-whisper.test.ts src/lib/transcribe-fallback.test.ts src/lib/nysp-blotter.test.ts src/lib/news-feeds.test.ts src/lib/html.test.ts src/lib/witness.test.ts src/lib/public-api.test.ts",
+    "test": "node --import tsx --test src/lib/app-data/app-data.test.ts src/lib/auth/gate-identity.test.ts src/lib/scanner-labels.test.ts src/lib/fusion.test.ts src/lib/stt-junk.test.ts src/lib/live-honesty.test.ts src/lib/live-keep.test.ts src/lib/geo.test.ts src/lib/near-me-empty-state.test.ts src/lib/scanner-feeds.test.ts src/lib/scanner-poll.test.ts src/lib/audio-for-whisper.test.ts src/lib/transcribe-fallback.test.ts src/lib/nysp-blotter.test.ts src/lib/news-feeds.test.ts src/lib/html.test.ts src/lib/witness.test.ts src/lib/public-api.test.ts src/lib/push-filters.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -74,6 +74,7 @@
     "tailwindcss": "^4.3.0",
     "tw-animate-css": "^1.3.4",
     "vaul": "^1.1.2",
+    "web-push": "^3.6.7",
     "zod": "^4.4.0",
     "zustand": "^5.0.0"
   },
@@ -84,6 +85,7 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/supercluster": "^7.1.3",
+    "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^5.2.0",
     "eslint": "^9.20.0",
     "eslint-config-prettier": "^10.1.1",

@@ -11,6 +11,7 @@ import {
 import { ChevronRight, ExternalLink } from "lucide-react";
 import { Seal } from "@/components/seal";
 import { Badge } from "@/components/ui/badge";
+import { NearbyAlertsCard } from "@/components/nearby-alerts-card";
 import { SOURCES, lastHours } from "@/lib/data";
 import { DCJS_NAME_BY_ID } from "@/lib/directory-stats";
 import fbi from "@/data/fbi-2025.json";
@@ -40,6 +41,13 @@ export function MoreView({ incidents }: { incidents: Incident[] }) {
           <Pattern n={day.length} l="calls" />
           <Pattern n={violent} l="violent" />
           <Pattern n={property} l="property" />
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Nearby alerts</h2>
+        <div className="mt-2">
+          <NearbyAlertsCard />
         </div>
       </section>
 
