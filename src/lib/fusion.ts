@@ -290,6 +290,15 @@ function tokenSimilarity(a: string, b: string): { inter: number; union: number; 
   return { inter, union, jaccard, overlap };
 }
 
+function stripNewsroomSocialLinks(text: string): string {
+  return (text || "")
+    .replace(/\bMORE:\s*https?:\/\/\S+/gi, " ")
+    .replace(/\bhttps?:\/\/\S+/gi, " ")
+    .replace(/\bMORE:\s*$/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function weakScannerPlace(item: FuseItem): boolean {
   if ((item.kind ?? "") !== "scanner") return false;
   const addr = (item.address || "").trim();
@@ -317,9 +326,14 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
     const ba = outletBase(a.outlet);
     const bb = outletBase(b.outlet);
     if (ba && ba === bb) {
-      const sim = tokenSimilarity(a.title, b.title);
+      const ta = stripNewsroomSocialLinks(a.title);
+      const tb = stripNewsroomSocialLinks(b.title);
+      if (ta && tb && ta.toLowerCase() === tb.toLowerCase()) return true;
+      const sim = tokenSimilarity(ta, tb);
       if (sim.inter >= 4 && sim.overlap >= 0.8 && sim.jaccard >= 0.67) return true;
-      const simWide = tokenSimilarity(`${a.title} ${a.summary}`, `${b.title} ${b.summary}`);
+      const sa = stripNewsroomSocialLinks(a.summary);
+      const sb = stripNewsroomSocialLinks(b.summary);
+      const simWide = tokenSimilarity(`${ta} ${sa}`, `${tb} ${sb}`);
       if (simWide.inter >= 6 && simWide.overlap >= 0.8 && simWide.jaccard >= 0.65) return true;
     }
   }
