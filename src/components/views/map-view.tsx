@@ -4,6 +4,8 @@ import { Drawer } from "vaul";
 import { Filter, Home, List, LocateFixed, Maximize2, Megaphone, Radio, ShieldAlert, X } from "lucide-react";
 import { ShareButton } from "@/components/share-button";
 import { CoverageDrawer } from "@/components/coverage-drawer";
+import { IncidentDetail } from "@/components/incident-detail";
+import { IncidentPills } from "@/components/incident-pills";
 import { Button } from "@/components/ui/button";
 import { coverageSummary } from "@/lib/coverage";
 import { lastHours } from "@/lib/data";
@@ -12,13 +14,13 @@ import { decodeHtmlEntities } from "@/lib/html";
 import { incidentMatchesSourceGroup, incidentVerification, isOfficialIncident, mapKindOf } from "@/lib/map";
 import { type NearMePos } from "@/lib/near-me-empty-state";
 import { mapSharePayload } from "@/lib/share";
-import { clockTime, severityLabel, typeLabel } from "@/lib/format";
+import { clockTime, relativeTime, severityLabel, typeLabel } from "@/lib/format";
 import { incidentVisible, useAppStore } from "@/lib/store";
 import type { MapKind, MapSourceGroup, MapTimeWindowHours, MapVerification } from "@/lib/store";
 import { type Incident, type Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
-import type { WireHealth } from "@/lib/sources";
+import type { LiveWireItem, WireHealth } from "@/lib/sources";
 import { isWitnessIncident } from "@/lib/witness";
 
 const FALLBACK: Record<Severity, string> = {
@@ -36,6 +38,8 @@ const DOT: Record<Severity, string> = {
 };
 
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+
+const MAP_SNAP_POINTS = ["232px", 0.58, 0.88] as const;
 
 function esriUrl(id: string) {
   return `${ESRI}/${id}/MapServer/tile/{z}/{y}/{x}`;
@@ -181,11 +185,13 @@ export function MapView({
   active,
   wireLive,
   wireHealth,
+  wireItems,
 }: {
   incidents: Incident[];
   active: boolean;
   wireLive: boolean;
   wireHealth: WireHealth | null;
+  wireItems?: LiveWireItem[];
 }) {
   const reduceMotion = useMemo(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
@@ -207,6 +213,8 @@ export function MapView({
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const isBelowLg = useMediaQuery("(max-width: 1023px)");
+  const [sheetSnap, setSheetSnap] = useState<number | string | null>(MAP_SNAP_POINTS[0]);
   const [locateErr, setLocateErr] = useState<string>("");
   const [nearPos, setNearPos] = useState<NearMePos | null>(null);
   const [nearLocateErr, setNearLocateErr] = useState<string>("");
@@ -301,8 +309,23 @@ export function MapView({
       .filter((i) => mapShowApprox || !isApproxPrecision(i.geoPrecision));
   }, [inWindow, mapKinds, mapVerifications, mapSourceGroups, mapShowApprox]);
 
+  const selected = useMemo(
+    () => (selectedId ? filtered.find((i) => i.id === selectedId) ?? incidents.find((i) => i.id === selectedId) ?? null : null),
+    [selectedId, filtered, incidents],
+  );
+
   const approxHidden = useMemo(() => inWindow.filter((i) => isApproxPrecision(i.geoPrecision)).length, [inWindow]);
   const approxShown = useMemo(() => filtered.filter((i) => isApproxPrecision(i.geoPrecision)).length, [filtered]);
+
+  useEffect(() => {
+    if (!isBelowLg) return;
+    if (!selectedId) return;
+    setSheetSnap(MAP_SNAP_POINTS[2]);
+    const id = window.setTimeout(() => {
+      document.getElementById(`act-map-row-${selectedId}`)?.scrollIntoView({ block: "nearest" });
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [isBelowLg, selectedId]);
 
   // Light basemap only — never recreate on theme change.
   useEffect(() => {
@@ -724,7 +747,15 @@ export function MapView({
           <button
             ref={listToggle}
             type="button"
-            onClick={() => setListOpen((o) => !o)}
+            onClick={() => {
+              if (isBelowLg) {
+                if (selectedId) select(null);
+                setSheetSnap((s) => (s === MAP_SNAP_POINTS[0] ? MAP_SNAP_POINTS[1] : MAP_SNAP_POINTS[0]));
+                setListOpen(false);
+              } else {
+                setListOpen((o) => !o);
+              }
+            }}
             aria-pressed={listOpen}
             aria-controls="map-incident-list"
             className={cn(chip, listOpen ? "bg-accent text-accent-fg" : "text-fg")}
@@ -890,7 +921,7 @@ export function MapView({
       {listOpen ? (
         <div
           id="map-incident-list"
-          className="absolute inset-x-3 bottom-24 top-1/2 z-10 overflow-y-auto overscroll-y-contain rounded-xl border border-border bg-surface/95 shadow-md scrollbar-thin lg:inset-x-auto lg:left-3 lg:top-20 lg:w-96"
+          className="hidden lg:block absolute inset-x-3 bottom-24 top-1/2 z-10 overflow-y-auto overscroll-y-contain rounded-xl border border-border bg-surface/95 shadow-md scrollbar-thin lg:inset-x-auto lg:left-3 lg:top-20 lg:w-96"
         >
           <h2
             tabIndex={-1}
@@ -911,6 +942,7 @@ export function MapView({
                   <button
                     type="button"
                     onClick={() => select(inc.id)}
+                    id={`act-map-row-${inc.id}`}
                     aria-current={inc.id === selectedId ? "true" : undefined}
                     className={cn(
                       "flex min-h-14 w-full items-start gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
@@ -946,6 +978,9 @@ export function MapView({
                         {inc.address}
                         <span className="mx-1.5 font-mono tabular-nums">{clockTime(inc.occurredAt)}</span>
                       </span>
+                      <div className="mt-2">
+                        <IncidentPills incident={inc} max={4} />
+                      </div>
                     </span>
                   </button>
                 </li>
@@ -956,7 +991,7 @@ export function MapView({
       ) : null}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-3">
-        <div className="pointer-events-auto flex min-h-12 items-center gap-3 rounded-full border border-border bg-surface/95 px-4 py-2 shadow-md">
+        <div className="hidden lg:flex pointer-events-auto min-h-12 items-center gap-3 rounded-full border border-border bg-surface/95 px-4 py-2 shadow-md">
           <p className="shrink-0 leading-tight">
             <span className="block font-mono text-base font-semibold tabular-nums tracking-tight text-fg">
               {filtered.length}
@@ -1007,6 +1042,113 @@ export function MapView({
           </p>
         ) : null}
       </div>
+
+      {isBelowLg ? (
+        <Drawer.Root
+          defaultOpen
+          modal={false}
+          dismissible={false}
+          handleOnly
+          snapPoints={[...MAP_SNAP_POINTS]}
+          activeSnapPoint={sheetSnap}
+          setActiveSnapPoint={setSheetSnap}
+        >
+          <Drawer.Portal>
+            <Drawer.Content className="fixed inset-x-0 bottom-0 z-30 mx-auto flex h-full max-h-[88dvh] w-full max-w-lg flex-col rounded-t-2xl border border-border bg-surface/95 shadow-xl outline-none backdrop-blur">
+              <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-border" />
+              <div className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+                {selected ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2" data-vaul-no-drag>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          select(null);
+                          setSheetSnap(MAP_SNAP_POINTS[1]);
+                        }}
+                      >
+                        Back
+                      </Button>
+                      <div className="min-w-0 flex-1 text-center">
+                        <p className="truncate text-xs font-semibold uppercase tracking-wide text-subtle">{selected.agency}</p>
+                        <p className="truncate text-sm font-semibold tracking-tight text-fg">{decodeHtmlEntities(selected.title)}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Close"
+                        onClick={() => {
+                          select(null);
+                          setSheetSnap(MAP_SNAP_POINTS[0]);
+                        }}
+                      >
+                        <X className="size-5" />
+                      </Button>
+                    </div>
+                    <div className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain scrollbar-thin" data-vaul-no-drag>
+                      <IncidentDetail incident={selected} wireItems={wireItems} variant="panel" />
+                    </div>
+                  </>
+                ) : (
+                  <div className="min-h-0 flex-1" data-vaul-no-drag>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold tracking-tight text-fg">Map</p>
+                        <p className="mt-0.5 text-[11px] text-subtle">
+                          {filtered.length} calls · last {mapWindowHours}h
+                        </p>
+                      </div>
+                      <p className="shrink-0 font-mono text-xs tabular-nums text-subtle">
+                        {approxShown && mapShowApprox ? `${approxShown} approx` : ""}
+                      </p>
+                    </div>
+                    <ul className="mt-2 space-y-2">
+                      {(sheetSnap === MAP_SNAP_POINTS[0] ? filtered.slice(0, 2) : filtered).map((inc) => (
+                        <li key={inc.id}>
+                          <button
+                            type="button"
+                            id={`act-map-row-${inc.id}`}
+                            onClick={() => {
+                              select(inc.id);
+                              setSheetSnap(MAP_SNAP_POINTS[2]);
+                            }}
+                            className={cn(
+                              "w-full rounded-xl border border-border bg-surface px-3 py-3 text-left active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                              inc.id === selectedId ? "border-accent/40" : "",
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="min-w-0 flex-1 text-sm font-semibold leading-snug tracking-tight text-fg">
+                                {decodeHtmlEntities(inc.title)}
+                              </p>
+                              <span className="shrink-0 text-right">
+                                <span className="block font-mono text-xs font-semibold tabular-nums text-fg">
+                                  {relativeTime(inc.occurredAt)}
+                                </span>
+                                <span className="block font-mono text-[11px] tabular-nums text-subtle">
+                                  {clockTime(inc.occurredAt)}
+                                </span>
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-1 text-sm text-muted">{inc.address}</p>
+                            <div className="mt-2">
+                              <IncidentPills incident={inc} max={5} />
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {sheetSnap === MAP_SNAP_POINTS[0] && filtered.length > 2 ? (
+                      <p className="mt-2 text-center text-[11px] text-subtle">Swipe up for more</p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
+      ) : null}
 
       <Drawer.Root open={mapFilterOpen} onOpenChange={setMapFilterOpen}>
         <Drawer.Portal>
@@ -1172,4 +1314,24 @@ export function MapView({
       />
     </div>
   );
+}
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    }
+    // Safari < 14
+    mql.addListener(onChange);
+    return () => mql.removeListener(onChange);
+  }, [query]);
+
+  return matches;
 }

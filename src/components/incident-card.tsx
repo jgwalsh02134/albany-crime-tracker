@@ -1,8 +1,8 @@
-import { Badge } from "@/components/ui/badge";
 import { ShareButton } from "@/components/share-button";
 import { clockTime, relativeTime, typeLabel } from "@/lib/format";
 import { decodeHtmlEntities } from "@/lib/html";
 import { incidentSharePayload } from "@/lib/share";
+import { IncidentPills } from "@/components/incident-pills";
 import type { Incident, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { isWitnessIncident } from "@/lib/witness";
@@ -14,22 +14,6 @@ const rail: Record<Severity, string> = {
   low: "bg-sev-low",
 };
 
-function sourceBadge(incident: Incident): { label: string; tone: "cyan" | "accent" | "medium" | "muted" } {
-  const official = incident.sources.find((s) => s.tier === "official") ?? incident.sources[0];
-  const source = official?.name ?? "";
-  const kind = official?.kind;
-  if ((incident.seenOn?.length ?? 0) >= 2) return { label: "Fused", tone: "cyan" };
-  if (kind === "blotter") return { label: "NYSP", tone: "cyan" };
-  if (kind === "scanner") return { label: "Scanner", tone: "accent" };
-  if (kind === "cfs") return { label: "511NY", tone: "cyan" };
-  if (/Facebook/i.test(source)) return { label: "Facebook", tone: "cyan" };
-  if (/X ·/i.test(source)) return { label: "X", tone: "muted" };
-  if (/Reddit/i.test(source)) return { label: "Reddit", tone: "medium" };
-  if (kind === "social" || /Citizen/i.test(source)) return { label: "Citizen", tone: "medium" };
-  if (kind === "press") return { label: "Press", tone: "cyan" };
-  return { label: "News", tone: "muted" };
-}
-
 function blurb(incident: Incident): string | null {
   const raw = decodeHtmlEntities(
     (incident.description || "").replace(/[.!?…]\s+(?:Unconfirmed|Early report)[\s\S]*$/i, "").trim(),
@@ -37,14 +21,6 @@ function blurb(incident: Incident): string | null {
   const title = decodeHtmlEntities(incident.title);
   if (!raw || raw === title) return null;
   return raw;
-}
-
-function confidenceBadge(incident: Incident): { label: string; tone: "cyan" | "accent" | "medium" | "muted" } {
-  if (incident.verification === "confirmed") return { label: "Official", tone: "cyan" };
-  if (incident.verification === "scanner") return { label: "Scanner", tone: "accent" };
-  if (isWitnessIncident(incident)) return { label: "Unconfirmed", tone: "medium" };
-  if (incident.sources.some((s) => s.kind === "social")) return { label: "Unconfirmed", tone: "medium" };
-  return { label: "Developing", tone: "muted" };
 }
 
 export function IncidentCard({
@@ -56,8 +32,6 @@ export function IncidentCard({
 }) {
   const title = decodeHtmlEntities(incident.title);
   const witness = isWitnessIncident(incident);
-  const badge = sourceBadge(incident);
-  const conf = confidenceBadge(incident);
   const loc = incident.address.toLowerCase().includes(incident.municipality.toLowerCase())
     ? incident.address
     : `${incident.address} · ${incident.municipality}`;
@@ -87,23 +61,8 @@ export function IncidentCard({
           <span className="min-w-0 truncate">{loc}</span>
         </p>
 
-        <div className="mt-2 flex flex-wrap items-center gap-1">
-          {[
-            ...(witness ? [{ key: "witness", label: "Witness" }] : []),
-            ...(incident.seenOn?.length ? incident.seenOn : [{ key: badge.label.toLowerCase(), label: badge.label }]),
-          ]
-            .slice(0, 6)
-            .map((chip) => (
-            <span
-              key={chip.key}
-              className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted"
-            >
-              {chip.label}
-            </span>
-          ))}
-          <Badge className="ml-auto shrink-0" tone={conf.tone}>
-            {conf.label}
-          </Badge>
+        <div className="mt-2">
+          <IncidentPills incident={incident} />
         </div>
 
         {incident.verification === "scanner" ? (
