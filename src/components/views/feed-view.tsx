@@ -126,7 +126,7 @@ export function FeedView({
           </div>
         </>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-6 pt-2 scrollbar-thin">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-[calc(env(safe-area-inset-bottom)+6.5rem)] pt-2 scrollbar-thin">
           <NewsView stories={news} />
         </div>
       )}
@@ -306,7 +306,7 @@ function LiveList({
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={() => void onTouchEnd()}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-24 scrollbar-thin"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-[calc(env(safe-area-inset-bottom)+8rem)] scrollbar-thin"
       >
         <div
           className="overflow-hidden text-center text-xs text-subtle motion-safe:transition-[height] motion-safe:duration-150 motion-reduce:transition-none"
