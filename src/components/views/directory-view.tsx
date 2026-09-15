@@ -3,6 +3,7 @@ import { Drawer } from "vaul";
 import { ExternalLink, MapPin, Phone, Star } from "lucide-react";
 import { Seal } from "@/components/seal";
 import { Badge } from "@/components/ui/badge";
+import { HScrollFade } from "@/components/ui/hscroll-fade";
 import { Input } from "@/components/ui/input";
 import directory from "@/data/directory.json";
 import { dcjsFor } from "@/lib/directory-stats";
@@ -144,7 +145,13 @@ export function DirectoryView() {
             autoCorrect="off"
           />
         </div>
-        <div className="mt-2 flex gap-2 overflow-x-auto overscroll-x-contain pb-2 pr-3 scrollbar-none snap-x">
+        <HScrollFade
+          fade="bg"
+          fadeSizeClassName="w-12"
+          peepClassName="pr-12"
+          scrollClassName="mt-2 flex gap-2 pb-2 snap-x"
+          aria-label="Directory categories"
+        >
           {TIERS.map((t) => (
             <button
               key={t.id}
@@ -158,7 +165,7 @@ export function DirectoryView() {
               {t.label}
             </button>
           ))}
-        </div>
+        </HScrollFade>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-8 scrollbar-thin">
@@ -412,7 +419,7 @@ function AgencySheet({
               <div className="flex items-start gap-3">
                 <Seal id={agency.id} label={agency.abbreviation || agency.name} className="size-16" />
                 <div className="min-w-0 flex-1">
-                  <Drawer.Title className="text-base font-semibold leading-snug">{agency.name}</Drawer.Title>
+                  <Drawer.Title className="break-words text-base font-semibold leading-snug">{agency.name}</Drawer.Title>
                   {agency.abbreviation ? <p className="mt-0.5 text-xs text-subtle">{agency.abbreviation}</p> : null}
                 </div>
                 <button

@@ -10,6 +10,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { HScrollFade } from "@/components/ui/hscroll-fade";
 import { clockTimeSec, compactFromMinutes } from "@/lib/format";
 import { decodeHtmlEntities } from "@/lib/html";
 import { SCANNER_FEEDS } from "@/lib/scanner-feeds";
@@ -108,6 +109,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
   const [nowTick, setNowTick] = useState(Date.now());
   const [hideUnitSpam, setHideUnitSpam] = useState(true);
   const [captionsEpoch, setCaptionsEpoch] = useState(0);
+  const [captionsBootAt, setCaptionsBootAt] = useState<number | null>(null);
 
   const feed = SCANNER_FEEDS.find((f) => f.id === feedId) ?? SCANNER_FEEDS[0]!;
   const feedFiltered = thisFeedOnly
@@ -470,10 +472,27 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
     return { label: "On", tone: "text-cyan" };
   })();
 
+  useEffect(() => {
+    if (!active || !transcribing || !captionsBooting) {
+      setCaptionsBootAt(null);
+      return;
+    }
+    setCaptionsBootAt((prev) => prev ?? Date.now());
+  }, [active, transcribing, captionsBooting]);
+
+  const captionsBootSec = captionsBootAt ? Math.max(0, Math.round((nowTick - captionsBootAt) / 1000)) : 0;
+  const captionsBootStuck = transcribing && captionsBooting && captionsBootSec >= 18;
+
   return (
     <div className="flex h-full min-w-0 flex-col overflow-x-hidden">
       <div className="shrink-0 border-b border-border px-3 pb-2.5 pt-2">
-        <div className="flex w-full min-w-0 max-w-full gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none snap-x">
+        <HScrollFade
+          fade="bg"
+          fadeSizeClassName="w-12"
+          peepClassName="pr-12"
+          scrollClassName="flex w-full min-w-0 max-w-full gap-1.5 snap-x"
+          aria-label="Scanner feeds"
+        >
           {SCANNER_FEEDS.map((f) => {
             const on = feedId === f.id;
             const isLive = online[f.id];
@@ -495,7 +514,7 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
               </button>
             );
           })}
-        </div>
+        </HScrollFade>
 
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2.5">
           <button
@@ -659,7 +678,26 @@ export function ScannerView({ calls, active = true }: { calls: ScannerCall[]; ac
             <div className="px-2 py-8 text-center text-sm text-muted">
               {transcribing ? (
                 captionsBooting ? (
-                  <p>Connecting to Albany-area radio…</p>
+                  <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
+                    <Loader2 className="size-5 animate-spin motion-reduce:animate-none" aria-hidden />
+                    <p className="text-fg">Starting live captions…</p>
+                    <p className="text-xs text-subtle">
+                      This comes from the upstream Broadcastify stream and can take a few seconds.
+                      {captionsBootSec ? <span className="ml-1 font-mono tabular-nums">({captionsBootSec}s)</span> : null}
+                    </p>
+                    {captionsBootStuck ? (
+                      <div className="mt-2">
+                        <p className="text-xs text-subtle">Still connecting. If this keeps happening, retry the captions session.</p>
+                        <button
+                          type="button"
+                          onClick={restartCaptions}
+                          className="mt-3 inline-flex min-h-11 items-center justify-center rounded-full border border-border bg-surface-2 px-4 text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                        >
+                          Retry captions
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : captionsStale ? (
                   <p>
                     Captions stalled — reconnecting.
