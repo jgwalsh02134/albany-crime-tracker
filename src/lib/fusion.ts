@@ -265,6 +265,31 @@ function tokenHit(a: FuseItem, b: FuseItem): number {
   return wa.filter((w) => wb.has(w)).length;
 }
 
+function outletBase(outlet: string): string {
+  return outlet
+    .trim()
+    .replace(/^(?:facebook|x)\s+·\s+/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isNewsroomSocial(outlet: string): boolean {
+  return /^(?:Facebook|X)\s+·\s+(?:CBS6|NEWS10|WNYT|Spectrum News 1|Daily Gazette|Troy Record|Times Union|WAMC)\b/i.test(outlet);
+}
+
+function tokenSimilarity(a: string, b: string): { inter: number; union: number; jaccard: number; overlap: number } {
+  const sa = new Set(tokens(a));
+  const sb = new Set(tokens(b));
+  let inter = 0;
+  for (const t of sa) if (sb.has(t)) inter++;
+  const union = sa.size + sb.size - inter;
+  const jaccard = union ? inter / union : 0;
+  const overlap = Math.min(sa.size, sb.size) ? inter / Math.min(sa.size, sb.size) : 0;
+  return { inter, union, jaccard, overlap };
+}
+
 function weakScannerPlace(item: FuseItem): boolean {
   if ((item.kind ?? "") !== "scanner") return false;
   const addr = (item.address || "").trim();
@@ -284,6 +309,21 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
   const cb = callOf(b);
   if (!kindsCompatible(ca, cb)) return false;
   if (Math.abs(a.minutesAgo - b.minutesAgo) > windowMin(a, b)) return false;
+
+  // Newsroom social posts are frequently cross-posted across Facebook + X with slightly different
+  // municipality hints or pins. When it's the same outlet and titles clearly describe the same
+  // event, fuse them even if place strings disagree.
+  if ((a.kind ?? "") === "social" && (b.kind ?? "") === "social" && isNewsroomSocial(a.outlet) && isNewsroomSocial(b.outlet)) {
+    const ba = outletBase(a.outlet);
+    const bb = outletBase(b.outlet);
+    if (ba && ba === bb) {
+      const sim = tokenSimilarity(a.title, b.title);
+      if (sim.inter >= 4 && sim.overlap >= 0.8 && sim.jaccard >= 0.67) return true;
+      const simWide = tokenSimilarity(`${a.title} ${a.summary}`, `${b.title} ${b.summary}`);
+      if (simWide.inter >= 6 && simWide.overlap >= 0.8 && simWide.jaccard >= 0.65) return true;
+    }
+  }
+
   const ma = normMuni(a.municipality);
   const mb = normMuni(b.municipality);
   const concreteA = Boolean(ma && !GENERIC_MUNI.test(ma));
