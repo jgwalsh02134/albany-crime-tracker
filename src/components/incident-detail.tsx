@@ -150,29 +150,54 @@ export function IncidentDetail({
 
       {updates.length ? (
         <div className="mt-5">
-          <div className="sticky top-0 z-10 -mx-4 border-y border-border bg-surface/90 px-4 py-2 backdrop-blur">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-subtle">Updates</h3>
-              <span className="font-mono text-[11px] tabular-nums text-subtle">{updates.length} item{updates.length === 1 ? "" : "s"}</span>
-            </div>
-            {latestUpdate ? (
-              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] leading-snug text-muted">
-                {latestProv ? <Badge tone={latestProv.tone}>{latestProv.label}</Badge> : null}
-                <span className="rounded-full border border-border bg-surface px-2 py-0.5 font-medium text-muted">
-                  {latestUpdate.chip.label}
+          <div className="rounded-xl border border-border bg-surface-2">
+            <div className="rounded-t-xl border-b border-border bg-surface/95 px-4 py-2 shadow-sm backdrop-blur">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-subtle">Updates</h3>
+                  <span className="shrink-0 rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                    Latest
+                  </span>
+                </div>
+                <span className="shrink-0 font-mono text-[11px] tabular-nums text-subtle">
+                  {updates.length} item{updates.length === 1 ? "" : "s"}
                 </span>
-                <span className="text-subtle">·</span>
-                <span className="truncate">{latestUpdate.outlet}</span>
-                <span className="text-subtle">·</span>
-                <span className="font-mono tabular-nums text-subtle">
-                  {clockTime(latestUpdate.publishedAt)} · {relativeTime(latestUpdate.publishedAt)}
-                </span>
-              </p>
-            ) : null}
-          </div>
+              </div>
 
-          <ol className="mt-2 space-y-1.5">
-          {updates.map((u, idx) => {
+              {latestUpdate ? (() => {
+                const latestTitle = decodeHtmlEntities(latestUpdate.title);
+                const latestSummary = decodeHtmlEntities(latestUpdate.summary || "");
+                const latestLine = latestTitle || (latestSummary && latestSummary !== latestTitle ? latestSummary : "");
+                return (
+                  <>
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] leading-snug text-muted">
+                      {latestProv ? <Badge tone={latestProv.tone}>{latestProv.label}</Badge> : null}
+                      <span className="rounded-full border border-border bg-surface px-2 py-0.5 font-medium text-muted">
+                        {latestUpdate.chip.label}
+                      </span>
+                      <span className="text-subtle">·</span>
+                      <span className="truncate">{latestUpdate.outlet}</span>
+                      <span className="text-subtle">·</span>
+                      <span className="font-mono tabular-nums text-subtle">
+                        {clockTime(latestUpdate.publishedAt)} · {relativeTime(latestUpdate.publishedAt)}
+                      </span>
+                    </p>
+                    {latestLine ? (
+                      <p className="mt-1 line-clamp-1 text-sm font-semibold leading-snug text-fg">
+                        {latestLine}
+                      </p>
+                    ) : null}
+                  </>
+                );
+              })() : null}
+            </div>
+
+            <div
+              className="max-h-[min(52dvh,28rem)] overflow-y-auto overscroll-y-contain px-4 py-2 scrollbar-thin"
+              data-vaul-no-drag
+            >
+              <ol className="space-y-1.5">
+              {updates.map((u, idx) => {
             const isLatest = idx === 0;
             const isFirstReport = idx === updates.length - 1;
             const time = `${clockTime(u.publishedAt)} · ${relativeTime(u.publishedAt)}`;
@@ -237,7 +262,9 @@ export function IncidentDetail({
               </li>
             );
           })}
-          </ol>
+              </ol>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="mt-5">
