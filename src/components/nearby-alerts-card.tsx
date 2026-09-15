@@ -139,43 +139,66 @@ export function NearbyAlertsCard({ variant = "card" }: { variant?: "card" | "inl
 
       {!sub ? (
         <div className="mt-3">
-          <div className="flex flex-wrap gap-2" aria-label="Alert radius">
-            {([1, 2, 3] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setRadius(m)}
-                disabled={busy}
-                className={cn(
-                  "h-9 rounded-full border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
-                  radius === m ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-fg",
-                  busy ? "opacity-70" : "",
-                )}
-              >
-                <MapPin className="mr-1 inline size-3.5" aria-hidden />
-                {m} mi
-              </button>
-            ))}
+          <div className="mt-1" aria-label="Alert radius">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-subtle">Radius</p>
+            <div
+              role="radiogroup"
+              className={cn(
+                "mt-2 grid grid-cols-3 overflow-hidden rounded-lg border border-border bg-surface",
+                busy ? "opacity-70" : "",
+              )}
+            >
+              {([1, 2, 3] as const).map((m) => (
+                <button
+                  key={m}
+                  role="radio"
+                  aria-checked={radius === m}
+                  type="button"
+                  onClick={() => setRadius(m)}
+                  disabled={busy}
+                  className={cn(
+                    "min-h-11 px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                    m !== 1 ? "border-l border-border" : "",
+                    radius === m ? "bg-accent text-accent-fg" : "bg-surface text-fg active:bg-surface-2",
+                  )}
+                >
+                  <MapPin className="mr-1 inline size-3.5" aria-hidden />
+                  {m} mi
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="mt-2 flex flex-wrap gap-2" aria-label="Severity floor">
-            {([
-              ["high", "High+"],
-              ["critical", "Critical only"],
-            ] as const).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setFloor(id)}
-                disabled={busy}
-                className={cn(
-                  "h-9 rounded-full border px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
-                  floor === id ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-fg",
-                  busy ? "opacity-70" : "",
-                )}
-              >
-                {label}
-              </button>
-            ))}
+
+          <div className="mt-3" aria-label="Severity floor">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-subtle">Severity</p>
+            <div
+              role="radiogroup"
+              className={cn(
+                "mt-2 grid grid-cols-2 overflow-hidden rounded-lg border border-border bg-surface",
+                busy ? "opacity-70" : "",
+              )}
+            >
+              {([
+                ["high", "High+"],
+                ["critical", "Critical only"],
+              ] as const).map(([id, label], idx) => (
+                <button
+                  key={id}
+                  role="radio"
+                  aria-checked={floor === id}
+                  type="button"
+                  onClick={() => setFloor(id)}
+                  disabled={busy}
+                  className={cn(
+                    "min-h-11 px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                    idx === 1 ? "border-l border-border" : "",
+                    floor === id ? "bg-accent text-accent-fg" : "bg-surface text-fg active:bg-surface-2",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-subtle">
             We’ll try to use your location. If you deny location, you may receive county-wide serious alerts.
