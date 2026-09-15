@@ -644,7 +644,7 @@ export function MapView({
       </p>
 
       <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
-        <div className="pointer-events-auto flex max-w-full gap-1 overflow-x-auto rounded-full border border-border bg-surface/95 p-1 shadow-md scrollbar-none snap-x">
+        <div className="pointer-events-auto flex w-full min-w-0 max-w-full flex-wrap items-center justify-center gap-1 overflow-x-auto overscroll-x-contain rounded-2xl border border-border bg-surface/95 p-1 shadow-md scrollbar-none sm:w-auto sm:flex-nowrap sm:rounded-full sm:overflow-visible">
           <div className="flex gap-1" role="group" aria-label="Time window">
             {([1, 6, 24, 48] as const).map((h) => (
               <button
@@ -664,8 +664,8 @@ export function MapView({
             className={cn(chip, "text-fg")}
             aria-label="Open coverage"
           >
-            <ShieldAlert className="mr-1 inline size-4" aria-hidden />
-            Coverage
+            <ShieldAlert className="inline size-4 sm:mr-1" aria-hidden />
+            <span className="hidden sm:inline">Coverage</span>
           </button>
           <button
             ref={listToggle}
@@ -675,8 +675,8 @@ export function MapView({
             aria-controls="map-incident-list"
             className={cn(chip, listOpen ? "bg-accent text-accent-fg" : "text-fg")}
           >
-            <List className="mr-1 inline size-4" aria-hidden />
-            List
+            <List className="inline size-4 sm:mr-1" aria-hidden />
+            <span className="hidden sm:inline">List</span>
           </button>
           <button
             type="button"
@@ -684,8 +684,8 @@ export function MapView({
             className={cn(chip, "text-fg")}
             aria-label="Open map filters"
           >
-            <Filter className="mr-1 inline size-4" aria-hidden />
-            Filters
+            <Filter className="inline size-4 sm:mr-1" aria-hidden />
+            <span className="hidden sm:inline">Filters</span>
           </button>
           <button
             type="button"
@@ -693,8 +693,8 @@ export function MapView({
             className={cn(chip, "text-fg")}
             aria-label="Open Live feed"
           >
-            <Radio className="mr-1 inline size-4" aria-hidden />
-            Live
+            <Radio className="inline size-4 sm:mr-1" aria-hidden />
+            <span className="hidden sm:inline">Live</span>
           </button>
           <button
             type="button"
@@ -702,8 +702,8 @@ export function MapView({
             className={cn(chip, "text-fg")}
             aria-label="Report activity"
           >
-            <Megaphone className="mr-1 inline size-4" aria-hidden />
-            Report
+            <Megaphone className="inline size-4 sm:mr-1" aria-hidden />
+            <span className="hidden sm:inline">Report</span>
           </button>
         </div>
       </div>
