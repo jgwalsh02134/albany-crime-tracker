@@ -22,6 +22,10 @@ export function FeedView({
   news,
   wireItems,
   wireLive,
+  wireReady = false,
+  wireInitError = null,
+  wireInitNextRetryAt = null,
+  onRetryWire,
   wireHealth = null,
   refreshing = false,
   onRefresh,
@@ -30,6 +34,10 @@ export function FeedView({
   news: NewsStory[];
   wireItems?: import("@/lib/sources").LiveWireItem[];
   wireLive: boolean;
+  wireReady?: boolean;
+  wireInitError?: string | null;
+  wireInitNextRetryAt?: number | null;
+  onRetryWire?: () => void;
   wireHealth?: WireHealth | null;
   refreshing?: boolean;
   onRefresh?: () => Promise<void> | void;
@@ -93,6 +101,10 @@ export function FeedView({
                 mix={mix}
                 newest={newest}
                 wireLive={wireLive}
+                wireReady={wireReady}
+                wireInitError={wireInitError}
+                wireInitNextRetryAt={wireInitNextRetryAt}
+                onRetryWire={onRetryWire}
                 wireHealth={wireHealth}
                 onSelect={select}
                 refreshing={refreshing}
@@ -165,6 +177,10 @@ function LiveList({
   mix,
   newest,
   wireLive,
+  wireReady,
+  wireInitError,
+  wireInitNextRetryAt,
+  onRetryWire,
   wireHealth,
   onSelect,
   refreshing,
@@ -179,6 +195,10 @@ function LiveList({
   mix: { official: number; scanner: number; news: number; social: number };
   newest?: Incident;
   wireLive: boolean;
+  wireReady: boolean;
+  wireInitError: string | null;
+  wireInitNextRetryAt: number | null;
+  onRetryWire?: () => void;
   wireHealth: WireHealth | null;
   onSelect: (id: string) => void;
   refreshing: boolean;
@@ -309,7 +329,9 @@ function LiveList({
                     compact
                   />
                 ) : (
-                  <p className="py-1.5 text-xs text-subtle">{wireLive ? `${showing.length} calls` : "Connecting…"}</p>
+                  <p className="py-1.5 text-xs text-subtle">
+                    {wireReady ? (wireLive ? `${showing.length} calls` : "Can’t reach Live") : "Connecting…"}
+                  </p>
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1" data-vaul-no-drag>
@@ -517,8 +539,27 @@ function LiveList({
               ) : (
                 <p>{liveWindowHonesty({ health: wireHealth, nowItems: [], liveItems: [], sourceLens }).emptyFilterCopy}</p>
               )
-            ) : (
+            ) : !wireReady ? (
               <p>Pulling blotter, radio, and newsrooms…</p>
+            ) : (
+              <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                <div>
+                  <p className="font-semibold text-fg">Live is taking longer than expected.</p>
+                  <p className="mt-1 text-sm text-muted">
+                    {wireInitError ? `Last error: ${wireInitError}. ` : ""}
+                    We’ll keep retrying in the background — you can also retry now.
+                  </p>
+                </div>
+                {onRetryWire ? (
+                  <button
+                    type="button"
+                    onClick={onRetryWire}
+                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-accent/35 bg-accent/10 px-4 text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                  >
+                    {wireInitNextRetryAt ? "Retry now" : "Retry"}
+                  </button>
+                ) : null}
+              </div>
             )}
           </div>
         ) : (

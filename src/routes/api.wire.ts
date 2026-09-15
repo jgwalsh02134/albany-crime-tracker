@@ -15,8 +15,10 @@ export const Route = createFileRoute("/api/wire")({
             try {
               const incidents = wireToIncidents(body.items);
               const origin = url.origin || "https://app.albany.watch";
-              const { maybeRunPushSweepFromIncidents } = await import("../lib/push.server");
-              void maybeRunPushSweepFromIncidents({ incidents, origin }).catch(() => {});
+              void (async () => {
+                const { maybeRunPushSweepFromIncidents } = await import("../lib/push.server");
+                await maybeRunPushSweepFromIncidents({ incidents, origin });
+              })().catch(() => {});
             } catch {
               // Push is best-effort. Never break /api/wire.
             }

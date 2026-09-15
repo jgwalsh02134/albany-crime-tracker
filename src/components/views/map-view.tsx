@@ -184,12 +184,16 @@ export function MapView({
   incidents,
   active,
   wireLive,
+  wireReady = false,
+  wireInitError = null,
   wireHealth,
   wireItems,
 }: {
   incidents: Incident[];
   active: boolean;
   wireLive: boolean;
+  wireReady?: boolean;
+  wireInitError?: string | null;
   wireHealth: WireHealth | null;
   wireItems?: LiveWireItem[];
 }) {
@@ -934,8 +938,10 @@ export function MapView({
           </h2>
           {filtered.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm leading-relaxed text-muted">
-              {wireLive
-                ? "No mapped incidents match your filters in this window."
+              {wireReady
+                ? wireLive
+                  ? "No mapped incidents match your filters in this window."
+                  : `Can’t load live map data${wireInitError ? ` (${wireInitError})` : ""}.`
                 : "Loading live map data…"}
             </p>
           ) : (
@@ -1022,7 +1028,7 @@ export function MapView({
         </div>
         {!listOpen && !wireLive ? (
           <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
-            Loading live map data…
+            {wireReady ? `Can’t load live map data${wireInitError ? ` (${wireInitError})` : ""}.` : "Loading live map data…"}
           </p>
         ) : !listOpen && filtered.length === 0 ? (
           <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
