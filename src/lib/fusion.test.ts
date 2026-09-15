@@ -178,11 +178,12 @@ describe("corroboration", () => {
     assert.equal(sourceFamily("traffic", "511NY"), "511");
   });
 
-  it("does not treat newsroom FB/X as official press", () => {
+  it("treats all FB/X/Reddit as social (never official)", () => {
     assert.equal(sourceFamily("social", "Facebook · CBS6"), "social");
     assert.equal(sourceFamily("social", "X · Times Union"), "social");
-    assert.equal(sourceFamily("social", "Facebook · Albany PD"), "press");
-    assert.equal(sourceFamily("social", "X · Albany Police"), "press");
+    assert.equal(sourceFamily("social", "Facebook · Albany PD"), "social");
+    assert.equal(sourceFamily("social", "X · Albany Police"), "social");
+    assert.equal(sourceFamily("social", "Reddit · r/Albany"), "social");
   });
 });
 
@@ -334,7 +335,7 @@ function incident(partial: Partial<Incident> & Pick<Incident, "id" | "title">): 
 }
 
 describe("compareNowLane", () => {
-  it("prefers recent place-specific official agency social in Now lane", () => {
+  it("prefers recent place-specific agency social in Now lane (still unconfirmed)", () => {
     const generic = incident({
       id: "generic",
       title: "Traffic alert",
@@ -343,10 +344,30 @@ describe("compareNowLane", () => {
     const official = incident({
       id: "official",
       title: "Traffic alert",
-      sources: [{ kind: "press", name: "Facebook · Albany PD", tier: "official", url: "https://example.test" }],
+      sources: [{ kind: "social", name: "Facebook · Albany PD", tier: "unconfirmed", url: "https://example.test" }],
       geoPrecision: "street",
     });
     const sorted = [generic, official].sort(compareNowLane);
     assert.equal(sorted[0]!.id, "official");
+  });
+});
+
+describe("provenance regression", () => {
+  it("never upgrades agency Facebook posts to Official verification/tier", () => {
+    const inc = wireToIncidents([
+      item({
+        id: "fb-apd-1",
+        title: "Police investigating reported shots fired",
+        kind: "social",
+        outlet: "Facebook · Albany PD",
+        municipality: "Albany",
+        address: "Central Avenue",
+        minutesAgo: 12,
+      }),
+    ])[0]!;
+    assert.ok(inc, "expected an incident");
+    assert.equal(inc.verification, "developing");
+    assert.equal(inc.sources.some((s) => s.tier === "official"), false);
+    assert.equal(inc.sources.some((s) => s.kind === "social"), true);
   });
 });

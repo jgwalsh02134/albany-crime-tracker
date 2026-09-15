@@ -65,8 +65,15 @@ function pinColor(sev: Severity): string {
 function pinLabel(inc: Incident): string {
   const when = clockTime(inc.occurredAt);
   const approx = isApproxPrecision(inc.geoPrecision) ? "approximate location" : "street-level pin";
+  const sig = isOfficialIncident(inc)
+    ? "official"
+    : incidentVerification(inc) === "scanner"
+      ? "scanner (early)"
+      : inc.sources.some((s) => s.kind === "social")
+        ? "unconfirmed"
+        : "developing";
   const title = decodeHtmlEntities(inc.title);
-  return [inc.agency, title, inc.address, when, typeLabel(inc.type), severityLabel(inc.severity), approx]
+  return [inc.agency, title, inc.address, when, typeLabel(inc.type), severityLabel(inc.severity), sig, approx]
     .filter(Boolean)
     .join(", ");
 }
@@ -87,7 +94,14 @@ function tipNode(inc: Incident): HTMLElement {
   const kind = document.createElement("p");
   kind.className = "act-tip-kind";
   const approx = isApproxPrecision(inc.geoPrecision) ? " · approx" : "";
-  kind.textContent = `${typeLabel(inc.type)} · ${severityLabel(inc.severity)}${approx}`;
+  const sig = isOfficialIncident(inc)
+    ? "Official"
+    : incidentVerification(inc) === "scanner"
+      ? "Scanner (early)"
+      : inc.sources.some((s) => s.kind === "social")
+        ? "Unconfirmed"
+        : "Developing";
+  kind.textContent = `${sig} · ${typeLabel(inc.type)} · ${severityLabel(inc.severity)}${approx}`;
   root.append(agency, title, meta, kind);
   return root;
 }
@@ -790,7 +804,13 @@ export function MapView({
                       <span className="block text-xs font-semibold uppercase tracking-wide text-subtle">
                         {inc.agency} · {typeLabel(inc.type)} · {severityLabel(inc.severity)}
                         {isApproxPrecision(inc.geoPrecision) ? " · approx" : ""}
-                        {incidentVerification(inc) === "scanner" ? " · scanner" : isOfficialIncident(inc) ? " · official" : ""}
+                        {isOfficialIncident(inc)
+                          ? " · official"
+                          : incidentVerification(inc) === "scanner"
+                            ? " · scanner"
+                            : inc.sources.some((s) => s.kind === "social")
+                              ? " · unconfirmed"
+                              : ""}
                       </span>
                       <span className="mt-0.5 block text-sm font-semibold leading-snug tracking-tight text-fg">
                         {decodeHtmlEntities(inc.title)}
