@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Drawer } from "vaul";
 import { ChevronRight, ExternalLink, LocateFixed, Moon, Sparkles, Sun } from "lucide-react";
+import { NearbyAlertsCard } from "@/components/nearby-alerts-card";
 import { Button } from "@/components/ui/button";
 import { haversineKm } from "@/lib/geo";
 import { selectNearMeEmptyState, type LocateErrorKind, type NearMePos } from "@/lib/near-me-empty-state";
@@ -326,61 +327,68 @@ export function MoreDrawer() {
 
   return (
     <SheetFrame open={open} onOpenChange={setOpen}>
-      <div className="px-4 pb-8 pt-3">
-        <Drawer.Title className="text-base font-semibold">More</Drawer.Title>
-        <div className="mt-3 flex flex-col gap-1.5">
-          {MORE_ITEMS.map((item) => (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-3 scrollbar-thin">
+          <Drawer.Title className="text-base font-semibold">More</Drawer.Title>
+
+          <div className="mt-3">
+            <NearbyAlertsCard variant="inline" />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-1.5">
+            {MORE_ITEMS.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                className="group flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-3 text-left active:opacity-80"
+                onClick={() => setView(item.view)}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+                    {item.view === "chat" ? <Sparkles className="size-4 text-subtle" /> : <ChevronRight className="size-4 text-subtle" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold">{item.label}</span>
+                    <span className="block truncate text-xs text-subtle">{item.hint}</span>
+                  </span>
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
+              </button>
+            ))}
             <button
-              key={item.label}
               type="button"
               className="group flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-3 text-left active:opacity-80"
-              onClick={() => setView(item.view)}
+              onClick={toggleTheme}
             >
               <span className="flex min-w-0 items-center gap-2">
                 <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
-                  {item.view === "chat" ? <Sparkles className="size-4 text-subtle" /> : <ChevronRight className="size-4 text-subtle" />}
+                  {theme === "dark" ? <Sun className="size-4 text-subtle" /> : <Moon className="size-4 text-subtle" />}
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold">{item.label}</span>
-                  <span className="block truncate text-xs text-subtle">{item.hint}</span>
+                  <span className="block truncate text-sm font-semibold">Theme</span>
+                  <span className="block truncate text-xs text-subtle">{theme === "dark" ? "Dark (navy)" : "Light"}</span>
                 </span>
               </span>
               <ChevronRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
             </button>
-          ))}
-          <button
-            type="button"
-            className="group flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-3 text-left active:opacity-80"
-            onClick={toggleTheme}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
-                {theme === "dark" ? <Sun className="size-4 text-subtle" /> : <Moon className="size-4 text-subtle" />}
+            <a
+              href="https://nibrs.fbi.gov/2025/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-3 text-left active:opacity-80"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
+                  <ExternalLink className="size-4 text-subtle" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold">FBI / NIBRS resources</span>
+                  <span className="block truncate text-xs text-subtle">Crime Data Explorer · agency map</span>
+                </span>
               </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold">Theme</span>
-                <span className="block truncate text-xs text-subtle">{theme === "dark" ? "Dark (navy)" : "Light"}</span>
-              </span>
-            </span>
-            <ChevronRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
-          </button>
-          <a
-            href="https://nibrs.fbi.gov/2025/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group flex min-h-12 items-center justify-between rounded-xl border border-border bg-surface-2 px-3 py-3 text-left active:opacity-80"
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface">
-                <ExternalLink className="size-4 text-subtle" />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold">FBI / NIBRS resources</span>
-                <span className="block truncate text-xs text-subtle">Crime Data Explorer · agency map</span>
-              </span>
-            </span>
-            <ChevronRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
-          </a>
+              <ChevronRight className="size-4 shrink-0 text-subtle transition-transform group-hover:translate-x-0.5" aria-hidden />
+            </a>
+          </div>
         </div>
       </div>
     </SheetFrame>
