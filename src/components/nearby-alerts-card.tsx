@@ -106,11 +106,17 @@ export function NearbyAlertsCard({ variant = "card" }: { variant?: "card" | "inl
     }
   }
 
-  const unavailableCopy =
-    status?.ok === true && status.enabled === false
-      ? status.reason || "Alerts are unavailable on this deployment."
-      : !supported
-        ? "Your browser doesn’t support web push."
+  const unavailableCopy = !supported
+    ? "Your browser doesn’t support web push."
+    : status?.ok === false
+      ? status.reason ||
+        (status.error === "network"
+          ? "Alerts status couldn’t be checked right now (network)."
+          : status.error === "invalid-json"
+            ? "Alerts status couldn’t be checked right now (invalid response)."
+            : "Alerts status couldn’t be checked right now.")
+      : status?.ok === true && status.enabled === false
+        ? status.reason || "Alerts are unavailable on this deployment."
         : "";
 
   return (

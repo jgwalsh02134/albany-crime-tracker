@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Drawer } from "vaul";
-import { ChevronRight, LocateFixed, Megaphone, ShieldAlert, SlidersHorizontal } from "lucide-react";
+import { Bell, ChevronRight, LocateFixed, Megaphone, ShieldAlert, SlidersHorizontal } from "lucide-react";
 import { CoverageDrawer } from "@/components/coverage-drawer";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentDetail } from "@/components/incident-detail";
@@ -189,6 +189,7 @@ function LiveList({
   const startY = useRef<number | null>(null);
   const [pull, setPull] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const liveNearMe = useAppStore((s) => s.liveNearMe);
   const setLiveNearMe = useAppStore((s) => s.setLiveNearMe);
   const liveNearMiles = useAppStore((s) => s.liveNearMiles);
@@ -320,6 +321,14 @@ function LiveList({
                 >
                   <SlidersHorizontal className="size-4 text-subtle" aria-hidden />
                   Filters
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlertsOpen(true)}
+                  className="inline-flex size-9 items-center justify-center rounded-full border border-border bg-surface text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                  aria-label="Alert me nearby"
+                >
+                  <Bell className="size-4" aria-hidden />
                 </button>
                 {wireHealth ? (
                   <button
@@ -463,7 +472,7 @@ function LiveList({
           </div>
         </div>
 
-        <div className="mb-3">
+        <div className="mb-3 hidden lg:block">
           <NearbyAlertsCard variant="inline" />
         </div>
 
@@ -557,6 +566,7 @@ function LiveList({
         }}
         showingCount={showing.length}
       />
+      <LiveAlertsDrawer open={alertsOpen} onOpenChange={setAlertsOpen} />
     </div>
   );
 }
@@ -716,6 +726,43 @@ function LiveFiltersDrawer({
                 Done
               </button>
             </div>
+          </div>
+        </Drawer.Content>
+      </Drawer.Portal>
+    </Drawer.Root>
+  );
+}
+
+function LiveAlertsDrawer({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  return (
+    <Drawer.Root open={open} onOpenChange={onOpenChange}>
+      <Drawer.Portal>
+        <Drawer.Overlay className="fixed inset-0 z-40 bg-bg/70" />
+        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-xl border border-border bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none lg:hidden">
+          <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-border" />
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3 scrollbar-thin">
+            <Drawer.Title className="text-base font-semibold">Alert me nearby</Drawer.Title>
+            <p className="mt-1 text-xs text-subtle">
+              Turn on notifications for serious activity near you. Unconfirmed alerts are labeled honestly.
+            </p>
+            <div className="mt-3">
+              <NearbyAlertsCard variant="inline" />
+            </div>
+          </div>
+          <div className="px-4 pt-2" data-vaul-no-drag>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="w-full rounded-lg border border-accent/35 bg-accent/10 px-4 py-3 text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+            >
+              Done
+            </button>
           </div>
         </Drawer.Content>
       </Drawer.Portal>
