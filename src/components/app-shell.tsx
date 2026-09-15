@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import {
   Bolt,
   Map as MapIcon,
+  Megaphone,
   Moon,
   MoreHorizontal,
   Radio,
@@ -56,6 +57,7 @@ export function AppShell() {
   const toggleTheme = useAppStore((s) => s.toggleTheme);
   const setFilterOpen = useAppStore((s) => s.setFilterOpen);
   const setMoreOpen = useAppStore((s) => s.setMoreOpen);
+  const setWitnessOpen = useAppStore((s) => s.setWitnessOpen);
   const selectedId = useAppStore((s) => s.selectedId);
   const selected = incidents.find((i) => i.id === selectedId) ?? null;
   const moreOpen = view === "chat" || view === "more";
@@ -211,13 +213,16 @@ export function AppShell() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg">
-      <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-3 pt-[max(0.35rem,env(safe-area-inset-top))]">
+      <header className="relative z-40 flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-border bg-bg px-3 pt-[max(0.35rem,env(safe-area-inset-top))]">
         <div className="flex min-w-0 items-center gap-2">
-          <ShieldLogo className="size-10 shrink-0 sm:size-11 lg:size-12" />
+          <ShieldLogo className="size-9 shrink-0 sm:size-11 lg:size-12" />
           <div className="min-w-0 leading-tight">
             <p className="flex items-center gap-1.5 truncate text-sm font-semibold tracking-tight">
               <span className="size-1.5 shrink-0 rounded-full bg-accent lg:hidden" />
               Albany County
+            </p>
+            <p className="truncate text-[11px] text-subtle lg:hidden">
+              {view === "feed" ? (homeMode === "news" ? "News · Capital Region" : "Live feed · Capital Region") : "Crime Tracker"}
             </p>
             <p className="hidden items-center gap-1.5 text-xs text-subtle lg:flex">
               <span className="size-1.5 rounded-full bg-accent" />
@@ -236,15 +241,26 @@ export function AppShell() {
               <SlidersHorizontal className="size-5" />
             </Button>
           ) : view === "feed" ? (
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Filter"
-              className="hidden lg:inline-flex"
-              onClick={() => setFilterOpen(true)}
-            >
-              <SlidersHorizontal className="size-5" />
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Report activity"
+                className="lg:hidden"
+                onClick={() => setWitnessOpen(true)}
+              >
+                <Megaphone className="size-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Filter"
+                className="hidden lg:inline-flex"
+                onClick={() => setFilterOpen(true)}
+              >
+                <SlidersHorizontal className="size-5" />
+              </Button>
+            </>
           ) : null}
           <Button
             variant="ghost"
@@ -329,7 +345,7 @@ export function AppShell() {
       </main>
 
       <nav
-        className="flex shrink-0 border-t border-border bg-bg/90 pt-1 backdrop-blur-md lg:hidden pb-[max(0.35rem,env(safe-area-inset-bottom))]"
+        className="relative z-40 flex shrink-0 border-t border-border bg-bg pt-1 lg:hidden pb-[max(0.35rem,env(safe-area-inset-bottom))]"
         role="tablist"
         aria-label="Main navigation"
       >

@@ -28,6 +28,16 @@
   --radius-xl: 24px;
 }
 
+:root {
+  --act-tabbar-h: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --act-tabbar-h: 0px;
+  }
+}
+
 :root,
 [data-theme="dark"] {
   --bg: #0a1128;
@@ -69,6 +79,7 @@
 
 @layer base {
   html {
+    --act-tabbar-h: calc(3.75rem + env(safe-area-inset-bottom, 0px));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-tap-highlight-color: transparent;

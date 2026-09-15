@@ -126,7 +126,7 @@ export function FeedView({
           </div>
         </>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-[calc(env(safe-area-inset-bottom)+6.5rem)] pt-2 scrollbar-thin">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-[calc(var(--act-tabbar-h)+1.25rem)] pt-2 scrollbar-thin">
           <NewsView stories={news} />
         </div>
       )}
@@ -306,7 +306,7 @@ function LiveList({
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={() => void onTouchEnd()}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-[calc(env(safe-area-inset-bottom)+8rem)] scrollbar-thin"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-[calc(var(--act-tabbar-h)+1.25rem)] scrollbar-thin"
       >
         <div
           className="overflow-hidden text-center text-xs text-subtle motion-safe:transition-[height] motion-safe:duration-150 motion-reduce:transition-none"
@@ -315,43 +315,38 @@ function LiveList({
           <p className="pt-1.5">{refreshing ? "Updating…" : pull > 52 ? "Release to refresh" : "Pull to refresh"}</p>
         </div>
 
-        <div className="sticky top-0 z-10 -mx-3 mb-1.5 bg-bg/95 px-3 py-1 backdrop-blur-md">
-          {/* Mobile: minimal chrome; everything else behind Filters sheet */}
+        <div className="sticky top-0 z-10 -mx-3 mb-2 bg-bg/95 px-3 py-1.5 backdrop-blur-md">
           <div className="lg:hidden">
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                {wireHealth ? (
-                  <SourcePipes
-                    health={wireHealth}
-                    count={showing.length}
-                    newest={newest}
-                    wireLive={wireLive}
-                    compact
-                  />
-                ) : (
-                  <p className="py-1.5 text-xs text-subtle">
-                    {wireReady ? (wireLive ? `${showing.length} calls` : "Can’t reach Live") : "Connecting…"}
-                  </p>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-1" data-vaul-no-drag>
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen(true)}
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-border bg-surface px-3 text-xs font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
-                  aria-label="Open live filters"
-                >
-                  <SlidersHorizontal className="size-4 text-subtle" aria-hidden />
-                  Filters
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAlertsOpen(true)}
-                  className="inline-flex size-9 items-center justify-center rounded-full border border-border bg-surface text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
-                  aria-label="Alert me nearby"
-                >
-                  <Bell className="size-4" aria-hidden />
-                </button>
+              <button
+                type="button"
+                onClick={() => setCoverageOpen(true)}
+                className="min-w-0 flex-1 rounded-md py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 disabled:opacity-100"
+                aria-label={wireHealth ? "Open coverage" : "Live status"}
+                disabled={!wireHealth}
+              >
+                <p className="truncate text-sm font-semibold tracking-tight text-fg">
+                  {!wireReady
+                    ? "Connecting…"
+                    : wireLive
+                      ? `${showing.length} live`
+                      : "Can’t reach Live"}
+                  {wireLive && newest ? (
+                    <span className="ml-1.5 font-mono text-xs font-medium text-subtle">
+                      · {compactFromMinutes(newest.minutesAgo)}
+                    </span>
+                  ) : null}
+                </p>
+                <p className="truncate text-[11px] text-subtle">
+                  {wireHealth
+                    ? [wireHealth.blotter ? `${wireHealth.blotter} blotter` : null, wireHealth.scanner ? `${wireHealth.scanner} radio` : null, wireHealth.news ? `${wireHealth.news} news` : null]
+                        .filter(Boolean)
+                        .slice(0, 3)
+                        .join(" · ") || "Capital Region public safety"
+                    : "Capital Region public safety"}
+                </p>
+              </button>
+              <div className="flex shrink-0 items-center gap-1.5" data-vaul-no-drag>
                 {wireHealth ? (
                   <button
                     type="button"
@@ -365,6 +360,23 @@ function LiveList({
                     </span>
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => setAlertsOpen(true)}
+                  className="inline-flex size-9 items-center justify-center rounded-full border border-border bg-surface text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                  aria-label="Alert me nearby"
+                >
+                  <Bell className="size-4" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-xs font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                  aria-label="Open live filters"
+                >
+                  <SlidersHorizontal className="size-4 text-subtle" aria-hidden />
+                  Filters
+                </button>
               </div>
             </div>
 
@@ -372,15 +384,20 @@ function LiveList({
               <button
                 type="button"
                 onClick={() => setCoverageOpen(true)}
-                className="mt-1 inline-flex min-h-9 w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 text-left text-xs font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                className="mt-1.5 inline-flex min-h-8 w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 text-left text-xs font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
               >
-                <span className="inline-flex min-w-0 items-center gap-2">
-                  <span className={cn("size-2 shrink-0 rounded-full", coverageDot)} aria-hidden />
-                  <span className="truncate">{coverage.shortLabel}</span>
-                </span>
-                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-subtle">Tap for details</span>
+                <span className={cn("size-2 shrink-0 rounded-full", coverageDot)} aria-hidden />
+                <span className="min-w-0 truncate">{coverage.shortLabel}</span>
               </button>
             ) : null}
+
+            <div className="mt-2 flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none">
+              <Chip active={liveKind === "all"} onClick={() => setLiveKind("all")} label="All" />
+              <Chip active={liveKind === "crime"} onClick={() => setLiveKind("crime")} label="Crime" />
+              <Chip active={liveKind === "crash"} onClick={() => setLiveKind("crash")} label="Crash" />
+              <Chip active={liveKind === "fire"} onClick={() => setLiveKind("fire")} label="Fire" />
+              <Chip active={liveKind === "traffic"} onClick={() => setLiveKind("traffic")} label="Traffic" />
+            </div>
           </div>
 
           {/* Desktop: keep richer controls */}
@@ -563,25 +580,28 @@ function LiveList({
             )}
           </div>
         ) : (
-          <GroupedList
-            items={showing}
-            onSelect={onSelect}
-            wireHealth={wireHealth}
-            sourceLens={sourceLens}
-            pos={pos}
-          />
+          <>
+            <div className="lg:hidden">
+              <MobileFlatList
+                items={showing}
+                onSelect={onSelect}
+                wireHealth={wireHealth}
+                sourceLens={sourceLens}
+                pos={pos}
+              />
+            </div>
+            <div className="hidden lg:block">
+              <GroupedList
+                items={showing}
+                onSelect={onSelect}
+                wireHealth={wireHealth}
+                sourceLens={sourceLens}
+                pos={pos}
+              />
+            </div>
+          </>
         )}
       </div>
-
-      {/* Mobile: compact Report Activity FAB */}
-      <button
-        type="button"
-        onClick={() => setWitnessOpen(true)}
-        className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] right-4 z-30 inline-flex size-12 items-center justify-center rounded-full border border-accent/35 bg-accent text-accent-fg shadow-lg active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 lg:hidden"
-        aria-label="Report activity"
-      >
-        <Megaphone className="size-5" aria-hidden />
-      </button>
 
       <CoverageDrawer
         open={coverageOpen}
@@ -814,6 +834,101 @@ function LiveAlertsDrawer({
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>
+  );
+}
+
+function MobileFlatList({
+  items,
+  onSelect,
+  wireHealth,
+  sourceLens,
+  pos,
+}: {
+  items: Incident[];
+  onSelect: (id: string) => void;
+  wireHealth: WireHealth | null;
+  sourceLens: SourceLens;
+  pos: NearMePos | null;
+}) {
+  const since7 = minutesSinceNy7am();
+  const areaFilter = useAppStore((s) => s.areaFilter);
+  const municipalities = useAppStore((s) => s.municipalities);
+  const colonieFocused = areaFilter === "Colonie" || (municipalities.length === 1 && municipalities[0] === "Colonie");
+  const nowItems = [...items.filter((i) => i.minutesAgo <= 180)].sort(
+    compareNowLaneWithContext({ colonieFocused }),
+  );
+  const earlierToday = items.filter((i) => i.minutesAgo > 180 && i.minutesAgo <= since7);
+  const overnight = items.filter((i) => i.minutesAgo > since7);
+  const honesty = liveWindowHonesty({ health: wireHealth, nowItems, liveItems: items, sourceLens, colonieFocused });
+
+  return (
+    <div className="flex flex-col gap-5">
+      <section>
+        <div className="mb-2 flex items-baseline justify-between">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Now</h2>
+          <p className="text-[11px] text-subtle">Last 3 hours</p>
+        </div>
+        {nowItems.length ? (
+          <ul className="flex flex-col gap-2">
+            {nowItems.map((inc) => (
+              <li key={inc.id}>
+                <IncidentCard
+                  incident={inc}
+                  onSelect={onSelect}
+                  compact
+                  distanceMi={
+                    pos ? haversineKm({ lat: pos.lat, lng: pos.lng }, { lat: inc.lat, lng: inc.lng }) / 1.60934 : null
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
+            {honesty.last3hCopy}
+          </p>
+        )}
+      </section>
+
+      {earlierToday.length ? (
+        <section>
+          <div className="mb-2 flex items-baseline justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Today</h2>
+            <p className="text-[11px] text-subtle">Since 7 AM</p>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {earlierToday.map((inc) => (
+              <li key={inc.id}>
+                <IncidentCard
+                  incident={inc}
+                  onSelect={onSelect}
+                  compact
+                  distanceMi={
+                    pos ? haversineKm({ lat: pos.lat, lng: pos.lng }, { lat: inc.lat, lng: inc.lng }) / 1.60934 : null
+                  }
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {overnight.length ? (
+        <section>
+          <div className="mb-2 flex items-baseline justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">Overnight</h2>
+            <p className="text-[11px] text-subtle">NYSP blotter</p>
+          </div>
+          <ul className="flex flex-col gap-2">
+            {overnight.map((inc) => (
+              <li key={inc.id}>
+                <IncidentCard incident={inc} onSelect={onSelect} compact />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   );
 }
 

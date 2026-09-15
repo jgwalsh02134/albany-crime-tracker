@@ -35,10 +35,12 @@ export function IncidentCard({
   incident,
   onSelect,
   distanceMi = null,
+  compact = false,
 }: {
   incident: Incident;
   onSelect: (id: string) => void;
   distanceMi?: number | null;
+  compact?: boolean;
 }) {
   const title = decodeHtmlEntities(incident.title);
   const witness = isWitnessIncident(incident);
@@ -63,10 +65,12 @@ export function IncidentCard({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
               <Badge tone={conf.tone}>{conf.label}</Badge>
-              <Badge tone={badge.tone} className="normal-case tracking-normal">
-                {badge.label}
-              </Badge>
-              {incident.seenOn?.length ? (
+              {compact ? null : (
+                <Badge tone={badge.tone} className="normal-case tracking-normal">
+                  {badge.label}
+                </Badge>
+              )}
+              {!compact && incident.seenOn?.length ? (
                 <span className="ml-auto inline-flex items-center rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-muted">
                   {incident.seenOn.length} sources
                 </span>
@@ -89,12 +93,16 @@ export function IncidentCard({
           </div>
         </div>
 
-        {extra ? <p className="mt-1.5 line-clamp-1 text-sm text-muted">{extra}</p> : null}
+        {!compact && extra ? <p className="mt-1.5 line-clamp-1 text-sm text-muted">{extra}</p> : null}
 
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-subtle">
+        <div className={cn("mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-subtle", compact && "mt-1")}>
           <span className="shrink-0 uppercase tracking-wide">{typeLabel(incident.type)}</span>
-          <span aria-hidden>·</span>
-          <span className="font-mono tabular-nums">{clockTime(incident.occurredAt)}</span>
+          {compact ? null : (
+            <>
+              <span aria-hidden>·</span>
+              <span className="font-mono tabular-nums">{clockTime(incident.occurredAt)}</span>
+            </>
+          )}
           {distance ? (
             <>
               <span aria-hidden>·</span>

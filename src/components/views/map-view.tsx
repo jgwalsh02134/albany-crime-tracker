@@ -740,7 +740,7 @@ export function MapView({
       </p>
 
       <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
-        <div className="pointer-events-auto flex w-full min-w-0 max-w-full flex-wrap items-center justify-center gap-1 overflow-x-auto overscroll-x-contain rounded-2xl border border-border bg-surface/95 p-1 shadow-md scrollbar-none sm:w-auto sm:flex-nowrap sm:rounded-full sm:overflow-visible">
+        <div className="pointer-events-auto flex w-full min-w-0 max-w-full flex-nowrap items-center gap-1 overflow-x-auto overscroll-x-contain rounded-full border border-border bg-surface/95 p-1 shadow-md scrollbar-none">
           <div className="flex gap-1" role="group" aria-label="Time window">
             {([1, 6, 24, 48] as const).map((h) => (
               <button
@@ -1081,7 +1081,7 @@ export function MapView({
           <Drawer.Portal>
             <Drawer.Content className="fixed inset-x-0 bottom-0 z-30 mx-auto flex h-full max-h-[88dvh] w-full max-w-lg flex-col rounded-t-2xl border border-border bg-surface/95 shadow-xl outline-none backdrop-blur">
               <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-border" />
-              <div className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+              <div className="flex min-h-0 flex-1 flex-col px-3 pb-[calc(0.75rem+var(--act-tabbar-h))] pt-2">
                 {selected ? (
                   <>
                     <div className="flex items-center justify-between gap-2" data-vaul-no-drag>
@@ -1342,7 +1342,10 @@ export function MapView({
 }
 
 function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+    return window.matchMedia(query).matches;
+  });
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;

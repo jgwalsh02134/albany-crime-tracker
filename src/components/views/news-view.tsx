@@ -39,7 +39,7 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
     return { headlines: h, blotter: b };
   }, [filtered]);
 
-  const featured = headlines.find((s) => s.image) ?? headlines[0];
+  const featured = headlines.find(isUsableHero);
   const rest = headlines.filter((s) => s.id !== featured?.id);
   const top = rest.filter((s) => s.image).slice(0, 4);
   const used = new Set([featured?.id, ...top.map((s) => s.id)]);
@@ -64,7 +64,7 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
           <span> · {outlets.length} outlets</span>
           {hour ? <span> · {hour} last hour</span> : null}
         </p>
-        <p className="mb-2 text-xs leading-relaxed text-muted">
+        <p className="mb-2 hidden text-xs leading-relaxed text-muted lg:block">
           Capital Region coverage only. Out-of-area wires are dropped. Overnight NYSP blotter is listed separately so it does not drown newsroom updates.
         </p>
         <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 scrollbar-none snap-x">
@@ -94,7 +94,7 @@ export function NewsView({ stories }: { stories: NewsStory[] }) {
                   <Thumb src={s.image} label={s.outlet} className="aspect-video w-full" />
                   <div className="p-3 pr-12">
                     <p className="text-xs font-semibold uppercase tracking-wide text-cyan">{s.kicker}</p>
-                    <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-snug">{decodeHtmlEntities(s.title)}</h3>
+                    <h3 className="mt-1 line-clamp-3 text-sm font-semibold leading-snug">{displayTitle(s.title)}</h3>
                     <p className="mt-1.5 text-xs text-subtle">
                       {s.outlet} · {timeLabel(s.minutesAgo, s.occurredAt)}
                       {s.municipality && s.municipality !== "Albany County" ? ` · ${s.municipality}` : ""}
@@ -158,7 +158,7 @@ function StoryList({
                     {timeLabel(s.minutesAgo, s.occurredAt)}
                   </span>
                 </div>
-                <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-snug">{decodeHtmlEntities(s.title)}</h3>
+                <h3 className="mt-1 line-clamp-2 text-sm font-semibold leading-snug">{displayTitle(s.title)}</h3>
                 <p className="mt-1 truncate text-xs text-subtle">
                   {s.outlet}
                   {s.municipality && s.municipality !== "Albany County" ? ` · ${s.municipality}` : ""}
@@ -176,7 +176,6 @@ function StoryList({
 }
 
 function Hero({ story }: { story: NewsStory }) {
-  const title = decodeHtmlEntities(story.title);
   const summary = story.summary ? decodeHtmlEntities(story.summary) : "";
   return (
     <div className="relative overflow-hidden rounded-xl border border-border bg-surface">
@@ -193,8 +192,8 @@ function Hero({ story }: { story: NewsStory }) {
           </span>
         </div>
         <div className="p-3 pr-12">
-          <h2 className="text-lg font-semibold leading-snug tracking-tight">{title}</h2>
-          {summary ? (
+          <h2 className="text-lg font-semibold leading-snug tracking-tight">{displayTitle(story.title)}</h2>
+          {summary && !/https?:\/\//i.test(summary) ? (
             <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">{summary}</p>
           ) : null}
           <p className="mt-1.5 text-xs text-subtle">
@@ -267,6 +266,24 @@ function Chip({ active, onClick, label }: { active: boolean; onClick: () => void
       {label}
     </button>
   );
+}
+
+function displayTitle(raw: string): string {
+  return decodeHtmlEntities(raw)
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/^#\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isCleanTitle(raw: string): boolean {
+  const title = displayTitle(raw);
+  return title.length >= 12 && title.length <= 160 && !/https?:\/\//i.test(title);
+}
+
+function isUsableHero(s: NewsStory): boolean {
+  if (!s.image || looksGenericThumb(s.image)) return false;
+  return isCleanTitle(s.title);
 }
 
 function unique(values: string[]): string[] {
