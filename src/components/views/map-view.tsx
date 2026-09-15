@@ -454,6 +454,18 @@ export function MapView({
     };
   }, [ready, active, witnessPickingOnMap, setWitnessDraft, setWitnessPickingOnMap, setWitnessOpen]);
 
+  // Map uses portal-based sheets on mobile. When the Map tab isn't active, ensure
+  // any open sheets are closed so they don't overlay other views.
+  useEffect(() => {
+    if (active) return;
+    setMapFilterOpen(false);
+    setCoverageOpen(false);
+    setListOpen(false);
+    setLegendOpen(false);
+    setWitnessPickingOnMap(false);
+    setSheetSnap(MAP_SNAP_POINTS[0]);
+  }, [active, setWitnessPickingOnMap]);
+
   function fitCounty() {
     const ctx = mapRef.current;
     if (!ctx) return;
@@ -1056,7 +1068,7 @@ export function MapView({
         ) : null}
       </div>
 
-      {isBelowLg ? (
+      {isBelowLg && active ? (
         <Drawer.Root
           defaultOpen
           modal={false}
