@@ -1,4 +1,4 @@
-import { keepSocialItem } from "./live-keep";
+import { hasClearIncidentLanguageForNewsroomSocial, keepSocialItem } from "./live-keep";
 import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
@@ -535,6 +535,17 @@ function stripSource(title: string): string {
 function keep(title: string, summary: string, feed: SocialFeed, now: number, published: number): boolean {
   const hay = `${title} ${summary}`;
   if (feed.titleMust && !feed.titleMust.test(title)) return false;
+  // Newsroom pages are noisy. For non-official newsroom social, require clear incident language
+  // so policy/politics/features don't become Live incidents.
+  if (
+    !feed.official &&
+    /^(?:Facebook|X)\s+·\s+(?:CBS6|NEWS10|WNYT|Spectrum News 1|Daily Gazette|Troy Record|Times Union|WAMC)\b/i.test(
+      feed.outlet,
+    ) &&
+    !hasClearIncidentLanguageForNewsroomSocial({ title, summary })
+  ) {
+    return false;
+  }
   if (
     !keepSocialItem(
       {

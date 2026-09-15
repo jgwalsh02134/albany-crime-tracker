@@ -63,7 +63,7 @@ export const NEWS_FEEDS: NewsFeed[] = [
     crimeOnly: true,
   },
   {
-    url: "https://news.google.com/rss/search?q=site:patch.com/new-york+(colonie+OR+bethlehem+OR+latham)+(police+OR+crash+OR+arrest)+when:3d&hl=en-US&gl=US&ceid=US:en",
+    url: "https://news.google.com/rss/search?q=site:patch.com/new-york+(colonie+OR+bethlehem+OR+latham)+(police+OR+crash+OR+arrest+OR+fire+OR+shooting+OR+ems+OR+ambulance+OR+dwi)+when:3d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Patch",
     crimeOnly: true,
   },
@@ -78,7 +78,7 @@ export const NEWS_FEEDS: NewsFeed[] = [
     crimeOnly: true,
   },
   {
-    url: "https://news.google.com/rss/search?q=(%22Central+Avenue%22+OR+%22Western+Avenue%22+OR+%22Wolf+Road%22)+(Albany+OR+Colonie)+(crash+OR+arrest+OR+fire+OR+shooting+OR+police)+when:2d&hl=en-US&gl=US&ceid=US:en",
+    url: "https://news.google.com/rss/search?q=(%22Central+Avenue%22+OR+%22Western+Avenue%22+OR+%22Wolf+Road%22)+(Albany+OR+Colonie+OR+Latham)+(crash+OR+arrest+OR+fire+OR+shooting+OR+police)+when:2d&hl=en-US&gl=US&ceid=US:en",
     outlet: "Corridor news",
     crimeOnly: true,
   },

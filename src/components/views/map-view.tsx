@@ -248,7 +248,10 @@ export function MapView({
   const setMapCoverage = useAppStore((s) => s.setMapCoverage);
   const theme = useAppStore((s) => s.theme);
 
-  const colonieFocused = areaFilter === "Colonie" || (municipalities.length === 1 && municipalities[0] === "Colonie");
+  const colonieNear =
+    liveNearMe && nearPos ? haversineKm({ lat: nearPos.lat, lng: nearPos.lng }, { lat: 42.7179, lng: -73.8373 }) <= 10 : false;
+  const colonieFocused =
+    areaFilter === "Colonie" || (municipalities.length === 1 && municipalities[0] === "Colonie") || colonieNear;
   const coverage = useMemo(() => coverageSummary({ health: wireHealth, colonieFocused }), [wireHealth, colonieFocused]);
   const legendColors = useMemo(() => {
     return {
@@ -1023,7 +1026,9 @@ export function MapView({
           </p>
         ) : !listOpen && filtered.length === 0 ? (
           <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
-            No incidents match your filters in this window.
+            {colonieFocused
+              ? "No incidents match your filters in this window. Colonie Police radio is encrypted — missing police calls can be a coverage gap."
+              : "No incidents match your filters in this window."}
           </p>
         ) : null}
         {locateErr ? (
@@ -1038,7 +1043,9 @@ export function MapView({
         ) : null}
         {!listOpen && liveNearMe && nearPos && filtered.length === 0 ? (
           <p className="pointer-events-none mt-2 rounded-lg bg-surface/95 px-3 py-2 text-center text-sm leading-snug text-muted">
-            No incidents within ~{liveNearMiles} mi in this window.
+            {colonieFocused
+              ? `No incidents within ~${liveNearMiles} mi in this window. Colonie Police radio is encrypted — treat missing police calls as a coverage gap.`
+              : `No incidents within ~${liveNearMiles} mi in this window.`}
           </p>
         ) : null}
       </div>

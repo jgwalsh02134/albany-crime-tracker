@@ -26,8 +26,9 @@ export function liveWindowHonesty(opts: {
   nowItems: Incident[];
   liveItems: Incident[];
   sourceLens?: string;
+  colonieFocused?: boolean;
 }): LiveWindowHonesty {
-  const { health, nowItems, liveItems, sourceLens = "all" } = opts;
+  const { health, nowItems, liveItems, sourceLens = "all", colonieFocused = false } = opts;
   const traffic = health?.traffic ?? 0;
   const civic = health?.civic ?? 0;
   const nws = health?.nws ?? 0;
@@ -85,7 +86,9 @@ export function liveWindowHonesty(opts: {
     return {
       tone: "blotter-only",
       last3hCopy:
-        "No official blotter updates since the 7 AM dump — and no radio / 511 / news in the last 3 hours.",
+        `No official blotter updates since the 7 AM dump — and no radio / 511 / news in the last 3 hours.${
+          colonieFocused ? " Colonie Police radio is encrypted — missing police calls can be a coverage gap." : ""
+        }`,
       emptyFilterCopy:
         "Nothing in this filter. Official blotter is overnight; daytime radio and 511 fill the gap when they fire.",
     };
@@ -104,7 +107,9 @@ export function liveWindowHonesty(opts: {
   return {
     tone: "quiet",
     last3hCopy:
-      "Nothing in the last 3 hours in this view. Overnight blotter still lists under Since 7 AM / NYSP overnight.",
+      `Nothing in the last 3 hours in this view. Overnight blotter still lists under Since 7 AM / NYSP overnight.${
+        colonieFocused ? " Colonie Police radio is encrypted — missing police calls can be a coverage gap." : ""
+      }`,
     emptyFilterCopy:
       "Nothing in this filter. Radio and 511 cover the hours since the 7 AM blotter when they have traffic (and when the pipes are up).",
   };
