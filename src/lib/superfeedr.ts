@@ -14,6 +14,9 @@ const DROP =
   /\b(weather forecast|sports|football|baseball|soccer|high school|recipe|job posting|concert|festival|fitness)\b/i;
 const NYC_NOT_OURS = /\b(brooklyn|queens|bronx|manhattan|nycha|albany houses)\b/i;
 
+const CIVIC_EVENTISH_TITLE =
+  /\b(craft\s+fair|vendor|festival|fair\b|farmers?\s+market|parade|fundraiser|concert|movie\s+night|open\s+house|meeting|agenda|minutes|public\s+hearing|board\s+of|planning\s+board|zoning|work\s+session)\b|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?\s+\d{1,2}(?:st|nd|rd|th)?\b|\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/i;
+
 const MAX_ITEMS = 80;
 const KEEP_MS = 72 * 60 * 60_000;
 
@@ -48,11 +51,14 @@ function xmlTag(block: string, name: string): string {
   return m ? decode(m[1]!) : "";
 }
 
-function keepItem(title: string, summary: string): boolean {
+function keepItem(title: string, summary: string, outlet: string): boolean {
   const hay = `${title} ${summary}`;
   if (!title.trim()) return false;
   if (DROP.test(hay) || NYC_NOT_OURS.test(hay)) return false;
   if (!LOCAL.test(hay)) return false;
+  // Civic feeds sometimes contain community calendar posts whose body includes "fire/police" nav text.
+  // Drop event-style civic titles unless the title itself matches public-safety language.
+  if (/^Civic ·/i.test(outlet) && CIVIC_EVENTISH_TITLE.test(title) && !CRIME.test(title)) return false;
   return CRIME.test(hay) || LOCAL.test(title);
 }
 
@@ -64,7 +70,7 @@ function toWireItem(input: {
   summary: string;
   publishedAt: number;
 }): LiveWireItem | null {
-  if (!keepItem(input.title, input.summary)) return null;
+  if (!keepItem(input.title, input.summary, input.outlet)) return null;
   const hay = `${input.title} ${input.summary}`;
   const place = placeFromText(hay);
   const pin = locateSpoken(hay, place?.name || "");

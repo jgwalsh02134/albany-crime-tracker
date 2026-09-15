@@ -241,7 +241,12 @@ function geoClose(a: FuseItem, b: FuseItem): boolean {
   const genericB = !mb || GENERIC_MUNI.test(mb);
   if (hasPin(a) && hasPin(b)) {
     const km = haversineKm({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! });
-    if (km <= 1.6) return true;
+    // Very close pins can still be the same place even when municipal labels differ (border streets).
+    if (km <= 0.35) return true;
+    // Do not treat "nearby" as a place match across two concrete different municipalities.
+    // This prevents mega-incidents fused from adjacent towns' unrelated posts.
+    const muniConflict = ma && mb && ma !== mb && !genericA && !genericB;
+    if (!muniConflict && km <= 1.6) return true;
     if (km <= 4 && ma && mb && ma === mb && !genericA) return true;
     // When one pin is explicitly approximate (town centroid / unknown), allow a wider in-town radius.
     if (km <= 12 && ma && mb && ma === mb && !genericA && (isApproxGeoPrecision(a.geoPrecision) || isApproxGeoPrecision(b.geoPrecision))) {
@@ -278,8 +283,16 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
   const cb = callOf(b);
   if (!kindsCompatible(ca, cb)) return false;
   if (Math.abs(a.minutesAgo - b.minutesAgo) > windowMin(a, b)) return false;
+  const ma = normMuni(a.municipality);
+  const mb = normMuni(b.municipality);
+  const concreteA = Boolean(ma && !GENERIC_MUNI.test(ma));
+  const concreteB = Boolean(mb && !GENERIC_MUNI.test(mb));
+  const muniConflict = concreteA && concreteB && ma !== mb;
   const place = geoClose(a, b);
   const hit = tokenHit(a, b);
+  const street = sharesStreetKey(a, b);
+  const km =
+    hasPin(a) && hasPin(b) ? haversineKm({ lat: a.lat!, lng: a.lng! }, { lat: b.lat!, lng: b.lng! }) : Number.POSITIVE_INFINITY;
   // Do not let a weak/unknown-place scanner dissolve into blotter/news on muni alone —
   // that zeros the Radio lens and hides real captions from Last 3 hours.
   const weakScan = weakScannerPlace(a) || weakScannerPlace(b);
@@ -291,10 +304,40 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
     // If both sides have a real pin and it's close, allow the fuse even when the scanner row's
     // address/muni strings are weak. This prevents "scanner then newsroom" upgrades from
     // showing as duplicates while still blocking muni-only dissolves.
+    if (muniConflict) {
+      // Across towns, require street evidence or extremely close precise pins + same call family.
+      if (street.shared && ca.family === cb.family && ca.family !== "other") return hit >= (street.common ? 3 : 2);
+      if (
+        place &&
+        km <= 0.35 &&
+        !isApproxGeoPrecision(a.geoPrecision) &&
+        !isApproxGeoPrecision(b.geoPrecision) &&
+        ca.family === cb.family &&
+        ca.family !== "other"
+      ) {
+        return hit >= 1;
+      }
+      return false;
+    }
     if (place && hit >= 2) return true;
-    const street = sharesStreetKey(a, b);
     if (street.shared) return hit >= (street.common ? 2 : 1);
     return hit >= 3 && Boolean(extractStreetHint(a) && extractStreetHint(b));
+  }
+  if (muniConflict) {
+    // Harder fusion when municipalities differ: never fuse on "nearby pin + same family/type" alone.
+    // Require shared street evidence (and higher token hit), or an extremely close precise pin match.
+    if (street.shared && ca.family === cb.family && ca.family !== "other") return hit >= (street.common ? 3 : 2);
+    if (
+      place &&
+      km <= 0.35 &&
+      !isApproxGeoPrecision(a.geoPrecision) &&
+      !isApproxGeoPrecision(b.geoPrecision) &&
+      ca.family === cb.family &&
+      ca.family !== "other"
+    ) {
+      return hit >= 1;
+    }
+    return false;
   }
   if (place) return hit >= 1 || ca.type === cb.type;
   // Weak geo: only fuse when titles clearly overlap (same street / same event words).

@@ -121,6 +121,39 @@ describe("shouldFuse", () => {
     assert.ok(haversineKm({ lat: colonie.lat!, lng: colonie.lng! }, { lat: troy.lat!, lng: troy.lng! }) > 2);
     assert.equal(shouldFuse(colonie, troy), false);
   });
+
+  it("does not fuse a Menands civic community event with a nearby Watervliet fire", () => {
+    // Regression for production incident evt-c7oxzy:
+    // a civic "craft fair" post (event/calendar) must not anchor/fuse into an unrelated nearby fire cluster.
+    const civicEvent = item({
+      id: "civic-menands-evt",
+      title: "Menands St. Patrick’s Club Vendor Craft Fair | September 20th",
+      kind: "news",
+      outlet: "Civic · Menands",
+      municipality: "Menands",
+      address: "Broadway",
+      // Within the old 1.6km fuse radius, but across a different concrete municipality.
+      lat: 42.7072,
+      lng: -73.7212,
+      minutesAgo: 32,
+      // Some WordPress feeds include boilerplate/nav text like "Fire District", which previously caused
+      // this to be misclassified as a fire and fuse on proximity alone.
+      summary: "Community calendar post. Menands Fire District info may appear in site boilerplate.",
+    });
+    const watervlietFire = item({
+      id: "x-news10-fire",
+      title: "Watervliet structure fire developing",
+      kind: "social",
+      outlet: "X · NEWS10",
+      municipality: "Watervliet",
+      address: "2nd Avenue",
+      lat: 42.7144,
+      lng: -73.7148,
+      minutesAgo: 28,
+      summary: "Fire crews responding to a reported structure fire.",
+    });
+    assert.equal(shouldFuse(civicEvent, watervlietFire), false);
+  });
 });
 
 describe("corroboration", () => {

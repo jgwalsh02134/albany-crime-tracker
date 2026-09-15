@@ -15,7 +15,7 @@ const CONCURRENCY = 4;
 const INCIDENT =
   /\b(crash|collision|shot|shooting|homicide|murder|stabbing|stab|robbery|arrests?|arrested|fire|blaze|killed|injured|fatal|burglary|assault|charg(?:e|ed|es|ing)|carjack|wanted|bomb|arson|hit-and-run|dwi|intoxicated|investigation|narcotics|gunfire|missing|head-on|vehicle|road closure|lane closure|road closed|traffic alert|shelter(?:-|\s*)in(?:-|\s*)place|evacuat(?:e|ion)|boil water|water main break|hazmat|gas leak|power lines? down)\b/i;
 const DROP =
-  /\b(help wanted|hiring|playground|rabies|no parking|sewer|assistant coordinator|records clerk|budget|fiscal|midyear|phishing scam|found dog|found pet)\b/i;
+  /\b(help wanted|hiring|playground|rabies|no parking|sewer|assistant coordinator|records clerk|budget|fiscal|midyear|phishing scam|found dog|found pet|craft\s+fair|vendor|festival|parade|fundraiser|farmers?\s+market|open\s+house|agenda|minutes|board\s+meeting|public\s+hearing|planning\s+board|zoning|work\s+session)\b/i;
 const SEVERE_WX =
   /\b(tornado warning|flash flood warning|severe thunderstorm warning|extreme wind warning|blizzard warning|ice storm warning|winter storm warning|civil emergency|amber alert|missing (?:child|person)|shelter.in.place|evacuation)\b/i;
 
@@ -89,6 +89,11 @@ const CIVIC_FEEDS: CivicFeed[] = [
   },
 ];
 
+// Community calendar / event announcements should not become "Live incidents" unless
+// the civic post title itself contains clear incident language.
+const EVENTISH_TITLE =
+  /\b(craft\s+fair|vendor|festival|fair\b|farmers?\s+market|parade|fundraiser|concert|movie\s+night|open\s+house|meeting|agenda|minutes|public\s+hearing|board\s+of|planning\s+board|zoning|work\s+session)\b|\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?\s+\d{1,2}(?:st|nd|rd|th)?\b|\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/i;
+
 function decode(raw: string): string {
   const s = raw
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -139,6 +144,10 @@ async function fetchCivicFeed(feed: CivicFeed, now: number): Promise<LiveWireIte
       const url = tag(block, "link") || tag(block, "guid");
       const summary = tag(block, "description");
       if (!title || !url) continue;
+      // Drop community calendar/event posts (especially WordPress civic sites) unless the title clearly
+      // looks like an incident/alert. This prevents unrelated civic "events" from becoming an
+      // official anchor that then fuses nearby social posts into a mega-incident.
+      if (EVENTISH_TITLE.test(title) && !INCIDENT.test(title)) continue;
       const hay = `${title} ${summary}`;
       if (DROP.test(hay) || !INCIDENT.test(hay)) continue;
       const published = Date.parse(tag(block, "pubDate")) || now;
