@@ -4,6 +4,7 @@ import { ChevronRight, LocateFixed, Megaphone, ShieldAlert, SlidersHorizontal } 
 import { CoverageDrawer } from "@/components/coverage-drawer";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentDetail } from "@/components/incident-detail";
+import { NearbyAlertsCard } from "@/components/nearby-alerts-card";
 import { NewsView } from "@/components/views/news-view";
 import { coverageSummary } from "@/lib/coverage";
 import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
@@ -460,6 +461,10 @@ function LiveList({
               ) : null}
             </div>
           </div>
+        </div>
+
+        <div className="mb-3">
+          <NearbyAlertsCard variant="inline" />
         </div>
 
         {showing.length === 0 ? (

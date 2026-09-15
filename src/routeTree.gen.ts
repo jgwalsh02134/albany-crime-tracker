@@ -16,6 +16,10 @@ import { Route as ApiWitnessRouteImport } from './routes/api.witness'
 import { Route as IIdRouteImport } from './routes/i.$id'
 import { Route as ApiOgIdRouteImport } from './routes/api.og.$id'
 import { Route as ApiPublicLiveRouteImport } from './routes/api.public.live'
+import { Route as ApiPushStatusRouteImport } from './routes/api.push.status'
+import { Route as ApiPushSubscribeRouteImport } from './routes/api.push.subscribe'
+import { Route as ApiPushTestRouteImport } from './routes/api.push.test'
+import { Route as ApiPushUnsubscribeRouteImport } from './routes/api.push.unsubscribe'
 import { Route as ApiSuperfeedrSubscribeRouteImport } from './routes/api.superfeedr.subscribe'
 import { Route as ApiSuperfeedrWebhookRouteImport } from './routes/api.superfeedr.webhook'
 import { Route as ApiPublicLiveRssRouteImport } from './routes/api.public.live.rss'
@@ -55,6 +59,26 @@ const ApiPublicLiveRoute = ApiPublicLiveRouteImport.update({
   path: '/api/public/live',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPushStatusRoute = ApiPushStatusRouteImport.update({
+  id: '/api/push/status',
+  path: '/api/push/status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPushSubscribeRoute = ApiPushSubscribeRouteImport.update({
+  id: '/api/push/subscribe',
+  path: '/api/push/subscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPushTestRoute = ApiPushTestRouteImport.update({
+  id: '/api/push/test',
+  path: '/api/push/test',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPushUnsubscribeRoute = ApiPushUnsubscribeRouteImport.update({
+  id: '/api/push/unsubscribe',
+  path: '/api/push/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSuperfeedrSubscribeRoute = ApiSuperfeedrSubscribeRouteImport.update({
   id: '/api/superfeedr/subscribe',
   path: '/api/superfeedr/subscribe',
@@ -79,6 +103,10 @@ export interface FileRoutesByFullPath {
   '/i/$id': typeof IIdRoute
   '/api/og/$id': typeof ApiOgIdRoute
   '/api/public/live': typeof ApiPublicLiveRouteWithChildren
+  '/api/push/status': typeof ApiPushStatusRoute
+  '/api/push/subscribe': typeof ApiPushSubscribeRoute
+  '/api/push/test': typeof ApiPushTestRoute
+  '/api/push/unsubscribe': typeof ApiPushUnsubscribeRoute
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
   '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
   '/api/public/live/rss': typeof ApiPublicLiveRssRoute
@@ -91,6 +119,10 @@ export interface FileRoutesByTo {
   '/i/$id': typeof IIdRoute
   '/api/og/$id': typeof ApiOgIdRoute
   '/api/public/live': typeof ApiPublicLiveRouteWithChildren
+  '/api/push/status': typeof ApiPushStatusRoute
+  '/api/push/subscribe': typeof ApiPushSubscribeRoute
+  '/api/push/test': typeof ApiPushTestRoute
+  '/api/push/unsubscribe': typeof ApiPushUnsubscribeRoute
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
   '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
   '/api/public/live/rss': typeof ApiPublicLiveRssRoute
@@ -104,6 +136,10 @@ export interface FileRoutesById {
   '/i/$id': typeof IIdRoute
   '/api/og/$id': typeof ApiOgIdRoute
   '/api/public/live': typeof ApiPublicLiveRouteWithChildren
+  '/api/push/status': typeof ApiPushStatusRoute
+  '/api/push/subscribe': typeof ApiPushSubscribeRoute
+  '/api/push/test': typeof ApiPushTestRoute
+  '/api/push/unsubscribe': typeof ApiPushUnsubscribeRoute
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
   '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
   '/api/public/live/rss': typeof ApiPublicLiveRssRoute
@@ -118,6 +154,10 @@ export interface FileRouteTypes {
     | '/i/$id'
     | '/api/og/$id'
     | '/api/public/live'
+    | '/api/push/status'
+    | '/api/push/subscribe'
+    | '/api/push/test'
+    | '/api/push/unsubscribe'
     | '/api/superfeedr/subscribe'
     | '/api/superfeedr/webhook'
     | '/api/public/live/rss'
@@ -130,6 +170,10 @@ export interface FileRouteTypes {
     | '/i/$id'
     | '/api/og/$id'
     | '/api/public/live'
+    | '/api/push/status'
+    | '/api/push/subscribe'
+    | '/api/push/test'
+    | '/api/push/unsubscribe'
     | '/api/superfeedr/subscribe'
     | '/api/superfeedr/webhook'
     | '/api/public/live/rss'
@@ -142,6 +186,10 @@ export interface FileRouteTypes {
     | '/i/$id'
     | '/api/og/$id'
     | '/api/public/live'
+    | '/api/push/status'
+    | '/api/push/subscribe'
+    | '/api/push/test'
+    | '/api/push/unsubscribe'
     | '/api/superfeedr/subscribe'
     | '/api/superfeedr/webhook'
     | '/api/public/live/rss'
@@ -155,6 +203,10 @@ export interface RootRouteChildren {
   IIdRoute: typeof IIdRoute
   ApiOgIdRoute: typeof ApiOgIdRoute
   ApiPublicLiveRoute: typeof ApiPublicLiveRouteWithChildren
+  ApiPushStatusRoute: typeof ApiPushStatusRoute
+  ApiPushSubscribeRoute: typeof ApiPushSubscribeRoute
+  ApiPushTestRoute: typeof ApiPushTestRoute
+  ApiPushUnsubscribeRoute: typeof ApiPushUnsubscribeRoute
   ApiSuperfeedrSubscribeRoute: typeof ApiSuperfeedrSubscribeRoute
   ApiSuperfeedrWebhookRoute: typeof ApiSuperfeedrWebhookRoute
 }
@@ -210,6 +262,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicLiveRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/push/status': {
+      id: '/api/push/status'
+      path: '/api/push/status'
+      fullPath: '/api/push/status'
+      preLoaderRoute: typeof ApiPushStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/push/subscribe': {
+      id: '/api/push/subscribe'
+      path: '/api/push/subscribe'
+      fullPath: '/api/push/subscribe'
+      preLoaderRoute: typeof ApiPushSubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/push/test': {
+      id: '/api/push/test'
+      path: '/api/push/test'
+      fullPath: '/api/push/test'
+      preLoaderRoute: typeof ApiPushTestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/push/unsubscribe': {
+      id: '/api/push/unsubscribe'
+      path: '/api/push/unsubscribe'
+      fullPath: '/api/push/unsubscribe'
+      preLoaderRoute: typeof ApiPushUnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/superfeedr/subscribe': {
       id: '/api/superfeedr/subscribe'
       path: '/api/superfeedr/subscribe'
@@ -254,6 +334,10 @@ const rootRouteChildren: RootRouteChildren = {
   IIdRoute: IIdRoute,
   ApiOgIdRoute: ApiOgIdRoute,
   ApiPublicLiveRoute: ApiPublicLiveRouteWithChildren,
+  ApiPushStatusRoute: ApiPushStatusRoute,
+  ApiPushSubscribeRoute: ApiPushSubscribeRoute,
+  ApiPushTestRoute: ApiPushTestRoute,
+  ApiPushUnsubscribeRoute: ApiPushUnsubscribeRoute,
   ApiSuperfeedrSubscribeRoute: ApiSuperfeedrSubscribeRoute,
   ApiSuperfeedrWebhookRoute: ApiSuperfeedrWebhookRoute,
 }

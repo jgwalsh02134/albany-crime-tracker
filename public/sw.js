@@ -107,3 +107,48 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+// Web Push MVP: show a notification with a deep link.
+self.addEventListener("push", (event) => {
+  event.waitUntil(
+    (async () => {
+      let data = null;
+      try {
+        data = event.data ? event.data.json() : null;
+      } catch {
+        data = { title: "Albany Watch", body: (event.data && typeof event.data.text === "function" ? event.data.text() : "") };
+      }
+      const title = String(data?.title || "Albany Watch").slice(0, 120);
+      const body = String(data?.body || "").slice(0, 240);
+      const url = String(data?.url || "/").trim() || "/";
+      const tag = String(data?.tag || "").slice(0, 120) || undefined;
+      await self.registration.showNotification(title, {
+        body,
+        tag,
+        data: { url },
+        icon: "/icon-192.png",
+        badge: "/favicon-32.png",
+      });
+    })(),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification?.data?.url || "/";
+  event.waitUntil(
+    (async () => {
+      const clientsList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of clientsList) {
+        try {
+          await client.focus();
+          if ("navigate" in client) await client.navigate(url);
+          return;
+        } catch {
+          // keep searching
+        }
+      }
+      if (self.clients.openWindow) await self.clients.openWindow(url);
+    })(),
+  );
+});
+
