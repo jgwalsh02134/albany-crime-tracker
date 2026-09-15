@@ -10,6 +10,7 @@ import { coverageSummary } from "@/lib/coverage";
 import { lastHours } from "@/lib/data";
 import { haversineKm, isApproxPrecision } from "@/lib/geo";
 import { decodeHtmlEntities } from "@/lib/html";
+import { incidentProvenancePill, incidentSourcePill } from "@/lib/incident-pills";
 import { incidentMatchesSourceGroup, incidentVerification, isOfficialIncident, mapKindOf } from "@/lib/map";
 import { type NearMePos } from "@/lib/near-me-empty-state";
 import { mapSharePayload } from "@/lib/share";
@@ -930,15 +931,8 @@ export function MapView({
             <ul className="divide-y divide-border">
               {filtered.map((inc) => {
                 const approx = isApproxPrecision(inc.geoPrecision);
-                const prov = isOfficialIncident(inc)
-                  ? ({ label: "Official", tone: "cyan" } as const)
-                  : isWitnessIncident(inc)
-                    ? ({ label: "Witness", tone: "gold" } as const)
-                    : incidentVerification(inc) === "scanner"
-                      ? ({ label: "Scanner", tone: "accent" } as const)
-                      : inc.sources.some((s) => s.kind === "social")
-                        ? ({ label: "Unconfirmed", tone: "gold" } as const)
-                        : ({ label: "Developing", tone: "muted" } as const);
+                const prov = incidentProvenancePill(inc);
+                const src = incidentSourcePill(inc);
 
                 return (
                   <li key={inc.id}>
@@ -962,6 +956,9 @@ export function MapView({
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-1.5">
                           <Badge tone={prov.tone}>{prov.label}</Badge>
+                          <Badge tone={src.tone} className="normal-case tracking-normal">
+                            {src.label}
+                          </Badge>
                           {approx ? (
                             <Badge tone="muted" className="normal-case tracking-normal">
                               Approx
@@ -1038,15 +1035,8 @@ export function MapView({
                   <ul className="space-y-2">
                     {filtered.map((inc) => {
                       const approx = isApproxPrecision(inc.geoPrecision);
-                      const prov = isOfficialIncident(inc)
-                        ? ({ label: "Official", tone: "cyan" } as const)
-                        : isWitnessIncident(inc)
-                          ? ({ label: "Witness", tone: "gold" } as const)
-                          : incidentVerification(inc) === "scanner"
-                            ? ({ label: "Scanner", tone: "accent" } as const)
-                            : inc.sources.some((s) => s.kind === "social")
-                              ? ({ label: "Unconfirmed", tone: "gold" } as const)
-                              : ({ label: "Developing", tone: "muted" } as const);
+                      const prov = incidentProvenancePill(inc);
+                      const src = incidentSourcePill(inc);
 
                       return (
                         <li key={inc.id}>
@@ -1071,6 +1061,9 @@ export function MapView({
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   <Badge tone={prov.tone}>{prov.label}</Badge>
+                                  <Badge tone={src.tone} className="normal-case tracking-normal">
+                                    {src.label}
+                                  </Badge>
                                   {approx ? (
                                     <Badge tone="muted" className="normal-case tracking-normal">
                                       Approx
