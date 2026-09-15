@@ -19,6 +19,7 @@ import { type Incident, type Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
 import type { WireHealth } from "@/lib/sources";
+import { isWitnessIncident } from "@/lib/witness";
 
 const FALLBACK: Record<Severity, string> = {
   critical: "#ff8a22",
@@ -67,11 +68,13 @@ function pinLabel(inc: Incident): string {
   const approx = isApproxPrecision(inc.geoPrecision) ? "approximate location" : "street-level pin";
   const sig = isOfficialIncident(inc)
     ? "official"
-    : incidentVerification(inc) === "scanner"
-      ? "scanner (early)"
-      : inc.sources.some((s) => s.kind === "social")
-        ? "unconfirmed"
-        : "developing";
+    : isWitnessIncident(inc)
+      ? "witness"
+      : incidentVerification(inc) === "scanner"
+        ? "scanner (early)"
+        : inc.sources.some((s) => s.kind === "social")
+          ? "unconfirmed"
+          : "developing";
   const title = decodeHtmlEntities(inc.title);
   return [inc.agency, title, inc.address, when, typeLabel(inc.type), severityLabel(inc.severity), sig, approx]
     .filter(Boolean)
@@ -96,11 +99,13 @@ function tipNode(inc: Incident): HTMLElement {
   const approx = isApproxPrecision(inc.geoPrecision) ? " · approx" : "";
   const sig = isOfficialIncident(inc)
     ? "Official"
-    : incidentVerification(inc) === "scanner"
-      ? "Scanner (early)"
-      : inc.sources.some((s) => s.kind === "social")
-        ? "Unconfirmed"
-        : "Developing";
+    : isWitnessIncident(inc)
+      ? "Witness"
+      : incidentVerification(inc) === "scanner"
+        ? "Scanner (early)"
+        : inc.sources.some((s) => s.kind === "social")
+          ? "Unconfirmed"
+          : "Developing";
   kind.textContent = `${sig} · ${typeLabel(inc.type)} · ${severityLabel(inc.severity)}${approx}`;
   root.append(agency, title, meta, kind);
   return root;
@@ -126,6 +131,8 @@ type ClusterProps = {
   sevRank: number;
   official: 0 | 1;
   scanner: 0 | 1;
+  unconfirmed: 0 | 1;
+  witness: 0 | 1;
   approx: 0 | 1;
   count: number;
 };
@@ -164,9 +171,7 @@ function verificationLabel(v: MapVerification): string {
   return v === "confirmed" ? "Official" : v === "developing" ? "Developing" : "Scanner (early)";
 }
 
-function clusterBadgeHtml(n: number, color: string, tone: "official" | "scanner" | "mixed") {
-  const tag =
-    tone === "official" ? "✓" : tone === "scanner" ? "…" : "";
+function clusterBadgeHtml(n: number, color: string, tag: string) {
   const label = n >= 1000 ? `${Math.round(n / 100) / 10}k` : String(n);
   return `<span class="act-pin-badge-inner" style="--m:${color}">${label}${tag ? `<span style="margin-left:2px;opacity:.9">${tag}</span>` : ""}</span>`;
 }
@@ -205,6 +210,7 @@ export function MapView({
   const [locateErr, setLocateErr] = useState<string>("");
   const [nearPos, setNearPos] = useState<NearMePos | null>(null);
   const [nearLocateErr, setNearLocateErr] = useState<string>("");
+  const [legendOpen, setLegendOpen] = useState(false);
 
   const severities = useAppStore((s) => s.severities);
   const municipalities = useAppStore((s) => s.municipalities);
@@ -236,6 +242,13 @@ export function MapView({
 
   const colonieFocused = areaFilter === "Colonie" || (municipalities.length === 1 && municipalities[0] === "Colonie");
   const coverage = useMemo(() => coverageSummary({ health: wireHealth, colonieFocused }), [wireHealth, colonieFocused]);
+  const legendColors = useMemo(() => {
+    return {
+      accent: cssVar("--accent", "#ff8a22"),
+      cyan: cssVar("--cyan", "#00e5ff"),
+      gold: cssVar("--gold", "#ffd54f"),
+    };
+  }, [theme]);
 
   const requestNearLocation = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
@@ -442,6 +455,8 @@ export function MapView({
         sevRank: p.sevRank,
         official: p.official,
         scanner: p.scanner,
+        unconfirmed: p.unconfirmed,
+        witness: p.witness,
         approx: p.approx,
         count: 1,
       }),
@@ -450,6 +465,8 @@ export function MapView({
         acc.sevRank = Math.min(acc.sevRank, p.sevRank);
         acc.official = acc.official || p.official ? 1 : 0;
         acc.scanner = acc.scanner || p.scanner ? 1 : 0;
+        acc.unconfirmed = acc.unconfirmed || p.unconfirmed ? 1 : 0;
+        acc.witness = acc.witness || p.witness ? 1 : 0;
         acc.approx = acc.approx || p.approx ? 1 : 0;
         acc.count += p.count;
       },
@@ -460,6 +477,8 @@ export function MapView({
       byId.set(inc.id, inc);
       const official = isOfficialIncident(inc) ? 1 : 0;
       const scanner = incidentVerification(inc) === "scanner" ? 1 : 0;
+      const witness = isWitnessIncident(inc) ? 1 : 0;
+      const unconfirmed = !witness && inc.sources.some((s) => s.kind === "social") ? 1 : 0;
       const approx = isApproxPrecision(inc.geoPrecision) ? 1 : 0;
       const props: ClusterProps = {
         kind: "incident",
@@ -467,6 +486,8 @@ export function MapView({
         sevRank: SEV_RANK[inc.severity] ?? 3,
         official,
         scanner,
+        unconfirmed,
+        witness,
         approx,
         count: 1,
       };
@@ -501,6 +522,7 @@ export function MapView({
     const z = Math.round(map.getZoom());
     const clusters = index.getClusters(bbox, z) as any[];
     const fg = cssVar("--fg", "#f0f4f8");
+    const { accent, cyan, gold } = legendColors;
 
     for (const f of clusters) {
       const [lng, lat] = f.geometry.coordinates;
@@ -511,11 +533,15 @@ export function MapView({
         const sevRank = Number(p.sevRank) || 3;
         const sev = (Object.keys(SEV_RANK).find((k) => SEV_RANK[k as Severity] === sevRank) as Severity) || "low";
         const color = pinColor(sev);
-        const tone: "official" | "scanner" | "mixed" =
-          p.official ? (p.scanner ? "mixed" : "official") : p.scanner ? "scanner" : "mixed";
+        const tags: string[] = [];
+        if (p.official) tags.push("✓");
+        if (p.scanner) tags.push("…");
+        if (p.witness) tags.push("✦");
+        if (p.unconfirmed) tags.push("?");
+        const tag = tags.slice(0, 2).join("");
         const icon = L.divIcon({
           className: "act-pin-badge",
-          html: clusterBadgeHtml(count, color, tone),
+          html: clusterBadgeHtml(count, color, tag),
           iconSize: [28, 28],
           iconAnchor: [14, 14],
         });
@@ -541,8 +567,41 @@ export function MapView({
       const color = pinColor(inc.severity);
       const ring = selected ? fg : approx ? withAlpha(color, 0.85) : withAlpha(fg, 0.55);
       const weight = selected ? 3 : approx ? 2.25 : inc.severity === "critical" || inc.severity === "high" ? 3 : 2.5;
+
+      const witness = isWitnessIncident(inc);
+      const unconfirmed = !witness && inc.sources.some((s) => s.kind === "social");
+      const official = isOfficialIncident(inc);
+      const scanner = incidentVerification(inc) === "scanner";
+
+      const prov =
+        official ? "official" : witness ? "witness" : scanner ? "scanner" : unconfirmed ? "unconfirmed" : "developing";
+      const provColor =
+        prov === "official"
+          ? accent
+          : prov === "scanner"
+            ? cyan
+            : prov === "witness" || prov === "unconfirmed"
+              ? gold
+              : withAlpha(fg, 0.22);
+      const provDash = prov === "scanner" ? "1 6" : prov === "unconfirmed" ? "6 6" : undefined;
+      const baseRadius = selected ? 12 : approx ? 10 : 9;
+
+      if (prov !== "developing") {
+        const halo = L.circleMarker([lat, lng], {
+          radius: baseRadius + 4,
+          color: provColor,
+          weight: selected ? 3.25 : prov === "witness" ? 2.75 : 2.25,
+          fillOpacity: 0,
+          dashArray: provDash,
+          renderer,
+          interactive: false,
+          className: `act-provenance-ring act-prov-${prov}`,
+        });
+        halo.addTo(pinLayer);
+      }
+
       const marker = L.circleMarker([lat, lng], {
-        radius: selected ? 12 : approx ? 10 : 9,
+        radius: baseRadius,
         color: ring,
         weight,
         fillColor: color,
@@ -557,11 +616,6 @@ export function MapView({
       marker.bindTooltip(tipNode(inc), { direction: "top", opacity: 1, className: "act-tip", sticky: true });
       marker.on("click", () => select(inc.id));
       marker.addTo(pinLayer);
-      const node = marker.getElement();
-      if (node) {
-        node.setAttribute("role", "img");
-        node.setAttribute("aria-label", pinLabel(inc));
-      }
     }
   }
 
@@ -708,6 +762,77 @@ export function MapView({
         </div>
       </div>
 
+      <div className="pointer-events-none absolute left-3 top-20 z-10 max-w-[calc(100vw-1.5rem)]">
+        <div className="pointer-events-auto rounded-xl border border-border bg-surface/95 px-3 py-2 shadow-md backdrop-blur">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left"
+            onClick={() => setLegendOpen((o) => !o)}
+            aria-expanded={legendOpen}
+            aria-label={legendOpen ? "Collapse legend" : "Expand legend"}
+          >
+            <span className="text-xs font-semibold uppercase tracking-wide text-subtle">Legend</span>
+            <span className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-fg">
+                <span
+                  className="inline-block size-2.5 rounded-full border-2"
+                  style={{ borderColor: legendColors.accent }}
+                  aria-hidden
+                />
+                <span className="hidden sm:inline">Official</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-fg">
+                <span
+                  className="inline-block size-2.5 rounded-full border-2 border-dashed"
+                  style={{ borderColor: legendColors.cyan }}
+                  aria-hidden
+                />
+                <span className="hidden sm:inline">Scanner</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-fg">
+                <span
+                  className="inline-block size-2.5 rounded-full border-2 border-dashed"
+                  style={{ borderColor: legendColors.gold }}
+                  aria-hidden
+                />
+                <span className="hidden sm:inline">Unconfirmed</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-fg">
+                <span
+                  className="inline-block size-2.5 rounded-full border-2"
+                  style={{ borderColor: legendColors.gold }}
+                  aria-hidden
+                />
+                <span className="hidden sm:inline">Witness</span>
+              </span>
+            </span>
+          </button>
+
+          {legendOpen ? (
+            <div className="mt-2 grid gap-2 text-xs text-muted sm:grid-cols-2">
+              <p className="leading-relaxed">
+                <span className="font-semibold text-fg">Severity</span> is the fill color (critical/high/medium/low).
+              </p>
+              <p className="leading-relaxed">
+                <span className="font-semibold text-fg">Approx pins</span> are lighter with a dashed inner ring.
+              </p>
+              <p className="leading-relaxed">
+                <span className="font-semibold text-fg">Provenance ring</span> wraps the pin:{" "}
+                <span className="font-semibold text-fg">Official</span>,{" "}
+                <span className="font-semibold text-fg">Scanner (early)</span>,{" "}
+                <span className="font-semibold text-fg">Unconfirmed</span>, or{" "}
+                <span className="font-semibold text-fg">Witness</span>.
+              </p>
+              <p className="leading-relaxed">
+                <span className="font-semibold text-fg">Clusters</span> show a count. A <span className="font-semibold text-fg">✓</span>{" "}
+                suggests official; <span className="font-semibold text-fg">…</span> scanner/early;{" "}
+                <span className="font-semibold text-fg">✦</span> witness; <span className="font-semibold text-fg">?</span> unconfirmed.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
       {witnessPickingOnMap ? (
         <div className="pointer-events-none absolute inset-x-3 top-20 z-20">
           <div className="pointer-events-auto rounded-xl border border-accent/35 bg-surface/95 px-3 py-3 shadow-md backdrop-blur">
@@ -804,13 +929,15 @@ export function MapView({
                       <span className="block text-xs font-semibold uppercase tracking-wide text-subtle">
                         {inc.agency} · {typeLabel(inc.type)} · {severityLabel(inc.severity)}
                         {isApproxPrecision(inc.geoPrecision) ? " · approx" : ""}
-                        {isOfficialIncident(inc)
-                          ? " · official"
-                          : incidentVerification(inc) === "scanner"
-                            ? " · scanner"
-                            : inc.sources.some((s) => s.kind === "social")
-                              ? " · unconfirmed"
-                              : ""}
+                    {isOfficialIncident(inc)
+                      ? " · official"
+                      : isWitnessIncident(inc)
+                        ? " · witness"
+                        : incidentVerification(inc) === "scanner"
+                          ? " · scanner"
+                          : inc.sources.some((s) => s.kind === "social")
+                            ? " · unconfirmed"
+                            : ""}
                       </span>
                       <span className="mt-0.5 block text-sm font-semibold leading-snug tracking-tight text-fg">
                         {decodeHtmlEntities(inc.title)}
@@ -1004,8 +1131,13 @@ export function MapView({
                   <span className="font-semibold text-fg">Dashed, lighter pins</span> are approximate (town/county) — never a fake street address.
                 </p>
                 <p>
-                  <span className="font-semibold text-fg">Cluster badges</span> show the count. A <span className="font-semibold text-fg">✓</span> indicates the cluster includes official sources;{" "}
-                  <span className="font-semibold text-fg">…</span> indicates scanner/early reporting activity.
+                  <span className="font-semibold text-fg">Provenance rings</span> wrap pins:{" "}
+                  <span className="font-semibold text-fg">Official</span>, <span className="font-semibold text-fg">Scanner (early)</span>,{" "}
+                  <span className="font-semibold text-fg">Unconfirmed</span>, or <span className="font-semibold text-fg">Witness</span>.
+                </p>
+                <p>
+                  <span className="font-semibold text-fg">Cluster badges</span> show the count. A <span className="font-semibold text-fg">✓</span> suggests the cluster includes official sources;{" "}
+                  <span className="font-semibold text-fg">…</span> suggests scanner/early; <span className="font-semibold text-fg">?</span> suggests unconfirmed/witness activity.
                 </p>
                 <p>
                   <span className="font-semibold text-fg">Color</span> follows severity (critical/high/medium/low).
