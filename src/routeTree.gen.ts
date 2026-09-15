@@ -15,8 +15,10 @@ import { Route as ApiWireRouteImport } from './routes/api.wire'
 import { Route as ApiWitnessRouteImport } from './routes/api.witness'
 import { Route as IIdRouteImport } from './routes/i.$id'
 import { Route as ApiOgIdRouteImport } from './routes/api.og.$id'
+import { Route as ApiPublicLiveRouteImport } from './routes/api.public.live'
 import { Route as ApiSuperfeedrSubscribeRouteImport } from './routes/api.superfeedr.subscribe'
 import { Route as ApiSuperfeedrWebhookRouteImport } from './routes/api.superfeedr.webhook'
+import { Route as ApiPublicLiveRssRouteImport } from './routes/api.public.live.rss'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -48,6 +50,11 @@ const ApiOgIdRoute = ApiOgIdRouteImport.update({
   path: '/api/og/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicLiveRoute = ApiPublicLiveRouteImport.update({
+  id: '/api/public/live',
+  path: '/api/public/live',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiSuperfeedrSubscribeRoute = ApiSuperfeedrSubscribeRouteImport.update({
   id: '/api/superfeedr/subscribe',
   path: '/api/superfeedr/subscribe',
@@ -58,6 +65,11 @@ const ApiSuperfeedrWebhookRoute = ApiSuperfeedrWebhookRouteImport.update({
   path: '/api/superfeedr/webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicLiveRssRoute = ApiPublicLiveRssRouteImport.update({
+  id: '/rss',
+  path: '/rss',
+  getParentRoute: () => ApiPublicLiveRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -66,8 +78,10 @@ export interface FileRoutesByFullPath {
   '/api/witness': typeof ApiWitnessRoute
   '/i/$id': typeof IIdRoute
   '/api/og/$id': typeof ApiOgIdRoute
+  '/api/public/live': typeof ApiPublicLiveRouteWithChildren
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
   '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
+  '/api/public/live/rss': typeof ApiPublicLiveRssRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -76,8 +90,10 @@ export interface FileRoutesByTo {
   '/api/witness': typeof ApiWitnessRoute
   '/i/$id': typeof IIdRoute
   '/api/og/$id': typeof ApiOgIdRoute
+  '/api/public/live': typeof ApiPublicLiveRouteWithChildren
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
   '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
+  '/api/public/live/rss': typeof ApiPublicLiveRssRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -87,8 +103,10 @@ export interface FileRoutesById {
   '/api/witness': typeof ApiWitnessRoute
   '/i/$id': typeof IIdRoute
   '/api/og/$id': typeof ApiOgIdRoute
+  '/api/public/live': typeof ApiPublicLiveRouteWithChildren
   '/api/superfeedr/subscribe': typeof ApiSuperfeedrSubscribeRoute
   '/api/superfeedr/webhook': typeof ApiSuperfeedrWebhookRoute
+  '/api/public/live/rss': typeof ApiPublicLiveRssRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -99,8 +117,10 @@ export interface FileRouteTypes {
     | '/api/witness'
     | '/i/$id'
     | '/api/og/$id'
+    | '/api/public/live'
     | '/api/superfeedr/subscribe'
     | '/api/superfeedr/webhook'
+    | '/api/public/live/rss'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -109,8 +129,10 @@ export interface FileRouteTypes {
     | '/api/witness'
     | '/i/$id'
     | '/api/og/$id'
+    | '/api/public/live'
     | '/api/superfeedr/subscribe'
     | '/api/superfeedr/webhook'
+    | '/api/public/live/rss'
   id:
     | '__root__'
     | '/'
@@ -119,8 +141,10 @@ export interface FileRouteTypes {
     | '/api/witness'
     | '/i/$id'
     | '/api/og/$id'
+    | '/api/public/live'
     | '/api/superfeedr/subscribe'
     | '/api/superfeedr/webhook'
+    | '/api/public/live/rss'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -130,6 +154,7 @@ export interface RootRouteChildren {
   ApiWitnessRoute: typeof ApiWitnessRoute
   IIdRoute: typeof IIdRoute
   ApiOgIdRoute: typeof ApiOgIdRoute
+  ApiPublicLiveRoute: typeof ApiPublicLiveRouteWithChildren
   ApiSuperfeedrSubscribeRoute: typeof ApiSuperfeedrSubscribeRoute
   ApiSuperfeedrWebhookRoute: typeof ApiSuperfeedrWebhookRoute
 }
@@ -178,6 +203,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiOgIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/live': {
+      id: '/api/public/live'
+      path: '/api/public/live'
+      fullPath: '/api/public/live'
+      preLoaderRoute: typeof ApiPublicLiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/superfeedr/subscribe': {
       id: '/api/superfeedr/subscribe'
       path: '/api/superfeedr/subscribe'
@@ -192,8 +224,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSuperfeedrWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/live/rss': {
+      id: '/api/public/live/rss'
+      path: '/rss'
+      fullPath: '/api/public/live/rss'
+      preLoaderRoute: typeof ApiPublicLiveRssRouteImport
+      parentRoute: typeof ApiPublicLiveRoute
+    }
   }
 }
+
+interface ApiPublicLiveRouteChildren {
+  ApiPublicLiveRssRoute: typeof ApiPublicLiveRssRoute
+}
+
+const ApiPublicLiveRouteChildren: ApiPublicLiveRouteChildren = {
+  ApiPublicLiveRssRoute: ApiPublicLiveRssRoute,
+}
+
+const ApiPublicLiveRouteWithChildren = ApiPublicLiveRoute._addFileChildren(
+  ApiPublicLiveRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -202,6 +253,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWitnessRoute: ApiWitnessRoute,
   IIdRoute: IIdRoute,
   ApiOgIdRoute: ApiOgIdRoute,
+  ApiPublicLiveRoute: ApiPublicLiveRouteWithChildren,
   ApiSuperfeedrSubscribeRoute: ApiSuperfeedrSubscribeRoute,
   ApiSuperfeedrWebhookRoute: ApiSuperfeedrWebhookRoute,
 }
