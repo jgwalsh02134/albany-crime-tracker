@@ -4,7 +4,7 @@ import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
 import { NEWS_FEEDS } from "./news-feeds";
-import { decodeHtmlEntities } from "./html";
+import { decodeHtmlEntities, usableExcerpt } from "./html";
 
 const LOCAL =
   /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital region|troop g|clifton park|troy|schenectady|rensselaer|sand lake|schodack|east greenbush)\b/i;
@@ -81,7 +81,7 @@ function toWireItem(input: {
     title: input.title.replace(/\s+/g, " ").trim(),
     url: input.url || input.id,
     outlet: input.outlet || "Superfeedr",
-    summary: (input.summary || input.title).replace(/\s+/g, " ").trim().slice(0, 280),
+    summary: usableExcerpt(input.summary || "", input.title).slice(0, 280),
     publishedAt: new Date(publishedAt).toISOString(),
     minutesAgo: Math.max(0, Math.round((now - publishedAt) / 60_000)),
     kind: "news",

@@ -4,6 +4,7 @@
  * outrank blotter + 511 + news. This is not CAD and does not invent a dispatch board.
  */
 import type { Incident, IncidentSource, SourceKind, SourceTier, Verification } from "./types";
+import { usableExcerpt } from "./html";
 
 export type FuseKind = "news" | "blotter" | "scanner" | "traffic" | "social";
 
@@ -552,7 +553,7 @@ export function itemToSource(item: FuseItem): IncidentSource {
     name: item.outlet,
     tier: familyTier(family),
     url: item.url,
-    excerpt: item.summary || item.title,
+    excerpt: usableExcerpt(item.summary, item.title),
   };
 }
 

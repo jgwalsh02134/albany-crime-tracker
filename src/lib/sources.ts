@@ -1,5 +1,6 @@
 import type { Incident, IncidentSource, ScannerCall, SourceKind, SourceLens, SourceTier, Verification } from "./types";
 import { COUNTY_CENTROID, locateSpoken, placeFromText, spreadItems, type GeoPrecision } from "./geo";
+import { usableExcerpt } from "./html";
 import {
   classifyCall,
   clusterLiveItems,
@@ -396,7 +397,7 @@ export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
       geoPrecision: item.geoPrecision || placed.precision || (item.address && item.address !== "area unknown" ? undefined : "town"),
       agency: item.agency || item.outlet,
       agencyAbbr: agencyAbbrFor(item, activity),
-      description: item.summary || item.title,
+      description: usableExcerpt(item.summary, item.title),
       sources,
       verification,
       origin: "live",
