@@ -296,11 +296,12 @@ export function FilterDrawer({ incidents }: { incidents: Incident[] }) {
 }
 
 export function IncidentDrawer({ incident, wireItems }: { incident: Incident | null; wireItems?: import("@/lib/sources").LiveWireItem[] }) {
+  const view = useAppStore((s) => s.view);
   const selectedId = useAppStore((s) => s.selectedId);
   const select = useAppStore((s) => s.selectIncident);
   const isBelowLg = useMediaQuery("(max-width: 1023px)");
 
-  if (!isBelowLg) return null;
+  if (!isBelowLg || view === "map") return null;
 
   return (
     <SheetFrame open={!!selectedId} onOpenChange={(o) => !o && select(null)}>

@@ -4,13 +4,13 @@ import { Drawer } from "vaul";
 import { Filter, Home, List, LocateFixed, Maximize2, Megaphone, Radio, ShieldAlert, X } from "lucide-react";
 import { ShareButton } from "@/components/share-button";
 import { CoverageDrawer } from "@/components/coverage-drawer";
-import { Badge } from "@/components/ui/badge";
+import { IncidentDetail } from "@/components/incident-detail";
+import { IncidentPills } from "@/components/incident-pills";
 import { Button } from "@/components/ui/button";
 import { coverageSummary } from "@/lib/coverage";
 import { lastHours } from "@/lib/data";
 import { haversineKm, isApproxPrecision } from "@/lib/geo";
 import { decodeHtmlEntities } from "@/lib/html";
-import { incidentProvenancePill, incidentSourcePill } from "@/lib/incident-pills";
 import { incidentMatchesSourceGroup, incidentVerification, isOfficialIncident, mapKindOf } from "@/lib/map";
 import { type NearMePos } from "@/lib/near-me-empty-state";
 import { mapSharePayload } from "@/lib/share";
@@ -20,7 +20,7 @@ import type { MapKind, MapSourceGroup, MapTimeWindowHours, MapVerification } fro
 import { type Incident, type Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
-import type { WireHealth } from "@/lib/sources";
+import type { LiveWireItem, WireHealth } from "@/lib/sources";
 import { isWitnessIncident } from "@/lib/witness";
 
 const FALLBACK: Record<Severity, string> = {
@@ -38,6 +38,8 @@ const DOT: Record<Severity, string> = {
 };
 
 const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+
+const MAP_SNAP_POINTS = ["232px", 0.58, 0.88] as const;
 
 function esriUrl(id: string) {
   return `${ESRI}/${id}/MapServer/tile/{z}/{y}/{x}`;
@@ -65,7 +67,7 @@ function pinColor(sev: Severity): string {
   return cssVar(`--sev-${sev}`, FALLBACK[sev]);
 }
 
-function _pinLabel(inc: Incident): string {
+function pinLabel(inc: Incident): string {
   const when = clockTime(inc.occurredAt);
   const approx = isApproxPrecision(inc.geoPrecision) ? "approximate location" : "street-level pin";
   const sig = isOfficialIncident(inc)
@@ -113,7 +115,7 @@ function tipNode(inc: Incident): HTMLElement {
   return root;
 }
 
-function _typeGlyph(type: string): string {
+function typeGlyph(type: string): string {
   const t = type.toLowerCase();
   if (/shot|shoot|homicide|stab|assault|robbery|violent/.test(t)) return "!";
   if (/fire|blaze|smoke/.test(t)) return "F";
@@ -183,11 +185,13 @@ export function MapView({
   active,
   wireLive,
   wireHealth,
+  wireItems,
 }: {
   incidents: Incident[];
   active: boolean;
   wireLive: boolean;
   wireHealth: WireHealth | null;
+  wireItems?: LiveWireItem[];
 }) {
   const reduceMotion = useMemo(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
@@ -209,12 +213,12 @@ export function MapView({
   const [coverageOpen, setCoverageOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [listSnap, setListSnap] = useState<number | string | null>(0.6);
+  const isBelowLg = useMediaQuery("(max-width: 1023px)");
+  const [sheetSnap, setSheetSnap] = useState<number | string | null>(MAP_SNAP_POINTS[0]);
   const [locateErr, setLocateErr] = useState<string>("");
   const [nearPos, setNearPos] = useState<NearMePos | null>(null);
   const [nearLocateErr, setNearLocateErr] = useState<string>("");
   const [legendOpen, setLegendOpen] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
 
   const severities = useAppStore((s) => s.severities);
   const municipalities = useAppStore((s) => s.municipalities);
@@ -284,15 +288,6 @@ export function MapView({
     if (!nearPos || Date.now() - nearPos.at > 5 * 60_000) requestNearLocation();
   }, [liveNearMe, nearPos, requestNearLocation]);
 
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const on = () => setIsDesktop(mq.matches);
-    on();
-    mq.addEventListener?.("change", on);
-    return () => mq.removeEventListener?.("change", on);
-  }, []);
-
   const base = useMemo(
     () => {
       const visible = incidents.filter((i) => incidentVisible(i, { severities, municipalities, areaFilter, sourceLens }));
@@ -314,8 +309,23 @@ export function MapView({
       .filter((i) => mapShowApprox || !isApproxPrecision(i.geoPrecision));
   }, [inWindow, mapKinds, mapVerifications, mapSourceGroups, mapShowApprox]);
 
+  const selected = useMemo(
+    () => (selectedId ? filtered.find((i) => i.id === selectedId) ?? incidents.find((i) => i.id === selectedId) ?? null : null),
+    [selectedId, filtered, incidents],
+  );
+
   const approxHidden = useMemo(() => inWindow.filter((i) => isApproxPrecision(i.geoPrecision)).length, [inWindow]);
   const approxShown = useMemo(() => filtered.filter((i) => isApproxPrecision(i.geoPrecision)).length, [filtered]);
+
+  useEffect(() => {
+    if (!isBelowLg) return;
+    if (!selectedId) return;
+    setSheetSnap(MAP_SNAP_POINTS[2]);
+    const id = window.setTimeout(() => {
+      document.getElementById(`act-map-row-${selectedId}`)?.scrollIntoView({ block: "nearest" });
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [isBelowLg, selectedId]);
 
   // Light basemap only — never recreate on theme change.
   useEffect(() => {
@@ -737,7 +747,15 @@ export function MapView({
           <button
             ref={listToggle}
             type="button"
-            onClick={() => setListOpen((o) => !o)}
+            onClick={() => {
+              if (isBelowLg) {
+                if (selectedId) select(null);
+                setSheetSnap((s) => (s === MAP_SNAP_POINTS[0] ? MAP_SNAP_POINTS[1] : MAP_SNAP_POINTS[0]));
+                setListOpen(false);
+              } else {
+                setListOpen((o) => !o);
+              }
+            }}
             aria-pressed={listOpen}
             aria-controls="map-incident-list"
             className={cn(chip, listOpen ? "bg-accent text-accent-fg" : "text-fg")}
@@ -900,204 +918,80 @@ export function MapView({
         </Button>
       </div>
 
-      {listOpen && isDesktop ? (
+      {listOpen ? (
         <div
           id="map-incident-list"
-          className="absolute inset-x-auto left-3 top-20 z-10 w-96 overflow-y-auto overscroll-y-contain rounded-xl border border-border bg-surface/95 shadow-md scrollbar-thin"
+          className="hidden lg:block absolute inset-x-3 bottom-24 top-1/2 z-10 overflow-y-auto overscroll-y-contain rounded-xl border border-border bg-surface/95 shadow-md scrollbar-thin lg:inset-x-auto lg:left-3 lg:top-20 lg:w-96"
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-surface/95 px-4 py-3">
-            <h2 tabIndex={-1} className="text-sm font-semibold tracking-tight">
-              {filtered.length} mapped calls
-            </h2>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="shrink-0"
-              aria-label="Close list"
-              onClick={() => {
-                setListOpen(false);
-                listToggle.current?.focus();
-              }}
-            >
-              <X className="size-5" />
-            </Button>
-          </div>
-
+          <h2
+            tabIndex={-1}
+            className="sticky top-0 z-10 border-b border-border bg-surface/95 px-4 py-3 text-sm font-semibold tracking-tight"
+          >
+            {filtered.length} mapped calls
+          </h2>
           {filtered.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm leading-relaxed text-muted">
-              {wireLive ? "No mapped incidents match your filters in this window." : "Loading live map data…"}
+              {wireLive
+                ? "No mapped incidents match your filters in this window."
+                : "Loading live map data…"}
             </p>
           ) : (
-            <ul className="divide-y divide-border">
-              {filtered.map((inc) => {
-                const approx = isApproxPrecision(inc.geoPrecision);
-                const prov = incidentProvenancePill(inc);
-                const src = incidentSourcePill(inc);
-
-                return (
-                  <li key={inc.id}>
-                    <button
-                      type="button"
-                      onClick={() => select(inc.id)}
-                      aria-current={inc.id === selectedId ? "true" : undefined}
+            <ul>
+              {filtered.map((inc) => (
+                <li key={inc.id} className="border-b border-border last:border-b-0">
+                  <button
+                    type="button"
+                    onClick={() => select(inc.id)}
+                    id={`act-map-row-${inc.id}`}
+                    aria-current={inc.id === selectedId ? "true" : undefined}
+                    className={cn(
+                      "flex min-h-14 w-full items-start gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
+                      inc.id === selectedId ? "bg-surface-2" : "",
+                    )}
+                  >
+                    <span
                       className={cn(
-                        "flex w-full items-start gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
-                        inc.id === selectedId ? "bg-surface-2" : "",
+                        "mt-1.5 size-3 shrink-0 rounded-full",
+                        DOT[inc.severity],
+                        isApproxPrecision(inc.geoPrecision) ? "opacity-50 ring-1 ring-dashed ring-fg/40" : "",
                       )}
-                    >
-                      <span
-                        className={cn(
-                          "mt-1.5 size-3 shrink-0 rounded-full",
-                          DOT[inc.severity],
-                          approx ? "opacity-50 ring-1 ring-dashed ring-fg/40" : "",
-                        )}
-                        aria-hidden
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-1.5">
-                          <Badge tone={prov.tone}>{prov.label}</Badge>
-                          <Badge tone={src.tone} className="normal-case tracking-normal">
-                            {src.label}
-                          </Badge>
-                          {approx ? (
-                            <Badge tone="muted" className="normal-case tracking-normal">
-                              Approx
-                            </Badge>
-                          ) : null}
-                          <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-subtle">
-                            {relativeTime(inc.occurredAt)}
-                          </span>
-                        </span>
-                        <span className="mt-1 block text-sm font-semibold leading-snug tracking-tight text-fg">
-                          {decodeHtmlEntities(inc.title)}
-                        </span>
-                        <span className="mt-0.5 block text-sm leading-snug text-muted">
-                          {inc.address}
-                          <span className="mx-1.5 font-mono tabular-nums">{clockTime(inc.occurredAt)}</span>
-                        </span>
-                        <span className="mt-1 block text-[11px] font-semibold uppercase tracking-wide text-subtle">
-                          {inc.agency} · {typeLabel(inc.type)} · {severityLabel(inc.severity)}
-                        </span>
+                      aria-hidden
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs font-semibold uppercase tracking-wide text-subtle">
+                        {inc.agency} · {typeLabel(inc.type)} · {severityLabel(inc.severity)}
+                        {isApproxPrecision(inc.geoPrecision) ? " · approx" : ""}
+                    {isOfficialIncident(inc)
+                      ? " · official"
+                      : isWitnessIncident(inc)
+                        ? " · witness"
+                        : incidentVerification(inc) === "scanner"
+                          ? " · scanner"
+                          : inc.sources.some((s) => s.kind === "social")
+                            ? " · unconfirmed"
+                            : ""}
                       </span>
-                    </button>
-                  </li>
-                );
-              })}
+                      <span className="mt-0.5 block text-sm font-semibold leading-snug tracking-tight text-fg">
+                        {decodeHtmlEntities(inc.title)}
+                      </span>
+                      <span className="mt-0.5 block text-sm leading-snug text-muted">
+                        {inc.address}
+                        <span className="mx-1.5 font-mono tabular-nums">{clockTime(inc.occurredAt)}</span>
+                      </span>
+                      <div className="mt-2">
+                        <IncidentPills incident={inc} max={4} />
+                      </div>
+                    </span>
+                  </button>
+                </li>
+              ))}
             </ul>
           )}
         </div>
       ) : null}
 
-      {listOpen && !isDesktop ? (
-        <Drawer.Root
-          open={listOpen}
-          onOpenChange={(o) => {
-            setListOpen(o);
-            if (!o) listToggle.current?.focus();
-          }}
-          snapPoints={[0.32, 0.6, 0.88]}
-          activeSnapPoint={listSnap}
-          setActiveSnapPoint={setListSnap}
-          closeThreshold={0.22}
-        >
-          <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-0 z-40 bg-bg/50" />
-            <Drawer.Content
-              id="map-incident-list"
-              className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-2xl border border-border bg-surface pb-[max(0.75rem,env(safe-area-inset-bottom))] outline-none"
-            >
-              <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-border" />
-
-              <div className="flex items-start justify-between gap-2 px-4 pt-3" data-vaul-no-drag>
-                <div className="min-w-0">
-                  <Drawer.Title className="text-base font-semibold tracking-tight">
-                    {filtered.length} mapped calls
-                  </Drawer.Title>
-                  <p className="mt-0.5 text-xs leading-relaxed text-subtle">Tap a row to jump the map pin.</p>
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="shrink-0"
-                  aria-label="Close list"
-                  onClick={() => setListOpen(false)}
-                >
-                  <X className="size-5" />
-                </Button>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2 pt-3 scrollbar-thin">
-                {filtered.length === 0 ? (
-                  <p className="rounded-xl border border-border bg-surface-2 px-4 py-8 text-center text-sm leading-relaxed text-muted">
-                    {wireLive ? "No mapped incidents match your filters in this window." : "Loading live map data…"}
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {filtered.map((inc) => {
-                      const approx = isApproxPrecision(inc.geoPrecision);
-                      const prov = incidentProvenancePill(inc);
-                      const src = incidentSourcePill(inc);
-
-                      return (
-                        <li key={inc.id}>
-                          <button
-                            type="button"
-                            onClick={() => select(inc.id)}
-                            aria-current={inc.id === selectedId ? "true" : undefined}
-                            className={cn(
-                              "w-full rounded-xl border border-border bg-surface px-3 py-3 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent",
-                              inc.id === selectedId ? "border-accent/40 bg-surface-2" : "active:bg-surface-2",
-                            )}
-                          >
-                            <div className="flex items-start gap-3">
-                              <span
-                                className={cn(
-                                  "mt-1.5 size-3 shrink-0 rounded-full",
-                                  DOT[inc.severity],
-                                  approx ? "opacity-50 ring-1 ring-dashed ring-fg/40" : "",
-                                )}
-                                aria-hidden
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <Badge tone={prov.tone}>{prov.label}</Badge>
-                                  <Badge tone={src.tone} className="normal-case tracking-normal">
-                                    {src.label}
-                                  </Badge>
-                                  {approx ? (
-                                    <Badge tone="muted" className="normal-case tracking-normal">
-                                      Approx
-                                    </Badge>
-                                  ) : null}
-                                  <span className="ml-auto font-mono text-xs font-semibold tabular-nums text-subtle">
-                                    {relativeTime(inc.occurredAt)}
-                                  </span>
-                                </div>
-
-                                <p className="mt-1 line-clamp-2 text-[15px] font-semibold leading-snug tracking-tight text-fg">
-                                  {decodeHtmlEntities(inc.title)}
-                                </p>
-                                <p className="mt-0.5 line-clamp-1 text-sm text-muted">{inc.address}</p>
-                                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-subtle">
-                                  {inc.agency} · {typeLabel(inc.type)} · {severityLabel(inc.severity)} ·{" "}
-                                  <span className="font-mono tabular-nums">{clockTime(inc.occurredAt)}</span>
-                                </p>
-                              </div>
-                            </div>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </Drawer.Content>
-          </Drawer.Portal>
-        </Drawer.Root>
-      ) : null}
-
       <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-3">
-        <div className="pointer-events-auto flex min-h-12 items-center gap-3 rounded-full border border-border bg-surface/95 px-4 py-2 shadow-md">
+        <div className="hidden lg:flex pointer-events-auto min-h-12 items-center gap-3 rounded-full border border-border bg-surface/95 px-4 py-2 shadow-md">
           <p className="shrink-0 leading-tight">
             <span className="block font-mono text-base font-semibold tabular-nums tracking-tight text-fg">
               {filtered.length}
@@ -1148,6 +1042,113 @@ export function MapView({
           </p>
         ) : null}
       </div>
+
+      {isBelowLg ? (
+        <Drawer.Root
+          defaultOpen
+          modal={false}
+          dismissible={false}
+          handleOnly
+          snapPoints={[...MAP_SNAP_POINTS]}
+          activeSnapPoint={sheetSnap}
+          setActiveSnapPoint={setSheetSnap}
+        >
+          <Drawer.Portal>
+            <Drawer.Content className="fixed inset-x-0 bottom-0 z-30 mx-auto flex h-full max-h-[88dvh] w-full max-w-lg flex-col rounded-t-2xl border border-border bg-surface/95 shadow-xl outline-none backdrop-blur">
+              <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-border" />
+              <div className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+                {selected ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2" data-vaul-no-drag>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          select(null);
+                          setSheetSnap(MAP_SNAP_POINTS[1]);
+                        }}
+                      >
+                        Back
+                      </Button>
+                      <div className="min-w-0 flex-1 text-center">
+                        <p className="truncate text-xs font-semibold uppercase tracking-wide text-subtle">{selected.agency}</p>
+                        <p className="truncate text-sm font-semibold tracking-tight text-fg">{decodeHtmlEntities(selected.title)}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Close"
+                        onClick={() => {
+                          select(null);
+                          setSheetSnap(MAP_SNAP_POINTS[0]);
+                        }}
+                      >
+                        <X className="size-5" />
+                      </Button>
+                    </div>
+                    <div className="mt-2 min-h-0 flex-1 overflow-y-auto overscroll-y-contain scrollbar-thin" data-vaul-no-drag>
+                      <IncidentDetail incident={selected} wireItems={wireItems} variant="panel" />
+                    </div>
+                  </>
+                ) : (
+                  <div className="min-h-0 flex-1" data-vaul-no-drag>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold tracking-tight text-fg">Map</p>
+                        <p className="mt-0.5 text-[11px] text-subtle">
+                          {filtered.length} calls · last {mapWindowHours}h
+                        </p>
+                      </div>
+                      <p className="shrink-0 font-mono text-xs tabular-nums text-subtle">
+                        {approxShown && mapShowApprox ? `${approxShown} approx` : ""}
+                      </p>
+                    </div>
+                    <ul className="mt-2 space-y-2">
+                      {(sheetSnap === MAP_SNAP_POINTS[0] ? filtered.slice(0, 2) : filtered).map((inc) => (
+                        <li key={inc.id}>
+                          <button
+                            type="button"
+                            id={`act-map-row-${inc.id}`}
+                            onClick={() => {
+                              select(inc.id);
+                              setSheetSnap(MAP_SNAP_POINTS[2]);
+                            }}
+                            className={cn(
+                              "w-full rounded-xl border border-border bg-surface px-3 py-3 text-left active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                              inc.id === selectedId ? "border-accent/40" : "",
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="min-w-0 flex-1 text-sm font-semibold leading-snug tracking-tight text-fg">
+                                {decodeHtmlEntities(inc.title)}
+                              </p>
+                              <span className="shrink-0 text-right">
+                                <span className="block font-mono text-xs font-semibold tabular-nums text-fg">
+                                  {relativeTime(inc.occurredAt)}
+                                </span>
+                                <span className="block font-mono text-[11px] tabular-nums text-subtle">
+                                  {clockTime(inc.occurredAt)}
+                                </span>
+                              </span>
+                            </div>
+                            <p className="mt-1 line-clamp-1 text-sm text-muted">{inc.address}</p>
+                            <div className="mt-2">
+                              <IncidentPills incident={inc} max={5} />
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {sheetSnap === MAP_SNAP_POINTS[0] && filtered.length > 2 ? (
+                      <p className="mt-2 text-center text-[11px] text-subtle">Swipe up for more</p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
+      ) : null}
 
       <Drawer.Root open={mapFilterOpen} onOpenChange={setMapFilterOpen}>
         <Drawer.Portal>
@@ -1313,4 +1314,24 @@ export function MapView({
       />
     </div>
   );
+}
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    if (typeof mql.addEventListener === "function") {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    }
+    // Safari < 14
+    mql.addListener(onChange);
+    return () => mql.removeListener(onChange);
+  }, [query]);
+
+  return matches;
 }

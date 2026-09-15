@@ -125,7 +125,7 @@ export function buildIncidentThread(incident: Incident, wireItems: LiveWireItem[
   return out.sort((a, b) => {
     const ta = parseAt(a.publishedAt);
     const tb = parseAt(b.publishedAt);
-    if (ta !== tb) return ta - tb;
+    if (ta !== tb) return tb - ta;
     const ra = tierRank(a.tier);
     const rb = tierRank(b.tier);
     if (ra !== rb) return ra - rb;
