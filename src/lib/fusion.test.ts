@@ -403,4 +403,24 @@ describe("provenance regression", () => {
     assert.equal(inc.sources.some((s) => s.tier === "official"), false);
     assert.equal(inc.sources.some((s) => s.kind === "social"), true);
   });
+
+  it("falls back to the title when a social summary is only a domain", () => {
+    const title = "WNYT reports crash on Central Avenue";
+    const inc = wireToIncidents([
+      item({
+        id: "fb-wnyt-1",
+        title,
+        summary: "&nbsp;&nbsp; facebook.com",
+        kind: "social",
+        outlet: "Facebook · WNYT",
+        municipality: "Albany",
+        address: "Central Avenue",
+        minutesAgo: 22,
+      }),
+    ])[0]!;
+    assert.ok(inc, "expected an incident");
+    assert.equal(inc.description, title);
+    assert.equal(inc.sources.length, 1);
+    assert.equal(inc.sources[0]!.excerpt, title);
+  });
 });

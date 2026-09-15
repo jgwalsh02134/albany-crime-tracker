@@ -47,3 +47,33 @@ export function decodeHtmlEntities(raw: string): string {
   return out;
 }
 
+function cleanSnippet(raw: string | undefined | null): string {
+  if (!raw) return "";
+  // Normalize real NBSP characters even when there are no entity markers.
+  const s = String(raw).replaceAll("\u00A0", " ");
+  // Decode entities, strip any HTML tags, and collapse whitespace.
+  return decodeHtmlEntities(s)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isJunkExcerpt(cleaned: string): boolean {
+  if (!cleaned) return true;
+  // Some Google News RSS descriptions for FB/X are essentially just a domain.
+  // Treat "only this domain/URL" as unusable signal text.
+  return /^(?:https?:\/\/)?(?:www\.)?(facebook\.com|twitter\.com|x\.com|news\.google\.com)(?:\/[^\s]*)?$/i.test(cleaned);
+}
+
+/**
+ * Return `text` when it contains readable signal; otherwise fall back to `fallback`
+ * (typically the item's title). Applies entity decode + whitespace normalization and
+ * treats domain-only snippets (facebook.com / x.com / etc.) as unusable.
+ */
+export function usableExcerpt(text: string | undefined | null, fallback: string | undefined | null): string {
+  const cleaned = cleanSnippet(text);
+  if (!isJunkExcerpt(cleaned)) return cleaned;
+  const fb = cleanSnippet(fallback);
+  return fb || cleaned;
+}
+

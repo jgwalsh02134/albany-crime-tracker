@@ -4,6 +4,7 @@ import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
 import { redditApiFetch, redditApiHealth, recordRedditOk } from "./reddit-api";
 import { isOfficialAgencySocial } from "./social-official";
+import { usableExcerpt } from "./html";
 
 const UA = "AlbanyCountyCrimeTracker/1.0 (+https://app.albany.watch)";
 const REDDIT_UA =
@@ -575,7 +576,7 @@ function toItem(
     title,
     url,
     outlet,
-    summary: (summary || title).slice(0, 360),
+    summary: usableExcerpt(summary, title).slice(0, 360),
     publishedAt: new Date(published).toISOString(),
     minutesAgo,
     kind: "social",
