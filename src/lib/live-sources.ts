@@ -39,6 +39,10 @@ const LIVE_MIN = 24 * 60;
 const BLOTTER_LIVE_MIN = 36 * 60;
 const NEWS_MIN = 72 * 60;
 const WIRE_SOFT_DEADLINE_MS = 4500;
+const LIVE_SOCIAL_SOFT_MS = 2200;
+const FULL_SOCIAL_SOFT_MS = 3400;
+const LIVE_WITNESS_SOFT_MS = 150;
+const FULL_WITNESS_SOFT_MS = 450;
 
 type WireMode = "live" | "full";
 
@@ -486,8 +490,12 @@ async function collectWire(opts?: { mode?: WireMode }) {
     softPipe({
       id: "wire:witness",
       label: "Witness reports",
-      ms: 450,
+      ms: mode === "live" ? LIVE_WITNESS_SOFT_MS : FULL_WITNESS_SOFT_MS,
       run: async () => {
+        // Witness reports require a real DB. When DATABASE_URL is missing (or mis-set to whitespace),
+        // do NOT import the witness module (it can pull in PGLite bootstrap) — skip instantly.
+        const dbUrl = process.env.DATABASE_URL;
+        if (!dbUrl || !dbUrl.trim()) return [] as LiveWireItem[];
         const { witnessReportsToWire } = await import("./witness-reports.server");
         return await witnessReportsToWire(now);
       },
@@ -515,9 +523,9 @@ async function collectWire(opts?: { mode?: WireMode }) {
     softPipe({
       id: "wire:social",
       label: "Wire · Social",
-      ms: 3400,
+      ms: mode === "live" ? LIVE_SOCIAL_SOFT_MS : FULL_SOCIAL_SOFT_MS,
       run: async () =>
-        collectSocial(now).catch(() => ({
+        collectSocial(now, { mode }).catch(() => ({
           items: [] as LiveWireItem[],
           facebook: 0,
           x: 0,

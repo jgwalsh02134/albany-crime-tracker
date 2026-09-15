@@ -35,11 +35,16 @@ const TABS: { id: ViewId; label: string; icon: typeof Bolt }[] = [
 export function AppShell() {
   const [wire, setWire] = useState<LiveWireItem[]>([]);
   const [wireLive, setWireLive] = useState(false);
+  const [wireReady, setWireReady] = useState(false);
   const [wireHealth, setWireHealth] = useState<WireHealth | null>(null);
   const [stories, setStories] = useState<LiveWireItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [pending, startTransition] = useTransition();
-  const pullInFlight = useRef(false);
+  const pullInFlight = useRef<{ controller: AbortController; startedAt: number; budgetMs: number } | null>(null);
+  const retryTimer = useRef<number | null>(null);
+  const [wireInitAttempts, setWireInitAttempts] = useState(0);
+  const [wireInitError, setWireInitError] = useState<string | null>(null);
+  const [wireInitNextRetryAt, setWireInitNextRetryAt] = useState<number | null>(null);
   const incidents = useMemo(() => wireToIncidents(wire), [wire]);
   const scannerCalls = useMemo(() => wireToScannerCalls(wire), [wire]);
   const news = useMemo(() => mergeWireNews([], stories.length ? stories : wire), [stories, wire]);
@@ -68,39 +73,92 @@ export function AppShell() {
     document.documentElement.dataset.theme = useAppStore.getState().theme;
   }, []);
 
-  const pullWire = useCallback(async (opts?: { full?: boolean }) => {
-    if (pullInFlight.current) return;
-    pullInFlight.current = true;
-    const wantFull = Boolean(opts?.full) || homeMode === "news";
-    const controller = new AbortController();
-    const t = window.setTimeout(() => controller.abort(), wantFull ? 12_000 : 8_500);
-    try {
-      const r = await fetch(`/api/wire?mode=${wantFull ? "full" : "live"}`, {
-        headers: { Accept: "application/json" },
-        signal: controller.signal,
-      });
-      if (!r.ok) return;
-      const res = (await r.json()) as {
-        ok: boolean;
-        items: LiveWireItem[];
-        stories?: LiveWireItem[];
-        outlets?: string[];
-        health?: WireHealth;
-      };
-      if (!res?.ok) return;
-      startTransition(() => {
-        setWire(res.items);
-        setStories(res.stories?.length ? res.stories : res.items);
-        setWireLive(true);
-        setWireHealth(res.health ?? null);
-      });
-    } catch {
-      /* keep last good wire */
-    } finally {
-      window.clearTimeout(t);
-      pullInFlight.current = false;
-    }
-  }, [homeMode, startTransition]);
+  const pullWire = useCallback(
+    async (opts?: { full?: boolean; force?: boolean }) => {
+      const wantFull = Boolean(opts?.full) || homeMode === "news";
+      const budgetMs = wantFull ? 16_000 : 12_000;
+      const initialConnect = !wireLive;
+      let gotOk = false;
+
+      const existing = pullInFlight.current;
+      if (existing) {
+        const age = Date.now() - existing.startedAt;
+        // Avoid deadlocks if a prior request wedges (can happen on mobile Safari).
+        if (!opts?.force && age < existing.budgetMs + 1500) return;
+        try {
+          existing.controller.abort();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const controller = new AbortController();
+      pullInFlight.current = { controller, startedAt: Date.now(), budgetMs };
+      setWireInitAttempts((n) => n + 1);
+      const t = window.setTimeout(() => controller.abort(), budgetMs);
+
+      try {
+        const r = await fetch(`/api/wire?mode=${wantFull ? "full" : "live"}`, {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+        if (!r.ok) {
+          setWireReady(true);
+          if (initialConnect) setWireInitError(`HTTP ${r.status}`);
+          return;
+        }
+
+        const res = (await r.json()) as {
+          ok: boolean;
+          items: LiveWireItem[];
+          stories?: LiveWireItem[];
+          outlets?: string[];
+          health?: WireHealth;
+        };
+        if (!res?.ok) {
+          setWireReady(true);
+          if (initialConnect) setWireInitError("wire unavailable");
+          return;
+        }
+
+        gotOk = true;
+        startTransition(() => {
+          setWire(res.items);
+          setStories(res.stories?.length ? res.stories : res.items);
+          setWireLive(true);
+          setWireReady(true);
+          setWireHealth(res.health ?? null);
+          setWireInitError(null);
+        });
+      } catch (err) {
+        setWireReady(true);
+        if (initialConnect) {
+          const msg = err instanceof Error ? err.message : "wire error";
+          setWireInitError(/aborted|abort/i.test(msg) ? "timeout" : String(msg).slice(0, 140));
+        }
+      } finally {
+        window.clearTimeout(t);
+        if (pullInFlight.current?.controller === controller) {
+          pullInFlight.current = null;
+        }
+      }
+
+      // While we're still trying to get the first usable live response, retry quickly with backoff.
+      if (initialConnect && !gotOk) {
+        const attempts = wireInitAttempts + 1;
+        const delayMs = attempts <= 1 ? 1500 : attempts === 2 ? 2500 : attempts === 3 ? 4000 : 6500;
+        if (retryTimer.current == null) {
+          setWireInitNextRetryAt(Date.now() + delayMs);
+          retryTimer.current = window.setTimeout(() => {
+            retryTimer.current = null;
+            setWireInitNextRetryAt(null);
+            void pullWire({ full: wantFull, force: true });
+          }, delayMs);
+        }
+      }
+    },
+    [homeMode, startTransition, wireInitAttempts, wireLive],
+  );
 
   useEffect(() => {
     void pullWire({ full: homeMode === "news" });
@@ -117,13 +175,16 @@ export function AppShell() {
         return true;
       }
     })();
-    const id = window.setInterval(() => void pullWire({ full: homeMode === "news" }), daytime ? 25_000 : 45_000);
+    const id = window.setInterval(
+      () => void pullWire({ full: homeMode === "news" }),
+      wireLive ? (daytime ? 25_000 : 45_000) : 6_000,
+    );
     return () => window.clearInterval(id);
-  }, [pullWire, homeMode]);
+  }, [pullWire, homeMode, wireLive]);
 
   useEffect(() => {
     function onRefresh() {
-      void pullWire({ full: homeMode === "news" });
+      void pullWire({ full: homeMode === "news", force: true });
     }
     window.addEventListener("act:refresh-wire", onRefresh as EventListener);
     return () => window.removeEventListener("act:refresh-wire", onRefresh as EventListener);
@@ -136,6 +197,16 @@ export function AppShell() {
     } finally {
       setRefreshing(false);
     }
+  }
+
+  function retryWire() {
+    if (retryTimer.current != null) {
+      window.clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+      setWireInitNextRetryAt(null);
+    }
+    setWireInitError(null);
+    void pullWire({ full: homeMode === "news", force: true });
   }
 
   return (
@@ -223,13 +294,25 @@ export function AppShell() {
             news={news}
             wireItems={wire}
             wireLive={wireLive}
+            wireReady={wireReady}
+            wireInitError={wireInitError}
+            wireInitNextRetryAt={wireInitNextRetryAt}
+            onRetryWire={retryWire}
             wireHealth={wireHealth}
             refreshing={refreshing || pending}
             onRefresh={refresh}
           />
         </div>
         <div className={cn("absolute inset-0 flex min-h-0", view === "map" ? "z-[1]" : "invisible pointer-events-none")}>
-          <MapView incidents={incidents} active={view === "map"} wireLive={wireLive} wireHealth={wireHealth} wireItems={wire} />
+          <MapView
+            incidents={incidents}
+            active={view === "map"}
+            wireLive={wireLive}
+            wireReady={wireReady}
+            wireInitError={wireInitError}
+            wireHealth={wireHealth}
+            wireItems={wire}
+          />
         </div>
         <div className={cn("absolute inset-0 flex min-h-0", view === "scanner" ? "flex" : "hidden")}>
           <ScannerView calls={scannerCalls} active={view === "scanner"} />

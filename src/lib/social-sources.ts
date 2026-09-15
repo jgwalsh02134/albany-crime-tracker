@@ -666,6 +666,9 @@ function cacheMap(): Map<string, CacheEntry> {
 type FeedFetchStatus = "ok" | "cache" | "fail" | "blocked";
 type FeedFetchResult = { items: LiveWireItem[]; status: FeedFetchStatus; error?: string };
 
+type SocialMode = "live" | "full";
+type SocialOpts = { mode?: SocialMode };
+
 function ttlMs(feed: SocialFeed, now: number): number {
   if (feed.pipe === "reddit") return REDDIT_CACHE_MS;
   // Tighten daytime polls for official agency outlets (FB/X via GNews).
@@ -673,7 +676,13 @@ function ttlMs(feed: SocialFeed, now: number): number {
   return isDaytimeET(now) ? NONOFFICIAL_DAY_TTL_MS : NONOFFICIAL_NIGHT_TTL_MS;
 }
 
-async function fetchFeed(feed: SocialFeed, now: number): Promise<FeedFetchResult> {
+function fetchTimeoutMs(feed: SocialFeed, opts?: SocialOpts): number {
+  if (opts?.mode === "live") return feed.pipe === "reddit" ? 4500 : 3500;
+  // Full mode can tolerate slightly more wait, but keep it bounded so dying feeds do not accumulate work.
+  return feed.pipe === "reddit" ? 7000 : 6000;
+}
+
+async function fetchFeed(feed: SocialFeed, now: number, opts?: SocialOpts): Promise<FeedFetchResult> {
   if (feed.outlet.startsWith("Reddit") && Date.now() < redditBlockedUntil) {
     const remainSec = Math.max(0, Math.round((redditBlockedUntil - Date.now()) / 1000));
     recordPipeFail("social:reddit", "Reddit", `rate-limited backoff ${remainSec}s`);
@@ -694,7 +703,7 @@ async function fetchFeed(feed: SocialFeed, now: number): Promise<FeedFetchResult
         "User-Agent": feed.format === "atom" ? REDDIT_UA : UA,
         Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
       },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(fetchTimeoutMs(feed, opts)),
     });
     if (!res.ok) {
       recordPipeFail(feedPipeId(feed), feed.outlet, `HTTP ${res.status}`);
@@ -726,11 +735,11 @@ export type SocialBundle = {
   citizen: number;
 };
 
-export async function collectSocial(now: number): Promise<SocialBundle> {
+export async function collectSocial(now: number, opts?: SocialOpts): Promise<SocialBundle> {
   const [fb, x, reddit] = await Promise.all([
-    Promise.all(FACEBOOK_FEEDS.map((f) => fetchFeed(f, now))),
-    Promise.all(X_FEEDS.map((f) => fetchFeed(f, now))),
-    collectReddit(now),
+    Promise.all(FACEBOOK_FEEDS.map((f) => fetchFeed(f, now, opts))),
+    Promise.all(X_FEEDS.map((f) => fetchFeed(f, now, opts))),
+    collectReddit(now, opts),
   ]);
   const seen = new Set<string>();
   const items: LiveWireItem[] = [];
@@ -775,7 +784,7 @@ export function socialNews(items: LiveWireItem[]): LiveWireItem[] {
   });
 }
 
-async function collectReddit(now: number): Promise<LiveWireItem[][]> {
+async function collectReddit(now: number, opts?: SocialOpts): Promise<LiveWireItem[][]> {
   const api = redditApiHealth();
   if (api.authConfigured) {
     const q =
@@ -816,7 +825,7 @@ async function collectReddit(now: number): Promise<LiveWireItem[][]> {
     return [out];
   }
 
-  const rss = await Promise.all(REDDIT_FEEDS.map((f) => fetchFeed(f, now)));
+  const rss = await Promise.all(REDDIT_FEEDS.map((f) => fetchFeed(f, now, opts)));
   const rssItems = rss.flatMap((r) => r.items);
   // When unauthenticated, surface the limitation as “thin,” not quiet.
   if (rssItems.length === 0 && Date.now() < redditBlockedUntil) {
