@@ -14,6 +14,7 @@ const badgeVariants = cva(
         muted: "bg-surface-2 text-muted",
         accent: "bg-accent/15 text-accent",
         cyan: "bg-cyan/15 text-cyan",
+        gold: "bg-gold/15 text-gold",
       },
     },
     defaultVariants: { tone: "muted" },
