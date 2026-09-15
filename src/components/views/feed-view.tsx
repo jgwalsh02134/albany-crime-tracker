@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Drawer } from "vaul";
-import { ChevronRight, LocateFixed, Megaphone } from "lucide-react";
+import { ChevronRight, LocateFixed, Megaphone, ShieldAlert, SlidersHorizontal } from "lucide-react";
 import { CoverageDrawer } from "@/components/coverage-drawer";
 import { IncidentCard } from "@/components/incident-card";
 import { IncidentDetail } from "@/components/incident-detail";
@@ -187,6 +187,7 @@ function LiveList({
   const scroller = useRef<HTMLDivElement>(null);
   const startY = useRef<number | null>(null);
   const [pull, setPull] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const liveNearMe = useAppStore((s) => s.liveNearMe);
   const setLiveNearMe = useAppStore((s) => s.setLiveNearMe);
   const liveNearMiles = useAppStore((s) => s.liveNearMiles);
@@ -283,7 +284,7 @@ function LiveList({
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={() => void onTouchEnd()}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-20 scrollbar-thin"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 pb-24 scrollbar-thin"
       >
         <div
           className="overflow-hidden text-center text-xs text-subtle motion-safe:transition-[height] motion-safe:duration-150 motion-reduce:transition-none"
@@ -293,111 +294,171 @@ function LiveList({
         </div>
 
         <div className="sticky top-0 z-10 -mx-3 mb-1.5 bg-bg/95 px-3 py-1 backdrop-blur-md">
-          {wireHealth ? (
-            <SourcePipes
-              health={wireHealth}
-              count={showing.length}
-              newest={newest}
-              wireLive={wireLive}
-            />
-          ) : (
-            <p className="py-1.5 text-xs text-subtle">{wireLive ? `${showing.length} calls` : "Connecting…"}</p>
-          )}
-          {wireHealth ? (
-            <button
-              type="button"
-              onClick={() => setCoverageOpen(true)}
-              className="mt-1 inline-flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 text-left text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
-              aria-label="Open coverage"
-            >
-              <span className="inline-flex min-w-0 items-center gap-2">
-                <span className={cn("size-2 shrink-0 rounded-full", coverageDot)} aria-hidden />
-                <span className="truncate">Coverage (reporting gaps)</span>
-              </span>
-              <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-subtle">
-                {coverage.shortLabel}
-              </span>
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => setWitnessOpen(true)}
-            className="mt-1.5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-accent/35 bg-accent/10 px-3 text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
-          >
-            <Megaphone className="size-4 text-accent" aria-hidden />
-            Report activity
-          </button>
-          <div className="flex flex-col gap-1.5">
-            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
-              <Chip
-                active={liveKind === "all"}
-                onClick={() => setLiveKind("all")}
-                label="All"
-              />
-              <Chip active={liveKind === "crime"} onClick={() => setLiveKind("crime")} label="Crime" />
-              <Chip active={liveKind === "crash"} onClick={() => setLiveKind("crash")} label="Crash" />
-              <Chip active={liveKind === "fire"} onClick={() => setLiveKind("fire")} label="Fire" />
-              <Chip active={liveKind === "traffic"} onClick={() => setLiveKind("traffic")} label="Traffic" />
+          {/* Mobile: minimal chrome; everything else behind Filters sheet */}
+          <div className="lg:hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                {wireHealth ? (
+                  <SourcePipes
+                    health={wireHealth}
+                    count={showing.length}
+                    newest={newest}
+                    wireLive={wireLive}
+                    compact
+                  />
+                ) : (
+                  <p className="py-1.5 text-xs text-subtle">{wireLive ? `${showing.length} calls` : "Connecting…"}</p>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1" data-vaul-no-drag>
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen(true)}
+                  className="inline-flex h-9 items-center gap-2 rounded-full border border-border bg-surface px-3 text-xs font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                  aria-label="Open live filters"
+                >
+                  <SlidersHorizontal className="size-4 text-subtle" aria-hidden />
+                  Filters
+                </button>
+                {wireHealth ? (
+                  <button
+                    type="button"
+                    onClick={() => setCoverageOpen(true)}
+                    className="inline-flex size-9 items-center justify-center rounded-full border border-border bg-surface text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                    aria-label="Open coverage"
+                  >
+                    <span className="relative inline-flex items-center justify-center">
+                      <ShieldAlert className="size-4" aria-hidden />
+                      <span className={cn("absolute -right-1 -top-1 size-2 rounded-full", coverageDot)} aria-hidden />
+                    </span>
+                  </button>
+                ) : null}
+              </div>
             </div>
-            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
-              <Chip
-                active={sourceLens === "all"}
-                onClick={() => setSourceLens("all")}
-                label={`All sources ${mix.official + mix.scanner + mix.news + mix.social}`}
-              />
-              <Chip active={sourceLens === "official"} onClick={() => setSourceLens("official")} label={`Official ${mix.official}`} />
-              <Chip active={sourceLens === "scanner"} onClick={() => setSourceLens("scanner")} label={`Scanner ${mix.scanner}`} />
-              <Chip active={sourceLens === "news"} onClick={() => setSourceLens("news")} label={`News ${mix.news}`} />
-              <Chip active={sourceLens === "social"} onClick={() => setSourceLens("social")} label={`Social ${mix.social}`} />
-            </div>
-            <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
-              <Chip
-                active={!nearActive}
-                onClick={() => setLiveNearMe(false)}
-                label="All area"
-              />
+
+            {wireHealth && (coverage.tone === "down" || coverage.tone === "warn") ? (
               <button
                 type="button"
-                onClick={() => {
-                  if (nearActive) {
-                    setLiveNearMe(false);
-                    setLocateErr("");
-                    setLocateErrorKind(null);
-                  } else {
-                    setLiveNearMe(true);
-                    requestLocation();
-                  }
-                }}
-                className={cn(
-                  "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium active:opacity-80 inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
-                  nearActive ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
-                )}
+                onClick={() => setCoverageOpen(true)}
+                className="mt-1 inline-flex min-h-9 w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 text-left text-xs font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
               >
-                <LocateFixed className="size-3.5" aria-hidden />
-                Near me
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <span className={cn("size-2 shrink-0 rounded-full", coverageDot)} aria-hidden />
+                  <span className="truncate">{coverage.shortLabel}</span>
+                </span>
+                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-subtle">Tap for details</span>
               </button>
+            ) : null}
+          </div>
+
+          {/* Desktop: keep richer controls */}
+          <div className="hidden lg:block">
+            {wireHealth ? (
+              <SourcePipes
+                health={wireHealth}
+                count={showing.length}
+                newest={newest}
+                wireLive={wireLive}
+              />
+            ) : (
+              <p className="py-1.5 text-xs text-subtle">{wireLive ? `${showing.length} calls` : "Connecting…"}</p>
+            )}
+            {wireHealth ? (
+              <button
+                type="button"
+                onClick={() => setCoverageOpen(true)}
+                className="mt-1 inline-flex min-h-10 w-full items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 text-left text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+                aria-label="Open coverage"
+              >
+                <span className="inline-flex min-w-0 items-center gap-2">
+                  <span className={cn("size-2 shrink-0 rounded-full", coverageDot)} aria-hidden />
+                  <span className="truncate">Coverage (reporting gaps)</span>
+                </span>
+                <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-subtle">
+                  {coverage.shortLabel}
+                </span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setWitnessOpen(true)}
+              className="mt-1.5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg border border-accent/35 bg-accent/10 px-3 text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+            >
+              <Megaphone className="size-4 text-accent" aria-hidden />
+              Report activity
+            </button>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
+                <Chip
+                  active={liveKind === "all"}
+                  onClick={() => setLiveKind("all")}
+                  label="All"
+                />
+                <Chip active={liveKind === "crime"} onClick={() => setLiveKind("crime")} label="Crime" />
+                <Chip active={liveKind === "crash"} onClick={() => setLiveKind("crash")} label="Crash" />
+                <Chip active={liveKind === "fire"} onClick={() => setLiveKind("fire")} label="Fire" />
+                <Chip active={liveKind === "traffic"} onClick={() => setLiveKind("traffic")} label="Traffic" />
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
+                <Chip
+                  active={sourceLens === "all"}
+                  onClick={() => setSourceLens("all")}
+                  label={`All sources ${mix.official + mix.scanner + mix.news + mix.social}`}
+                />
+                <Chip active={sourceLens === "official"} onClick={() => setSourceLens("official")} label={`Official ${mix.official}`} />
+                <Chip active={sourceLens === "scanner"} onClick={() => setSourceLens("scanner")} label={`Scanner ${mix.scanner}`} />
+                <Chip active={sourceLens === "news"} onClick={() => setSourceLens("news")} label={`News ${mix.news}`} />
+                <Chip active={sourceLens === "social"} onClick={() => setSourceLens("social")} label={`Social ${mix.social}`} />
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none pr-3">
+                <Chip
+                  active={!nearActive}
+                  onClick={() => setLiveNearMe(false)}
+                  label="All area"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (nearActive) {
+                      setLiveNearMe(false);
+                      setLocateErr("");
+                      setLocateErrorKind(null);
+                    } else {
+                      setLiveNearMe(true);
+                      requestLocation();
+                    }
+                  }}
+                  className={cn(
+                    "h-10 shrink-0 snap-start rounded-full border px-3 text-xs font-medium active:opacity-80 inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                    nearActive ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
+                  )}
+                >
+                  <LocateFixed className="size-3.5" aria-hidden />
+                  Near me
+                </button>
+                {nearActive ? (
+                  <>
+                    {([1, 2, 3] as const).map((m) => (
+                      <Chip
+                        key={m}
+                        active={liveNearMiles === m}
+                        onClick={() => setLiveNearMiles(m)}
+                        label={`${m} mi`}
+                      />
+                    ))}
+                  </>
+                ) : null}
+              </div>
               {nearActive ? (
-                <>
-                  {([1, 2, 3] as const).map((m) => (
-                    <Chip
-                      key={m}
-                      active={liveNearMiles === m}
-                      onClick={() => setLiveNearMiles(m)}
-                      label={`${m} mi`}
-                    />
-                  ))}
-                </>
+                <p className="pt-0.5 text-[11px] leading-snug text-subtle">
+                  {pos
+                    ? `${showing.length} within ~${liveNearMiles} mi (±${pos.accM ? Math.round(pos.accM) : "?"}m) · pins can be approximate`
+                    : locateErr
+                      ? locateErr
+                      : "Allow location to see calls near you."}
+                </p>
               ) : null}
             </div>
-            {nearActive ? (
-              <p className="pt-0.5 text-[11px] leading-snug text-subtle">
-                {pos
-                  ? `${showing.length} within ~${liveNearMiles} mi (±${pos.accM ? Math.round(pos.accM) : "?"}m) · pins can be approximate`
-                  : locateErr
-                    ? locateErr
-                    : "Allow location to see calls near you."}
-              </p>
-            ) : null}
           </div>
         </div>
 
@@ -451,13 +512,209 @@ function LiveList({
         )}
       </div>
 
+      {/* Mobile: compact Report Activity FAB */}
+      <button
+        type="button"
+        onClick={() => setWitnessOpen(true)}
+        className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] right-4 z-30 inline-flex size-12 items-center justify-center rounded-full border border-accent/35 bg-accent text-accent-fg shadow-lg active:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 lg:hidden"
+        aria-label="Report activity"
+      >
+        <Megaphone className="size-5" aria-hidden />
+      </button>
+
       <CoverageDrawer
         open={coverageOpen}
         onOpenChange={setCoverageOpen}
         health={wireHealth}
         colonieFocused={colonieFocused}
       />
+
+      <LiveFiltersDrawer
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        liveKind={liveKind}
+        setLiveKind={setLiveKind}
+        sourceLens={sourceLens}
+        setSourceLens={setSourceLens}
+        mix={mix}
+        nearActive={nearActive}
+        setLiveNearMe={setLiveNearMe}
+        liveNearMiles={liveNearMiles}
+        setLiveNearMiles={setLiveNearMiles}
+        onRequestLocation={requestLocation}
+        pos={pos}
+        locateErr={locateErr}
+        locateErrorKind={locateErrorKind}
+        onDisableNear={() => {
+          setLiveNearMe(false);
+          setLocateErr("");
+          setLocateErrorKind(null);
+        }}
+        showingCount={showing.length}
+      />
     </div>
+  );
+}
+
+function LiveFiltersDrawer({
+  open,
+  onOpenChange,
+  liveKind,
+  setLiveKind,
+  sourceLens,
+  setSourceLens,
+  mix,
+  nearActive,
+  setLiveNearMe,
+  liveNearMiles,
+  setLiveNearMiles,
+  onRequestLocation,
+  pos,
+  locateErr,
+  locateErrorKind,
+  onDisableNear,
+  showingCount,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  liveKind: LiveKind;
+  setLiveKind: (k: LiveKind) => void;
+  sourceLens: SourceLens;
+  setSourceLens: (s: SourceLens) => void;
+  mix: { official: number; scanner: number; news: number; social: number };
+  nearActive: boolean;
+  setLiveNearMe: (v: boolean) => void;
+  liveNearMiles: 1 | 2 | 3;
+  setLiveNearMiles: (m: 1 | 2 | 3) => void;
+  onRequestLocation: () => void;
+  pos: NearMePos | null;
+  locateErr: string;
+  locateErrorKind: LocateErrorKind | null;
+  onDisableNear: () => void;
+  showingCount: number;
+}) {
+  const nearEmptyState = selectNearMeEmptyState({ nearActive, pos, locateErrorKind });
+  const total = mix.official + mix.scanner + mix.news + mix.social;
+
+  function resetLiveFilters() {
+    setLiveKind("all");
+    setSourceLens("all");
+    onDisableNear();
+  }
+
+  return (
+    <Drawer.Root open={open} onOpenChange={onOpenChange}>
+      <Drawer.Portal>
+        <Drawer.Overlay className="fixed inset-0 z-40 bg-bg/70" />
+        <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[88dvh] w-full max-w-lg flex-col rounded-t-xl border border-border bg-surface pb-[max(1rem,env(safe-area-inset-bottom))] outline-none lg:hidden">
+          <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-border" />
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3 scrollbar-thin">
+            <Drawer.Title className="text-base font-semibold">Live filters</Drawer.Title>
+            <p className="mt-1 text-xs text-subtle">Category, source lens, and Near me. Applied instantly.</p>
+
+            <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Category</h3>
+            <div className="mt-2 flex flex-wrap gap-2" data-vaul-no-drag>
+              {([
+                ["all", "All"],
+                ["crime", "Crime"],
+                ["crash", "Crash"],
+                ["fire", "Fire"],
+                ["traffic", "Traffic"],
+              ] as const).map(([id, label]) => (
+                <Chip key={id} active={liveKind === id} onClick={() => setLiveKind(id)} label={label} />
+              ))}
+            </div>
+
+            <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Sources</h3>
+            <div className="mt-2 flex flex-wrap gap-2" data-vaul-no-drag>
+              <Chip active={sourceLens === "all"} onClick={() => setSourceLens("all")} label={`All sources ${total}`} />
+              <Chip active={sourceLens === "official"} onClick={() => setSourceLens("official")} label={`Official ${mix.official}`} />
+              <Chip active={sourceLens === "scanner"} onClick={() => setSourceLens("scanner")} label={`Scanner ${mix.scanner}`} />
+              <Chip active={sourceLens === "news"} onClick={() => setSourceLens("news")} label={`News ${mix.news}`} />
+              <Chip active={sourceLens === "social"} onClick={() => setSourceLens("social")} label={`Social ${mix.social}`} />
+            </div>
+
+            <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-subtle">Area</h3>
+            <div className="mt-2 flex flex-wrap gap-2" data-vaul-no-drag>
+              <Chip active={!nearActive} onClick={() => onDisableNear()} label="All area" />
+              <button
+                type="button"
+                onClick={() => {
+                  if (nearActive) onDisableNear();
+                  else {
+                    setLiveNearMe(true);
+                    onRequestLocation();
+                  }
+                }}
+                className={cn(
+                  "h-10 shrink-0 rounded-full border px-3 text-xs font-medium active:opacity-80 inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60",
+                  nearActive ? "border-accent bg-accent text-accent-fg" : "border-border bg-surface text-muted",
+                )}
+              >
+                <LocateFixed className="size-3.5" aria-hidden />
+                Near me
+              </button>
+              {nearActive ? (
+                <>
+                  {([1, 2, 3] as const).map((m) => (
+                    <Chip
+                      key={m}
+                      active={liveNearMiles === m}
+                      onClick={() => setLiveNearMiles(m)}
+                      label={`${m} mi`}
+                    />
+                  ))}
+                </>
+              ) : null}
+            </div>
+
+            {nearActive ? (
+              <div className="mt-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
+                {pos ? (
+                  <p>
+                    <span className="font-semibold text-fg">{showingCount}</span> within ~{liveNearMiles} mi
+                    {" · "}
+                    ±{pos.accM ? Math.round(pos.accM) : "?"}m
+                  </p>
+                ) : locateErr ? (
+                  <p className="text-fg">{locateErr}</p>
+                ) : nearEmptyState === "locating" ? (
+                  <p className="text-fg">Waiting for location…</p>
+                ) : nearEmptyState === "denied" ? (
+                  <p className="text-fg">Location permission denied.</p>
+                ) : nearEmptyState === "unavailable" ? (
+                  <p className="text-fg">Location unavailable.</p>
+                ) : (
+                  <p className="text-fg">Allow location to see calls near you.</p>
+                )}
+                <p className="mt-1 leading-relaxed">
+                  Pins can be approximate. Near me is a convenience lens — when in doubt, switch back to All area and All sources to sanity-check coverage.
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="px-4 pt-2" data-vaul-no-drag>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={resetLiveFilters}
+                className="flex-1 rounded-lg border border-border bg-surface-2 px-4 py-3 text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="flex-1 rounded-lg border border-accent/35 bg-accent/10 px-4 py-3 text-sm font-semibold text-fg active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </Drawer.Content>
+      </Drawer.Portal>
+    </Drawer.Root>
   );
 }
 
@@ -617,11 +874,13 @@ function SourcePipes({
   count,
   newest,
   wireLive,
+  compact = false,
 }: {
   health: WireHealth;
   count: number;
   newest?: Incident;
   wireLive: boolean;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const parts = [
@@ -714,7 +973,10 @@ function SourcePipes({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex min-h-9 w-full items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 rounded-md"
+        className={cn(
+          "flex w-full items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 rounded-md",
+          compact ? "min-h-8" : "min-h-9",
+        )}
       >
         <p className="min-w-0 truncate text-xs text-subtle">
           <span className="font-semibold text-fg">{count}</span>
@@ -726,26 +988,6 @@ function SourcePipes({
           <ChevronRight className="size-3.5" />
         </span>
       </button>
-      <div className="-mt-0.5 mb-0.5 flex items-center gap-1.5 overflow-x-auto overscroll-x-contain scrollbar-none">
-        {[
-          { key: "scanner", label: "Scanner", tone: scannerTone, age: ageLabel(scannerPipe?.ageSec ?? -1) },
-          { key: "nixle", label: "Nixle", tone: nixleTone, age: ageLabel(nixleAgg.ageSec) },
-          { key: "news", label: "News", tone: newsTone, age: ageLabel(newsAgg.ageSec) },
-          { key: "511", label: "511", tone: tone511, age: ageLabel(dot511?.ageSec ?? -1) },
-        ].map((p) => (
-          <span
-            key={p.key}
-            className={cn(
-              "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium inline-flex items-center gap-1.5",
-              toneClasses[p.tone],
-            )}
-          >
-            <span className={cn("size-1.5 rounded-full", dotClasses[p.tone])} aria-hidden />
-            <span>{p.label}</span>
-            <span className="font-mono tabular-nums text-subtle">{p.age}</span>
-          </span>
-        ))}
-      </div>
       <Drawer.Root open={open} onOpenChange={setOpen}>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-40 bg-bg/70" />
@@ -756,6 +998,26 @@ function SourcePipes({
               <p className="mt-1 text-xs leading-relaxed text-muted">
                 Albany, Colonie, and Bethlehem do not publish live CAD. Colonie Police radio is encrypted. Counts below are what this refresh actually pulled.
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {[
+                  { key: "scanner", label: "Scanner", tone: scannerTone, age: ageLabel(scannerPipe?.ageSec ?? -1) },
+                  { key: "nixle", label: "Nixle", tone: nixleTone, age: ageLabel(nixleAgg.ageSec) },
+                  { key: "news", label: "News", tone: newsTone, age: ageLabel(newsAgg.ageSec) },
+                  { key: "511", label: "511", tone: tone511, age: ageLabel(dot511?.ageSec ?? -1) },
+                ].map((p) => (
+                  <span
+                    key={p.key}
+                    className={cn(
+                      "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium inline-flex items-center gap-1.5",
+                      toneClasses[p.tone],
+                    )}
+                  >
+                    <span className={cn("size-1.5 rounded-full", dotClasses[p.tone])} aria-hidden />
+                    <span>{p.label}</span>
+                    <span className="font-mono tabular-nums text-subtle">{p.age}</span>
+                  </span>
+                ))}
+              </div>
               {health.daytimePipesFailing ? (
                 <p className="mt-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-xs text-fg">
                   One or more daytime pipes failed this refresh — empty counts may mean the pipe is down, not that nothing happened.
