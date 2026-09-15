@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  hasClearIncidentLanguageForNewsroomSocial,
   keepLiveNewsItem,
   keepNewsTabItem,
   keepSocialItem,
@@ -216,6 +217,56 @@ describe("keepSocialItem", () => {
         NOT_OURS,
         TITLE_CRIME,
       ),
+      false,
+    );
+  });
+});
+
+describe("hasClearIncidentLanguageForNewsroomSocial", () => {
+  it("keeps clear incident posts", () => {
+    assert.equal(
+      hasClearIncidentLanguageForNewsroomSocial({
+        title: "Colonie crash on Wolf Road sends 2 to hospital",
+        summary: "Police and EMS responded.",
+      }),
+      true,
+    );
+    assert.equal(
+      hasClearIncidentLanguageForNewsroomSocial({
+        title: "Albany police investigating shooting on Central Ave",
+        summary: "No arrests yet.",
+      }),
+      true,
+    );
+    assert.equal(
+      hasClearIncidentLanguageForNewsroomSocial({
+        title: "Fire crews battle structure fire in Latham",
+        summary: "Heavy smoke reported.",
+      }),
+      true,
+    );
+  });
+
+  it("drops policy / feature posts that mention crime/police generically", () => {
+    assert.equal(
+      hasClearIncidentLanguageForNewsroomSocial({
+        title: "Raise the Age policy story draws debate at the Capitol",
+        summary: "Lawmakers discuss youth justice changes.",
+      }),
+      false,
+    );
+    assert.equal(
+      hasClearIncidentLanguageForNewsroomSocial({
+        title: "Crime trends shift in the Capital Region, officials say",
+        summary: "A new report breaks down year-over-year changes.",
+      }),
+      false,
+    );
+    assert.equal(
+      hasClearIncidentLanguageForNewsroomSocial({
+        title: "VA outpatient clinic politics divide voters in Schenectady",
+        summary: "Candidates spar over healthcare spending.",
+      }),
       false,
     );
   });

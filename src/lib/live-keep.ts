@@ -129,6 +129,24 @@ export type SocialKeepInput = {
 };
 
 /**
+ * Newsroom social can contain policy/features that mention "crime" or "police" without
+ * describing a discrete public-safety incident. This gate is intentionally stricter than
+ * `keepSocialItem()` and is ONLY meant for non-official newsroom outlets.
+ */
+export function hasClearIncidentLanguageForNewsroomSocial(input: { title: string; summary?: string }): boolean {
+  const title = input.title || "";
+  const summary = input.summary || "";
+  const hay = `${title} ${summary}`;
+
+  // "Crime" / "police" alone is too broad for newsroom social; require a concrete incident cue.
+  const INCIDENT =
+    /\b(crash|collision|mva|rollover|hit[- ]and[- ]run|pedestrian struck|vehicle.*into|fire|structure fire|vehicle fire|brush fire|blaze|smoke|shooting|shots fired|gunfire|homicide|murder|stabb?ing|stabbed|robbery|burglary|arrest(?:ed)?|charged|suspect|wanted|missing (?:person|child|woman|man)|amber alert|silver alert|overdose|swat|bomb|explosion|evacuat|road clos(?:ed|ure)|lane(?:s)? blocked|traffic alert)\b/i;
+
+  // Prefer title evidence; allow summary evidence when the title is short/teaser-y.
+  return INCIDENT.test(title) || INCIDENT.test(hay);
+}
+
+/**
  * Official PD/FD/Sheriff posts stay even without crime keywords
  * (press, traffic, missing person, incident updates).
  * Non-official still needs a crime/incident title cue.
