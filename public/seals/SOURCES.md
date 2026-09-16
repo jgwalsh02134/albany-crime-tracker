@@ -18,18 +18,11 @@ Official emblems only. No mocks / initials avatars / AI seals.
 | nysp-troop-g | https://commons.wikimedia.org/wiki/File:Seal_of_the_New_York_State_Police.svg | Official NYSP seal |
 | nysp-troop-t | https://commons.wikimedia.org/wiki/File:Seal_of_the_New_York_State_Police.svg | Same NYSP seal as Troop G (intentional) |
 | dec-eco-region4 | https://commons.wikimedia.org/wiki/File:2010s_New_York_State_DEC_logo.png | Official DEC logo |
-| nys-doccs | https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg | FALLBACK: Great Seal of NY — no DOCCS-specific public seal |
 | nys-ag-cjd | https://ag.ny.gov/themes/composer/oag/images/oag_seal_white.svg | Official NYS AG seal from ag.ny.gov |
-| nys-ig | https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg | FALLBACK: Great Seal — IG uses generic NY branding |
-| nys-dhses | https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg | FALLBACK: Great Seal — DHSES uses nygov wordmark |
 | nys-dcjs | https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg | FALLBACK: Great Seal — DCJS uses nygov wordmark |
-| nys-tax-ci | https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg | FALLBACK: Great Seal — Tax CI seal not found |
 | nys-sla | https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg | FALLBACK: Great Seal — SLA seal not found |
-| nys-dfs | https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg | FALLBACK: Great Seal — DFS seal not found |
 | nys-omig | https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg | FALLBACK: Great Seal — OMIG seal not found |
-| nys-coelig | https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg | FALLBACK: Great Seal — COELIG seal not found |
 | albany-county-sheriff | https://www.patchgallery.com/ (Albany_Co_NYSr) | Albany County Sheriff patch (real embroidered) |
-| albany-county-e911 | https://www.albanycountyny.gov/ | FALLBACK: Albany County seal (no E911-specific seal) |
 | albany-county-da | https://www.albanycountyny.gov/government/albany-county-district-attorney | Official Albany County DA seal graphic |
 | albany-county-probation | https://www.albanycountyny.gov/ | FALLBACK: Albany County seal |
 | albany-county-cvsvc | https://www.albanycountyny.gov/ | FALLBACK: Albany County seal |
@@ -43,21 +36,29 @@ Official emblems only. No mocks / initials avatars / AI seals.
 | green-island-pd | https://www.patchgallery.com/ | Green Island PD patch |
 | altamont-pd | https://www.patchgallery.com/ | Altamont PD patch high-res photo |
 | coeymans-pd | https://www.patchgallery.com/ | Coeymans PD patch |
-| ualbany-upd | https://commons.wikimedia.org/wiki/File:Seal_of_Albany,_New_York.svg | FALLBACK: City of Albany seal — UPD seal not found |
 | siena-public-safety | https://www.siena.edu/ | Siena DPS / college mark |
 | csx-railroad-police | CSX Railroad Police embroidered patch photo (dreamstime stock of real patch) | Real patch — faint watermark residual; NOT corporate CSX initials |
-| cprb-albany | https://commons.wikimedia.org/wiki/File:Seal_of_Albany,_New_York.svg | FALLBACK: City of Albany seal |
+|----|------------|-------|
 | id | source URL | notes |
 |----|------------|-------|
 | fed-probation-ndny | https://commons.wikimedia.org/wiki/File:US-Courts-AdministrativeOffice-Seal.svg | AOUSC seal SVG — US Courts / Federal Probation (NOT DOJ) |
 | fps-region2 | https://commons.wikimedia.org/wiki/File:Seal_of_the_U.S._Department_of_Homeland_Security_Federal_Protective_Service.png | FPS-specific seal (NOT generic DHS) |
-| nys-comptroller-investigations | https://www.osc.ny.gov/themes/custom/oscnygov/images/osc-seal.svg | NYS OSC Comptroller official seal SVG |
-| nys-park-police | https://www.patchgallery.com/displayimage.php?album=107&pid=9284 | NYS Park Police embroidered patch (PatchGallery) |
-| nys-court-officers | https://www.nycourts.gov/sites/default/files/ucs_seal-color.svg | Official NYS Unified Court System seal (Court Officers / UCS) |
-| albany-county-stop-dwi | https://stopdwi.org/wp-content/uploads/2021/09/logo-edited1.png | NYS STOP-DWI official program logo from stopdwi.org |
+| watervliet-arsenal | https://commons.wikimedia.org/wiki/File:Official_U.S._Army_Watervliet_Arsenal_unit_insignia.png | Official Watervliet Arsenal unit insignia (NOT Watervliet PD) |
+| nys-park-police | https://www.patchgallery.com/displayimage.php?album=107&pid=9284 | NYS Park Police embroidered patch (PatchGallery; Genesee variant) |
+| nys-doccs | https://www.patchgallery.com/displayimage.php?album=107&pid=46303 | NYS Dept. of Correctional Services Officer embroidered patch (PatchGallery) |
+| nys-ig | https://www.crwflags.com/fotw/flags/us-ny_ig.html | NYS Office of the Inspector General seal (FOTW / press scan) |
+| nys-dhses | https://www.crwflags.com/fotw/flags/us-ny_hs.html | NYS DHSES seal (FOTW) |
+| nys-tax-ci | https://media.glassdoor.com/sqll/41798/ny-department-of-taxation-squarelogo-1424260660552.png | NYS Dept. of Taxation and Finance seal (also FOTW us-ny_tx) |
+| nys-dfs | https://www.crwflags.com/fotw/flags/us-ny_fi.html | NYS Department of Financial Services seal (FOTW) |
+| nys-coelig | http://www.citylandnyc.org/wp-content/uploads/sites/14/2016/11/JCOPE-SEAL-Cover-Art.jpg | JCOPE seal (COELIG predecessor) — high-res agency seal, not Great Seal alone |
+| nys-court-officers | https://www.nycourts.gov/sites/default/files/ucs_seal-color.svg | Official NYS Unified Court System seal SVG |
+| nys-comptroller-investigations | https://www.osc.ny.gov/themes/custom/oscnygov/images/osc-seal.svg | NYS OSC / Comptroller official seal SVG |
+| albany-county-e911 | https://www.patchgallery.com/displayimage.php?album=32&pid=50272 | Albany Police & Fire Communications / 911 embroidered patch (PatchGallery) |
+| albany-county-stop-dwi | https://stopdwi.org/wp-content/uploads/2021/09/logo-edited1.png | NYS STOP-DWI official program logo |
 | albany-housing-authority | https://www.albanyhousing.org/wordpress/wp-content/themes/albanyhousing-res/imgs/albanyHousingAuthorityLogo.png | Albany Housing Authority official website logo |
 | albany-med-security | https://www.albanymed.org/wp-content/uploads/sites/2/2023/01/amc-hs-mark-00216A.svg | Albany Med Health System official mark SVG |
-| uha-public-safety | https://www.universityheights.org/img/UHA-logo-marquee.png | University Heights Association logo mark from universityheights.org |
-| cdta-transit | https://www.cdta.org/themes/custom/cdta/logo.svg | CDTA official logo SVG from cdta.org theme |
-| amtrak-police | https://police.amtrak.com/content/dam/projects/dotcom/english/public/images/logos/apd-amtrak-logo.png | Amtrak Police Department official logo from police.amtrak.com |
-| watervliet-arsenal | https://commons.wikimedia.org/wiki/File:Official_U.S._Army_Watervliet_Arsenal_unit_insignia.png | Official Watervliet Arsenal unit insignia |
+| uha-public-safety | https://www.universityheights.org/img/UHA-logo-marquee.png | University Heights Association logo mark |
+| cdta-transit | https://www.cdta.org/themes/custom/cdta/logo.svg | CDTA official logo SVG |
+| amtrak-police | https://commons.wikimedia.org/wiki/File:Amtrak_Police_logo.jpg | Amtrak Police badge (Commons; also police.amtrak.com wordmark available) |
+| ualbany-upd | https://www.patchgallery.com/ (SUNY University Police patch) | SUNY University Police embroidered patch (shared system patch for UAlbany UPD) |
+| cprb-albany | https://www.albanycprb.org/wp-content/uploads/2023/04/CPRB-Logo-512.png | CPRB official logo via Wayback (20230523192914); circular seal cropped |
