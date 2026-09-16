@@ -1,0 +1,506 @@
+[
+  {
+    "id": "fbi-albany",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 597348,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_Federal_Bureau_of_Investigation.svg",
+    "notes": "Official FBI seal SVG"
+  },
+  {
+    "id": "dea-albany",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 264359,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_United_States_Drug_Enforcement_Administration.svg",
+    "notes": "Official DEA seal SVG"
+  },
+  {
+    "id": "atf-albany",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 556344,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_Bureau_of_Alcohol,_Tobacco,_Firearms_and_Explosives.svg",
+    "notes": "Official ATF seal SVG"
+  },
+  {
+    "id": "usms-ndny",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 505127,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_United_States_Marshals_Service.svg",
+    "notes": "USMS seal"
+  },
+  {
+    "id": "ice-hsi-albany",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 429569,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_Immigration_and_Customs_Enforcement.svg",
+    "notes": "ICE seal"
+  },
+  {
+    "id": "usss-albany",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 936736,
+    "source": "https://commons.wikimedia.org/wiki/File:Badge_of_the_United_States_Secret_Service.png",
+    "notes": "Official USSS Special Agent badge from Commons"
+  },
+  {
+    "id": "uspis-albany",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 339192,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_United_States_Postal_Inspection_Service.svg",
+    "notes": "USPIS seal"
+  },
+  {
+    "id": "irs-ci-albany",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 832336,
+    "source": "https://commons.wikimedia.org/wiki/File:USA_-_IRS_CID.png",
+    "notes": "IRS CI seal/badge"
+  },
+  {
+    "id": "cbp-albany",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 542022,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_U.S._Customs_and_Border_Protection.png",
+    "notes": "CBP seal 1083px"
+  },
+  {
+    "id": "usao-ndny",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 756155,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_United_States_Department_of_Justice.svg",
+    "notes": "DOJ seal (USAO)"
+  },
+  {
+    "id": "fed-probation-ndny",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 756166,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_United_States_Department_of_Justice.svg",
+    "notes": "FALLBACK: DOJ seal \u2014 AOUSC/US Courts seal unavailable under rate limit"
+  },
+  {
+    "id": "fps-region2",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 384686,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_United_States_Department_of_Homeland_Security.svg",
+    "notes": "FALLBACK: DHS seal \u2014 FPS-specific seal not retrieved"
+  },
+  {
+    "id": "ssa-oig",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 205406,
+    "source": "https://commons.wikimedia.org/wiki/File:Social_Security_Administration_Office_of_Inspector_General_Seal_(USA).jpg",
+    "notes": "SSA OIG seal"
+  },
+  {
+    "id": "va-police-albany",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 710336,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_U.S._Department_of_Veterans_Affairs.svg",
+    "notes": "VA seal"
+  },
+  {
+    "id": "watervliet-arsenal",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 310325,
+    "source": "https://www.patchgallery.com/",
+    "notes": "FALLBACK: Watervliet PD patch used pending Arsenal SSI (Commons 429); NEEDS HUMAN"
+  },
+  {
+    "id": "nysp-troop-g",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 499551,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_New_York_State_Police.svg",
+    "notes": "Official NYSP seal"
+  },
+  {
+    "id": "nysp-troop-t",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 499551,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_New_York_State_Police.svg",
+    "notes": "Same NYSP seal as Troop G (intentional)"
+  },
+  {
+    "id": "nys-park-police",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 458177,
+    "source": "https://commons.wikimedia.org/wiki/File:Badge_of_the_New_York_State_Police.png",
+    "notes": "FALLBACK: Park Police distinct seal not found; interim NYSP badge \u2014 NEEDS HUMAN"
+  },
+  {
+    "id": "dec-eco-region4",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 242736,
+    "source": "https://commons.wikimedia.org/wiki/File:2010s_New_York_State_DEC_logo.png",
+    "notes": "Official DEC logo"
+  },
+  {
+    "id": "nys-doccs",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530423,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal of NY \u2014 no DOCCS-specific public seal"
+  },
+  {
+    "id": "nys-ag-cjd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 329977,
+    "source": "https://ag.ny.gov/themes/composer/oag/images/oag_seal_white.svg",
+    "notes": "Official NYS AG seal from ag.ny.gov"
+  },
+  {
+    "id": "nys-ig",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530421,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 IG uses generic NY branding"
+  },
+  {
+    "id": "nys-dhses",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530425,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 DHSES uses nygov wordmark"
+  },
+  {
+    "id": "nys-dcjs",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530426,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 DCJS uses nygov wordmark"
+  },
+  {
+    "id": "nys-court-officers",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530434,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 Court Officers seal not found"
+  },
+  {
+    "id": "nys-tax-ci",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530434,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 Tax CI seal not found"
+  },
+  {
+    "id": "nys-sla",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530422,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 SLA seal not found"
+  },
+  {
+    "id": "nys-dfs",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530431,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 DFS seal not found"
+  },
+  {
+    "id": "nys-omig",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530430,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 OMIG seal not found"
+  },
+  {
+    "id": "nys-coelig",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530426,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 COELIG seal not found"
+  },
+  {
+    "id": "nys-comptroller-investigations",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 530445,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_New_York.svg",
+    "notes": "FALLBACK: Great Seal \u2014 OSC seal not found"
+  },
+  {
+    "id": "albany-county-sheriff",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 351414,
+    "source": "https://www.patchgallery.com/ (Albany_Co_NYSr)",
+    "notes": "Albany County Sheriff patch (real embroidered)"
+  },
+  {
+    "id": "albany-county-e911",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 61471,
+    "source": "https://www.albanycountyny.gov/",
+    "notes": "FALLBACK: Albany County seal (no E911-specific seal)"
+  },
+  {
+    "id": "albany-county-da",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 767273,
+    "source": "https://www.albanycountyny.gov/government/albany-county-district-attorney",
+    "notes": "Official Albany County DA seal graphic"
+  },
+  {
+    "id": "albany-county-probation",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 61477,
+    "source": "https://www.albanycountyny.gov/",
+    "notes": "FALLBACK: Albany County seal"
+  },
+  {
+    "id": "albany-county-stop-dwi",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 61477,
+    "source": "https://www.albanycountyny.gov/",
+    "notes": "FALLBACK: Albany County seal"
+  },
+  {
+    "id": "albany-county-cvsvc",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 61474,
+    "source": "https://www.albanycountyny.gov/",
+    "notes": "FALLBACK: Albany County seal"
+  },
+  {
+    "id": "albany-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 424391,
+    "source": "https://www.patchgallery.com/ (Albany_Police_Patch_v2)",
+    "notes": "Albany PD patch scan"
+  },
+  {
+    "id": "colonie-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 426880,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_Colonie,_New_York.svg",
+    "notes": "Official Town of Colonie seal"
+  },
+  {
+    "id": "guilderland-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 306027,
+    "source": "https://guilderlandpd.org/ + patch photo",
+    "notes": "Guilderland PD embroidered patch"
+  },
+  {
+    "id": "bethlehem-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 152101,
+    "source": "https://www.townofbethlehem.org/142/Police",
+    "notes": "Official Bethlehem PD badge from town site"
+  },
+  {
+    "id": "cohoes-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 489517,
+    "source": "cohoes PD patch (mastodon seal)",
+    "notes": "Cohoes PD official patch design"
+  },
+  {
+    "id": "watervliet-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 1015708,
+    "source": "https://www.patchgallery.com/",
+    "notes": "Watervliet PD patch high-res"
+  },
+  {
+    "id": "menands-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 332537,
+    "source": "https://www.patchgallery.com/",
+    "notes": "Menands PD patch"
+  },
+  {
+    "id": "green-island-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 942285,
+    "source": "https://www.patchgallery.com/",
+    "notes": "Green Island PD patch"
+  },
+  {
+    "id": "altamont-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 1130992,
+    "source": "https://www.patchgallery.com/",
+    "notes": "Altamont PD patch high-res photo"
+  },
+  {
+    "id": "coeymans-pd",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 1122701,
+    "source": "https://www.patchgallery.com/",
+    "notes": "Coeymans PD patch"
+  },
+  {
+    "id": "ualbany-upd",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 339808,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_Albany,_New_York.svg",
+    "notes": "FALLBACK: City of Albany seal \u2014 UPD seal not found"
+  },
+  {
+    "id": "siena-public-safety",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 198258,
+    "source": "https://www.siena.edu/",
+    "notes": "Siena DPS / college mark"
+  },
+  {
+    "id": "uha-public-safety",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 339817,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_Albany,_New_York.svg",
+    "notes": "FALLBACK: City of Albany seal"
+  },
+  {
+    "id": "albany-med-security",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 339819,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_Albany,_New_York.svg",
+    "notes": "FALLBACK: City of Albany seal"
+  },
+  {
+    "id": "cdta-transit",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 34274,
+    "source": "https://www.cdta.org/",
+    "notes": "CDTA brand icon (small source)"
+  },
+  {
+    "id": "csx-railroad-police",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 1897903,
+    "source": "CSX Railroad Police embroidered patch photo",
+    "notes": "Official CSX Railroad Police patch (not CSX initials logo)"
+  },
+  {
+    "id": "amtrak-police",
+    "status": "ok",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 179852,
+    "source": "https://commons.wikimedia.org/wiki/File:Amtrak_Police_logo.jpg",
+    "notes": "Amtrak Police badge Commons (upscaled from ~259px)"
+  },
+  {
+    "id": "albany-housing-authority",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 339824,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_Albany,_New_York.svg",
+    "notes": "FALLBACK: City of Albany seal \u2014 NOT Albany PD"
+  },
+  {
+    "id": "cprb-albany",
+    "status": "fallback",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 339811,
+    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_Albany,_New_York.svg",
+    "notes": "FALLBACK: City of Albany seal"
+  }
+]
