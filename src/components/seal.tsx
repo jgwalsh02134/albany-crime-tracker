@@ -20,7 +20,7 @@ export function Seal({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white p-1 ring-1 ring-black/10 shadow-sm dark:ring-white/10",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white p-0.5 ring-1 ring-black/10 shadow-sm dark:ring-white/10",
         size,
       )}
       title={label}
@@ -29,7 +29,7 @@ export function Seal({
         <img
           src={`/seals/${id}.png`}
           alt=""
-          className="size-full object-contain p-0.5"
+          className="size-full object-contain"
           decoding="async"
           loading="lazy"
           onError={() => setOk(false)}
