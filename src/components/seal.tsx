@@ -27,7 +27,7 @@ export function Seal({
     >
       {ok ? (
         <img
-          src={`/seals/${id}.png`}
+          src={`/seals/${id}.png?v=97`}
           alt=""
           className="size-full object-contain"
           decoding="async"
