@@ -483,7 +483,7 @@
     {
       "id": "albany-county-e911",
       "name": "Albany County E911 / Communications Center",
-      "abbreviation": null,
+      "abbreviation": "E911",
       "tier": "county",
       "type": "communications",
       "jurisdiction": "Primary PSAP for Albany PD, Colonie PD, Bethlehem PD, Guilderland PD, Menands PD, NYSP (ESP), Cohoes PD/Fire, Watervliet PD/Fire, Green Island PD/Fire, Coeymans PD/Fire, plus volunteer fire companies and ambulance services",
@@ -513,7 +513,7 @@
     {
       "id": "albany-county-probation",
       "name": "Albany County Probation Department",
-      "abbreviation": null,
+      "abbreviation": "Probation",
       "tier": "county",
       "type": "probation",
       "jurisdiction": "County probation supervision",
@@ -528,7 +528,7 @@
     {
       "id": "albany-county-stop-dwi",
       "name": "Albany County STOP DWI Program",
-      "abbreviation": null,
+      "abbreviation": "STOP-DWI",
       "tier": "county",
       "type": "other",
       "jurisdiction": "DWI enforcement coordination, education, and victim impact panels",
@@ -543,7 +543,7 @@
     {
       "id": "albany-county-cvsvc",
       "name": "Albany County Crime Victim and Sexual Violence Center",
-      "abbreviation": null,
+      "abbreviation": "CVSVC",
       "tier": "county",
       "type": "other",
       "jurisdiction": "Victim services and advocacy",

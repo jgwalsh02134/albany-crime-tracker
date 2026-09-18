@@ -2,6 +2,37 @@
 
 Official emblems only. No mocks / initials avatars / AI seals.
 
+## User-provided circular seals (2026-09)
+
+Installed as 512×512 circular PNGs. Rensselaer County Sheriff and Saratoga Springs PD were not added — no matching Albany County directory agencies.
+
+| id | notes |
+|----|-------|
+| altamont-pd | Official circular Altamont PD seal |
+| cprb-albany | Official CPRB circular seal (City of Albany) |
+| albany-pd | Official circular Albany PD seal |
+| albany-county-sheriff | Official Albany County Sheriff star badge |
+| bethlehem-pd | Official circular Bethlehem PD seal |
+| cohoes-pd | Official circular Cohoes PD seal |
+| colonie-pd | Official circular Colonie PD seal |
+| coeymans-pd | Official circular Coeymans PD seal |
+| green-island-pd | Official circular Green Island PD seal |
+| guilderland-pd | Official circular Guilderland PD seal |
+| menands-pd | Official circular Menands PD seal |
+| dec-eco-region4 | NYS Forest Ranger / DEC Environmental Conservation seal |
+| nys-park-police | Official circular NYS Park Police seal |
+| nysp-troop-t | NYSP Troop T circular seal |
+| nysp-troop-g | NYSP Troop G circular seal |
+| siena-public-safety | Siena University circular seal |
+| albany-county-probation | County of Albany 1683 seal (leftover county agency) |
+| albany-county-cvsvc | County of Albany 1683 seal (leftover county agency) |
+| albany-county-stop-dwi | County of Albany 1683 seal (leftover county program; prior wordmark was cropped) |
+| colonie-town | Official Town of Colonie seal (municipality mark) |
+
+Leftover agencies without new circular art keep their existing emblem, trimmed and inset on a circular plate (shields, patches, wordmarks). Missing files fall back to initials — not a warning triangle.
+
+
+
 |----|------------|-------|
 | fbi-albany | https://commons.wikimedia.org/wiki/File:Seal_of_the_Federal_Bureau_of_Investigation.svg | Official FBI seal SVG |
 | dea-albany | https://commons.wikimedia.org/wiki/File:Seal_of_the_United_States_Drug_Enforcement_Administration.svg | Official DEA seal SVG |

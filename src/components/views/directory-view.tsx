@@ -236,8 +236,8 @@ export function DirectoryView() {
                   <div key={c.id} className="flex min-h-14 items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2">
                     <Seal id={c.id} label={c.name} />
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{c.name}</p>
-                      <p className="text-xs leading-snug text-subtle">{c.description}</p>
+                      <p className="line-clamp-2 text-sm font-semibold leading-snug">{c.name}</p>
+                      <p className="line-clamp-2 text-xs leading-snug text-subtle">{c.description}</p>
                     </div>
                   </div>
                 ),
@@ -313,8 +313,9 @@ function ContactRow({
       >
         <Seal id={agency.id} label={title} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold leading-snug">{agency.name}</p>
+          <p className="line-clamp-2 text-sm font-semibold leading-snug">{agency.name}</p>
           <p className="truncate text-xs text-subtle">
+            {agency.abbreviation && agency.abbreviation !== agency.name ? `${agency.abbreviation} · ` : ""}
             {agency.address || agency.phone || agency.jurisdiction}
           </p>
         </div>
@@ -365,8 +366,8 @@ function LinkRow({
     >
       <Seal id={id} label={title} className={compact ? "size-8" : undefined} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">{title}</p>
-        {subtitle ? <p className="truncate text-xs text-subtle">{subtitle}</p> : null}
+        <p className="line-clamp-2 text-sm font-semibold leading-snug">{title}</p>
+        {subtitle ? <p className="line-clamp-2 text-xs leading-snug text-subtle">{subtitle}</p> : null}
       </div>
       <ExternalLink className="size-4 shrink-0 text-subtle" />
     </a>
@@ -384,8 +385,8 @@ function MuniRow({ muni, onOpenAgency }: { muni: Muni; onOpenAgency: (id: string
     >
       <Seal id={coverId ?? muni.id} label={muni.name} />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">{muni.name}</p>
-        <p className="truncate text-xs text-subtle">
+        <p className="line-clamp-2 text-sm font-semibold leading-snug">{muni.name}</p>
+        <p className="line-clamp-2 text-xs leading-snug text-subtle">
           {muni.hasOwnPolice ? cover?.name ?? "Own police" : `Covered by ${cover?.abbreviation || cover?.name || "county / NYSP"}`}
         </p>
       </div>

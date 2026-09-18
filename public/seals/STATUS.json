@@ -137,38 +137,38 @@
   {
     "id": "nysp-troop-g",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 499551,
-    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_New_York_State_Police.svg",
-    "notes": "Official NYSP seal"
+    "width": 512,
+    "height": 512,
+    "bytes": 352977,
+    "source": "user-provided official seal",
+    "notes": "NYSP Troop G circular seal (user-provided)"
   },
   {
     "id": "nysp-troop-t",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 499551,
-    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_the_New_York_State_Police.svg",
-    "notes": "Same NYSP seal as Troop G (intentional)"
+    "width": 512,
+    "height": 512,
+    "bytes": 345635,
+    "source": "user-provided official seal",
+    "notes": "NYSP Troop T circular seal (user-provided)"
   },
   {
     "id": "nys-park-police",
-    "status": "fallback",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 458177,
-    "source": "https://commons.wikimedia.org/wiki/File:Badge_of_the_New_York_State_Police.png",
-    "notes": "FALLBACK: Park Police distinct seal not found; interim NYSP badge \u2014 NEEDS HUMAN"
+    "status": "ok",
+    "width": 512,
+    "height": 512,
+    "bytes": 324898,
+    "source": "user-provided official seal",
+    "notes": "Official circular NYS Park Police seal (user-provided)"
   },
   {
     "id": "dec-eco-region4",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 242736,
-    "source": "https://commons.wikimedia.org/wiki/File:2010s_New_York_State_DEC_logo.png",
-    "notes": "Official DEC logo"
+    "width": 512,
+    "height": 512,
+    "bytes": 281599,
+    "source": "user-provided official seal",
+    "notes": "NYS Forest Ranger / DEC circular seal (user-provided)"
   },
   {
     "id": "nys-doccs",
@@ -281,11 +281,11 @@
   {
     "id": "albany-county-sheriff",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 351414,
-    "source": "https://www.patchgallery.com/ (Albany_Co_NYSr)",
-    "notes": "Albany County Sheriff patch (real embroidered)"
+    "width": 512,
+    "height": 512,
+    "bytes": 180263,
+    "source": "user-provided official seal",
+    "notes": "Official Albany County Sheriff star badge (user-provided)"
   },
   {
     "id": "albany-county-e911",
@@ -299,20 +299,20 @@
   {
     "id": "albany-county-da",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 767273,
-    "source": "https://www.albanycountyny.gov/government/albany-county-district-attorney",
-    "notes": "Official Albany County DA seal graphic"
+    "width": 512,
+    "height": 512,
+    "bytes": 298289,
+    "source": "user-provided official seal",
+    "notes": "DA badge circular-cropped to drop hanger"
   },
   {
     "id": "albany-county-probation",
-    "status": "fallback",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 61477,
-    "source": "https://www.albanycountyny.gov/",
-    "notes": "FALLBACK: Albany County seal"
+    "status": "ok",
+    "width": 512,
+    "height": 512,
+    "bytes": 355970,
+    "source": "user-provided official seal",
+    "notes": "Official County of Albany 1683 seal (leftover county agency)"
   },
   {
     "id": "albany-county-stop-dwi",
@@ -325,57 +325,57 @@
   },
   {
     "id": "albany-county-cvsvc",
-    "status": "fallback",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 61474,
-    "source": "https://www.albanycountyny.gov/",
-    "notes": "FALLBACK: Albany County seal"
+    "status": "ok",
+    "width": 512,
+    "height": 512,
+    "bytes": 355970,
+    "source": "user-provided official seal",
+    "notes": "Official County of Albany 1683 seal (leftover county agency)"
   },
   {
     "id": "albany-pd",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 424391,
-    "source": "https://www.patchgallery.com/ (Albany_Police_Patch_v2)",
-    "notes": "Albany PD patch scan"
+    "width": 512,
+    "height": 512,
+    "bytes": 155306,
+    "source": "user-provided official seal",
+    "notes": "Official circular Albany PD seal (user-provided)"
   },
   {
     "id": "colonie-pd",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 426880,
-    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_Colonie,_New_York.svg",
-    "notes": "Official Town of Colonie seal"
+    "width": 512,
+    "height": 512,
+    "bytes": 245424,
+    "source": "user-provided official seal",
+    "notes": "Official circular Colonie PD seal (user-provided)"
   },
   {
     "id": "guilderland-pd",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 306027,
-    "source": "https://guilderlandpd.org/ + patch photo",
-    "notes": "Guilderland PD embroidered patch"
+    "width": 512,
+    "height": 512,
+    "bytes": 317134,
+    "source": "user-provided official seal",
+    "notes": "Official circular Guilderland PD seal (user-provided)"
   },
   {
     "id": "bethlehem-pd",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 152101,
-    "source": "https://www.townofbethlehem.org/142/Police",
-    "notes": "Official Bethlehem PD badge from town site"
+    "width": 512,
+    "height": 512,
+    "bytes": 351258,
+    "source": "user-provided official seal",
+    "notes": "Official circular Bethlehem PD seal (user-provided)"
   },
   {
     "id": "cohoes-pd",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 489517,
-    "source": "cohoes PD patch (mastodon seal)",
-    "notes": "Cohoes PD official patch design"
+    "width": 512,
+    "height": 512,
+    "bytes": 275316,
+    "source": "user-provided official seal",
+    "notes": "Official circular Cohoes PD seal (user-provided)"
   },
   {
     "id": "watervliet-pd",
@@ -389,38 +389,38 @@
   {
     "id": "menands-pd",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 332537,
-    "source": "https://www.patchgallery.com/",
-    "notes": "Menands PD patch"
+    "width": 512,
+    "height": 512,
+    "bytes": 308897,
+    "source": "user-provided official seal",
+    "notes": "Official circular Menands PD seal (user-provided)"
   },
   {
     "id": "green-island-pd",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 942285,
-    "source": "https://www.patchgallery.com/",
-    "notes": "Green Island PD patch"
+    "width": 512,
+    "height": 512,
+    "bytes": 271297,
+    "source": "user-provided official seal",
+    "notes": "Official circular Green Island PD seal (user-provided)"
   },
   {
     "id": "altamont-pd",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 1130992,
-    "source": "https://www.patchgallery.com/",
-    "notes": "Altamont PD patch high-res photo"
+    "width": 512,
+    "height": 512,
+    "bytes": 281959,
+    "source": "user-provided official seal",
+    "notes": "Official circular Altamont PD seal (user-provided)"
   },
   {
     "id": "coeymans-pd",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 1122701,
-    "source": "https://www.patchgallery.com/",
-    "notes": "Coeymans PD patch"
+    "width": 512,
+    "height": 512,
+    "bytes": 286598,
+    "source": "user-provided official seal",
+    "notes": "Official circular Coeymans PD seal (user-provided)"
   },
   {
     "id": "ualbany-upd",
@@ -434,11 +434,11 @@
   {
     "id": "siena-public-safety",
     "status": "ok",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 198258,
-    "source": "https://www.siena.edu/",
-    "notes": "Siena DPS / college mark"
+    "width": 512,
+    "height": 512,
+    "bytes": 259310,
+    "source": "user-provided official seal",
+    "notes": "Siena University circular seal (user-provided)"
   },
   {
     "id": "uha-public-safety",
@@ -496,11 +496,11 @@
   },
   {
     "id": "cprb-albany",
-    "status": "fallback",
-    "width": 1024,
-    "height": 1024,
-    "bytes": 339811,
-    "source": "https://commons.wikimedia.org/wiki/File:Seal_of_Albany,_New_York.svg",
-    "notes": "FALLBACK: City of Albany seal"
+    "status": "ok",
+    "width": 512,
+    "height": 512,
+    "bytes": 249789,
+    "source": "user-provided official seal",
+    "notes": "Official CPRB circular seal (user-provided)"
   }
 ]
