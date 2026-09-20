@@ -1,0 +1,1 @@
+Live feed overhaul: Prioritize real-time scanner-parsed incidents, 511NY, social mentions for frequent updates (minutes apart) instead of hourly news RSS headlines. Hybrid mode with 'Activity' tab dominating. Frequency increased, mini-cards for routine+critical.
