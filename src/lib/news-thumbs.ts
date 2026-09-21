@@ -10,13 +10,16 @@ const GENERIC_IMAGE_RE =
   /(?:^|[/_-])(?:logo|seal|brand|favicon|sprite|masthead|wordmark|placeholder|default[-_]?(?:image|og|share|social|thumb)?|site[-_]?icon|apple[-_]?touch|og[-_]?default|social[-_]?share|generic|stock|ambulance\.webp|firegeneric|news[-_]?10[-_]?site[-_]?icon|cropped-[^/]*icon|gnews\/logo|google_news_\d+)(?:[./_?-]|$)/i;
 
 const GOOGLE_NEWS_HOST_RE = /(?:^|\.)news\.google\.com$/i;
-const GNEWS_LOGO_RE = /googleusercontent\.com\/.*(?:=w(?:16|24|32|48|64|96)\b)|gstatic\.com\/gnews\/logo/i;
+const GNEWS_LOGO_RE =
+  /googleusercontent\.com\/.*(?:=w(?:16|24|32|48|64|96|128|256)\b|=s0-w(?:16|24|32|48|64|96|128|256)\b)|gstatic\.com\/gnews\/logo/i;
 
 export type ThumbCacheEntry = { image: string | null; at: number };
 
 const ogCache = new Map<string, ThumbCacheEntry>();
 const CACHE_TTL_MS = 30 * 60_000;
-const OG_TIMEOUT_MS = 2500;
+// Keep below the `live-sources` softPipe budget so a single slow publisher doesn't
+// cause the whole enrichment step to time out and fall back to un-enriched stories.
+const OG_TIMEOUT_MS = 1800;
 const MAX_ENRICH = 10;
 
 export function isGenericOutletImage(url: string | undefined | null): boolean {
@@ -42,24 +45,36 @@ export function isUsableStoryImage(url: string | undefined | null): boolean {
   return true;
 }
 
+function normalizeCandidate(raw: string, baseUrl?: string): string | undefined {
+  const cleaned = decodeHtmlEntities(raw).trim();
+  if (!cleaned) return undefined;
+  // Protocol-relative URLs appear in some RSS/OG tags.
+  const withProto = cleaned.startsWith("//") ? `https:${cleaned}` : cleaned;
+  return absolutize(withProto, baseUrl);
+}
+
 /** Prefer article photos over outlet stock when multiple candidates exist. */
 export function pickBestImage(candidates: (string | undefined | null)[]): string | undefined {
   const urls: string[] = [];
   for (const raw of candidates) {
     if (!raw) continue;
-    const url = raw.replace(/&amp;/gi, "&").trim();
+    const url = normalizeCandidate(raw) ?? raw.replace(/&amp;/gi, "&").trim();
     if (!/^https?:\/\//i.test(url)) continue;
     if (/\.(m3u8|mp4|mp3)(\?|$)/i.test(url) || /fuel-streaming|\/video\//i.test(url)) continue;
+    if (isGenericOutletImage(url)) continue;
     const looksImage =
       /\.(jpe?g|png|webp|gif)(\?|$)/i.test(url) ||
-      /\/media2\/|wp-content\/uploads|resources\/media|cdn\.|cloudfront|imgix|onedio|nypost|static/i.test(
+      // Common publisher/CDN patterns (often lack file extensions).
+      /\/media2\/|wp-content\/uploads|resources\/media|cdn-cgi\/image|\/dims4\/|\/resize\/|\/crop\/|\/quality\/|brightspotcdn\.com|googleusercontent\.com|cloudfront|imgix|static/i.test(
         url,
-      );
+      ) ||
+      // Brightspot-like image proxies frequently embed the origin URL.
+      /\b(?:url|image|img)=https?%3a%2f%2f/i.test(url);
     if (!looksImage) continue;
     if (!urls.includes(url)) urls.push(url);
   }
   // Prefer article photos; omit pure outlet stock so OG enrichment / placeholder can take over.
-  return urls.find((u) => !isGenericOutletImage(u));
+  return urls[0];
 }
 
 export function parseOgImageFromHtml(html: string, baseUrl?: string): string | undefined {
@@ -229,10 +244,6 @@ export async function fetchOgImage(articleUrl: string): Promise<string | undefin
 
   try {
     const canonical = await resolveArticleUrl(articleUrl);
-    if (isGoogleNewsUrl(canonical)) {
-      cacheSet(`og:${articleUrl}`, null);
-      return undefined;
-    }
     const res = await fetch(canonical, {
       headers: {
         "User-Agent": UA,
@@ -246,15 +257,18 @@ export async function fetchOgImage(articleUrl: string): Promise<string | undefin
       return undefined;
     }
     const html = await res.text();
-    // Cap parse work on huge pages.
-    const slice = html.length > 250_000 ? html.slice(0, 250_000) : html;
+    // Cap parse work on huge pages. Prefer up through </head> so meta tags remain in-bounds
+    // (some publishers and Google News ship extremely large <head> blocks).
+    const headClose = html.search(/<\/head>/i);
+    const cap = 700_000;
+    const slice =
+      headClose >= 0 && headClose < cap
+        ? html.slice(0, headClose + "</head>".length)
+        : html.length > cap
+          ? html.slice(0, cap)
+          : html;
     const image = parseOgImageFromHtml(slice, res.url || canonical);
     const usable = isUsableStoryImage(image) ? image! : undefined;
-    // Never replace with Google News / outlet logos from interstitial pages.
-    if (usable && isGenericOutletImage(usable)) {
-      cacheSet(`og:${articleUrl}`, null);
-      return undefined;
-    }
     cacheSet(`og:${articleUrl}`, usable ?? null);
     return usable;
   } catch {

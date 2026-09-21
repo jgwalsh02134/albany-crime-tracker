@@ -84,6 +84,19 @@ test("generic detection, OG parse, and pickBestImage", async () => {
     ]);
     assert.match(best, /real-story-photo/);
 
+    assert.equal(
+      pickBestImage([
+        // Brightspot-style OG images often have no extension and carry the origin in `?url=...`.
+        "https://npr.brightspotcdn.com/dims4/default/b528fec/2147483647/strip/true/crop/4032x2117+0+473/resize/1200x630!/quality/90/?url=http%3A%2F%2Fnpr-brightspot.s3.amazonaws.com%2Ffoo%2Fbar.jpg",
+      ]),
+      "https://npr.brightspotcdn.com/dims4/default/b528fec/2147483647/strip/true/crop/4032x2117+0+473/resize/1200x630!/quality/90/?url=http%3A%2F%2Fnpr-brightspot.s3.amazonaws.com%2Ffoo%2Fbar.jpg",
+    );
+
+    assert.equal(
+      isUsableStoryImage("https://lh3.googleusercontent.com/J6_coFbogxhRI9iM864NL_liGXvsQp2AupsKei7z0cNNfDvGUmWUy20nuUhkREQyrpY4bEeIBuc=s0-w300"),
+      true,
+    );
+
     const html = `
       <html><head>
         <meta property="og:image" content="https://cdn.example.com/story/hero.jpg" />
