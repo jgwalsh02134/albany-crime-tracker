@@ -5,7 +5,26 @@
  */
 
 export const OUT_OF_AREA =
-  /\b(philippines|mississippi|louisiana|alabama|arkansas|oklahoma|kansas|nebraska|idaho|montana|wyoming|alaska|hawaii|new orleans|baton rouge|shreveport|portland(?!\s*(?:cement|ave|avenue|st|street))|seattle|chicago|houston|dallas|phoenix|miami|atlanta|denver|boston|los angeles|san francisco|san diego|baltimore|detroit|minneapolis|milwaukee|brooklyn|queens|bronx|manhattan|staten island|nycha|albany houses|albany,? ga\b|albany,? georgia|albany,? oregon|new albany|albany park|long island|new york city|\bnyc\b|kingston,? ny|utica|syracuse|buffalo|rochester|watertown|binghamton|ferry (?:sinks|capsizes)|ferry disaster|portlandpolice|lapd|chicago\s+pd)\b/i;
+  /\b(philippines|mississippi|louisiana|alabama|arkansas|oklahoma|kansas|nebraska|idaho|montana|wyoming|alaska|hawaii|new orleans|baton rouge|shreveport|portland(?!\s*(?:cement|ave|avenue|st|street))|seattle|chicago|houston|dallas|phoenix|miami|atlanta|denver|boston|los angeles|san francisco|san diego|baltimore|detroit|minneapolis|milwaukee|brooklyn|queens|bronx|manhattan|staten island|nycha|albany houses|albany,? ga\b|albany,? georgia|albany,? oregon|new albany|albany park|long island|new york city|\bnyc\b|kingston,? ny|utica|syracuse|buffalo|rochester|watertown|binghamton|ferry (?:sinks|capsizes)|ferry disaster|portlandpolice|lapd|chicago\s+pd|walb|effingham|albany herald)\b/i;
+
+const OUT_OF_AREA_MEDIA =
+  /\b(walb\.com|effinghamdaily|effingham\s+daily|wfxl|albanyherald)\b/i;
+
+/** Capital Region NY only. Rejects WALB (Albany, GA), Effingham IL, and other wrong Albanys. */
+export function isOutOfAreaMedia(input: { title?: string; summary?: string; outlet?: string; url?: string }): boolean {
+  const hay = `${input.title ?? ""} ${input.summary ?? ""} ${input.outlet ?? ""} ${input.url ?? ""}`;
+  if (OUT_OF_AREA.test(hay)) return true;
+  if (OUT_OF_AREA_MEDIA.test(hay)) return true;
+  return false;
+}
+
+/** Soft PR, student features, PSAs, and months-old lookbacks — News tab may keep them; Live does not. */
+export const SOFT_NOT_INCIDENT =
+  /\b(forensic science week|safe speed|yom kippur|emt (?:program|student|students|class)|students seek|student feature|firehouse (?:funding|grant|rebuild)|open house|community event|public service announcement|\bpsa\b|job fair|scholarship|back in (?:january|february|march|april|may|june|july|august|september|october|november|december)|months ago|last (?:spring|summer|fall|winter|year))\b/i;
+
+export function isSoftNonIncident(text: string): boolean {
+  return SOFT_NOT_INCIDENT.test(text);
+}
 
 export const CAPITAL_LOCAL =
   /\b(albany|colonie|bethlehem|guilderland|cohoes|watervliet|menands|latham|delmar|new scotland|westerlo|coeymans|loudonville|altamont|ravena|selkirk|glenmont|green island|capital (?:region|district)|troop g|clifton park|troy|schenectady|rensselaer|sand lake|schodack|east greenbush|niskayuna|rotterdam|glenville|scotia|halfmoon|mechanicville|saratoga|ballston|voorheesville|elsmere|slingerlands|crossgates|wolf\s*rd|central\s*(?:ave|avenue)|western\s*(?:ave|avenue)|thruway|northway|i-?87|i-?90|i-?787)\b/i;
@@ -38,7 +57,8 @@ export type LiveKeepInput = {
 export function keepLiveNewsItem(row: LiveKeepInput): boolean {
   const hay = `${row.title} ${row.summary ?? ""}`;
   if (row.minutesAgo > LIVE_WINDOW_MIN) return false;
-  if (OUT_OF_AREA.test(hay)) return false;
+  if (isOutOfAreaMedia({ title: row.title, summary: row.summary })) return false;
+  if (isSoftNonIncident(hay)) return false;
   if (COURT_ONLY.test(hay)) return false;
   if (NOT_LIVE_NEWS.test(hay)) return false;
   if (!LIVE_PUBLIC_SAFETY.test(hay)) return false;
@@ -62,7 +82,7 @@ export type NewsTabInput = {
 export function keepNewsTabItem(row: NewsTabInput): boolean {
   const hay = `${row.title} ${row.summary ?? ""}`;
   if (row.minutesAgo > NEWS_TAB_WINDOW_MIN) return false;
-  if (OUT_OF_AREA.test(hay)) return false;
+  if (isOutOfAreaMedia({ title: row.title, summary: row.summary, outlet: row.outlet })) return false;
   if (LOCAL_OUTLET.test(row.outlet ?? "") || CAPITAL_LOCAL.test(hay)) return true;
   // No local outlet and no Capital Region cue — drop.
   return false;
@@ -174,7 +194,8 @@ export function keepSocialItem(
   titleCrime: RegExp,
 ): boolean {
   const hay = `${row.title} ${row.summary ?? ""}`;
-  if (drop.test(hay) || notOurs.test(hay) || OUT_OF_AREA.test(hay)) return false;
+  if (drop.test(hay) || notOurs.test(hay) || isOutOfAreaMedia({ title: row.title, summary: row.summary })) return false;
+  if (isSoftNonIncident(hay)) return false;
   if (row.needsLocal && !row.localMatch) return false;
   if (row.official) return true;
   if (isCitizenNonIncidentChatter({ title: row.title, summary: row.summary })) return false;

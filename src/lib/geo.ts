@@ -247,16 +247,101 @@ export function canonicalTown(name: string): string {
   return ALIASES[name] ?? name;
 }
 
-export function placeFromText(text: string): Place | null {
-  const hay = text.replace(/[-_]/g, " ");
+/**
+ * Building-access hardware, not municipalities.
+ * "Knox Box" / KnoxBox is a fire lock box — never the Town of Knox.
+ */
+const HARDWARE_BRAND_RE =
+  /\bknox[\s-]*box(?:es)?\b|\bknoxbox(?:es)?\b|\bknox[\s-]*(?:key(?:\s*box)?|padlock|lockbox|gate(?:\s*box)?|vault|rapid(?:\s*entry)?)\b|\bsupra[\s-]*box(?:es)?\b|\bsuprabox(?:es)?\b|\b(?:key|lock|access)\s*box(?:es)?\b/gi;
+
+export function stripHardwareBrands(text: string): string {
+  return text.replace(/[-_]/g, " ").replace(HARDWARE_BRAND_RE, " ");
+}
+
+function townNamesIn(hay: string): string[] {
+  const found: string[] = [];
   for (const name of TOWN_NAMES) {
     const re = new RegExp(`\\b${name.replace(/\s+/g, "\\s+")}\\b`, "i");
     if (!re.test(hay)) continue;
     const canon = canonicalTown(name);
-    const geo = TOWN[canon] ?? TOWN[name]!;
-    return { name: canon === name ? name : canon, lat: geo.lat, lng: geo.lng };
+    const label = canon === name ? name : canon;
+    if (!found.includes(label)) found.push(label);
   }
-  return null;
+  return found;
+}
+
+function matchTown(hay: string): Place | null {
+  const name = townNamesIn(hay)[0];
+  if (!name) return null;
+  const geo = TOWN[name] ?? TOWN[canonicalTown(name)];
+  if (!geo) return null;
+  return { name, lat: geo.lat, lng: geo.lng };
+}
+
+export function placeFromText(text: string): Place | null {
+  return matchTown(stripHardwareBrands(text));
+}
+
+/** Town name that appears only inside a hardware brand (Knox Box → Knox). */
+export function hardwareSpoofedTown(text: string): string | null {
+  const raw = text.replace(/[-_]/g, " ");
+  const clean = stripHardwareBrands(text);
+  if (raw.replace(/\s+/g, " ").trim() === clean.replace(/\s+/g, " ").trim()) return null;
+  const gone = townNamesIn(raw).filter((name) => !townNamesIn(clean).includes(name));
+  return gone[0] ?? null;
+}
+
+/**
+ * If a card's town came from a hardware brand, put the label back on the real place.
+ * Pins already on the spoken street stay put; pins sitting on the spoofed town centroid move.
+ */
+export function repairHardwarePlace(input: {
+  text: string;
+  municipality?: string;
+  address?: string;
+  lat?: number;
+  lng?: number;
+  agency?: string;
+}): { municipality?: string; address?: string; lat?: number; lng?: number } {
+  const spoof = hardwareSpoofedTown(input.text);
+  if (!spoof) return {};
+  const claimed = (input.municipality || "").trim();
+  const addr = input.address || "";
+  const spoofRe = new RegExp(`\\b${spoof.replace(/\s+/g, "\\s+")}\\b`, "i");
+  const claimedSpoof = spoofRe.test(claimed) || spoofRe.test(addr);
+  if (!claimedSpoof) return {};
+
+  const fromSpeech = placeFromText(input.text)?.name;
+  const agencyHay = `${input.agency ?? ""} ${input.text}`;
+  const fallback =
+    fromSpeech && fromSpeech.toLowerCase() !== spoof.toLowerCase()
+      ? fromSpeech
+      : /\balbany\s*(?:fire|pd|police)\b/i.test(agencyHay)
+        ? "Albany"
+        : fromSpeech;
+  const municipality = fallback && fallback.toLowerCase() !== spoof.toLowerCase() ? fallback : undefined;
+  const address = addr ? addr.replace(spoofRe, municipality || "").replace(/\s*·\s*$/, "").replace(/\s+/g, " ").trim() : addr;
+
+  const spoofGeo = TOWN[spoof];
+  let lat = input.lat;
+  let lng = input.lng;
+  if (
+    spoofGeo &&
+    typeof lat === "number" &&
+    typeof lng === "number" &&
+    haversineKm({ lat, lng }, spoofGeo) < 8
+  ) {
+    const pin = locateSpoken(stripHardwareBrands(input.text), municipality || "");
+    lat = pin.geo.lat;
+    lng = pin.geo.lng;
+  }
+
+  return {
+    municipality: municipality || (claimedSpoof ? undefined : claimed),
+    address: address || undefined,
+    lat,
+    lng,
+  };
 }
 
 export function locateCall(input: {

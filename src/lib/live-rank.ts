@@ -8,12 +8,85 @@ const SEV_BOOST: Record<Severity, number> = {
   low: 0,
 };
 
-function isPlaceSpecific(inc: Incident): boolean {
+export type LiveRankInput = {
+  minutesAgo: number;
+  corroborationScore?: number;
+  severity?: Severity;
+  geoPrecision?: string;
+  verification?: string;
+  type?: string;
+  title?: string;
+  address?: string;
+  status?: string;
+  description?: string;
+  municipality?: string;
+  sources?: { kind?: string; name?: string; tier?: string }[];
+};
+
+function isPlaceSpecific(inc: LiveRankInput): boolean {
   const muni = (inc.municipality || "").toLowerCase().trim();
   if (!muni || /^(albany county|capital district|countywide|unknown|area unknown)$/.test(muni)) return false;
   const addr = (inc.address || "").toLowerCase().trim();
   if (inc.geoPrecision && !["town", "county", "unknown"].includes(inc.geoPrecision)) return true;
   return Boolean(addr && addr !== "area unknown" && addr !== muni);
+}
+
+function placePrecisionBonus(inc: LiveRankInput): number {
+  const p = inc.geoPrecision;
+  if (p === "street" || p === "intersection") return 40;
+  if (p === "landmark") return 28;
+  if (p === "road") return 16;
+  if (p === "town") return 4;
+  const addr = (inc.address || "").toLowerCase();
+  if (addr && addr !== "area unknown" && /\b(st|street|ave|avenue|rd|road|blvd|broadway|wolf|western|central|delaware)\b/.test(addr)) {
+    return 32;
+  }
+  return 0;
+}
+
+function freshnessPoints(minutesAgo: number): number {
+  const age = Math.max(0, minutesAgo);
+  if (age <= 20) return 240 - age * 2;
+  if (age <= 60) return 200 - (age - 20);
+  if (age <= 180) return 140 - (age - 60) * 0.45;
+  if (age <= 360) return 40 - (age - 180) * 0.1;
+  return Math.max(0, 12 - (age - 360) * 0.01);
+}
+
+function fluffDemotion(inc: LiveRankInput): number {
+  const hay = `${inc.title ?? ""} ${inc.type ?? ""} ${inc.description ?? ""}`.toLowerCase();
+  let d = 0;
+  if (/\b(lane closure|lanes? closed|disabled vehicle|disabled motorist)\b/.test(hay) || inc.type === "disabled-vehicle") {
+    d += 80;
+  }
+  if (
+    /\b(psa\b|public service|forensic science week|safe speed|emt program|students seek|open house|yom kippur)\b/.test(hay) &&
+    !/\b(shoot|stab|crash|structure fire|robbery|homicide)\b/.test(hay)
+  ) {
+    d += 70;
+  }
+  if (inc.status === "closed") d += 50;
+  const sources = inc.sources ?? [];
+  if (sources.some((s) => s.kind === "blotter") && inc.minutesAgo > 360) d += 45;
+  if (sources.some((s) => s.kind === "press" || /civic/i.test(s.name || "")) && inc.minutesAgo > 24 * 60) d += 40;
+  return d;
+}
+
+/**
+ * Now / default Live / Near-me score.
+ * Freshness, place precision, severity, and an early-signal bonus dominate.
+ * Corroboration only breaks ties.
+ */
+export function liveWitnessScore(inc: LiveRankInput): number {
+  const place = placePrecisionBonus(inc);
+  const sources = inc.sources ?? [];
+  const scanner = inc.verification === "scanner" || sources.some((s) => s.kind === "scanner");
+  const nixle = sources.some((s) => s.kind === "nixle" || /^nixle\b/i.test(s.name || ""));
+  let early = 0;
+  if ((scanner || nixle) && place >= 16 && inc.minutesAgo <= 180) early += 36;
+  const corr = Math.min(8, (inc.corroborationScore ?? 0) / 12);
+  const sev = SEV_BOOST[inc.severity ?? "low"] ?? 0;
+  return freshnessPoints(inc.minutesAgo) + sev + place + early + corr - fluffDemotion(inc);
 }
 
 function hasRecentAgencySocial(inc: Incident): boolean {
@@ -39,7 +112,7 @@ function hasRecentColonieEarlySignal(inc: Incident): boolean {
 }
 
 export function nowUrgencyScore(inc: Incident, ctx?: NowRankContext): number {
-  let s = Math.max(0, 180 - inc.minutesAgo) + (SEV_BOOST[inc.severity] ?? 0);
+  let s = liveWitnessScore(inc);
   // Witness gap: when an agency social post is both recent and place-specific, prefer it slightly
   // in the Now lane while still keeping it unconfirmed (social is not CAD).
   if (hasRecentAgencySocial(inc) && isPlaceSpecific(inc)) s += 12;

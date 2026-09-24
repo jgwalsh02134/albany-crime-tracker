@@ -1,5 +1,5 @@
 import type { Incident, IncidentSource, ScannerCall, SourceKind, SourceLens, SourceTier, Verification } from "./types";
-import { COUNTY_CENTROID, locateSpoken, placeFromText, spreadItems, type GeoPrecision } from "./geo";
+import { COUNTY_CENTROID, locateSpoken, placeFromText, repairHardwarePlace, spreadItems, type GeoPrecision } from "./geo";
 import { usableExcerpt } from "./html";
 import {
   classifyCall,
@@ -13,6 +13,8 @@ import {
   tokens,
   verificationFor,
 } from "./fusion";
+import { isLiveScannerCard } from "./scanner-gate";
+import { isOutOfAreaMedia, isSoftNonIncident } from "./live-keep";
 
 export const OFFICIAL_KINDS = new Set<SourceKind>(["blotter", "cfs", "nixle", "press", "opendata"]);
 
@@ -337,8 +339,34 @@ function agencyAbbrFor(item: LiveWireItem, activity: ActivityKind): string {
   return item.outlet.replace(/\s+/g, "").slice(0, 6).toUpperCase();
 }
 
+function forLiveCards(wire: LiveWireItem[]): LiveWireItem[] {
+  const out: LiveWireItem[] = [];
+  for (const w of wire) {
+    if (isOutOfAreaMedia({ title: w.title, summary: w.summary, outlet: w.outlet, url: w.url })) continue;
+    if ((w.kind === "news" || w.kind === "social") && isSoftNonIncident(`${w.title} ${w.summary ?? ""}`)) continue;
+    if (w.kind === "scanner" && !isLiveScannerCard(w)) continue;
+    const repaired = repairHardwarePlace({
+      text: `${w.title} ${w.summary ?? ""}`,
+      municipality: w.municipality,
+      address: w.address,
+      lat: w.lat,
+      lng: w.lng,
+      agency: w.agency || w.title,
+    });
+    const next = { ...w };
+    if (repaired.municipality) next.municipality = repaired.municipality;
+    if (repaired.address) next.address = repaired.address;
+    if (typeof repaired.lat === "number" && typeof repaired.lng === "number") {
+      next.lat = repaired.lat;
+      next.lng = repaired.lng;
+    }
+    out.push(next);
+  }
+  return out;
+}
+
 export function wireToIncidents(wire: LiveWireItem[]): Incident[] {
-  const groups = clusterLiveItems(wire);
+  const groups = clusterLiveItems(forLiveCards(wire));
   const incidents = groups.map((group) => {
     const item = pickPrimary(group);
     const hay = group.map((g) => `${g.title} ${g.summary}`).join(" ");
@@ -416,7 +444,7 @@ export function mergeLiveFeed(_seed: Incident[], wire: LiveWireItem[]): Incident
 
 export function wireToScannerCalls(wire: LiveWireItem[]): ScannerCall[] {
   return wire
-    .filter((w) => (w.kind ?? "news") === "scanner")
+    .filter((w) => (w.kind ?? "news") === "scanner" && isLiveScannerCard(w))
     .map((w) => {
       const hay = `${w.agency} ${w.title} ${w.summary}`;
       const discipline: ScannerCall["discipline"] = /\b(fire|ems|rescue|ambulance)\b/i.test(hay)

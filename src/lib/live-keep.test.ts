@@ -6,6 +6,7 @@ import {
   keepNewsTabItem,
   keepSocialItem,
   isCitizenNonIncidentChatter,
+  isSoftNonIncident,
   newsFreshnessScore,
   rankNewsItems,
   OUT_OF_AREA,
@@ -72,6 +73,34 @@ describe("keepLiveNewsItem", () => {
       }),
       false,
     );
+  });
+
+  it("drops WALB, Effingham, and soft features from Live", () => {
+    assert.equal(
+      keepLiveNewsItem({
+        title: "One hospitalized after crash in Albany - WALB",
+        summary: "Albany, Georgia",
+        minutesAgo: 20,
+      }),
+      false,
+    );
+    assert.equal(
+      keepLiveNewsItem({
+        title: "Altamont firehouse funding",
+        summary: "Effingham Daily News",
+        minutesAgo: 30,
+      }),
+      false,
+    );
+    assert.equal(
+      keepLiveNewsItem({
+        title: "Students seek spots in the EMT program",
+        summary: "Albany EMS student feature",
+        minutesAgo: 46,
+      }),
+      false,
+    );
+    assert.equal(isSoftNonIncident("NYSP Forensic Science Week open house"), true);
   });
 
   it("drops non-local public-safety without Capital Region cue", () => {
@@ -202,6 +231,24 @@ describe("keepSocialItem", () => {
         TITLE_CRIME,
       ),
       true,
+    );
+  });
+
+  it("drops NYSP PR weeks even on official pages", () => {
+    assert.equal(
+      keepSocialItem(
+        {
+          title: "Forensic Science Week at the lab",
+          summary: "NYSP public service post",
+          official: true,
+          needsLocal: false,
+          localMatch: true,
+        },
+        DROP,
+        NOT_OURS,
+        TITLE_CRIME,
+      ),
+      false,
     );
   });
 

@@ -60,7 +60,7 @@ Admin `/ready` (Bearer / `?token=` admin token) returns per-pipe `lastOkAt`, `la
 
 ## Fusion
 
-LiveWire items cluster when **call-type family**, **time window**, and **geo** agree (≈1.6 km or same town). One card lists provenance chips (`Seen on: Blotter · Scanner · 511 · News`). Corroboration scores independent families: official (blotter / 511 / civic / NWS) > context (news) > unconfirmed (scanner / citizen). Lone scanner is capped at 22/100 so it cannot outrank a multi-source card.
+LiveWire items cluster when **call-type family**, **time window**, and **place** agree. Scanner and social attach to TINC, blotter, or news only when address, time, and call type match strongly; a cluster is capped and unmatched radio stays its own card. One card lists provenance chips (`Seen on: Blotter · Scanner · 511 · News`). Corroboration still scores independent families (a lone scanner stays capped at 22/100 and is not a CAD log). Live order is earliest place-specific signal first: freshness, place, and severity outrank that corroboration score, so a fresh scanner is not buried under a stale lane closure.
 
 ## Superfeedr parity (this PR)
 

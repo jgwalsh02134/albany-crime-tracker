@@ -28,7 +28,7 @@ const PLACE =
   /\b(street|st\.|avenue|ave\.|road|rd\.|boulevard|blvd|place|pl\.|parkway|pkwy|highway|hwy|interstate|i-?8[79]|i-?90|i-?787|route|western|west granite|central|lark|pearl|madison|washington|new scotland|delaware|southern|broadway|wolf road|sand creek|sandwich|springsteen|henry johnson|colonie|latham|bethlehem|guilderland|albany|cohoes|watervliet|menands|delmar|loudonville|selkirk|glenmont|troy)\b/i;
 
 const UNIT_STATUS =
-  /\b(en route|in service|out of service|in quarters|10-4|10-8|10-7|10-6|10-19|copy that|roger|affirmative|standing by|clear the air)\b/i;
+  /\b(en route|in service|out of service|in quarters|10-4|10-8|10-7|10-6|10-19|copy that|roger|affirmative|standing by|clear the air|arriving on(?:\s+\w+){0,3}|on (?:the )?gate)\b/i;
 const DEDUPE_WINDOW_MS = 90_000;
 
 function normCaption(text: string): string {

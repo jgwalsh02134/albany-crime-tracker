@@ -252,10 +252,37 @@ describe("corroboration", () => {
     assert.match(lone.why, /not a CAD/i);
   });
 
-  it("sorts multi-source ahead of a newer lone scanner", () => {
+  it("ranks a fresh lone scanner ahead of an older high-corroboration item", () => {
     const multi = { corroborationScore: 70, minutesAgo: 40 };
     const lone = { corroborationScore: 16, minutesAgo: 5 };
-    assert.ok(compareFused(multi, lone) < 0);
+    assert.ok(compareFused(lone, multi) < 0);
+  });
+
+  it("ranks a fresh place-specific scanner ahead of a stale thruway lane closure", () => {
+    const scanner = {
+      corroborationScore: 16,
+      minutesAgo: 9,
+      severity: "high" as const,
+      geoPrecision: "street" as const,
+      verification: "scanner" as const,
+      type: "crash",
+      title: "Bethlehem PD · Delaware Ave crash",
+      address: "Delaware Ave · Bethlehem",
+      sources: [{ kind: "scanner", name: "Scanner" }],
+    };
+    const tinc = {
+      corroborationScore: 36,
+      minutesAgo: 180,
+      severity: "low" as const,
+      geoPrecision: "road" as const,
+      verification: "confirmed" as const,
+      type: "public-safety",
+      title: "Lane Closure — I-90",
+      address: "I-90",
+      sources: [{ kind: "cfs", name: "NYSTA TINC" }],
+    };
+    assert.ok(compareFused(scanner, tinc) < 0);
+    assert.ok(compareNowLane(scanner as Incident, tinc as Incident) < 0);
   });
 
   it("lists Seen on chips without inventing CAD", () => {
@@ -449,6 +476,120 @@ describe("compareNowLane", () => {
     });
     const sorted = [generic, official].sort(compareNowLane);
     assert.equal(sorted[0]!.id, "official");
+  });
+});
+
+describe("fusion caps and geography", () => {
+  it("does not glue unrelated scanner or social onto a thruway lane closure", () => {
+    const tinc = item({
+      id: "tinc-1",
+      title: "Lane Closure — 182.50 I-90",
+      summary: "Right lane closed",
+      kind: "traffic",
+      outlet: "NYSTA TINC",
+      municipality: "Capital District",
+      address: "I-90",
+      minutesAgo: 180,
+      lat: 42.641,
+      lng: -73.781,
+      geoPrecision: "road",
+    });
+    const scan = item({
+      id: "scan-broadway",
+      title: "Albany Fire · Broadway",
+      summary: "Broadway for a Knox Box update. Early report from Albany Fire radio.",
+      kind: "scanner",
+      outlet: "Scanner",
+      municipality: "Albany",
+      address: "Broadway · Albany",
+      minutesAgo: 8,
+      lat: 42.652,
+      lng: -73.75,
+      geoPrecision: "street",
+    });
+    const psa = item({
+      id: "soc-psa",
+      title: "NYSP Forensic Science Week open house",
+      summary: "Public service announcement",
+      kind: "social",
+      outlet: "Facebook · NYSP",
+      municipality: "Albany",
+      address: "Albany",
+      minutesAgo: 40,
+      lat: 42.65,
+      lng: -73.75,
+      geoPrecision: "town",
+    });
+    assert.equal(shouldFuse(tinc, scan), false);
+    assert.equal(shouldFuse(tinc, psa), false);
+    const groups = clusterLiveItems([tinc, scan, psa]);
+    assert.equal(groups.length, 3);
+  });
+
+  it("drops WALB and unit-status radio from Live cards and keeps a real street fire", () => {
+    const walb = item({
+      id: "walb-1",
+      title: "One hospitalized after crash in Albany - WALB",
+      summary: "Albany, Georgia police",
+      kind: "news",
+      outlet: "WALB",
+      url: "https://www.walb.com/story",
+      municipality: "Albany",
+      minutesAgo: 30,
+    });
+    const unit = item({
+      id: "scan-gate",
+      title: "Albany Fire · Rescue nine arriving on gate",
+      summary: "Rescue nine arriving on gate. Early report from Albany Fire radio — not a CAD log.",
+      kind: "scanner",
+      outlet: "Scanner",
+      agency: "Albany Fire",
+      municipality: "Albany",
+      address: "area unknown",
+      minutesAgo: 17,
+      geoPrecision: "town",
+    });
+    const real = item({
+      id: "scan-swan",
+      title: "Albany Fire · North Swan St structure fire",
+      summary: "Structure fire on North Swan Street. Early report from Albany Fire radio.",
+      kind: "scanner",
+      outlet: "Scanner",
+      agency: "Albany Fire",
+      municipality: "Albany",
+      address: "North Swan St · Albany",
+      minutesAgo: 6,
+      lat: 42.66,
+      lng: -73.754,
+      geoPrecision: "street",
+    });
+    const knox = item({
+      id: "scan-1440-10443",
+      title: "Albany Fire · Broadway",
+      summary: "Broadway, for a Knox Box update. Early report from Albany Fire radio — not a CAD log.",
+      kind: "scanner",
+      outlet: "Scanner",
+      agency: "Albany Fire",
+      municipality: "Knox",
+      address: "Broadway · Knox",
+      minutesAgo: 2,
+      lat: 42.652,
+      lng: -73.75,
+      geoPrecision: "street",
+    });
+    const incidents = wireToIncidents([walb, unit, real, knox]);
+    assert.equal(incidents.some((i) => i.id === "walb-1" || /walb/i.test(i.title)), false);
+    assert.equal(incidents.some((i) => /arriving on gate/i.test(i.title)), false);
+    const fire = incidents.find((i) => i.id === "scan-swan");
+    assert.ok(fire);
+    assert.equal(fire!.type, "fire");
+    const box = incidents.find((i) => i.id === "scan-1440-10443");
+    assert.ok(box);
+    assert.notEqual(box!.municipality, "Knox");
+    assert.match(box!.address, /Broadway/i);
+    assert.doesNotMatch(box!.address, /\bKnox\b/);
+    assert.notEqual(box!.type, "fire");
+    assert.equal(box!.verification, "scanner");
   });
 });
 
