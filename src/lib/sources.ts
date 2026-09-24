@@ -14,7 +14,7 @@ import {
   verificationFor,
 } from "./fusion";
 import { isLiveScannerCard } from "./scanner-gate";
-import { isOutOfAreaMedia, isSoftNonIncident } from "./live-keep";
+import { isLiveSoftPost, isOutOfAreaMedia } from "./live-keep";
 
 export const OFFICIAL_KINDS = new Set<SourceKind>(["blotter", "cfs", "nixle", "press", "opendata"]);
 
@@ -343,7 +343,7 @@ function forLiveCards(wire: LiveWireItem[]): LiveWireItem[] {
   const out: LiveWireItem[] = [];
   for (const w of wire) {
     if (isOutOfAreaMedia({ title: w.title, summary: w.summary, outlet: w.outlet, url: w.url })) continue;
-    if ((w.kind === "news" || w.kind === "social") && isSoftNonIncident(`${w.title} ${w.summary ?? ""}`)) continue;
+    if ((w.kind === "news" || w.kind === "social") && isLiveSoftPost(`${w.title} ${w.summary ?? ""}`)) continue;
     if (w.kind === "scanner" && !isLiveScannerCard(w)) continue;
     const repaired = repairHardwarePlace({
       text: `${w.title} ${w.summary ?? ""}`,

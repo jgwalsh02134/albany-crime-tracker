@@ -591,6 +591,57 @@ describe("fusion caps and geography", () => {
     assert.notEqual(box!.type, "fire");
     assert.equal(box!.verification, "scanner");
   });
+
+  it("drops PSA, promo, and recovery posts from Live cards and keeps a stabbing", () => {
+    const seat = item({
+      id: "fb-seat",
+      title: "Is your child’s car seat installed correctly? Here’s a statistic that parents and caretakers should consider.",
+      kind: "social",
+      outlet: "Facebook · NYSP",
+      minutesAgo: 72,
+    });
+    const costco = item({
+      id: "fb-costco",
+      title: "COSTCO FIRE SAFETY SAVINGS Looking to upgrade your home’s fire and carbon monoxide protection? Costco is offering savings.",
+      kind: "social",
+      outlet: "Facebook · Westmere Fire",
+      minutesAgo: 1384,
+    });
+    const wish = item({
+      id: "fb-wish",
+      title: "Come see our team play this weekend and help raise money for the Make-A-Wish",
+      kind: "social",
+      outlet: "Facebook · Albany PD",
+      minutesAgo: 233,
+    });
+    const flags = item({
+      id: "fb-flags",
+      title: "Please take extra caution on Columbia St. Our members are out fixing the flags.",
+      kind: "social",
+      outlet: "Facebook · Cohoes Fire",
+      municipality: "Cohoes",
+      minutesAgo: 164,
+    });
+    const recovery = item({
+      id: "x-chief",
+      title: "The Albany Fire Department Battalion Chief injured in a fuel pump explosion in August is making progress in his recovery.",
+      kind: "social",
+      outlet: "X · CBS6",
+      minutesAgo: 127,
+    });
+    const stab = item({
+      id: "fb-stab",
+      title: "Colonie Police are investigating a reported stabbing near Colonie Center",
+      kind: "social",
+      outlet: "Facebook · Colonie PD",
+      municipality: "Colonie",
+      minutesAgo: 30,
+    });
+    const incidents = wireToIncidents([seat, costco, wish, flags, recovery, stab]);
+    assert.equal(incidents.length, 1);
+    assert.match(incidents[0]!.title, /stabbing/i);
+    assert.equal(incidents.some((i) => /car seat|costco|make-a-wish|flags|recovery/i.test(i.title)), false);
+  });
 });
 
 describe("provenance regression", () => {
