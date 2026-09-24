@@ -113,6 +113,21 @@ describe("geocode fallbacks stay honest", () => {
     assert.equal(p!.name, "Colonie");
   });
 
+  it("does not treat Knox Box hardware as the Town of Knox", () => {
+    for (const phrase of [
+      "Broadway, for a Knox Box update",
+      "knox box update on Broadway",
+      "KnoxBox check",
+      "knox-box at the front door",
+      "Supra box on Central Avenue",
+    ]) {
+      const p = placeFromText(phrase);
+      assert.notEqual(p?.name, "Knox", phrase);
+    }
+    const real = placeFromText("structure fire in the Town of Knox");
+    assert.equal(real?.name, "Knox");
+  });
+
   it("scanner place + locate agree on Wolf Rd Colonie", () => {
     const spoken = "PI crash Wolf Road";
     const agency = resolveScannerAgency({ feedId: "3626", spoken });

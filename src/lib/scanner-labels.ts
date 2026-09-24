@@ -524,7 +524,7 @@ export function isUnitStatusOnly(spoken: string): boolean {
   const t = normalizeScannerSpeech(spoken);
   if (extractSpokenAddress(t) || extractIntersection(t) || extractRoute(t)) return false;
   if (LANDMARKS.some((row) => row.re.test(t)) || placeFromText(t)) return false;
-  return /\b(en route|in service|out of service|in quarters|10-4|10-8|10-7|10-6|10-19|copy that|roger|affirmative|standing by|clear the air)\b/i.test(
+  return /\b(en route|in service|out of service|in quarters|10-4|10-8|10-7|10-6|10-19|copy that|roger|affirmative|standing by|clear the air|arriving on(?:\s+\w+){0,3}|on (?:the )?gate)\b/i.test(
     t,
   );
 }

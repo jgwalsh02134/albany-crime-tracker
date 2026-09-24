@@ -67,6 +67,70 @@ function extractAlertsArray(html: string): string {
   return (m?.[1] ?? "").trim();
 }
 
+/** "Entered: 1 day, 23 hours, 4 minutes ago" → minutes. */
+export function parseNixleRelativeMinutes(text: string): number | null {
+  const t = text.toLowerCase().replace(/\s+/g, " ");
+  let mins = 0;
+  let matched = false;
+  const day = t.match(/(\d+)\s+days?/);
+  const hour = t.match(/(\d+)\s+hours?/);
+  const min = t.match(/(\d+)\s+minutes?/);
+  if (day) {
+    mins += Number(day[1]) * 24 * 60;
+    matched = true;
+  }
+  if (hour) {
+    mins += Number(hour[1]) * 60;
+    matched = true;
+  }
+  if (min) {
+    mins += Number(min[1]);
+    matched = true;
+  }
+  return matched ? mins : null;
+}
+
+export type NixleHtmlAlert = {
+  id: string;
+  title: string;
+  url: string;
+  minutesAgo: number;
+  publishedAt: string;
+};
+
+/**
+ * Nixle public pages often ship `var alerts = []` while the visible wire is HTML.
+ * Parse `#wire` list items so a healthy empty script array is not treated as no alerts.
+ */
+export function parseNixleWireHtml(html: string, now = Date.now()): NixleHtmlAlert[] {
+  const out: NixleHtmlAlert[] = [];
+  const re = /<li\b[^>]*\bid="pub_(\d+)"[^>]*>([\s\S]*?)<\/li>/gi;
+  for (const m of html.matchAll(re)) {
+    const idNum = m[1]!;
+    const block = m[2]!;
+    const timeRaw = block.match(/class="time"[^>]*>([^<]+)/i)?.[1] ?? "";
+    const headRaw = block.match(/class="headline_agency"[^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? "";
+    const href = headRaw.match(/href="([^"]+)"/i)?.[1] ?? "";
+    const title = stripHtml(headRaw)
+      .replace(/\bmore\b\s*[»>]?\s*$/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!title) continue;
+    const url = toAbsolute(decodeJsString(href));
+    if (!url) continue;
+    const minutesAgo = parseNixleRelativeMinutes(timeRaw);
+    if (minutesAgo == null || minutesAgo > MAX_MIN) continue;
+    out.push({
+      id: `nixle-${idNum}`,
+      title: title.slice(0, 180),
+      url,
+      minutesAgo,
+      publishedAt: new Date(now - minutesAgo * 60_000).toISOString(),
+    });
+  }
+  return out;
+}
+
 function toAbsolute(link: string): string {
   if (!link) return "";
   if (link.startsWith("http://") || link.startsWith("https://")) return link;
@@ -106,11 +170,6 @@ async function fetchNixleAgency(agency: NixleAgency, now = Date.now()): Promise<
     }
     const html = await res.text();
     const inner = extractAlertsArray(html);
-    if (!inner) {
-      recordPipeOk(agency.id, agency.label, 0);
-      cache.set(agency.id, { at: now, items: [] });
-      return [];
-    }
 
     const out: LiveWireItem[] = [];
     const seen = new Set<string>();
@@ -156,6 +215,36 @@ async function fetchNixleAgency(agency: NixleAgency, now = Date.now()): Promise<
         lng: pin.geo.lng,
         geoPrecision: pin.precision,
       });
+    }
+
+    if (!out.length) {
+      for (const row of parseNixleWireHtml(html, now)) {
+        const place = placeFromText(row.title);
+        const muni = place?.name || agency.municipalityHint;
+        const pin = locateSpoken(row.title, muni || "Albany");
+        out.push({
+          id: row.id,
+          title: row.title,
+          url: row.url,
+          outlet: agency.label,
+          summary: row.title,
+          publishedAt: row.publishedAt,
+          minutesAgo: row.minutesAgo,
+          kind: "news",
+          agency: agency.agency,
+          municipality: muni,
+          address: pin.road || muni,
+          lat: pin.geo.lat,
+          lng: pin.geo.lng,
+          geoPrecision: pin.precision,
+        });
+      }
+    }
+
+    if (!out.length) {
+      recordPipeOk(agency.id, agency.label, 0);
+      cache.set(agency.id, { at: now, items: [] });
+      return [];
     }
 
     out.sort((a, b) => a.minutesAgo - b.minutesAgo);

@@ -42,9 +42,22 @@ export function incidentInRadiusMiles(
   return distanceMiles({ lat: inc.lat, lng: inc.lng }, user) <= radiusMiles;
 }
 
-export function pushHonestyLabel(inc: Pick<Incident, "verification" | "sources">): "Official" | "Scanner" | "Unconfirmed" {
-  if (inc.verification === "confirmed" || inc.sources.some((s) => s.tier === "official")) return "Official";
-  if (inc.verification === "scanner" || inc.sources.every((s) => s.kind === "scanner")) return "Scanner";
+export function pushHonestyLabel(
+  inc: Pick<Incident, "verification" | "sources">,
+): "Official" | "Scanner" | "Unconfirmed" | "Thruway" | "Traffic" {
+  const sources = inc.sources ?? [];
+  const trafficOnly =
+    sources.length > 0 && sources.every((s) => s.kind === "cfs" || /\b(tinc|thruway|511|nysta)\b/i.test(s.name));
+  if (trafficOnly) {
+    return /\b(tinc|thruway|nysta)\b/i.test(sources.map((s) => s.name).join(" ")) ? "Thruway" : "Traffic";
+  }
+  const agencyOfficial = sources.some(
+    (s) => s.kind === "blotter" || s.kind === "nixle" || s.kind === "press" || s.kind === "opendata",
+  );
+  if (agencyOfficial || (inc.verification === "confirmed" && sources.some((s) => s.tier === "official" && s.kind !== "cfs"))) {
+    return "Official";
+  }
+  if (inc.verification === "scanner" || (sources.length > 0 && sources.every((s) => s.kind === "scanner"))) return "Scanner";
   return "Unconfirmed";
 }
 

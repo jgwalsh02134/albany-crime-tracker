@@ -106,6 +106,13 @@ export function coverageSummary(opts: {
     detail: "Live can’t monitor CPD police radio traffic. You’ll mainly see official alerts, fire/EMS, 511, and news.",
   });
 
+  const nixlePipes = health?.pipes?.filter((p) => p.id.startsWith("nixle:")) ?? [];
+  const nixleKnown = nixlePipes.length > 0;
+  const nixleCount = nixlePipes.reduce((sum, p) => sum + (p.lastCount || 0), 0);
+  const nixleQuiet = nixleKnown && nixleCount === 0;
+  const radioUp = (health?.scanner ?? 0) > 0;
+  const advisoryQuiet = Boolean(health?.daytimePipesDry) || nixleQuiet;
+
   if (health?.daytimePipesFailing) {
     flags.push({
       id: "daytime-failing",
@@ -114,13 +121,15 @@ export function coverageSummary(opts: {
       label: "Some live pipes failed",
       detail: "This refresh had pipe errors. Empty results can mean a reporting gap, not that nothing happened.",
     });
-  } else if (health?.daytimePipesDry) {
+  } else if (advisoryQuiet) {
     flags.push({
-      id: "daytime-dry",
+      id: radioUp ? "advisory-dark" : "daytime-dry",
       kind: "dynamic",
       tone: "warn",
-      label: "Daytime pipes returned 0",
-      detail: "511 / civic / NWS returned 0 this refresh. Treat this as a feed gap until you confirm a healthy refresh.",
+      label: radioUp ? "Agency alerts quiet" : "Daytime pipes returned 0",
+      detail: radioUp
+        ? `Early radio is up. ${nixleQuiet ? "Nixle returned nothing. " : ""}511, civic, and NWS are empty this refresh — a gap in agency alerts, not an all-clear. Colonie Police radio is encrypted, so Nixle and department posts are the police signal there.`
+        : "511 / civic / NWS returned 0 this refresh. Treat this as a feed gap until you confirm a healthy refresh.",
     });
   }
 
@@ -135,14 +144,17 @@ export function coverageSummary(opts: {
         ? "ok"
         : "unknown";
 
+  const radioUpAlertsQuiet = radioUp && advisoryQuiet && tone !== "down";
   const shortLabel =
     tone === "down"
       ? "Coverage degraded"
-      : tone === "warn"
-        ? "Coverage limited"
-        : tone === "ok"
-          ? "Coverage"
-          : "Coverage";
+      : radioUpAlertsQuiet
+        ? "Radio up · alerts quiet"
+        : tone === "warn"
+          ? "Coverage limited"
+          : tone === "ok"
+            ? "Coverage"
+            : "Coverage";
 
   return { tone, flags, shortLabel };
 }

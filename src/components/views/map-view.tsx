@@ -1023,7 +1023,9 @@ export function MapView({
             {coverage.tone === "down"
               ? "Coverage degraded — reporting gap, not all clear."
               : coverage.tone === "warn"
-                ? "Coverage limited — treat gaps as missing signal."
+                ? coverage.shortLabel === "Radio up · alerts quiet"
+                  ? "Early radio is up. Nixle and advisory pipes are quiet — not an all-clear."
+                  : "Coverage limited — treat gaps as missing signal."
                 : wireHealth?.daytimePipesDry
                   ? "Daytime pipes returned 0 — treat as a feed gap."
                   : approxShown

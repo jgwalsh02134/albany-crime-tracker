@@ -45,7 +45,7 @@ export function getPushStatus(): PushStatus {
   if (!cfg) {
     return {
       enabled: false,
-      reason: "Push not configured (missing VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY/VAPID_SUBJECT).",
+      reason: "Push not configured. Set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT on the server.",
     };
   }
   return { enabled: true, publicKey: cfg.publicKey };

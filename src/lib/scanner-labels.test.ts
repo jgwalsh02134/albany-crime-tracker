@@ -18,6 +18,7 @@ import {
   normalizeScannerSpeech,
 } from "./geo.ts";
 import { getScannerFeed } from "./scanner-feeds.ts";
+import { isLiveScannerCard } from "./scanner-gate.ts";
 
 describe("resolveScannerAgency", () => {
   it("never returns the Albany/Colonie dual blob", () => {
@@ -255,6 +256,67 @@ describe("dedupe fingerprints + unit status", () => {
     assert.equal(isUnitStatusOnly("engine 1 in quarters"), true);
     assert.equal(isUnitStatusOnly("unit 12 en route"), true);
     assert.equal(isUnitStatusOnly("en route to Wolf Road crash"), false);
+    assert.equal(isUnitStatusOnly("Rescue nine arriving on gate"), true);
+  });
+});
+
+describe("live scanner gate", () => {
+  it("keeps a street or a serious call and drops bare radio", () => {
+    assert.equal(
+      isLiveScannerCard({
+        title: "Albany Fire · North Swan St structure fire",
+        summary: "Structure fire on North Swan Street",
+        address: "North Swan St · Albany",
+        geoPrecision: "street",
+      }),
+      true,
+    );
+    assert.equal(
+      isLiveScannerCard({
+        title: "Albany PD · shots fired",
+        summary: "shots fired, area unknown",
+        address: "area unknown",
+        geoPrecision: "county",
+      }),
+      true,
+    );
+    assert.equal(
+      isLiveScannerCard({
+        title: "Albany Fire · Rescue nine arriving on gate",
+        summary: "Rescue nine arriving on gate. Early report from Albany Fire radio.",
+        address: "area unknown",
+        geoPrecision: "town",
+      }),
+      false,
+    );
+    assert.equal(
+      isLiveScannerCard({
+        title: "Albany",
+        summary: "Early report from Albany Fire radio",
+        address: "Albany",
+        geoPrecision: "town",
+      }),
+      false,
+    );
+    assert.equal(
+      isLiveScannerCard({
+        title: "EMS",
+        summary: "radio traffic",
+        address: "area unknown",
+      }),
+      false,
+    );
+  });
+
+  it("keeps Albany Fire Broadway on Albany when the speech is a Knox Box", () => {
+    const spoken = "Broadway, for a Knox Box update";
+    const agency = resolveScannerAgency({ feedId: "1440", spoken });
+    const place = resolveScannerPlace({ spoken, agency, feed: getScannerFeed("1440") });
+    assert.equal(agency.agency, "Albany Fire");
+    assert.notEqual(place.municipality, "Knox");
+    assert.match(place.address, /Broadway/i);
+    assert.doesNotMatch(place.address, /\bKnox\b/);
+    assert.equal(place.municipality, "Albany");
   });
 });
 

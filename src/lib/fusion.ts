@@ -1,8 +1,10 @@
 /**
  * Cluster FuseItems into one incident when time, place, and call-type agree.
- * Corroboration scores independent source families so a lone scanner cannot
- * outrank blotter + 511 + news. This is not CAD and does not invent a dispatch board.
+ * Live order prefers the earliest place-specific signal. Corroboration is a
+ * tie-break, not a reason to bury a fresh scanner under stale traffic.
+ * This is not CAD and does not invent a dispatch board.
  */
+import { liveWitnessScore, type LiveRankInput } from "./live-rank";
 import type { Incident, IncidentSource, SourceKind, SourceTier, Verification } from "./types";
 import { usableExcerpt } from "./html";
 
@@ -81,8 +83,22 @@ const FAMILY_OF: Record<string, string> = {
   "public-safety": "other",
 };
 
+/** Drop agency labels and the radio disclaimer so "Albany Fire" is not a fire incident. */
+export function incidentSignalText(text: string): string {
+  return text
+    .replace(/\bearly report from\b[\s\S]*$/i, " ")
+    .replace(/\bnot a cad log\b[\s\S]*$/i, " ")
+    .replace(
+      /\b(?:albany|colonie|bethlehem|guilderland|county|menands|cohoes|watervliet|latham|delmar|westmere|volunteer|nys)\s+fire\b/gi,
+      " ",
+    )
+    .replace(/\bfire\s+(?:radio|department|dept)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function classifyCall(title: string): CallClass {
-  const t = title.toLowerCase();
+  const t = incidentSignalText(title).toLowerCase();
   if (/\b(shot|shooting|homicide|murder|stab)\b/.test(t)) {
     return { type: "shots-fired", category: "violent", severity: "critical", family: "violent" };
   }
@@ -229,7 +245,7 @@ function sharesStreetKey(a: FuseItem, b: FuseItem): { shared: boolean; common: b
   for (const k of ka) {
     if (!kb.has(k)) continue;
     // Central/Western are extremely common; require stronger corroboration.
-    const common = k === "central" || k === "western";
+    const common = k === "central" || k === "western" || k === "i87" || k === "i90" || k === "i787";
     return { shared: true, common };
   }
   return { shared: false, common: false };
@@ -351,11 +367,8 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
   // Do not let a weak/unknown-place scanner dissolve into blotter/news on muni alone —
   // that zeros the Radio lens and hides real captions from Last 3 hours.
   const weakScan = weakScannerPlace(a) || weakScannerPlace(b);
-  const kinds = [a.kind, b.kind];
-  const crossOfficial =
-    kinds.includes("scanner") &&
-    kinds.some((k) => k === "blotter" || k === "news" || k === "social");
-  if (weakScan && crossOfficial) {
+  const crossAttach = isCrossAttach(a, b);
+  if (weakScan && crossAttach) {
     // If both sides have a real pin and it's close, allow the fuse even when the scanner row's
     // address/muni strings are weak. This prevents "scanner then newsroom" upgrades from
     // showing as duplicates while still blocking muni-only dissolves.
@@ -374,9 +387,7 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
       }
       return false;
     }
-    if (place && hit >= 2) return true;
-    if (street.shared) return hit >= (street.common ? 2 : 1);
-    return hit >= 3 && Boolean(extractStreetHint(a) && extractStreetHint(b));
+    return strongCrossMatch(a, b, ca, cb, street, hit, km);
   }
   if (muniConflict) {
     // Harder fusion when municipalities differ: never fuse on "nearby pin + same family/type" alone.
@@ -394,24 +405,80 @@ export function shouldFuse(a: FuseItem, b: FuseItem): boolean {
     }
     return false;
   }
-  if (place) return hit >= 1 || ca.type === cb.type;
+  // Scanner/social may join TINC, blotter, or news only on a strong same-event match.
+  if (crossAttach) return strongCrossMatch(a, b, ca, cb, street, hit, km);
+  // Same generic "public-safety" type is not an event. Require overlapping words.
+  if (place) return hit >= 1 || (ca.type === cb.type && ca.type !== "public-safety");
   // Weak geo: only fuse when titles clearly overlap (same street / same event words).
   const need = Math.max(3, Math.ceil(Math.min(tokens(a.title).length, tokens(b.title).length) * 0.5));
   return hit >= need;
 }
 
-function extractStreetHint(item: FuseItem): boolean {
-  return /\b(?:street|st\.?|avenue|ave\.?|road|rd\.?|boulevard|blvd|route|highway|wolf|western|central|lark|pearl)\b/i.test(
-    `${item.title} ${item.address ?? ""} ${item.summary ?? ""}`,
+function isUnconfirmedAttach(item: FuseItem): boolean {
+  const k = item.kind ?? "news";
+  return k === "scanner" || k === "social";
+}
+
+function isHardSource(item: FuseItem): boolean {
+  const k = item.kind ?? "news";
+  return k === "blotter" || k === "news" || k === "traffic";
+}
+
+function isCrossAttach(a: FuseItem, b: FuseItem): boolean {
+  return (isUnconfirmedAttach(a) && isHardSource(b)) || (isUnconfirmedAttach(b) && isHardSource(a));
+}
+
+/** Address + call entity, not merely "nearby and both sound like public safety". */
+function strongCrossMatch(
+  a: FuseItem,
+  b: FuseItem,
+  ca: CallClass,
+  cb: CallClass,
+  street: { shared: boolean; common: boolean },
+  hit: number,
+  km: number,
+): boolean {
+  if (!kindsCompatible(ca, cb)) return false;
+  const generic = ca.family === "other" || cb.family === "other" || ca.type === "public-safety" || cb.type === "public-safety";
+  const precise =
+    Number.isFinite(km) &&
+    km <= 0.35 &&
+    !isApproxGeoPrecision(a.geoPrecision) &&
+    !isApproxGeoPrecision(b.geoPrecision);
+  const specificStreet = street.shared && !street.common;
+  const addressOk = specificStreet || precise || (street.shared && street.common && hit >= 3);
+  if (!addressOk) return false;
+  if (generic) return specificStreet && hit >= 2;
+  if (ca.family === cb.family && ca.family !== "other") return hit >= 1 || ca.type === cb.type;
+  return hit >= 2;
+}
+
+/** Unmatched scanner/social stays its own card once a cluster is full. */
+export const MAX_FUSED_SOURCES = 6;
+
+function groupAnchor(group: FuseItem[]): FuseItem {
+  return (
+    group.find((m) => {
+      const k = m.kind ?? "news";
+      return k === "blotter" || k === "traffic" || k === "news";
+    }) ?? group[0]!
   );
 }
 
 export function clusterLiveItems(items: FuseItem[]): FuseItem[][] {
   const groups: FuseItem[][] = [];
   for (const item of items) {
-    const found = groups.find((g) => g.some((member) => shouldFuse(item, member)));
-    if (found) found.push(item);
-    else groups.push([item]);
+    let placed = false;
+    for (const g of groups) {
+      if (g.length >= MAX_FUSED_SOURCES) continue;
+      // Match the anchor, not whichever neighbor is loosest — stops transitive glue.
+      if (shouldFuse(item, groupAnchor(g))) {
+        g.push(item);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) groups.push([item]);
   }
   return groups;
 }
@@ -560,15 +627,12 @@ export function scoreCorroboration(items: FuseItem[]): Corroboration {
   return { score, families, independent: families.length, why };
 }
 
-export function compareFused(a: { corroborationScore?: number; minutesAgo: number }, b: { corroborationScore?: number; minutesAgo: number }): number {
-  const sa = a.corroborationScore ?? 0;
-  const sb = b.corroborationScore ?? 0;
-  // Live feed should feel live: when two incidents are far apart in time,
-  // prefer recency over corroboration so yesterday's blotter doesn't pin the top.
-  const gap = Math.abs(a.minutesAgo - b.minutesAgo);
-  if (gap >= 6 * 60) return a.minutesAgo - b.minutesAgo;
+export function compareFused(a: LiveRankInput, b: LiveRankInput): number {
+  const sa = liveWitnessScore(a);
+  const sb = liveWitnessScore(b);
   if (sb !== sa) return sb - sa;
-  return a.minutesAgo - b.minutesAgo;
+  if (a.minutesAgo !== b.minutesAgo) return a.minutesAgo - b.minutesAgo;
+  return 0;
 }
 
 export function pickPrimary(group: FuseItem[]): FuseItem {

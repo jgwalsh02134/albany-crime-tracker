@@ -11,6 +11,7 @@ import { compactFromMinutes, minutesSinceNy7am } from "@/lib/format";
 import { type WireHealth, sourceMix } from "@/lib/sources";
 import { liveWindowHonesty } from "@/lib/live-honesty";
 import { incidentVisible, useAppStore } from "@/lib/store";
+import { incidentSignalText } from "@/lib/fusion";
 import { compareNowLaneWithContext, nowUrgencyScore } from "@/lib/live-rank";
 import { haversineKm } from "@/lib/geo";
 import { selectNearMeEmptyState, type LocateErrorKind, type NearMePos } from "@/lib/near-me-empty-state";
@@ -139,7 +140,7 @@ function matchesLiveKind(inc: Incident, kind: LiveKind): boolean {
   const t = inc.type.toLowerCase();
   const title = inc.title.toLowerCase();
   const desc = (inc.description || "").toLowerCase();
-  const hay = `${title} ${desc} ${inc.address.toLowerCase()} ${inc.municipality.toLowerCase()}`;
+  const hay = incidentSignalText(`${title} ${desc} ${inc.address} ${inc.municipality}`).toLowerCase();
   const has = (re: RegExp) => re.test(hay);
 
   if (kind === "fire") {
@@ -973,7 +974,13 @@ function GroupedList({
     let score = nowUrgencyScore(top, { colonieFocused });
     // Keep the UI honest: only let scanner-only lanes jump the stack when the activity is serious.
     if (id === "scanner") {
-      score -= top.severity === "critical" ? 0 : top.severity === "high" ? 10 : top.severity === "medium" ? 25 : 45;
+      const freshPlace =
+        top.minutesAgo <= 45 &&
+        Boolean(top.geoPrecision) &&
+        !["town", "county", "unknown"].includes(top.geoPrecision || "");
+      if (!freshPlace) {
+        score -= top.severity === "critical" ? 0 : top.severity === "high" ? 10 : top.severity === "medium" ? 25 : 45;
+      }
     }
     if (id === "developing") score -= 5;
     return score * 1000 - order;
@@ -1253,7 +1260,9 @@ function SourcePipes({
                 </p>
               ) : health.daytimePipesDry ? (
                 <p className="mt-2 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
-                  511, civic, and NWS all returned 0 this refresh. That can be a quiet hour on those feeds — not a county-wide all-clear.
+                  {(health.scanner ?? 0) > 0
+                    ? "Early radio is up. 511, civic, and NWS returned 0 this refresh — and Nixle stays quiet until an agency posts. That is a gap in alerts, not a county-wide all-clear. Colonie Police radio is encrypted."
+                    : "511, civic, and NWS all returned 0 this refresh. That can be a quiet hour on those feeds — not a county-wide all-clear."}
                 </p>
               ) : null}
               {radioDown ? (

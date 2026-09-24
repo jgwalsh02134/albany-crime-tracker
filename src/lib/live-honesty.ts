@@ -74,11 +74,19 @@ export function liveWindowHonesty(opts: {
     };
   }
 
+  const nixlePipes = health?.pipes?.filter((p) => p.id.startsWith("nixle:")) ?? [];
+  const nixleQuiet = nixlePipes.length > 0 && nixlePipes.every((p) => (p.lastCount || 0) === 0);
+  const advisoryQuiet = dry || nixleQuiet;
+
   if (!nowItems.length && radioInDay && !radioInWindow) {
     return {
       tone: "radio-elsewhere",
-      last3hCopy: `No calls in the last 3 hours in this view — ${scannerWire || liveItems.filter(hasScanner).length} radio item(s) are older or in another filter.`,
-      emptyFilterCopy: "Nothing in this filter for the current window.",
+      last3hCopy: advisoryQuiet
+        ? "Early radio is on, but nothing place-specific is in this window. Nixle and agency alerts are empty this refresh — not an all-clear."
+        : `No calls in the last 3 hours in this view — ${scannerWire || liveItems.filter(hasScanner).length} radio item(s) are older or in another filter.`,
+      emptyFilterCopy: advisoryQuiet
+        ? "Nothing place-specific in this filter. Radio captions may still be moving; Nixle and agency alerts are quiet."
+        : "Nothing in this filter for the current window.",
     };
   }
 
@@ -94,13 +102,15 @@ export function liveWindowHonesty(opts: {
     };
   }
 
-  if (!nowItems.length && dry) {
+  if (!nowItems.length && (dry || nixleQuiet)) {
     return {
       tone: "pipes-dry",
-      last3hCopy:
-        "Nothing in the last 3 hours. 511, civic, and NWS are empty this refresh — do not read this as county-wide quiet.",
-      emptyFilterCopy:
-        "Nothing in this filter. Daytime open pipes returned no rows.",
+      last3hCopy: scannerWire
+        ? "Early radio is up, but Nixle and the daytime advisory pipes are empty this refresh — not an all-clear. Colonie Police radio is encrypted."
+        : "Nothing in the last 3 hours. 511, civic, and NWS are empty this refresh — do not read this as county-wide quiet.",
+      emptyFilterCopy: scannerWire
+        ? "Nothing place-specific in this filter. Advisory pipes (Nixle / 511 / civic) are quiet."
+        : "Nothing in this filter. Daytime open pipes returned no rows.",
     };
   }
 

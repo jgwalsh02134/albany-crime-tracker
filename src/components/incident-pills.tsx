@@ -20,7 +20,23 @@ function sourceFallback(incident: Incident): { label: string; key: string } {
 }
 
 function confidenceBadge(incident: Incident): { label: string; tone: "cyan" | "accent" | "medium" | "muted" } {
-  if (incident.verification === "confirmed") return { label: "Official", tone: "cyan" };
+  const sources = incident.sources ?? [];
+  const trafficOnly =
+    sources.length > 0 && sources.every((s) => s.kind === "cfs" || /\b(tinc|thruway|511|nysta)\b/i.test(s.name));
+  if (trafficOnly) {
+    const names = sources.map((s) => s.name).join(" ");
+    return /\b(tinc|thruway|nysta)\b/i.test(names)
+      ? { label: "Thruway", tone: "muted" }
+      : { label: "Traffic", tone: "muted" };
+  }
+  if (incident.verification === "confirmed") {
+    const agencyOfficial = sources.some(
+      (s) => s.kind === "blotter" || s.kind === "nixle" || s.kind === "press" || s.kind === "opendata",
+    );
+    if (agencyOfficial) return { label: "Official", tone: "cyan" };
+    if (sources.some((s) => s.kind === "cfs")) return { label: "Traffic", tone: "muted" };
+    return { label: "Official", tone: "cyan" };
+  }
   if (incident.verification === "scanner") return { label: "Scanner", tone: "accent" };
   if (isWitnessIncident(incident)) return { label: "Unconfirmed", tone: "medium" };
   if (incident.sources.some((s) => s.kind === "social")) return { label: "Unconfirmed", tone: "medium" };

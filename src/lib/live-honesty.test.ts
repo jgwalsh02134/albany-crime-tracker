@@ -75,6 +75,24 @@ describe("liveWindowHonesty", () => {
     assert.match(h.last3hCopy, /7 AM dump/i);
   });
 
+  it("says radio is up when advisory pipes are empty and the window has no place-specific card", () => {
+    const h = liveWindowHonesty({
+      health: {
+        ...dryHealth,
+        scanner: 12,
+        daytimePipesDry: true,
+        pipes: [
+          { id: "nixle:apd", label: "Nixle · Albany PD", lastCount: 0, ageSec: 30, ok: 1, fail: 0 },
+          { id: "nixle:colonie-pd", label: "Nixle · Colonie PD", lastCount: 0, ageSec: 30, ok: 1, fail: 0 },
+        ],
+      },
+      nowItems: [],
+      liveItems: [],
+    });
+    assert.match(h.last3hCopy, /radio is up|Early radio/i);
+    assert.match(h.last3hCopy, /Nixle|not an all-clear/i);
+  });
+
   it("mentions radio elsewhere when wire has scanner but window does not", () => {
     const radio = inc({ id: "s1", title: "Wolf Road crash", minutesAgo: 400 });
     const h = liveWindowHonesty({
