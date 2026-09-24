@@ -6,12 +6,15 @@ import {
   keepNewsTabItem,
   keepSocialItem,
   isCitizenNonIncidentChatter,
+  isLiveSoftPost,
   isSoftNonIncident,
   newsFreshnessScore,
   rankNewsItems,
   OUT_OF_AREA,
   CAPITAL_LOCAL,
 } from "./live-keep.ts";
+import { socialLive, socialNews } from "./social-sources.ts";
+import type { LiveWireItem } from "./sources.ts";
 
 const DROP = /\b(hiring|join our team|ice cream)\b/i;
 const NOT_OURS = /\b(brooklyn|albany,? georgia)\b/i;
@@ -197,6 +200,91 @@ describe("newsFreshnessScore / rankNewsItems", () => {
           title: "NYSP overnight: petty larceny in Colonie",
           outlet: "NYSP blotter",
         }),
+    );
+  });
+});
+
+describe("isLiveSoftPost", () => {
+  it("drops car-seat PSAs, fire-safety promos, and fundraising from Live", () => {
+    const carSeat =
+      "Is your child’s car seat installed correctly? Here’s a statistic that parents and caretakers should consider: approximately 80-90% of child seats are installed wrong.";
+    const costco =
+      "COSTCO FIRE SAFETY SAVINGS Looking to upgrade your home’s fire and carbon monoxide protection? Costco is currently offering savings on several detectors.";
+    const wish =
+      "Come see our team play this weekend as we go for the win and help raise money for the Make-A-Wish Vermont & Northeast New York";
+    const flags = "Please take extra caution on Columbia St. Our members are out fixing the flags.";
+    const recovery =
+      "The Albany Fire Department Battalion Chief injured in a fuel pump explosion in August is making progress in his recovery.";
+    for (const title of [carSeat, costco, wish, flags, recovery]) {
+      assert.equal(isLiveSoftPost(title), true, title);
+      assert.equal(keepLiveNewsItem({ title, summary: "Albany", minutesAgo: 70, local: true }), false, title);
+    }
+    assert.equal(
+      keepNewsTabItem({ title: carSeat, summary: "NYSP", outlet: "Facebook · NYSP", minutesAgo: 70 }),
+      true,
+    );
+  });
+
+  it("keeps stabbing, crash, structure fire, and manhunt cards", () => {
+    const keep = [
+      "Colonie Police are investigating a reported stabbing near a CDTA bus stop between Colonie Center and Northway Mall.",
+      "Police: Troy murder suspect wounded, captured in Georgia after an exchange of gunfire",
+      "Albany Police announced the victim of a fatal rollover crash earlier this week near Krumkill Road has been identified",
+      "Structure fire on North Swan Street in Albany",
+      "Manhunt ends with arrest after a shooting in Albany",
+    ];
+    for (const title of keep) {
+      assert.equal(isLiveSoftPost(title), false, title);
+      assert.equal(keepLiveNewsItem({ title, minutesAgo: 40, local: true }), true, title);
+    }
+  });
+
+  it("routes soft official posts to News and leaves serious posts on Live", () => {
+    const soft: LiveWireItem = {
+      id: "fb-nysp-seat",
+      title: "Is your child’s car seat installed correctly? Here’s a statistic parents should consider.",
+      url: "https://example.test/seat",
+      outlet: "Facebook · NYSP",
+      summary: "Child car seat inspection checkpoint.",
+      publishedAt: new Date().toISOString(),
+      minutesAgo: 72,
+      kind: "social",
+    };
+    const costco: LiveWireItem = {
+      id: "fb-westmere",
+      title: "COSTCO FIRE SAFETY SAVINGS Looking to upgrade your home’s fire and carbon monoxide protection?",
+      url: "https://example.test/costco",
+      outlet: "Facebook · Westmere Fire",
+      summary: "Costco is currently offering savings on detectors.",
+      publishedAt: new Date().toISOString(),
+      minutesAgo: 1384,
+      kind: "social",
+    };
+    const wish: LiveWireItem = {
+      id: "fb-apd-wish",
+      title: "Come see our team play this weekend and help raise money for the Make-A-Wish",
+      url: "https://example.test/wish",
+      outlet: "Facebook · Albany PD",
+      summary: "Make-A-Wish Vermont & Northeast New York",
+      publishedAt: new Date().toISOString(),
+      minutesAgo: 233,
+      kind: "social",
+    };
+    const stab: LiveWireItem = {
+      id: "fb-stab",
+      title: "Colonie Police are investigating a reported stabbing near Colonie Center",
+      url: "https://example.test/stab",
+      outlet: "Facebook · Colonie PD",
+      summary: "Reported stabbing Thursday afternoon.",
+      publishedAt: new Date().toISOString(),
+      minutesAgo: 30,
+      kind: "social",
+    };
+    const rows = [soft, costco, wish, stab];
+    assert.deepEqual(socialLive(rows).map((r) => r.id), ["fb-stab"]);
+    assert.deepEqual(
+      socialNews(rows).map((r) => r.id).sort(),
+      ["fb-apd-wish", "fb-nysp-seat", "fb-westmere"],
     );
   });
 });

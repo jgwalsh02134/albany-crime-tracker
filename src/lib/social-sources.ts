@@ -1,4 +1,4 @@
-import { hasClearIncidentLanguageForNewsroomSocial, keepSocialItem } from "./live-keep";
+import { hasClearIncidentLanguageForNewsroomSocial, isLiveSoftPost, keepSocialItem } from "./live-keep";
 import { locateSpoken, placeFromText } from "./geo";
 import type { LiveWireItem } from "./sources";
 import { recordPipeFail, recordPipeOk } from "./pipe-health";
@@ -773,12 +773,14 @@ export function isOfficialSocial(outlet: string): boolean {
 }
 
 export function socialLive(items: LiveWireItem[]): LiveWireItem[] {
-  return items.filter((i) => i.minutesAgo <= LIVE_MIN);
+  return items.filter((i) => i.minutesAgo <= LIVE_MIN && !isLiveSoftPost(`${i.title} ${i.summary ?? ""}`));
 }
 
 export function socialNews(items: LiveWireItem[]): LiveWireItem[] {
   return items.filter((i) => {
-    if (i.minutesAgo <= LIVE_MIN) return false;
+    const soft = isLiveSoftPost(`${i.title} ${i.summary ?? ""}`);
+    // Soft PSA/promo/lookbacks stay eligible for News even while they are still "fresh".
+    if (!soft && i.minutesAgo <= LIVE_MIN) return false;
     const cap = isOfficialSocial(i.outlet) ? OFFICIAL_NEWS_MIN : NEWS_MIN;
     return i.minutesAgo <= cap;
   });

@@ -22,8 +22,46 @@ export function isOutOfAreaMedia(input: { title?: string; summary?: string; outl
 export const SOFT_NOT_INCIDENT =
   /\b(forensic science week|safe speed|yom kippur|emt (?:program|student|students|class)|students seek|student feature|firehouse (?:funding|grant|rebuild)|open house|community event|public service announcement|\bpsa\b|job fair|scholarship|back in (?:january|february|march|april|may|june|july|august|september|october|november|december)|months ago|last (?:spring|summer|fall|winter|year))\b/i;
 
+const NAMED_MONTH =
+  "january|february|march|april|may|june|july|august|september|october|november|december";
+const INJURED_IN_MONTH = new RegExp(
+  `\\b(?:injured|hurt|wounded) in\\b[\\s\\S]{0,140}\\b(?:${NAMED_MONTH})\\b`,
+  "i",
+);
+const RECOVERY_LOOKBACK =
+  /\b(?:making progress in (?:his|her|their) recovery|continues to recover|recovery continues|on the mend)\b/i;
+/** A new arrest, death, or manhunt is still a Live incident even if an older injury is mentioned. */
+const FRESH_OUTCOME = /\b(?:arrested|in custody|charged|manhunt|captured|killed|dies|died|dead|fatal)\b/i;
+
 export function isSoftNonIncident(text: string): boolean {
   return SOFT_NOT_INCIDENT.test(text);
+}
+
+/**
+ * Live-only soft keep. Official Facebook still collects these for the News tab;
+ * they are not incidents (PSA, promo, fundraiser, flag detail, recovery lookback).
+ */
+export function isLiveSoftPost(text: string): boolean {
+  if (isSoftNonIncident(text)) return true;
+  const t = text.replace(/\s+/g, " ");
+  if (
+    /\b(?:make-a-wish|make a wish|fundrais(?:e|er|ing)|raise money|charity game|come see our team play)\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (/\bcar\s*seats?\b/i.test(t) && /\b(?:installed|inspection|checkpoint|statistic|caretaker)\b/i.test(t)) {
+    return true;
+  }
+  if (
+    /\b(?:fire\s+safety|smoke alarms?|carbon monoxide (?:protection|detector|alarm))\b/i.test(t) &&
+    /\b(?:savings|discount|%\s*off|on sale|costco|upgrade your)\b/i.test(t)
+  ) {
+    return true;
+  }
+  if (/\b(?:fixing|hanging|changing|putting up|replacing) (?:the )?flags\b/i.test(t)) return true;
+  if (RECOVERY_LOOKBACK.test(t)) return true;
+  if (INJURED_IN_MONTH.test(t) && !FRESH_OUTCOME.test(t)) return true;
+  return false;
 }
 
 export const CAPITAL_LOCAL =
@@ -58,7 +96,7 @@ export function keepLiveNewsItem(row: LiveKeepInput): boolean {
   const hay = `${row.title} ${row.summary ?? ""}`;
   if (row.minutesAgo > LIVE_WINDOW_MIN) return false;
   if (isOutOfAreaMedia({ title: row.title, summary: row.summary })) return false;
-  if (isSoftNonIncident(hay)) return false;
+  if (isLiveSoftPost(hay)) return false;
   if (COURT_ONLY.test(hay)) return false;
   if (NOT_LIVE_NEWS.test(hay)) return false;
   if (!LIVE_PUBLIC_SAFETY.test(hay)) return false;
